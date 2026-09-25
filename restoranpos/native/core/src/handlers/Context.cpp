@@ -1,8 +1,11 @@
 #include "pos/handlers/Context.hpp"
 
+#include <algorithm>
+
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
 #include "pos/Logging.hpp"
+#include "pos/db/Migrator.hpp"
 #include "pos/protocol_generated.hpp"
 
 namespace pos::handlers {
@@ -45,6 +48,15 @@ std::string Context::requireManagerApproval(std::string_view permission,
                        "This action requires manager approval");
     }
 
+    // Every PIN is a guess against every manager at once, so the till - not an
+    // account - is what gets locked.
+    const auto now = nowMs();
+    if (approvalLockedUntil_ > now) {
+        throw PosError(std::string(protocol::err::kPinLocked),
+                       "Menecer PIN-i " + std::to_string((approvalLockedUntil_ - now) / 1000 + 1) +
+                           " saniyə bloklanıb");
+    }
+
     // Look for an active user holding the permission (primary or secondary role)
     // whose PIN matches.
     auto stmt = database_.prepare(
@@ -63,8 +75,11 @@ std::string Context::requireManagerApproval(std::string_view permission,
         const std::string userId = stmt.columnText(0);
         const std::string name = stmt.columnText(1);
         const std::string hash = stmt.columnText(2);
+        if (db::isShippedDefaultPin(userId, hash)) continue;
 
         if (crypto::verifyPin(managerPin, hash)) {
+            approvalFailures_ = 0;
+            approvalLockMs_ = 30'000;
             audit("manager_override", "permission", std::string(permission),
                   Json{{"action", std::string(action)},
                        {"approvedBy", name},
@@ -75,6 +90,15 @@ std::string Context::requireManagerApproval(std::string_view permission,
         }
     }
 
+    if (++approvalFailures_ >= 5) {
+        approvalFailures_ = 0;
+        approvalLockedUntil_ = now + approvalLockMs_;
+        approvalLockMs_ = std::min<Timestamp>(approvalLockMs_ * 2, 15 * 60'000);
+        audit("manager_override_locked", "permission", std::string(permission),
+              Json{{"action", std::string(action)}, {"requestedBy", session_.fullName}});
+        throw PosError(std::string(protocol::err::kPinLocked),
+                       "Çox sayda səhv menecer PIN-i. Təsdiq müvəqqəti bloklandı.");
+    }
     throw PosError(std::string(protocol::err::kInvalidPin), "Manager PIN was not recognised");
 }
 

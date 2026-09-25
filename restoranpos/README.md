@@ -32,17 +32,26 @@ npm run build:core
 npm run dev
 ```
 
-`npm run dev` builds a Debug core via `vswhere` → `vcvars64`, then starts
-electron-vite. Use `npm run dev:ui` if the core binary is already built.
+`npm run dev` builds a Debug core, runs `scripts/assemble-restaurant.mjs --allow-partial`
+(applies the `apply-restaurant-*.mjs` patches, stages `packaged-renderer/` and `out/`), then
+starts Electron. On Linux use `scripts/launch-linux.sh`.
+
+The renderer has no TypeScript source in this repo: it is the shipped bundle
+`packaged-renderer/assets/index-DAmHwBc4.js`, changed only by the ordered, idempotent patch
+scripts listed in `scripts/assemble-restaurant.mjs` (`PATCH_ORDER`). A strict run fails on any
+patch that no longer applies; CI re-assembles and fails if the result differs from the commit.
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `npm run lint` | Typecheck (main + renderer) |
-| `npm run typecheck` | TS compile check |
+| `npm run lint` | ESLint (market Electron main + all build/patch scripts) |
+| `npm run typecheck` | TS compile check (restaurant node + web, market) |
+| `npm run check:versions` | package.json / lock / CMake / Electron versions agree |
+| `node scripts/verify-third-party.mjs` | vendored C++ deps match `native/third_party/SHA256SUMS` |
+| `bash scripts/static-analysis-cpp.sh` | clang-tidy over both C++ cores (needs clang, cmake, ninja) |
 | `npm run build:core` | Release C++ sidecar → `native/build/restaurant-pos-core.exe` |
-| `npm run build:desktop` | Electron main/preload/renderer production bundle → `out/` |
+| `npm run build:desktop` | Strict assembly: all patches → `packaged-renderer/` → `out/` |
 | `npm run build` | typecheck + core + desktop |
 | `npm run test` | Catch2 + Vitest + visual asset checks |
 | `npm run test:core` / `test:unit` | just Catch2 / just Vitest |
@@ -118,7 +127,9 @@ Database and logs are **never** under Program Files.
 | 9001 | 9001 | administrator | Admin |
 
 Only the administrator is seeded; waiters are created in-app by the admin.
-Change this PIN before the system handles real money.
+9001 is public, so it cannot open a session: the first sign-in with it asks for a
+new PIN (twice) and signs in with that. An account still on 9001 never approves
+manager actions.
 
 ## Auto updater
 
@@ -186,7 +197,7 @@ warn on first launch — expected until a real EV/OV certificate is attached.
 1. `npm run package:win`
 2. Run `release-<version>\MilionerPOS-Setup-<version>.exe`
 3. Launch from Start Menu / Desktop shortcut
-4. Login `9001` / `9001`
+4. Login `9001`, then choose a new PIN when asked
 5. Confirm `%APPDATA%\Maison Aurelia POS\data\tenants\…\pos.db` exists
 6. Confirm no black console window for the core
 7. Quit — Task Manager should show no leftover `restaurant-pos-core.exe`

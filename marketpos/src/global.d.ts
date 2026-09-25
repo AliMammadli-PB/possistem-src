@@ -10,7 +10,7 @@ declare global {
   interface Window {
     marketSystem?: {
       staff: { list(): Promise<StaffProfile[]>; save(sessionToken: string, profile: Partial<StaffProfile>, pin: string): Promise<StaffProfile> };
-      auth: { login(userId: string, pin: string): Promise<SessionUser>; logout(sessionToken: string): Promise<boolean>; current?(): Promise<SessionUser | null> };
+      auth: { login(userId: string, pin: string): Promise<SessionUser>; logout(sessionToken: string): Promise<boolean>; current?(): Promise<SessionUser | null>; changePin(sessionToken: string, newPin: string): Promise<StaffProfile> };
       display: { get(): Promise<{ prefs: DisplayPrefs; presets: DisplayPreset[] }>; set(sessionToken: string, prefs: DisplayPrefs): Promise<DisplayPrefs>; toggleFullscreen(): Promise<DisplayPrefs> };
       image: { pick(sessionToken: string): Promise<string | null> };
       activation: {
@@ -47,13 +47,12 @@ declare global {
         }>;
         setTarget(sessionToken: string, target: string): Promise<{ ok: boolean; current: string }>;
       };
-      drawer?: { open(sessionToken: string, payload: Record<string, unknown>): Promise<unknown> };
-      authExtra?: { verifyManagerPin(pin: string): Promise<{ ok: boolean; approverId: string; role: string; name: string }> };
-      terminal?: { pay(sessionToken: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> };
+      drawer?: { open(sessionToken: string, options?: { reason?: string; managerPin?: string }): Promise<unknown> };
+      terminal?: { pay(sessionToken: string, payload: { amountMinor: number; mode: 'manual' | 'mock_integrated'; reference?: string }): Promise<Record<string, unknown>> };
       fiscal?: { processPending(sessionToken: string): Promise<unknown> };
     };
     marketCore?: {
-      invoke(method: string, payload?: unknown, options?: { timeoutMs?: number }): Promise<PosResult>;
+      invoke(method: string, payload?: unknown, options?: { timeoutMs?: number; managerPin?: string }): Promise<PosResult>;
       status(): Promise<{ state: string; dbPath?: string }>;
       restart(sessionToken: string): Promise<{ state: string }>;
       onStatus(callback: (status: { state: string }) => void): () => void;

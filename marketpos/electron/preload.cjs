@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('marketSystem', {
   },
   auth: {
     login: (userId, pin) => ipcRenderer.invoke('market:auth:login', { userId, pin }),
+    changePin: (sessionToken, newPin) => ipcRenderer.invoke('market:auth:changePin', { sessionToken, newPin }),
     logout: (sessionToken) => ipcRenderer.invoke('market:auth:logout', sessionToken),
     /** Session restored after a restart, or null when nobody is signed in. */
     current: () => ipcRenderer.invoke('market:auth:current'),
@@ -66,14 +67,22 @@ contextBridge.exposeInMainWorld('marketSystem', {
     label: (sessionToken, product, count) => ipcRenderer.invoke('market:printer:label', { sessionToken, product, count }),
     setTarget: (sessionToken, target) => ipcRenderer.invoke('market:printer:setTarget', { sessionToken, target }),
   },
+  // Only intent crosses the bridge: who is asking comes from the session in main,
+  // and a manager PIN is checked there as part of the privileged operation.
   drawer: {
-    open: (sessionToken, payload) => ipcRenderer.invoke('market:drawer:open', { sessionToken, ...payload }),
-  },
-  authExtra: {
-    verifyManagerPin: (pin) => ipcRenderer.invoke('market:auth:verifyManagerPin', { pin }),
+    open: (sessionToken, options) => ipcRenderer.invoke('market:drawer:open', {
+      sessionToken,
+      reason: typeof options?.reason === 'string' ? options.reason : 'manual',
+      managerPin: typeof options?.managerPin === 'string' ? options.managerPin : undefined,
+    }),
   },
   terminal: {
-    pay: (sessionToken, payload) => ipcRenderer.invoke('market:terminal:pay', { sessionToken, ...payload }),
+    pay: (sessionToken, payload) => ipcRenderer.invoke('market:terminal:pay', {
+      sessionToken,
+      amountMinor: payload?.amountMinor,
+      mode: payload?.mode,
+      reference: payload?.reference,
+    }),
   },
   fiscal: {
     processPending: (sessionToken) => ipcRenderer.invoke('market:fiscal:processPending', { sessionToken }),

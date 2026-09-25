@@ -21,7 +21,7 @@ MonoBitmap fitLogo(const MonoBitmap& src, PaperWidth paper) {
     if (!src.valid()) return {};
     const int w = rasterDotWidth(paper);
     // Never crop a tall or wide mark. Limit height to half the head width.
-    const double scale = std::min({1.0, double(w) / src.width, double(w / 2) / src.height});
+    const double scale = std::min({1.0, double(w) / src.width, (w / 2.0) / src.height});
     const int dw = std::max(1, static_cast<int>(src.width * scale));
     const int dh = std::max(1, static_cast<int>(src.height * scale));
     auto out = blank(w, dh);

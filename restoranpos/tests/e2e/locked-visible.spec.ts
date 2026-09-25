@@ -42,6 +42,11 @@ test('all areas closed: buttons stay, acting is refused', async () => {
     // PIN-only login, seeded administrator.
     await expect(p.getByRole('button', { name: '9', exact: true })).toBeVisible({ timeout: 90_000 });
     for (const digit of '9001') await p.getByRole('button', { name: digit, exact: true }).click();
+    // The shipped PIN is public: a fresh till asks for a new one, twice.
+    await expect(p.getByText(/Yeni 4 rəqəmli PIN/)).toBeVisible({ timeout: 15_000 });
+    for (const digit of '4826') await p.getByRole('button', { name: digit, exact: true }).click();
+    await expect(p.getByText(/təkrar daxil edin/)).toBeVisible({ timeout: 15_000 });
+    for (const digit of '4826') await p.getByRole('button', { name: digit, exact: true }).click();
     await expect(p.locator('aside nav a').first()).toBeVisible({ timeout: 30_000 });
 
     // The website closes every section (what the 5 s sync would inject).

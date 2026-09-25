@@ -2,12 +2,14 @@ import type { MethodName } from '../../shared/contracts/protocol.generated';
 import type { PosResult } from '../../shared/contracts/ipc';
 import type { PersistedState, Product, ProductDraft, Register, Sale, StoreSettings } from '../types';
 
-type InvokeFn = (method: MethodName | string, payload?: unknown) => Promise<PosResult>;
+/** `managerPin` is what the override dialog collected; main verifies it. */
+export type CallOptions = { managerPin?: string };
+type InvokeFn = (method: MethodName | string, payload?: unknown, options?: CallOptions) => Promise<PosResult>;
 
 function getInvoke(): InvokeFn | null {
   const core = window.marketCore;
   if (!core?.invoke) return null;
-  return (method, payload) => core.invoke(method, payload);
+  return (method, payload, options) => core.invoke(method, payload, options);
 }
 
 /**
@@ -29,10 +31,10 @@ function withSession(payload?: unknown): unknown {
   return { ...(payload as Record<string, unknown>), sessionToken };
 }
 
-async function call<T>(method: MethodName | string, payload?: unknown): Promise<T> {
+async function call<T>(method: MethodName | string, payload?: unknown, options?: CallOptions): Promise<T> {
   const invoke = getInvoke();
   if (!invoke) throw new Error('marketCore unavailable');
-  const result = await invoke(method, withSession(payload));
+  const result = await invoke(method, withSession(payload), options);
   if (!result.success) {
     // A refusal reads the same on every screen, whatever the core called it.
     const denied = result.error?.code === 'PERMISSION_DENIED';
@@ -111,12 +113,12 @@ export const marketCoreClient = {
       call<{ open: boolean; session?: Record<string, unknown> }>('cash.currentSession', { registerId }),
     close: (registerId: string, operatorId: string) => call('cash.closeSession', { registerId, operatorId }),
     createRegister: (register: unknown) => call('cash.createRegister', { register }),
-    cashIn: (payload: Record<string, unknown>) => call('cash.cashIn', payload),
+    cashIn: (payload: Record<string, unknown>, options?: CallOptions) => call('cash.cashIn', payload, options),
     movements: () => call<Array<{ id: string; kind: string; amountMinor: number; reason: string; createdAt: number }>>('cash.movements'),
-    cashOut: (payload: Record<string, unknown>) => call('cash.cashOut', payload),
-    safeDrop: (payload: Record<string, unknown>) => call('cash.safeDrop', payload),
+    cashOut: (payload: Record<string, unknown>, options?: CallOptions) => call('cash.cashOut', payload, options),
+    safeDrop: (payload: Record<string, unknown>, options?: CallOptions) => call('cash.safeDrop', payload, options),
     xReport: (registerId: string) => call('cash.xReport', { registerId }),
-    zClose: (payload: Record<string, unknown>) => call('cash.zClose', payload),
+    zClose: (payload: Record<string, unknown>, options?: CallOptions) => call('cash.zClose', payload, options),
   },
   auth: {
     checkPermission: (role: string, permission: string, actorId?: string) =>

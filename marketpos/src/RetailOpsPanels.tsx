@@ -34,17 +34,15 @@ export function RegistersOpsPage({
   const [reason, setReason] = useState('');
   const [xReport, setXReport] = useState<Record<string, unknown> | null>(null);
   const [zCount, setZCount] = useState('');
-  const [approval, setApproval] = useState<null | { permission: string; run: (approverId: string) => Promise<void> }>(null);
+  const [approval, setApproval] = useState<null | { permission: string; run: (managerPin: string) => Promise<void> }>(null);
   const selected = state.registers.find((r) => r.id === selectedId) ?? state.registers[0];
   const openCount = state.registers.filter((r) => r.status === 'open').length;
 
-  const withRole = (extra: Record<string, unknown> = {}) => ({
+  // Who is acting is added by main from the session; only business data is sent.
+  const cashPayload = () => ({
     registerId: selected?.id,
-    actorId: session.id,
-    role: session.role,
     amountMinor: parseMoneyInput(amount),
     reason,
-    ...extra,
   });
 
   const runCash = async (kind: 'cashIn' | 'cashOut' | 'safeDrop') => {
@@ -52,11 +50,12 @@ export function RegistersOpsPage({
     const permission = kind === 'cashIn' ? 'CASH_IN' : kind === 'cashOut' ? 'CASH_OUT' : 'SAFE_DROP';
     const label = kind === 'cashIn' ? 'Nağd daxil' : kind === 'cashOut' ? 'Nağd çıxış' : 'Seyfə atma';
     const allowed = await marketCoreClient.auth.checkPermission(session.role, permission).catch(() => ({ allowed: false }));
-    const exec = async (approverId?: string) => {
-      const payload = withRole(approverId ? { approverId } : {});
-      if (kind === 'cashIn') await marketCoreClient.cash.cashIn(payload);
-      else if (kind === 'cashOut') await marketCoreClient.cash.cashOut(payload);
-      else await marketCoreClient.cash.safeDrop(payload);
+    const exec = async (managerPin?: string) => {
+      const payload = cashPayload();
+      const options = managerPin ? { managerPin } : undefined;
+      if (kind === 'cashIn') await marketCoreClient.cash.cashIn(payload, options);
+      else if (kind === 'cashOut') await marketCoreClient.cash.cashOut(payload, options);
+      else await marketCoreClient.cash.safeDrop(payload, options);
       await onRefresh();
       notify(`${label} · ${money(parseMoneyInput(amount), lang)}`);
       setApproval(null);
@@ -79,14 +78,11 @@ export function RegistersOpsPage({
   const runZ = async () => {
     if (!selected || !coreReady) return;
     const allowed = await marketCoreClient.auth.checkPermission(session.role, 'CLOSE_SHIFT').catch(() => ({ allowed: false }));
-    const exec = async (approverId?: string) => {
+    const exec = async (managerPin?: string) => {
       const report = await marketCoreClient.cash.zClose({
         registerId: selected.id,
-        actorId: session.id,
-        role: session.role,
         actualCashMinor: parseMoneyInput(zCount),
-        ...(approverId ? { approverId } : {}),
-      }) as Record<string, unknown>;
+      }, managerPin ? { managerPin } : undefined) as Record<string, unknown>;
       setXReport(report);
       await onRefresh();
       notify(`Z bağlanış · fərq ${money(Number(report.differenceMinor || 0), lang)}`);
@@ -242,7 +238,7 @@ export function RegistersOpsPage({
         <ManagerApprovalModal
           title={`${approval.permission} təsdiqi`}
           onClose={() => setApproval(null)}
-          onApproved={(a) => void approval.run(a.approverId).catch((e) => notify(e instanceof Error ? e.message : String(e)))}
+          onApproved={(managerPin) => approval.run(managerPin)}
         />
       )}
     </div>
@@ -373,7 +369,9 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
   const [printers, setPrinters] = useState<Array<{ id: string; name: string; connection?: string; status?: string; isCurrent?: boolean; confirmed?: boolean }>>([]);
   const [detecting, setDetecting] = useState(false);
   const [widthMm, setWidthMm] = useState(80);
-  const [terminalMode, setTerminalMode] = useState<'manual' | 'mock_integrated'>('mock_integrated');
+  const [terminalMode, setTerminalMode] = useState<'manual' | 'mock_integrated'>(
+    () => (localStorage.getItem('marketpos.terminalMode') === 'mock_integrated' ? 'mock_integrated' : 'manual'),
+  );
   const [fiscalPending, setFiscalPending] = useState(0);
 
   const refresh = async () => {
@@ -432,7 +430,7 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
           <span>Terminal rejimi</span>
           <select value={terminalMode} onChange={(e) => setTerminalMode(e.target.value as 'manual' | 'mock_integrated')}>
             <option value="manual">Manual referans</option>
-            <option value="mock_integrated">Mock inteqrasiya</option>
+            <option value="mock_integrated">Mock (yalnız test — satışda bloklanır)</option>
           </select>
         </label>
       </div>
@@ -457,7 +455,7 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
         <button type="button" onClick={() => void window.marketSystem?.printer?.test(session.sessionToken, widthMm).then(() => notify('Test çap')).catch((e: Error) => notify(e.message))}>
           <Printer />Test çap
         </button>
-        <button type="button" onClick={() => void window.marketSystem?.drawer?.open(session.sessionToken, { actorId: session.id, role: session.role, reason: 'settings' }).then(() => notify('Çekmece açıldı')).catch((e: Error) => notify(e.message))}>
+        <button type="button" onClick={() => void window.marketSystem?.drawer?.open(session.sessionToken, { reason: 'settings' }).then(() => notify('Çekmece açıldı')).catch((e: Error) => notify(e.message))}>
           <KeyRound />Çekmece
         </button>
         <button type="button" onClick={() => void window.marketSystem?.fiscal?.processPending(session.sessionToken).then(() => { notify('Fiscal növbə işləndi'); void refresh(); }).catch((e: Error) => notify(e.message))}>

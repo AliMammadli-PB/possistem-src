@@ -78,7 +78,7 @@ const api = {
      * member of staff on its own. Pass an id only where one is already known.
      */
     listUsers: () => call("auth.listUsers"),
-    login: (userId, pin) => call("auth.login", { userId: userId ?? "", pin }),
+    login: (userId, pin, newPin) => /* POS_DEFAULT_PIN_v1 */ call("auth.login", newPin ? { userId: userId ?? "", pin, newPin } : { userId: userId ?? "", pin }),
     updateUser: (input) => call("users.update", input),
     setPin: (userId, pin) => call("users.setPin", { userId, pin }),
     logout: () => call("auth.logout"),

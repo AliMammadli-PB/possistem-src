@@ -59,6 +59,7 @@ inline constexpr std::string_view kUnauthorized = "E_UNAUTHORIZED";
 inline constexpr std::string_view kForbidden = "E_FORBIDDEN";
 inline constexpr std::string_view kInvalidPin = "E_INVALID_PIN";
 inline constexpr std::string_view kPinLocked = "E_PIN_LOCKED";
+inline constexpr std::string_view kPinChangeRequired = "E_PIN_CHANGE_REQUIRED";
 inline constexpr std::string_view kManagerApprovalRequired = "E_MANAGER_APPROVAL_REQUIRED";
 inline constexpr std::string_view kIdempotencyKeyReuse = "E_IDEMPOTENCY_KEY_REUSE";
 inline constexpr std::string_view kInProgress = "E_IN_PROGRESS";
@@ -93,7 +94,7 @@ inline constexpr std::string_view kRefundLimit = "E_REFUND_LIMIT";
 }  // namespace err
 
 struct ErrorMeta { std::string_view code; bool retryable; bool fatal; std::string_view message; };
-inline constexpr std::array<ErrorMeta, 58> kErrorTable{{
+inline constexpr std::array<ErrorMeta, 59> kErrorTable{{
     {"E_INTERNAL", false, false, "Internal core error"},
     {"E_INVALID_REQUEST", false, false, "Malformed request envelope"},
     {"E_UNKNOWN_METHOD", false, false, "Unknown method"},
@@ -121,6 +122,7 @@ inline constexpr std::array<ErrorMeta, 58> kErrorTable{{
     {"E_FORBIDDEN", false, false, "Insufficient permissions"},
     {"E_INVALID_PIN", false, false, "Incorrect PIN"},
     {"E_PIN_LOCKED", false, false, "Account locked after too many failed attempts"},
+    {"E_PIN_CHANGE_REQUIRED", false, false, "The default PIN must be changed before signing in"},
     {"E_MANAGER_APPROVAL_REQUIRED", false, false, "This action requires manager approval"},
     {"E_IDEMPOTENCY_KEY_REUSE", false, false, "Idempotency key reused with a different payload"},
     {"E_IN_PROGRESS", true, false, "An identical request is still in progress"},

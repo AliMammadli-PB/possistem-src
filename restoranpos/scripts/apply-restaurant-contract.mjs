@@ -110,6 +110,9 @@ if (missing.length > 0) {
 // failure this script exists to prevent.
 const bounds = tableBounds(s);
 const after = s.slice(bounds.open, bounds.close);
+// Evaluates the method-gate object literal of this repository's own bundle at
+// build time - never external input.
+// eslint-disable-next-line no-new-func
 const parsed = new Function(`return ${after.slice(head.length - 1)}`)();
 for (const [name] of wanted) must(parsed[name], `${name} still missing from the gate`);
 for (const anchor of ['core.ping', 'auth.login', 'orders.create', 'orders.close']) {

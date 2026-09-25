@@ -9,14 +9,13 @@
  * the machine, and the screen still showed the old text, because the window
  * predated the patch.
  *
- * A stamp under the operator's name settles it at a glance. It is the time the
- * patch chain last ran, not the app version, because the app version does not
- * move when a patch script does.
- *
- * The timestamp is rewritten on EVERY run - that is the whole point, so this
- * script is deliberately not mark-guarded the way the others are. Only the
- * markup insert is guarded.
+ * A stamp under the operator's name settles it at a glance: the app version plus
+ * a short hash of every patch input (the apply scripts and their admin-ui
+ * sources). The version alone does not move when a patch script does; the hash
+ * does, and unlike a wall-clock time it is identical for identical inputs, so
+ * the assembled build stays reproducible.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,9 +27,22 @@ function must(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-const now = new Date();
-const pad = (n) => String(n).padStart(2, '0');
-const stamp = `${pad(now.getDate())}.${pad(now.getMonth() + 1)} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+function patchInputsHash() {
+  const hash = createHash('sha256');
+  const scripts = path.join(ROOT, 'scripts');
+  const adminUi = path.join(scripts, 'admin-ui');
+  const files = [
+    ...fs.readdirSync(scripts).filter((f) => /^apply-restaurant-.*\.mjs$/.test(f)).map((f) => path.join(scripts, f)),
+    ...fs.readdirSync(adminUi).filter((f) => !f.includes('.bak-')).map((f) => path.join(adminUi, f)),
+  ].sort();
+  for (const file of files) {
+    hash.update(path.relative(ROOT, file).replace(/\\/g, '/')).update('\0').update(fs.readFileSync(file)).update('\0');
+  }
+  return hash.digest('hex').slice(0, 7);
+}
+
+const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+const stamp = `${version} · ${patchInputsHash()}`;
 
 let s = fs.readFileSync(BUNDLE, 'utf8');
 const before = s;

@@ -2,6 +2,7 @@
 #include "pos/Error.hpp"
 #include "pos/Logging.hpp"
 #include "pos/db/Database.hpp"
+#include "pos/db/Migrator.hpp"
 #include "pos/handlers/Handlers.hpp"
 #include "pos/protocol_generated.hpp"
 
@@ -231,6 +232,31 @@ void registerAuth(const ContextPtr& ctx) {
                                    "Too many incorrect attempts. Account locked.");
                 }
                 throw PosError::of(protocol::err::kInvalidPin);
+            }
+
+            // The seeded PIN is public, so it only buys the right to choose a
+            // new one: the session starts once `newPin` replaces it.
+            if (db::isShippedDefaultPin(userId, hash)) {
+                const auto newPin = getOr<std::string>(request.payload, "newPin", "");
+                if (newPin.empty()) {
+                    throw PosError(std::string(protocol::err::kPinChangeRequired),
+                                   "Standart PIN dəyişdirilməlidir");
+                }
+                requireValidPin(newPin);
+                if (crypto::verifyPin(newPin, hash)) {
+                    throw PosError(std::string(protocol::err::kValidation),
+                                   "Yeni PIN standart PIN ilə eyni ola bilməz");
+                }
+                if (pinAlreadyUsed(*ctx, newPin, userId)) {
+                    throw PosError(std::string(protocol::err::kValidation),
+                                   "Bu PIN artıq başqa işçidə var - başqa PIN seçin");
+                }
+                auto change = ctx->db().prepare(
+                    "UPDATE users SET pin_hash = :hash, updated_at = :now WHERE id = :userId");
+                change.bind(":hash", crypto::hashPin(newPin)).bind(":now", now).bind(":userId", userId);
+                change.exec();
+                ctx->auditRequired("users.setPin", "user", userId, Json{{"reason", "default_pin"}},
+                                   userId);
             }
 
             auto reset = ctx->db().prepare(

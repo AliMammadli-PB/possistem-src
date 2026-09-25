@@ -23,17 +23,26 @@ npm ci                        # restoran + ortaq alətlər
 (cd ../marketpos && npm ci)   # market UI asılılıqları
 
 npm run build:core            # native/build/restaurant-pos-core.exe
-npm run test:core
+TZ=TRT-3 npm run test:core     # qəbz snapshot-ları UTC+3
 npm run market:build:core     # ../marketpos/native/build/market-pos-core.exe
 npm run market:test:core
 
+npm run check:versions        # versiyalar uyğundur
+node scripts/verify-third-party.mjs   # vendored C++ SHA-256 yoxlaması
 npm run typecheck             # restoran (node + web) və market
+npm run lint                  # ESLint
 npx vitest run                # unit testlər
+npm run build:desktop         # restoran: yamaqlar → packaged-renderer/ → out/ (strict)
 npm run market:build          # market renderer → ../marketpos/dist
+bash scripts/static-analysis-cpp.sh   # clang-tidy (clang, cmake, ninja lazımdır)
 ```
 
+Sənədlər: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (etibar sərhədləri, təhlükəsizlik modeli,
+buraxılış), [SECURITY.md](SECURITY.md) (zəifliyi özəl bildirmək), [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Restoranı Linux-da işə salmaq: `scripts/launch-linux.sh` yamaqları tətbiq edir, `packaged-renderer/`
-və `out/`-u yığır, sonra Electron-u açır. Windows quraşdırıcısı: `npm run package:win`
+və `out/`-u yığır, sonra Electron-u açır. Restoran renderer-in TypeScript mənbəyi yoxdur: paketlənmiş bundle yalnız
+`scripts/apply-restaurant-*.mjs` yamaqları ilə dəyişdirilir (bax: ARCHITECTURE). Windows quraşdırıcısı: `npm run package:win`
 (imzalama sertifikatı tələb olunur).
 
 ## Daxil olmayanlar

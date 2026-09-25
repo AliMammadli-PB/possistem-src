@@ -11,9 +11,9 @@ import {
 
 import { createInitialState, demoStaff, initialProducts } from './data';
 import { CatalogAisleNav } from './CatalogAisleNav';
-import { PRODUCT_FORM_AISLES } from './catalogCategories';
+import { ChangePinScreen } from './ChangePinScreen';
 import { cashChange, canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
-import { categoryLabel, roleLabel, tr, unitLabel, viewLabel } from './i18n';
+import { roleLabel, tr, unitLabel, viewLabel } from './i18n';
 import { marketCoreClient } from './core/client';
 import { ProductVisual } from './ProductVisual';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
@@ -23,20 +23,17 @@ import {
   RegistersOpsPage, ReportsOpsPage, StocktakePage,
 } from './RetailOpsPanels';
 import { useBarcodeScanner } from './useBarcodeScanner';
-import type {
-  ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product,
-  PurchaseOrder, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings,
-  TenantStatus, UpdateStatus, View, Warehouse,
-} from './types';
+import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, PurchaseOrder, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
 
+import { marketBooks, stockLines } from './books';
+import { money, newId } from './format';
+import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
+import { ProductModal, WarehouseModal, RegisterModal, PurchaseModal, TransferModal, WasteModal, StaffModal, RoleAvatar, Kpi, Modal, Field } from './forms';
 const STORE_KEY = 'cyberplus.market.pos.v2';
 const LEGACY_MIGRATED_KEY = 'cyberplus.market.pos.core-migrated';
 const CATALOG_SYNC_KEY = 'cyberplus.market.pos.catalog-sync';
 const CATALOG_SYNC_TOKEN = 'bravo-narimanov-azinko-catalog-aisles-v1';
-const demoPins: Record<string, string> = { 'u-manager': '2468', 'u-head': '1357', 'u-cashier': '1111', 'u-warehouse': '3690' };
 
-const money = (minor: number, lang: Lang) => new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ', { style: 'currency', currency: 'AZN', minimumFractionDigits: 2 }).format(minor / 100);
-const newId = (prefix: string) => `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 6)}`;
 const STOCK_VIEWS = new Set<View>(['inventory', 'warehouses', 'purchases', 'stocktake']);
 // The owner's rule: a missing permission never hides a button; using it says so.
 const DENIED = 'Buna icazəniz yoxdur';
@@ -95,171 +92,6 @@ function narrowByStation(access: string[] | null, station: string | undefined): 
   if (!allowed) return access;
   return (access ?? MARKET_AREAS).filter((key) => allowed.includes(key));
 }
-const ACK_KEY = 'market-portal-command-ack';
-const FAIL_KEY = 'market-portal-command-fail';
-const ACK_PENDING_KEY = 'market-portal-command-ack-pending';
-const FAIL_PENDING_KEY = 'market-portal-command-fail-pending';
-const FAIL_REASON_KEY = 'market-portal-command-fail-reasons';
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function readCommandIds(key: string): string[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(key) || '[]') as unknown;
-    return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string' && UUID_RE.test(id)).slice(0, 2000) : [];
-  } catch { return []; }
-}
-
-function rememberCommandId(key: string, id: string) {
-  if (!UUID_RE.test(id)) return;
-  localStorage.setItem(key, JSON.stringify([id, ...readCommandIds(key).filter((row) => row !== id)].slice(0, 2000)));
-}
-
-function failedCommandReasons(): Array<{ id: string; reason: string }> {
-  try {
-    const rows = JSON.parse(localStorage.getItem(FAIL_REASON_KEY) || '[]') as unknown;
-    if (!Array.isArray(rows)) return [];
-    return rows.filter((row): row is { id: string; reason: string } =>
-      Boolean(row && typeof row === 'object' && UUID_RE.test(String((row as { id?: string }).id)) &&
-        typeof (row as { reason?: string }).reason === 'string')).slice(0, 2000);
-  } catch { return []; }
-}
-
-function rememberFailure(id: string, reason: string) {
-  rememberCommandId(FAIL_KEY, id);
-  rememberCommandId(FAIL_PENDING_KEY, id);
-  const rows = failedCommandReasons().filter((row) => row.id !== id);
-  localStorage.setItem(FAIL_REASON_KEY, JSON.stringify([{ id, reason: reason.slice(0, 500) }, ...rows].slice(0, 2000)));
-}
-
-function clearPending(key: string, sent: string[]) {
-  localStorage.setItem(key, JSON.stringify(readCommandIds(key).filter((id) => !sent.includes(id))));
-}
-
-function stockLines(state: PersistedState) {
-  const clip = (value: string, max: number) => value.slice(0, max);
-  const lines = [];
-  for (const product of state.products) {
-    if (!product.id) continue;
-    for (const warehouse of state.warehouses) {
-      if (!warehouse.id) continue;
-      const name = clip(product.name.az || product.sku || 'Məhsul', 160) || 'Məhsul';
-      lines.push({
-        id: clip(product.id, 64),
-        name,
-        barcode: clip(product.barcode || '', 80),
-        group: clip(product.category || '', 80),
-        unit: clip(product.unit || 'ədəd', 16),
-        salePrice: Math.max(0, Math.trunc(product.priceMinor) || 0),
-        costPrice: Math.max(0, Math.trunc(product.costMinor) || 0),
-        warehouseId: clip(warehouse.id, 64),
-        warehouseName: clip(warehouse.name || '', 100),
-        qty: Math.trunc(Number(product.warehouseStock[warehouse.id]) || 0),
-        minQty: Math.max(0, Math.trunc(product.minStock) || 0),
-      });
-    }
-  }
-  lines.sort((left, right) => Math.abs(right.qty) - Math.abs(left.qty));
-  return lines;
-}
-
-function marketBooks(state: PersistedState, cashMovements?: Array<{ id: string; kind: string; amountMinor: number; reason: string; createdAt: number }>, finance?: Awaited<ReturnType<typeof marketCoreClient.portal.finance>>) {
-  const clip = (value: string, max: number) => value.slice(0, max);
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
-  const today = state.sales.filter((sale) => !sale.refunded && sale.createdAt >= dayStart.getTime());
-  const sold = new Map<string, { name: string; qty: number; total: number }>();
-  let profit = 0;
-  for (const sale of today) {
-    let cost = 0;
-    for (const line of sale.items) {
-      const product = state.products.find((row) => row.id === line.productId);
-      const name = clip(product?.name.az || line.productId, 160);
-      const row = sold.get(name) ?? { name, qty: 0, total: 0 };
-      row.qty += Math.max(0, Math.trunc(line.qty) || 0);
-      row.total += Math.max(0, Math.trunc((product?.priceMinor ?? 0) * line.qty) || 0);
-      sold.set(name, row);
-      cost += (product?.costMinor ?? 0) * line.qty;
-    }
-    profit += sale.totalMinor - cost;
-  }
-  const cash = today.reduce((sum, sale) => sum + (sale.payment.method === 'card' ? 0 : sale.payment.cashMinor ?? sale.payment.amountMinor), 0);
-  const card = today.reduce((sum, sale) => sum + (sale.payment.method === 'cash' ? 0 : sale.payment.cardMinor ?? sale.payment.amountMinor), 0);
-  const names = [...new Set(state.sales.map((sale) => sale.customerName).filter((name): name is string => Boolean(name)))];
-  return {
-    sales: state.sales.slice(0, 5000).map((sale) => ({ id: clip(sale.id, 64), no: clip(sale.receiptNo, 40), total: Math.trunc(sale.totalMinor) || 0, at: Math.trunc(sale.createdAt) || 0, refunded: sale.refunded })),
-    orders: state.heldCarts.slice(0, 40).map((cart) => ({ id: clip(cart.id, 64), label: clip(cart.label, 80), at: Math.trunc(cart.createdAt) || 0, lines: cart.lines.length })),
-    points: state.registers.slice(0, 30).map((register) => ({ id: clip(register.id, 64), name: clip(register.name, 80), status: register.status })),
-    products: state.products.filter((product) => product.id).slice(0, 20000).map((product) => ({ id: clip(product.id, 64), name: clip(product.name.az || product.sku || 'Məhsul', 160), qty: Math.trunc(stockOf(product)) || 0, price: Math.max(0, Math.trunc(product.priceMinor) || 0) })),
-    customers: finance?.customers.slice(0, 5000).map((row) => ({ id: clip(row.id, 80), name: clip(row.name, 120), debtMinor: Math.trunc(row.debtMinor) || 0 })) ?? names.slice(0, 80).map((name) => ({ id: clip(name, 80), name: clip(name, 120) })),
-    suppliers: finance?.suppliers.slice(0, 5000).map((row) => ({ id: clip(row.id, 80), name: clip(row.name, 120), dueMinor: Math.trunc(row.dueMinor) || 0 })) ?? state.purchaseOrders.slice(0, 40).map((order) => ({ id: clip(order.supplier, 80), name: clip(order.supplier || 'Təchizatçı', 80) })),
-    ...(finance ? { payments: finance.payments.slice(0, 5000).map((row) => ({ id: clip(row.id, 80), partyType: row.partyType, partyId: clip(row.partyId, 80), partyName: clip(row.partyName, 120), amountMinor: Math.trunc(row.amountMinor) || 0, note: clip(row.note || '', 160), createdAt: Math.trunc(row.createdAt) || 0 })) } : {}),
-    purchases: state.purchaseOrders.slice(0, 5000).map((order) => ({ id: clip(order.id, 64), number: clip(order.id, 40), supplierName: clip(order.supplier || 'Təchizatçı', 80), warehouseId: clip(order.warehouseId, 64), status: order.status, totalMinor: order.lines.reduce((sum, line) => sum + line.qty * line.costMinor, 0), createdAt: Math.trunc(order.createdAt) || 0 })),
-    ...(cashMovements ? { cashMovements: cashMovements.slice(0, 5000).map((row) => ({ id: clip(row.id, 64), kind: clip(row.kind, 32), amountMinor: Math.trunc(row.amountMinor) || 0, reason: clip(row.reason || '', 160), createdAt: Math.trunc(row.createdAt) || 0 })) } : {}),
-    daily: { sales: Math.max(0, today.reduce((sum, sale) => sum + sale.totalMinor, 0)), cash: Math.max(0, cash), card: Math.max(0, card), count: today.length, profit: Math.trunc(profit) || 0 },
-    turnover: [...sold.values()].sort((left, right) => right.qty - left.qty).slice(0, 30),
-  };
-}
-
-function productFromCard(body: Record<string, unknown>, existing?: Product): Product {
-  const str = (key: string) => (typeof body[key] === 'string' ? body[key].trim() : '');
-  const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
-  const num = (key: string) => Math.trunc(Number(body[key]) || 0);
-  const name = str('name');
-  const blank: Product = { id: str('id') || newId('product'), sku: str('sku') || str('barcode') || newId('sku'), barcode: str('barcode'), name: { az: name, ru: name, en: name }, category: str('group'), unit: str('unit') || 'ədəd', priceMinor: Math.max(0, num('salePrice')), costMinor: Math.max(0, num('costPrice')), minStock: Math.max(0, num('minStock')), taxRate: has('taxRate') ? num('taxRate') : 18, supplier: str('supplier'), warehouseStock: {}, accent: '#888888', image: { kind: 'sprite', index: 0 }, active: true, createdAt: Date.now() };
-  const base = existing ? { ...existing, name: { ...existing.name, az: name || existing.name.az }, barcode: str('barcode') || existing.barcode, sku: str('sku') || existing.sku, category: str('group') || existing.category, unit: str('unit') || existing.unit, priceMinor: has('salePrice') ? Math.max(0, num('salePrice')) : existing.priceMinor, costMinor: has('costPrice') ? Math.max(0, num('costPrice')) : existing.costMinor, minStock: has('minStock') ? Math.max(0, num('minStock')) : existing.minStock, taxRate: has('taxRate') ? num('taxRate') : existing.taxRate, supplier: has('supplier') ? str('supplier') : existing.supplier } : blank;
-  return { ...base, kind: str('kind') === 'service' ? 'service' : (has('kind') ? 'product' : base.kind), comment: has('comment') ? str('comment') : base.comment, tags: has('tags') ? str('tags') : base.tags, minPriceMinor: has('minPrice') ? Math.max(0, num('minPrice')) : base.minPriceMinor, weighted: has('weighted') ? body.weighted === true : base.weighted, serial: has('serial') ? body.serial === true : base.serial, station: has('station') ? str('station') : base.station, packUnit: has('packUnit') ? str('packUnit') : base.packUnit, packQty: has('packQty') ? Math.max(0, num('packQty')) : base.packQty, department: has('department') ? str('department') : base.department, priceDiscountMinor: has('priceDiscount') ? Math.max(0, num('priceDiscount')) : base.priceDiscountMinor, priceWholesaleMinor: has('priceWholesale') ? Math.max(0, num('priceWholesale')) : base.priceWholesaleMinor, priceDealerMinor: has('priceDealer') ? Math.max(0, num('priceDealer')) : base.priceDealerMinor };
-}
-
-async function applyMarketCommand(cmd: { id: string; kind: string; body?: Record<string, unknown> }, session: SessionUser, coreReady: boolean, state: PersistedState): Promise<'ok' | 'local' | 'skip'> {
-  const body = cmd.body ?? {};
-  const str = (key: string) => (typeof body[key] === 'string' ? body[key] : '');
-  const num = (key: string) => Math.trunc(Number(body[key]) || 0);
-  if (!(coreReady && marketCoreClient.available())) return 'skip';
-  if (cmd.kind === 'cash.in' || cmd.kind === 'cash.out') {
-    const payload = { registerId: str('registerId'), amountMinor: num('amountMinor'), reason: str('reason'), actorId: session.id, portalCommandId: cmd.id };
-    if (cmd.kind === 'cash.in') await marketCoreClient.cash.cashIn(payload);
-    else await marketCoreClient.cash.cashOut(payload);
-  } else if (cmd.kind === 'customer.pay') {
-    await marketCoreClient.customers.payDebt({ customerId: str('customerId'), amountMinor: num('amountMinor'), note: str('note'), actorId: session.id, portalCommandId: cmd.id });
-  } else if (cmd.kind === 'supplier.pay') {
-    await marketCoreClient.supplier.pay({ supplierName: str('supplierName'), amountMinor: num('amountMinor'), note: str('note'), actorId: session.id, portalCommandId: cmd.id });
-  } else if (cmd.kind === 'purchase.order') {
-    const lines = Array.isArray(body.lines) ? body.lines : [];
-    await marketCoreClient.purchases.create({
-      id: `PO-${cmd.id}`, supplier: str('supplierName'), expectedAt: str('expectedAt'),
-      createdAt: Date.now(), createdBy: session.id, warehouseId: str('warehouseId'), status: 'ordered',
-      lines: lines.map((row) => ({ productId: String((row as Record<string, unknown>).productId || ''), qty: Math.trunc(Number((row as Record<string, unknown>).qty) || 0), costMinor: Math.trunc(Number((row as Record<string, unknown>).unitCostMinor) || 0) })),
-    });
-  } else if (cmd.kind === 'purchase.receive') {
-    await marketCoreClient.purchases.receive(str('purchaseId'), session.id, cmd.id);
-  } else if (cmd.kind === 'warehouse.create') {
-    const id = str('id') || `wh-${cmd.id}`;
-    const existing = state.warehouses.find((row) => row.id === id);
-    if (existing && existing.name !== str('name')) throw new Error('Anbar əmri başqa adla artıq işlənib');
-    if (!existing) await marketCoreClient.warehouses.create({ id, code: 'WH', name: str('name'), address: '', manager: '', active: true }, session.id);
-  } else if (cmd.kind === 'warehouse.rename' || cmd.kind === 'warehouse.close') {
-    const existing = state.warehouses.find((row) => row.id === str('id'));
-    if (!existing) throw new Error('Anbar tapılmadı');
-    await marketCoreClient.warehouses.update(existing.id, cmd.kind === 'warehouse.close' ? existing.name : str('name'), cmd.kind !== 'warehouse.close', session.id);
-  } else if (cmd.kind === 'stock.transfer') {
-    await marketCoreClient.inventory.transfer({ productId: str('productId'), fromWarehouseId: str('fromWarehouseId'), toWarehouseId: str('toWarehouseId'), qty: Math.abs(num('qty')), actorId: session.id, portalCommandId: cmd.id });
-  } else if (cmd.kind === 'stock.waste') {
-    await marketCoreClient.inventory.waste({ productId: str('productId'), warehouseId: str('warehouseId'), qty: Math.abs(num('qty')), reason: str('reason') || 'other', actorId: session.id, portalCommandId: cmd.id });
-  } else if (cmd.kind === 'stock.receive' || cmd.kind === 'stock.adjust' || cmd.kind === 'stock.count') {
-    const fresh = cmd.kind === 'stock.count' ? await marketCoreClient.getState() : state;
-    const have = fresh.products.find((row) => row.id === str('productId'))?.warehouseStock[str('warehouseId')] ?? 0;
-    const delta = cmd.kind === 'stock.count' ? num('qty') - have : num('qty');
-    await marketCoreClient.inventory.adjust({ productId: str('productId'), warehouseId: str('warehouseId'), qtyDelta: delta, note: str('reason') || cmd.kind, actorId: session.id, portalCommandId: cmd.id });
-  } else if (cmd.kind === 'product.save') {
-    const productId = str('id') || `product-${cmd.id}`;
-    const existing = state.products.find((row) => row.id === productId || (str('barcode') && row.barcode === str('barcode')));
-    const product = productFromCard({ ...body, id: productId }, existing);
-    if (existing) await marketCoreClient.products.save(product, session.id);
-    else await marketCoreClient.products.create(product, session.id);
-  } else return 'skip';
-  return 'ok';
-}
-
 
 function refreshSeedCatalog(products: Product[]): Product[] {
   const existingById = new Map(products.map((product) => [product.id, product]));
@@ -648,8 +480,10 @@ export default function App() {
       if (window.marketSystem) {
         user = await window.marketSystem.auth.login(userId, pin);
       } else {
+        // Browser preview (npm run market:dev) has no staff store; it is never a
+        // shipped till, so a production web build refuses sign-in outright.
         const profile = demoStaff.find((row) => row.id === userId);
-        if (!profile || demoPins[userId] !== pin) throw new Error(t('invalidPin'));
+        if (!import.meta.env.DEV || !profile || !/^\d{4,8}$/.test(pin)) throw new Error(t('invalidPin'));
         user = { ...profile, sessionToken: `browser-${userId}` };
       }
       setSession(user);
@@ -702,6 +536,19 @@ export default function App() {
   }, [inventoryOn, view, marketAccess, session]);
 
   if (!session) return <AuthGate lang={lang} setLang={setLang} staff={staff} onLogin={login} />;
+  if (session.mustChangePin && window.marketSystem) {
+    return (
+      <ChangePinScreen
+        lang={lang}
+        session={session}
+        onChanged={(profile) => {
+          setSession({ ...session, ...profile, mustChangePin: false });
+          setStaff((rows) => rows.map((row) => (row.id === profile.id ? { ...row, ...profile } : row)));
+        }}
+        onLogout={() => void logout()}
+      />
+    );
+  }
 
   const needsRegister = coreReady && marketCoreClient.available() && !state.settings.deviceRegisterId &&
     (session.role === 'cashier' || session.role === 'head_cashier' || session.role === 'manager');
@@ -1359,7 +1206,6 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
                     <span className="ps-staff-copy">
                       <b>{user.name}</b>
                       <small>{roleLabel(user.role, lang)}</small>
-                      {!window.marketSystem && <em>{tr(lang, 'demoCode')}: {demoPins[user.id] ?? '••••'}</em>}
                     </span>
                     <ChevronRight className="ps-staff-arrow" />
                   </button>
@@ -1547,7 +1393,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
         if (coreReady && marketCoreClient.available()) {
           let terminalRef = payment.terminalRef;
           if ((payment.method === 'card' || payment.method === 'mixed') && window.marketSystem?.terminal) {
-            const mode = (localStorage.getItem('marketpos.terminalMode') as 'manual' | 'mock_integrated') || 'mock_integrated';
+            const mode = (localStorage.getItem('marketpos.terminalMode') as 'manual' | 'mock_integrated') || 'manual';
             const term = await window.marketSystem.terminal.pay(session.sessionToken, {
               amountMinor: payment.cardMinor ?? payment.amountMinor,
               mode,
@@ -2057,123 +1903,3 @@ function SettingsPage({ state, session, lang, coreReady, notify, onSettings }: {
   );
 }
 
-function ProductModal({ lang, products, warehouses, session, product, onClose, onSave }: { lang: Lang; products: Product[]; warehouses: Warehouse[]; session: SessionUser; product: Product | null; onClose: () => void; onSave: (product: Product) => void }) {
-  const [nameAz, setNameAz] = useState(product?.name.az ?? '');
-  const [nameRu, setNameRu] = useState(product?.name.ru ?? '');
-  const [nameEn, setNameEn] = useState(product?.name.en ?? '');
-  const [sku, setSku] = useState(product?.sku ?? `SKU-${String(products.length + 1).padStart(4, '0')}`);
-  const [barcode, setBarcode] = useState(product?.barcode ?? '');
-  const [category, setCategory] = useState(product?.category ?? 'Bakliyyat');
-  const [unit, setUnit] = useState(product?.unit ?? 'əd');
-  const [cost, setCost] = useState(product ? (product.costMinor / 100).toFixed(2) : '0.00');
-  const [price, setPrice] = useState(product ? (product.priceMinor / 100).toFixed(2) : '0.00');
-  const [minStock, setMinStock] = useState(String(product?.minStock ?? 5));
-  const [supplier, setSupplier] = useState(product?.supplier ?? '');
-  const [kind, setKind] = useState<'product' | 'service'>(product?.kind ?? 'product');
-  const [comment, setComment] = useState(product?.comment ?? '');
-  const [tags, setTags] = useState(product?.tags ?? '');
-  const [minPrice, setMinPrice] = useState(product?.minPriceMinor ? (product.minPriceMinor / 100).toFixed(2) : '');
-  const [taxRate, setTaxRate] = useState(String(product?.taxRate ?? 18));
-  const [weighted, setWeighted] = useState(Boolean(product?.weighted));
-  const [serial, setSerial] = useState(Boolean(product?.serial));
-  const [station, setStation] = useState(product?.station ?? '');
-  const [packUnit, setPackUnit] = useState(product?.packUnit ?? '');
-  const [packQty, setPackQty] = useState(String(product?.packQty ?? ''));
-  const [department, setDepartment] = useState(product?.department ?? '');
-  const [priceDiscount, setPriceDiscount] = useState(product?.priceDiscountMinor ? (product.priceDiscountMinor / 100).toFixed(2) : '');
-  const [priceWholesale, setPriceWholesale] = useState(product?.priceWholesaleMinor ? (product.priceWholesaleMinor / 100).toFixed(2) : '');
-  const [priceDealer, setPriceDealer] = useState(product?.priceDealerMinor ? (product.priceDealerMinor / 100).toFixed(2) : '');
-  const [warehouseId, setWarehouseId] = useState(warehouses.find((row) => row.id === 'wh-sales')?.id ?? warehouses[0]?.id ?? '');
-  const [initialStock, setInitialStock] = useState('0');
-  const [image, setImage] = useState<Product['image']>(product?.image ?? { kind: 'url', url: '' });
-  const [error, setError] = useState('');
-  const [barcodeCapture, setBarcodeCapture] = useState(false);
-  const barcodeRef = useRef<HTMLInputElement>(null);
-  const pick = async () => { const url = await window.marketSystem?.image.pick(session.sessionToken); if (url) setImage({ kind: 'url', url }); };
-  const file = (event: React.ChangeEvent<HTMLInputElement>) => { const selected = event.target.files?.[0]; if (!selected) return; const reader = new FileReader(); reader.onload = () => setImage({ kind: 'url', url: String(reader.result) }); reader.readAsDataURL(selected); };
-  const save = () => { if (!nameAz.trim() || (kind === 'product' && !barcode.trim()) || !sku.trim() || parseMoneyInput(price) <= 0) { setError(tr(lang, 'requiredFields')); return; } if (barcode.trim() && products.some((row) => row.barcode === barcode.trim() && row.id !== product?.id)) { setError(tr(lang, 'barcodeExists')); return; } const warehouseStock = product ? product.warehouseStock : Object.fromEntries(warehouses.map((row) => [row.id, row.id === warehouseId && kind === 'product' ? Math.max(0, Number(initialStock) || 0) : 0])); const rate = Number(taxRate) || 0; onSave({ id: product?.id ?? newId('product'), sku: sku.trim(), barcode: barcode.replace(/\s/g, ''), name: { az: nameAz.trim(), ru: nameRu.trim() || nameAz.trim(), en: nameEn.trim() || nameAz.trim() }, category, unit, priceMinor: parseMoneyInput(price), costMinor: parseMoneyInput(cost), minStock: kind === 'service' ? 0 : Math.max(0, Number(minStock) || 0), taxRate: rate, supplier: supplier.trim(), warehouseStock, accent: product?.accent ?? '#66b7a4', image, active: product?.active ?? true, createdAt: product?.createdAt ?? Date.now(), kind, comment: comment.trim(), tags: tags.trim(), minPriceMinor: parseMoneyInput(minPrice || '0'), weighted, serial, station: station.trim(), packUnit: packUnit.trim(), packQty: Math.max(0, Number(packQty) || 0), department: department.trim(), priceDiscountMinor: parseMoneyInput(priceDiscount || '0'), priceWholesaleMinor: parseMoneyInput(priceWholesale || '0'), priceDealerMinor: parseMoneyInput(priceDealer || '0') }); };
-  return <Modal title={product ? tr(lang, 'editProduct') : tr(lang, 'addProduct')} subtitle="SKU · GTIN · qiymət · stok · şəkil" onClose={onClose} wide><div className="product-form"><aside><ProductVisual image={image} alt={nameAz || 'Məhsul'} accent="#0a4f9c" /><button onClick={() => void pick()}><ImagePlus />{tr(lang, 'chooseImage')}</button><label className="file-fallback">Fayldan seç<input type="file" accept="image/*" onChange={file} /></label><p>PNG, JPG və WEBP · maksimum 12 MB</p></aside><section><div className="form-grid"><Field label="Məhsul adı · AZ *" value={nameAz} onChange={setNameAz} /><Field label="Название · RU" value={nameRu} onChange={setNameRu} /><Field label="Product name · EN" value={nameEn} onChange={setNameEn} /><Field label={`${tr(lang, 'sku')} *`} value={sku} onChange={setSku} /><label className="field barcode-field"><span>{tr(lang, 'barcode')} *</span><div className={barcodeCapture ? 'barcode-capture active' : 'barcode-capture'}><input ref={barcodeRef} value={barcode} inputMode="numeric" onChange={(event) => setBarcode(event.target.value.replace(/\s/g, ''))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); setBarcodeCapture(false); } }} /><button type="button" onClick={() => { setBarcode(''); setBarcodeCapture(true); window.setTimeout(() => barcodeRef.current?.focus(), 0); }}><ScanBarcode />{barcodeCapture ? 'Oxudun...' : 'Barkod oxut'}</button></div></label><SelectField label={tr(lang, 'category')} value={category} onChange={setCategory} options={PRODUCT_FORM_AISLES} labels={Object.fromEntries(PRODUCT_FORM_AISLES.map((id) => [id, categoryLabel(id, lang)]))} /><SelectField label="Növ" value={kind} onChange={(value) => setKind(value as 'product' | 'service')} options={['product','service']} labels={{ product: 'Məhsul', service: 'Xidmət' }} /><SelectField label={tr(lang, 'unit')} value={unit} onChange={setUnit} options={['əd','mt','qutu','kq','pk','litr']} /><SelectField label="Vergi" value={taxRate} onChange={setTaxRate} options={['18','8','2','0']} labels={{ '18': 'ƏDV 18%', '8': 'Sadələşdirilmiş 8%', '2': 'Sadələşdirilmiş 2%', '0': 'ƏDV-dən azad' }} /><Field label="ƏDV-siz qiymət" value={((parseMoneyInput(price) / 100) / (Number(taxRate) ? 1 + Number(taxRate) / 100 : 1)).toFixed(4)} onChange={() => undefined} /><Field label="Minimal qiymət · AZN" value={minPrice} onChange={setMinPrice} type="number" /><Field label="Endirimli qiymət · AZN" value={priceDiscount} onChange={setPriceDiscount} type="number" /><Field label="Topdan · AZN" value={priceWholesale} onChange={setPriceWholesale} type="number" /><Field label="Diller · AZN" value={priceDealer} onChange={setPriceDealer} type="number" /><Field label="Şərh" value={comment} onChange={setComment} /><Field label="Tag" value={tags} onChange={setTags} /><Field label="Stansiya" value={station} onChange={setStation} /><Field label="Şöbə" value={department} onChange={setDepartment} /><Field label="Bağlama vahidi" value={packUnit} onChange={setPackUnit} /><Field label="Bağlamada say" value={packQty} onChange={setPackQty} type="number" /><label className="field"><span>Çəki</span><input type="checkbox" checked={weighted} onChange={(event) => setWeighted(event.target.checked)} /></label><label className="field"><span>Seriya</span><input type="checkbox" checked={serial} onChange={(event) => setSerial(event.target.checked)} /></label><Field label={`${tr(lang, 'cost')} · AZN`} value={cost} onChange={setCost} type="number" /><Field label={`${tr(lang, 'price')} · AZN *`} value={price} onChange={setPrice} type="number" /><Field label={tr(lang, 'minStock')} value={minStock} onChange={setMinStock} type="number" /><Field label={tr(lang, 'supplier')} value={supplier} onChange={setSupplier} />{!product && kind === 'product' && <><SelectField label={tr(lang, 'warehouses')} value={warehouseId} onChange={setWarehouseId} options={warehouses.map((row) => row.id)} labels={Object.fromEntries(warehouses.map((row) => [row.id, `${row.code} · ${row.name}`]))} /><Field label={tr(lang, 'initialStock')} value={initialStock} onChange={setInitialStock} type="number" /></>}</div>{error && <p className="form-error">{error}</p>}</section></div><div className="modal-actions"><button onClick={onClose}>{tr(lang, 'cancel')}</button><button className="modal-primary" onClick={save}><Check />{tr(lang, 'save')}</button></div></Modal>;
-}
-
-function WarehouseModal({ lang, onClose, onSave }: { lang: Lang; onClose: () => void; onSave: (warehouse: Warehouse) => void }) { const [name, setName] = useState(''); const [code, setCode] = useState(''); const [address, setAddress] = useState(''); const [manager, setManager] = useState(''); return <Modal title={tr(lang, 'addWarehouse')} subtitle="Çoxlu depo və satış zalı idarəsi" onClose={onClose}><div className="form-grid"><Field label={`${tr(lang, 'warehouseName')} *`} value={name} onChange={setName} /><Field label="Depo kodu *" value={code} onChange={setCode} /><Field label={tr(lang, 'address')} value={address} onChange={setAddress} wide /><Field label={tr(lang, 'manager')} value={manager} onChange={setManager} /></div><div className="modal-actions"><button onClick={onClose}>{tr(lang, 'cancel')}</button><button className="modal-primary" disabled={!name || !code} onClick={() => onSave({ id: newId('wh'), code, name, address, manager, active: true })}><Check />{tr(lang, 'save')}</button></div></Modal>; }
-
-function RegisterModal({ lang, onClose, onSave }: { lang: Lang; onClose: () => void; onSave: (register: Register) => void }) { const [name, setName] = useState(''); const [code, setCode] = useState(''); const [location, setLocation] = useState(''); return <Modal title={tr(lang, 'addRegister')} subtitle="Kassa 1 · Kassa 2 · Ekspress" onClose={onClose}><div className="form-grid"><Field label={`${tr(lang, 'registerName')} *`} value={name} onChange={setName} /><Field label="Kassa kodu *" value={code} onChange={setCode} /><Field label={tr(lang, 'location')} value={location} onChange={setLocation} wide /></div><div className="modal-actions"><button onClick={onClose}>{tr(lang, 'cancel')}</button><button className="modal-primary" disabled={!name || !code} onClick={() => onSave({ id: newId('reg'), code, name, location, status: 'closed', openingFloatMinor: 0 })}><Check />{tr(lang, 'save')}</button></div></Modal>; }
-
-function PurchaseModal({ lang, products, warehouses, session, onClose, onSave }: { lang: Lang; products: Product[]; warehouses: Warehouse[]; session: SessionUser; onClose: () => void; onSave: (order: PurchaseOrder) => void }) { const [supplier, setSupplier] = useState(''); const [date, setDate] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10)); const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id ?? ''); const [productId, setProductId] = useState(products[0]?.id ?? ''); const [qty, setQty] = useState('1'); const [lines, setLines] = useState<Array<{ productId: string; qty: number; costMinor: number }>>([]); const addLine = () => { const product = products.find((row) => row.id === productId); const amount = Math.max(1, Number(qty) || 1); if (!product) return; setLines((rows) => rows.some((row) => row.productId === productId) ? rows.map((row) => row.productId === productId ? { ...row, qty: row.qty + amount } : row) : [...rows, { productId, qty: amount, costMinor: product.costMinor }]); }; return <Modal title={tr(lang, 'createOrder')} subtitle="Təchizatçı · depo · məhsul siyahısı" onClose={onClose} wide><div className="form-grid"><Field label={`${tr(lang, 'supplier')} *`} value={supplier} onChange={setSupplier} /><Field label={tr(lang, 'expectedDate')} value={date} onChange={setDate} type="date" /><SelectField label={tr(lang, 'warehouses')} value={warehouseId} onChange={setWarehouseId} options={warehouses.map((row) => row.id)} labels={Object.fromEntries(warehouses.map((row) => [row.id, row.name]))} /></div><div className="order-line-builder"><SelectField label={tr(lang, 'product')} value={productId} onChange={setProductId} options={products.map((row) => row.id)} labels={Object.fromEntries(products.map((row) => [row.id, `${row.sku} · ${row.name[lang]}`]))} /><Field label={tr(lang, 'quantity')} value={qty} onChange={setQty} type="number" /><button onClick={addLine}><Plus />Siyahıya əlavə et</button></div><div className="draft-lines">{lines.map((line) => <div key={line.productId}><ProductVisual image={products.find((row) => row.id === line.productId)?.image ?? { kind: 'url', url: '' }} compact /><span><b>{products.find((row) => row.id === line.productId)?.name[lang]}</b><small>{money(line.costMinor, lang)} maya</small></span><strong>× {line.qty}</strong><button onClick={() => setLines((rows) => rows.filter((row) => row.productId !== line.productId))}><X /></button></div>)}</div><div className="modal-actions"><button onClick={onClose}>{tr(lang, 'cancel')}</button><button className="modal-primary" disabled={!supplier || !lines.length} onClick={() => onSave({ id: `PO-${new Date().toISOString().slice(5, 10).replace('-', '')}-${String(Date.now()).slice(-3)}`, supplier, expectedAt: date, createdAt: Date.now(), createdBy: session.id, warehouseId, status: 'ordered', lines })}><Check />{tr(lang, 'save')}</button></div></Modal>; }
-
-function TransferModal({ lang, products, warehouses, onClose, onSave }: { lang: Lang; products: Product[]; warehouses: Warehouse[]; onClose: () => void; onSave: (productId: string, from: string, to: string, qty: number) => void }) { const [productId, setProductId] = useState(products[0]?.id ?? ''); const [from, setFrom] = useState(warehouses[0]?.id ?? ''); const [to, setTo] = useState(warehouses[1]?.id ?? ''); const [qty, setQty] = useState('1'); const available = products.find((product) => product.id === productId)?.warehouseStock[from] ?? 0; const amount = Math.max(0, Number(qty) || 0); return <Modal title={tr(lang, 'transfer')} subtitle="Depolar arasında sənədli stok hərəkəti" onClose={onClose}><div className="form-grid"><SelectField label={tr(lang, 'product')} value={productId} onChange={setProductId} options={products.map((row) => row.id)} labels={Object.fromEntries(products.map((row) => [row.id, `${row.sku} · ${row.name[lang]}`]))} wide /><SelectField label="Çıxış deposu" value={from} onChange={setFrom} options={warehouses.map((row) => row.id)} labels={Object.fromEntries(warehouses.map((row) => [row.id, `${row.code} · ${row.name}`]))} /><SelectField label="Qəbul deposu" value={to} onChange={setTo} options={warehouses.map((row) => row.id)} labels={Object.fromEntries(warehouses.map((row) => [row.id, `${row.code} · ${row.name}`]))} /><Field label={`${tr(lang, 'quantity')} · Mövcud ${available}`} value={qty} onChange={setQty} type="number" /></div><div className="transfer-visual"><span>{warehouses.find((row) => row.id === from)?.name}<b>{available}</b></span><ArrowRightLeft /><span>{warehouses.find((row) => row.id === to)?.name}<b>+{amount}</b></span></div><div className="modal-actions"><button onClick={onClose}>{tr(lang, 'cancel')}</button><button className="modal-primary" disabled={from === to || amount <= 0 || amount > available} onClick={() => onSave(productId, from, to, amount)}><Check />{tr(lang, 'transfer')}</button></div></Modal>; }
-
-/**
- * Writing stock off, with the reason it went.
- *
- * Separate from Transfer and from editing a product's stock: those move or
- * correct a number, this records goods that existed and are gone. The reasons
- * come from the core rather than being listed here, so the list the operator
- * picks from is the list the core will accept and the reports will group by.
- */
-function WasteModal({ lang, products, warehouses, onClose, onSave }: { lang: Lang; products: Product[]; warehouses: Warehouse[]; onClose: () => void; onSave: (input: { productId: string; warehouseId: string; qty: number; reason: string; note: string }) => void }) {
-  const [productId, setProductId] = useState(products[0]?.id ?? '');
-  const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id ?? '');
-  const [qty, setQty] = useState('1');
-  const [reason, setReason] = useState('');
-  const [note, setNote] = useState('');
-  const [reasons, setReasons] = useState<Array<{ code: string; label: string }>>([]);
-
-  useEffect(() => {
-    if (!marketCoreClient.available()) return;
-    void marketCoreClient.inventory.wasteReasons()
-      .then((result) => {
-        setReasons(result.reasons ?? []);
-        setReason((current) => current || result.reasons?.[0]?.code || '');
-      })
-      .catch(() => undefined);
-  }, []);
-
-  const product = products.find((row) => row.id === productId);
-  const available = product?.warehouseStock[warehouseId] ?? 0;
-  const amount = Math.max(0, Number(qty) || 0);
-  const lossMinor = (product?.costMinor ?? 0) * amount;
-
-  return (
-    <Modal title="Silinmə" subtitle="İtən malın sənədli qeydi" onClose={onClose}>
-      <div className="form-grid">
-        <SelectField label={tr(lang, 'product')} value={productId} onChange={setProductId}
-          options={products.map((row) => row.id)}
-          labels={Object.fromEntries(products.map((row) => [row.id, `${row.sku} · ${row.name[lang]}`]))} wide />
-        <SelectField label={tr(lang, 'warehouses')} value={warehouseId} onChange={setWarehouseId}
-          options={warehouses.map((row) => row.id)}
-          labels={Object.fromEntries(warehouses.map((row) => [row.id, `${row.code} · ${row.name}`]))} />
-        <Field label={`${tr(lang, 'quantity')} · Mövcud ${available}`} value={qty} onChange={setQty} type="number" />
-        <SelectField label="Səbəb *" value={reason} onChange={setReason}
-          options={reasons.map((row) => row.code)}
-          labels={Object.fromEntries(reasons.map((row) => [row.code, row.label]))} />
-        <Field label="Qeyd" value={note} onChange={setNote} wide />
-      </div>
-      {/* What this costs the shop, before it is written off rather than after. */}
-      <p className="hint">Maya dəyəri ilə itki: <b>{money(lossMinor, lang)}</b></p>
-      <div className="modal-actions">
-        <button onClick={onClose}>{tr(lang, 'cancel')}</button>
-        <button className="modal-primary" disabled={!reason || amount <= 0}
-          onClick={() => onSave({ productId, warehouseId, qty: amount, reason, note })}>
-          <Trash2 />Sil
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-function StaffModal({ lang, registers, warehouses, onClose, onSave }: { lang: Lang; registers: Register[]; warehouses: Warehouse[]; onClose: () => void; onSave: (profile: Partial<StaffProfile>, pin: string) => Promise<void> }) { const [name, setName] = useState(''); const [role, setRole] = useState<Role>('cashier'); const [pin, setPin] = useState(''); const [registerId, setRegisterId] = useState(registers[0]?.id ?? ''); const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id ?? ''); const [error, setError] = useState(''); const submit = async () => { try { await onSave({ name, role, active: true, registerIds: role === 'warehouse' ? [] : [registerId], warehouseIds: role === 'cashier' || role === 'head_cashier' ? ['wh-sales'] : [warehouseId] }, pin); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Xəta'); } }; return <Modal title={tr(lang, 'addStaff')} subtitle="Müdir · Baş kassir · Kassir · Depo" onClose={onClose}><div className="role-select">{(['manager','head_cashier','cashier','warehouse'] as Role[]).map((item) => <button key={item} className={role === item ? 'active' : ''} onClick={() => setRole(item)}><UserCog /><b>{roleLabel(item, lang)}</b></button>)}</div><div className="form-grid"><Field label={`${tr(lang, 'name')} *`} value={name} onChange={setName} /><Field label="Yeni PIN · 4–8 rəqəm *" value={pin} onChange={(value) => setPin(value.replace(/\D/g, '').slice(0, 8))} type="password" />{role !== 'warehouse' && <SelectField label={tr(lang, 'registers')} value={registerId} onChange={setRegisterId} options={registers.map((row) => row.id)} labels={Object.fromEntries(registers.map((row) => [row.id, row.name]))} />}{(role === 'warehouse' || role === 'manager') && <SelectField label={tr(lang, 'warehouses')} value={warehouseId} onChange={setWarehouseId} options={warehouses.map((row) => row.id)} labels={Object.fromEntries(warehouses.map((row) => [row.id, row.name]))} />}</div>{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button onClick={onClose}>{tr(lang, 'cancel')}</button><button className="modal-primary" disabled={!name || pin.length < 4} onClick={() => void submit()}><Check />{tr(lang, 'save')}</button></div></Modal>; }
-
-function RoleAvatar({ role, name, compact = false }: { role: Role; name?: string; compact?: boolean }) {
-  const text = (name ?? role)
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.slice(0, 1).toLocaleUpperCase('az'))
-    .join('') || 'M';
-  return <span className={compact ? `role-avatar ${role} compact` : `role-avatar ${role}`} aria-hidden="true">{text}</span>;
-}
-function Kpi({ icon: Icon, label, value, note, tone }: { icon: typeof Boxes; label: string; value: string; note: string; tone: string }) { return <article className={`kpi ${tone}`}><span><Icon /></span><div><small>{label}</small><strong>{value}</strong><em>{note || '—'}</em></div></article>; }
-function Modal({ title, subtitle, onClose, wide = false, children }: { title: string; subtitle: string; onClose: () => void; wide?: boolean; children: React.ReactNode }) { return <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className={wide ? 'modal wide' : 'modal'}><header><div><p>{subtitle}</p><h2>{title}</h2></div><button onClick={onClose}><X /></button></header><div className="modal-body">{children}</div></section></div>; }
-function Field({ label, value, onChange, type = 'text', wide = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; wide?: boolean }) { return <label className={wide ? 'field wide' : 'field'}><span>{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></label>; }
-function SelectField({ label, value, onChange, options, labels, wide = false }: { label: string; value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string>; wide?: boolean }) { return <label className={wide ? 'field wide' : 'field'}><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option} value={option}>{labels?.[option] ?? option}</option>)}</select></label>; }

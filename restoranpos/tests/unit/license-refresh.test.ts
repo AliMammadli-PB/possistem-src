@@ -4,6 +4,7 @@
  * against a stub core.
  */
 import { describe, expect, it } from 'vitest';
+import * as nodeCrypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +23,11 @@ function slice(from: string, to: string) {
 
 const src = slice('function us(', 'const be=') + slice('async function _psApplyLicenseRefresh(', 'async function _psSyncRolePolicy(');
 
+// A throwaway signing key stands in for the control plane's; the build under
+// test is told to trust it exactly as a release trusts production's.
+const signer = nodeCrypto.generateKeyPairSync('ed25519');
+const signerHex = Buffer.from(signer.publicKey.export({ type: 'spki', format: 'der' })).subarray(-32).toString('hex');
+
 function harness() {
   const imported: unknown[] = [];
   const N = async (method: string, body: { licenseFileContents: string }) => {
@@ -31,20 +37,26 @@ function harness() {
   };
   const D = { info() {}, warn() {} };
   const ye = async () => 'install-1';
-  const apply = new Function('N', 'D', 'ye', `${src}; return _psApplyLicenseRefresh;`)(N, D, ye);
+  process.env.POS_TRUSTED_LICENSE_KEYS = `k1:${signerHex}`;
+  const c = { app: { isPackaged: false } };
+  const apply = new Function('N', 'D', 'ye', 'W', 'c', `${src}; return _psApplyLicenseRefresh;`)(N, D, ye, nodeCrypto, c);
+  delete process.env.POS_TRUSTED_LICENSE_KEYS;
   return { apply, imported };
 }
 
-const refresh = (validUntil: string) => ({
-  device: { id: 'dev-1' },
-  license: { id: 'lic-1', plan: '1 ay', seats: 2, customerId: 'c-1', customerEmail: 'a@b.az', features: {} },
-  signedLicense: {
-    payload: { licenseId: 'lic-1', deviceId: 'dev-1', validUntil, status: 'active', seats: 2 },
-    signature: 'sig',
-    keyId: 'k1',
-    signedAt: '2026-09-24T00:00:00.000Z',
-  },
-});
+function refresh(validUntil: string, extra: Record<string, unknown> = {}, signWith = signer.privateKey) {
+  const payload = { licenseId: 'lic-1', deviceId: 'dev-1', deviceFingerprint: 'fp', validUntil, status: 'active', seats: 2, ...extra };
+  return {
+    device: { id: 'dev-1' },
+    license: { id: 'lic-1', plan: '1 ay', seats: 2, customerId: 'c-1', customerEmail: 'a@b.az', features: {} },
+    signedLicense: {
+      payload,
+      signature: nodeCrypto.sign(null, Buffer.from(JSON.stringify(payload)), signWith).toString('hex'),
+      keyId: 'k1',
+      signedAt: '2026-09-24T00:00:00.000Z',
+    },
+  };
+}
 
 describe('licence refresh on heartbeat', () => {
   it('imports a later end date signed by the server', async () => {
@@ -54,7 +66,23 @@ describe('licence refresh on heartbeat', () => {
     const lic = imported[0] as { payload: { expiresAt: number; installationId: string }; signature: string };
     expect(lic.payload.expiresAt).toBe(Date.parse('2026-10-24T00:00:00Z'));
     expect(lic.payload.installationId).toBe('install-1');
-    expect(lic.signature).toBe('sig');
+    expect(lic.signature).toMatch(/^[0-9a-f]{128}$/);
+  });
+
+  it('refuses a renewal that the trusted key did not sign', async () => {
+    const { apply, imported } = harness();
+    const forged = refresh('2036-10-24T00:00:00.000Z', {}, nodeCrypto.generateKeyPairSync('ed25519').privateKey);
+    await apply({ status: 'expired', expiresAt: 1 }, forged, 'fp');
+    const edited = refresh('2026-10-24T00:00:00.000Z');
+    edited.signedLicense.payload.validUntil = '2036-10-24T00:00:00.000Z';
+    await apply({ status: 'expired', expiresAt: 1 }, edited, 'fp');
+    expect(imported).toHaveLength(0);
+  });
+
+  it("refuses another device's licence", async () => {
+    const { apply, imported } = harness();
+    await apply({ status: 'expired', expiresAt: 1 }, refresh('2026-10-24T00:00:00.000Z', { deviceFingerprint: 'other-pc' }), 'fp');
+    expect(imported).toHaveLength(0);
   });
 
   it('never re-imports the same date or shortens the licence', async () => {

@@ -163,6 +163,13 @@ std::string createPreMigrationBackup(Database& database, int fromVersion, int ta
 
 }  // namespace
 
+bool isShippedDefaultPin(const std::string& userId, const std::string& pinHash) {
+    for (const auto& user : kDemoUsers) {
+        if (userId == user.id && crypto::verifyPin(user.pin, pinHash)) return true;
+    }
+    return false;
+}
+
 bool shouldBackupBeforeMigration(int currentVersion, int targetVersion) noexcept {
     return currentVersion > 0 && currentVersion < targetVersion;
 }
@@ -370,7 +377,6 @@ int Migrator::migrate(const ProgressFn& progress) {
     try {
         if (!tableExists && target > 0) {
             ensureMigrationTable();
-            tableExists = true;
         }
         if (needsLegacyBackfill) backfillLegacyMigration();
     } catch (const std::exception& error) {

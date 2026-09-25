@@ -87,7 +87,8 @@ try {
   const admin = users.users.find((user) => user.code === '9001');
   if (!admin) throw new Error('Demo administrator 9001 is not available');
 
-  await call('auth.login', { userId: admin.id, pin: '9001' });
+  // 9001 ships in the source, so a fresh till makes it pick a new PIN first.
+  await call('auth.login', { userId: admin.id, pin: '9001', newPin: '4826' });
   const jobs = await call('print.jobs', { limit: 50 });
   const target = jobs.jobs.find(
     (job) => job.kind === 'customer_receipt' && job.orderId,

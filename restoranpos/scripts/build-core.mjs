@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyThirdParty } from './verify-third-party.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const NATIVE = path.join(ROOT, 'native');
@@ -57,6 +58,10 @@ function checkDependencies() {
       `vendored dependencies missing: ${missing.join(', ')}\n` +
         '            Run:  node scripts/fetch-deps.mjs',
     );
+  }
+  const tampered = verifyThirdParty();
+  if (tampered.length > 0) {
+    fail(`vendored dependencies do not match native/third_party/SHA256SUMS:\n            ${tampered.join('\n            ')}`);
   }
 }
 

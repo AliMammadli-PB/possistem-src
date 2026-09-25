@@ -3,7 +3,7 @@ import path from 'node:path';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
-import {chromium} from 'playwright';
+import {chromium} from '@playwright/test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'artifacts/admin-destinations');

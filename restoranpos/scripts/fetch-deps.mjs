@@ -9,11 +9,18 @@
  *     would fail outright at configure time.
  *
  * Idempotent: each dependency writes a `.version` marker and is skipped when the
- * pinned version is already present. Network failure is a warning, not a hard
- * error, so `npm install` still completes; build-core.mjs re-checks and fails
- * loudly with instructions if anything is missing.
+ * pinned version is already present - the repository ships them vendored, so a
+ * normal install downloads nothing.
+ *
+ * Integrity: every download must match the SHA-256 pinned in EXPECTED_SHA256
+ * before it is used; a mismatch or a network failure exits non-zero (set
+ * POS_ALLOW_MISSING_DEPS=1 to downgrade a *network* failure to a warning for an
+ * offline machine). The vendored tree itself is checked against
+ * native/third_party/SHA256SUMS by scripts/verify-third-party.mjs before every
+ * core build. Bumping a version means updating its hash here in the same commit.
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -27,8 +34,21 @@ const SQLITE_ARCHIVE = 'sqlite-amalgamation-3500400';
 const JSON_VERSION = '3.12.0';
 const CATCH2_VERSION = '3.8.1';
 const SPDLOG_VERSION = '1.15.3';
+const QRCODEGEN_COMMIT = '3c6d0b3cefb4e049dc337e82237c9644399716a8';
+
+/** SHA-256 of every upstream artifact this script downloads, by exact URL. */
+const EXPECTED_SHA256 = {
+  [`https://www.sqlite.org/2025/${SQLITE_ARCHIVE}.zip`]: '1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032',
+  [`https://github.com/nlohmann/json/releases/download/v${JSON_VERSION}/json.hpp`]: 'aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63',
+  [`https://github.com/catchorg/Catch2/releases/download/v${CATCH2_VERSION}/catch_amalgamated.hpp`]: '8730587447e16531b832407bbf66959e97ad09af445adc118d2df13689dfecab',
+  [`https://github.com/catchorg/Catch2/releases/download/v${CATCH2_VERSION}/catch_amalgamated.cpp`]: 'd90d5101269efb3bba00729b8cf14d44a6e6d9b695f9e5c9b4a71345a3bceb99',
+  [`https://github.com/gabime/spdlog/archive/refs/tags/v${SPDLOG_VERSION}.tar.gz`]: '15a04e69c222eb6c01094b5c7ff8a249b36bb22788d72519646fb85feb267e67',
+  [`https://raw.githubusercontent.com/nayuki/QR-Code-generator/${QRCODEGEN_COMMIT}/cpp/qrcodegen.cpp`]: '8948b57053deb5d132bfc675ca2688b7abef9f03ec633c0de59770c945a66fc9',
+  [`https://raw.githubusercontent.com/nayuki/QR-Code-generator/${QRCODEGEN_COMMIT}/cpp/qrcodegen.hpp`]: 'b779c3b156cf7a57ce789d6fee4fc991ccc2913774d26c909d22bb8f26b2a793',
+};
 
 let failed = false;
+let integrityFailure = false;
 
 function log(msg) {
   process.stdout.write(`[fetch-deps] ${msg}\n`);
@@ -54,15 +74,28 @@ async function download(url, destFile) {
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
+  const expected = EXPECTED_SHA256[url];
+  const actual = createHash('sha256').update(buf).digest('hex');
+  if (!expected || actual !== expected) {
+    integrityFailure = true;
+    throw new Error(`SHA-256 mismatch for ${url}: expected ${expected ?? '(not pinned)'}, got ${actual}`);
+  }
   fs.mkdirSync(path.dirname(destFile), { recursive: true });
   fs.writeFileSync(destFile, buf);
   return buf.length;
 }
 
-/** Windows ships bsdtar at System32\tar.exe, which handles both .zip and .tar.gz. */
+/**
+ * Windows ships bsdtar at System32\tar.exe, which handles both .zip and .tar.gz.
+ * GNU tar (Linux) cannot read .zip, so zips go through unzip there.
+ */
 function extract(archive, intoDir) {
   fs.mkdirSync(intoDir, { recursive: true });
-  execFileSync('tar', ['-xf', archive, '-C', intoDir], { stdio: 'pipe' });
+  if (archive.endsWith('.zip') && process.platform !== 'win32') {
+    execFileSync('unzip', ['-q', '-o', archive, '-d', intoDir], { stdio: 'pipe' });
+  } else {
+    execFileSync('tar', ['-xf', archive, '-C', intoDir], { stdio: 'pipe' });
+  }
 }
 
 function copyDir(from, to) {
@@ -156,25 +189,44 @@ async function spdlog() {
   }
 }
 
+async function qrcodegen() {
+  const base = `https://raw.githubusercontent.com/nayuki/QR-Code-generator/${QRCODEGEN_COMMIT}/cpp`;
+  await download(`${base}/qrcodegen.cpp`, path.join(TP, 'qrcodegen', 'qrcodegen.cpp'));
+  await download(`${base}/qrcodegen.hpp`, path.join(TP, 'qrcodegen', 'qrcodegen.hpp'));
+  fs.writeFileSync(
+    path.join(TP, 'qrcodegen', 'UPSTREAM.txt'),
+    `https://github.com/nayuki/QR-Code-generator\nCommit: ${QRCODEGEN_COMMIT}\nMIT license included in both source files.\n`,
+  );
+}
+
+function qrcodegenPresent() {
+  return ['qrcodegen.cpp', 'qrcodegen.hpp'].every((f) => fs.existsSync(path.join(TP, 'qrcodegen', f)));
+}
+
 async function main() {
   fs.mkdirSync(TP, { recursive: true });
   await step('sqlite', SQLITE_VERSION, sqlite);
   await step('nlohmann', JSON_VERSION, nlohmann);
   await step('catch2', CATCH2_VERSION, catch2);
   await step('spdlog', SPDLOG_VERSION, spdlog);
+  if (qrcodegenPresent()) log('qrcodegen already vendored - skipping');
+  else await step('qrcodegen', QRCODEGEN_COMMIT.slice(0, 12), qrcodegen);
 
-  if (failed) {
-    log('');
-    log('One or more dependencies could not be downloaded (offline?).');
-    log('The C++ core cannot be built until they are present.');
-    log('Re-run once you have network access:   node scripts/fetch-deps.mjs');
-    // Intentionally exit 0 so `npm install` still succeeds.
-  } else {
+  if (!failed) {
     log('all C++ dependencies vendored.');
+    return;
   }
+  log('');
+  if (integrityFailure) {
+    log('A downloaded dependency did not match its pinned SHA-256 - refusing to use it.');
+    process.exit(1);
+  }
+  log('One or more dependencies could not be downloaded, and the core cannot be built without them.');
+  log('Re-run once you have network access:   node scripts/fetch-deps.mjs');
+  if (process.env.POS_ALLOW_MISSING_DEPS !== '1') process.exit(1);
 }
 
 main().catch((err) => {
   log(`unexpected error: ${err.stack || err.message}`);
-  process.exit(0);
+  process.exit(1);
 });

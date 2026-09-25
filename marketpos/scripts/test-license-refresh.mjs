@@ -16,17 +16,21 @@ const to = main.indexOf('async function redeemMarketActivation(');
 assert.ok(from > 0 && to > from, 'licence functions not found in main.cjs');
 
 let saved = 0;
-const load = new Function(
-  'createHash', 'createPublicKey', 'verifySignature', 'SPKI_PREFIX', 'EXPECTED_LICENSE_KEY_ID', 'CONTROL_URL', 'saveSecureState',
-  `${main.slice(from, to)}; return applyLicenseRefresh;`,
-);
-const applyLicenseRefresh = load(
-  createHash, createPublicKey, verify, Buffer.from('302a300506032b6570032100', 'hex'), '', 'https://possistem.az/pos/api', () => { saved += 1; },
-);
-
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 const publicKeyHex = publicKey.export({ format: 'der', type: 'spki' }).subarray(12).toString('hex');
 const keyId = `ed25519-${createHash('sha256').update(Buffer.from(publicKeyHex, 'hex')).digest('hex').slice(0, 16)}`;
+
+const load = new Function(
+  'createHash', 'createPublicKey', 'verifySignature', 'SPKI_PREFIX', 'TRUSTED_LICENSE_KEY_IDS', 'CONTROL_URL', 'saveSecureState',
+  `${main.slice(from, to)}; return applyLicenseRefresh;`,
+);
+const bind = (trusted) => load(
+  createHash, createPublicKey, verify, Buffer.from('302a300506032b6570032100', 'hex'), new Set(trusted), 'https://possistem.az/pos/api', () => { saved += 1; },
+);
+// The build trusts the key under test, as a release build trusts production's.
+const applyLicenseRefresh = bind([keyId]);
+// A build that does not list the key must refuse it - even on first use.
+const applyUntrusted = bind(['ed25519-0000000000000000']);
 
 // Same shape as licenseEnvelope() on the server.
 function envelope(validUntil, overrides = {}) {
@@ -84,5 +88,8 @@ assert.throws(() => applyLicenseRefresh(till('expired', 0), envelope(later, { de
 // No signed licence (the server withholds it for an ended or revoked one): nothing happens.
 assert.equal(applyLicenseRefresh(till('expired', 0), null), false);
 assert.equal(applyLicenseRefresh(till('expired', 0), { license: { validUntil: later } }), false);
+
+// A licence signed by a key this build does not trust is refused outright.
+assert.throws(() => applyUntrusted(till('expired', 0), envelope(later)), /gözlənilən/);
 
 console.log('market licence refresh: ok');

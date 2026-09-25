@@ -2174,22 +2174,6 @@ input, select, textarea {
 
 /* POS_LOCKED_VISIBLE_v1 */
 .ps-nav[aria-disabled="true"],.ps-hub-link[aria-disabled="true"],.ps-ops-tabs button[aria-disabled="true"],button[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

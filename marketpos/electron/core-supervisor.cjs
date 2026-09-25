@@ -7,7 +7,14 @@ const { app } = require('electron');
 
 /**
  * NDJSON supervisor for market-pos-core — mirrors Restaurant POS process lifecycle.
+ *
+ * Bounded like the Restaurant contract (shared/contracts/protocol.json): a frame
+ * may not exceed MAX_MESSAGE_BYTES in either direction, at most MAX_PENDING
+ * requests wait for an answer, and writes queue behind stdin backpressure
+ * instead of piling up inside the pipe.
  */
+const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
+const MAX_PENDING = 200;
 class CoreSupervisor extends EventEmitter {
   constructor() {
     super();
@@ -15,6 +22,8 @@ class CoreSupervisor extends EventEmitter {
     this.state = 'stopped';
     this.pending = new Map();
     this.buffer = '';
+    this.writeQueue = [];
+    this.writeBlocked = false;
     this.restartAttempts = 0;
     this.stopping = false;
     this.dbPath = null;
@@ -91,6 +100,10 @@ class CoreSupervisor extends EventEmitter {
         cwd: path.dirname(corePath),
         env: { ...process.env, MARKET_POS_LOG_LEVEL: app.isPackaged ? 'info' : 'debug' },
       });
+      this.writeQueue = [];
+      this.writeBlocked = false;
+      this.child.stdin.on('drain', () => this.flushWrites());
+      this.child.stdin.on('error', () => { /* surfaced through exit */ });
       this.child.stdout.setEncoding('utf8');
       this.child.stderr.setEncoding('utf8');
       this.child.stdout.on('data', (chunk) => this.onStdout(chunk));
@@ -118,6 +131,10 @@ class CoreSupervisor extends EventEmitter {
       const line = this.buffer.slice(0, idx).replace(/\r$/, '');
       this.buffer = this.buffer.slice(idx + 1);
       if (!line.trim()) continue;
+      if (Buffer.byteLength(line, 'utf8') > MAX_MESSAGE_BYTES) {
+        this.protocolFailure('oversized frame');
+        return;
+      }
       let doc;
       try {
         doc = JSON.parse(line);
@@ -135,6 +152,40 @@ class CoreSupervisor extends EventEmitter {
       this.pending.delete(doc.requestId);
       pending.resolve(doc);
     }
+    // A partial frame may never grow without bound: a core that stops writing
+    // newlines is broken, and is restarted rather than allowed to eat memory.
+    if (Buffer.byteLength(this.buffer, 'utf8') > MAX_MESSAGE_BYTES) this.protocolFailure('unterminated frame');
+  }
+
+  protocolFailure(reason) {
+    console.error('[market-core] protocol failure:', reason);
+    this.buffer = '';
+    for (const [, pending] of this.pending) {
+      clearTimeout(pending.timer);
+      pending.resolve({
+        requestId: pending.requestId,
+        success: false,
+        data: null,
+        error: { code: 'E_PROTOCOL', message: `market-pos-core ${reason}`, retryable: true },
+      });
+    }
+    this.pending.clear();
+    try { this.child?.kill(); } catch { /* exit handler restarts */ }
+  }
+
+  writeFrame(frame) {
+    if (this.writeBlocked) {
+      this.writeQueue.push(frame);
+      return;
+    }
+    if (!this.child.stdin.write(frame)) this.writeBlocked = true;
+  }
+
+  flushWrites() {
+    this.writeBlocked = false;
+    while (this.writeQueue.length > 0 && this.child && !this.writeBlocked) {
+      if (!this.child.stdin.write(this.writeQueue.shift())) this.writeBlocked = true;
+    }
   }
 
   onExit(code, signal) {
@@ -148,6 +199,9 @@ class CoreSupervisor extends EventEmitter {
       });
     }
     this.pending.clear();
+    this.writeQueue = [];
+    this.writeBlocked = false;
+    this.buffer = '';
     this.child = null;
     if (this.stopping) {
       this.setState('stopped');
@@ -170,6 +224,13 @@ class CoreSupervisor extends EventEmitter {
         error: { code: 'E_CORE_DOWN', message: `core not ready (${this.state})`, retryable: true },
       });
     }
+    if (this.pending.size >= MAX_PENDING) {
+      return Promise.resolve({
+        success: false,
+        data: null,
+        error: { code: 'E_QUEUE_FULL', message: 'Too many pending core requests', retryable: true },
+      });
+    }
     const requestId = randomUUID();
     const frame = JSON.stringify({
       requestId,
@@ -178,6 +239,14 @@ class CoreSupervisor extends EventEmitter {
       timestamp: Date.now(),
       payload: payload ?? {},
     }) + '\n';
+    if (Buffer.byteLength(frame, 'utf8') > MAX_MESSAGE_BYTES) {
+      return Promise.resolve({
+        requestId,
+        success: false,
+        data: null,
+        error: { code: 'E_PAYLOAD_TOO_LARGE', message: 'Request exceeds the maximum message size', retryable: false },
+      });
+    }
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
@@ -190,7 +259,7 @@ class CoreSupervisor extends EventEmitter {
       }, timeoutMs);
       this.pending.set(requestId, { resolve, timer, requestId });
       try {
-        this.child.stdin.write(frame);
+        this.writeFrame(frame);
       } catch (err) {
         clearTimeout(timer);
         this.pending.delete(requestId);
@@ -235,4 +304,4 @@ class CoreSupervisor extends EventEmitter {
   }
 }
 
-module.exports = { CoreSupervisor };
+module.exports = { CoreSupervisor, MAX_MESSAGE_BYTES, MAX_PENDING };

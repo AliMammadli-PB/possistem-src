@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(market_pos_core LANGUAGES C CXX VERSION 1.4.6)
+project(market_pos_core LANGUAGES C CXX VERSION 1.4.8)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

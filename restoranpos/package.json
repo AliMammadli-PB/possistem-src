@@ -9,13 +9,12 @@
   "main": "out/main/index.js",
   "scripts": {
     "postinstall": "node scripts/fetch-deps.mjs",
-    "dev": "node scripts/build-core.mjs --config Debug && electron-vite dev",
-    "dev:ui": "electron-vite dev",
-    "lint": "npm run typecheck",
+    "dev": "node scripts/build-core.mjs --config Debug && node scripts/assemble-restaurant.mjs --allow-partial && electron .",
+    "lint": "cd .. && restoranpos/node_modules/.bin/eslint -c restoranpos/eslint.config.mjs marketpos/electron restoranpos/scripts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && npm run market:typecheck",
     "build:core": "node scripts/build-core.mjs --config Release",
     "build:core:debug": "node scripts/build-core.mjs --config Debug",
-    "build:desktop": "electron-vite build",
+    "build:desktop": "node scripts/assemble-restaurant.mjs",
     "build": "npm run typecheck && npm run build:core && npm run build:desktop",
     "test": "npm run test:core && npm run test:unit && npm run test:visuals",
     "test:core": "ctest --test-dir native/build --output-on-failure",
@@ -43,27 +42,31 @@
     "test:admin-forms": "node scripts/qa-admin-forms.mjs",
     "test:admin-destinations": "node scripts/qa-admin-destinations.mjs",
     "test:admin-real-pages": "node scripts/qa-admin-real-pages.mjs",
-    "test:touch-receipt": "node scripts/qa-touch-receipt.mjs"
+    "test:touch-receipt": "node scripts/qa-touch-receipt.mjs",
+    "check:versions": "node scripts/check-versions.mjs"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",
+    "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^43.2.0",
+    "electron": "^43.7.5",
     "electron-builder": "^26.15.3",
-    "electron-vite": "^5.0.0",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
     "jsqr": "^1.4.0",
     "png-to-ico": "^2.1.8",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "ssh2": "^1.16.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.2"
   },
   "dependencies": {
     "@fontsource-variable/cormorant-garamond": "^5.3.0",
@@ -77,5 +80,9 @@
     "react-router-dom": "^7.18.2",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
+  },
+  "overrides": {
+    "js-yaml": "^4.3.2",
+    "@xmldom/xmldom": "^0.8.15"
   }
 }

@@ -1,0 +1,162 @@
+{
+  "$comment": "Every Market POS IPC channel and the authorisation main enforces for it. tests/unit/market-ipc-contract.test.ts fails when a handler, the preload or this file disagree. auth: none | session | roles:<role,...> | core:<PERMISSION|...>. Every channel also checks the calling frame (assertTrusted). A 'none' channel must say why it is safe before sign-in.",
+  "channels": {
+    "market:activation:activate": {
+      "auth": "roles:manager"
+    },
+    "market:activation:refresh": {
+      "auth": "none",
+      "why": "Re-checks the licence with the control plane; changes only the licence state the server signs."
+    },
+    "market:activation:status": {
+      "auth": "none",
+      "why": "Licence mode shown on the lock screen before anyone signs in."
+    },
+    "market:app:info": {
+      "auth": "none",
+      "why": "App version for the about/support screen."
+    },
+    "market:auth:changePin": {
+      "auth": "session"
+    },
+    "market:auth:current": {
+      "auth": "none",
+      "why": "Restores the persisted operator session (within its absolute cap) before the PIN pad."
+    },
+    "market:auth:login": {
+      "auth": "none",
+      "why": "Is the sign-in; throttled per account."
+    },
+    "market:auth:logout": {
+      "auth": "none",
+      "why": "Ends a session; can only reduce access."
+    },
+    "market:backup:configure": {
+      "auth": "core:BACKUP_MANAGE"
+    },
+    "market:backup:create": {
+      "auth": "core:BACKUP_MANAGE|CLOSE_SHIFT"
+    },
+    "market:backup:list": {
+      "auth": "none",
+      "why": "Backup file names/sizes for the restore picker; restoring requires BACKUP_MANAGE."
+    },
+    "market:backup:restore": {
+      "auth": "core:BACKUP_MANAGE"
+    },
+    "market:backup:status": {
+      "auth": "none",
+      "why": "Whether backups are configured, for the settings badge."
+    },
+    "market:coreRestart": {
+      "auth": "roles:manager"
+    },
+    "market:coreStatus:get": {
+      "auth": "none",
+      "why": "Native core state for the status indicator."
+    },
+    "market:display:get": {
+      "auth": "none",
+      "why": "Window size presets before sign-in."
+    },
+    "market:display:set": {
+      "auth": "roles:manager"
+    },
+    "market:display:toggle": {
+      "auth": "none",
+      "why": "Toggles fullscreen for the local window."
+    },
+    "market:drawer:open": {
+      "auth": "session"
+    },
+    "market:fiscal:processPending": {
+      "auth": "roles:manager"
+    },
+    "market:image:pick": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:invoke": {
+      "auth": "session"
+    },
+    "market:printer:configure": {
+      "auth": "roles:manager"
+    },
+    "market:printer:detect": {
+      "auth": "roles:manager"
+    },
+    "market:printer:health": {
+      "auth": "none",
+      "why": "Printer online/offline for the status bar."
+    },
+    "market:printer:label": {
+      "auth": "core:PRINT_LABEL"
+    },
+    "market:printer:list": {
+      "auth": "none",
+      "why": "Printer names for the status bar and settings."
+    },
+    "market:printer:receipt": {
+      "auth": "session"
+    },
+    "market:printer:report": {
+      "auth": "session"
+    },
+    "market:printer:setTarget": {
+      "auth": "roles:manager"
+    },
+    "market:printer:test": {
+      "auth": "roles:manager"
+    },
+    "market:staff:list": {
+      "auth": "none",
+      "why": "Staff names/roles for the sign-in picker; credentials never leave main."
+    },
+    "market:staff:save": {
+      "auth": "roles:manager"
+    },
+    "market:support:download": {
+      "auth": "session"
+    },
+    "market:support:request": {
+      "auth": "session"
+    },
+    "market:support:thread": {
+      "auth": "session"
+    },
+    "market:sync:bootstrap": {
+      "auth": "roles:manager"
+    },
+    "market:sync:push": {
+      "auth": "session"
+    },
+    "market:sync:status": {
+      "auth": "none",
+      "why": "Replication status indicator."
+    },
+    "market:tenant:login": {
+      "auth": "none",
+      "why": "Is the owner-account sign-in against the control plane."
+    },
+    "market:tenant:logout": {
+      "auth": "none",
+      "why": "Signs the owner account out; can only reduce access."
+    },
+    "market:tenant:status": {
+      "auth": "none",
+      "why": "Whether an owner account is signed in, before staff sign-in."
+    },
+    "market:terminal:pay": {
+      "auth": "session"
+    },
+    "market:update:check": {
+      "auth": "roles:manager"
+    },
+    "market:update:install": {
+      "auth": "roles:manager"
+    },
+    "market:update:status": {
+      "auth": "none",
+      "why": "Update progress indicator."
+    }
+  }
+}

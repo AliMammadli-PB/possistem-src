@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /restoranpos
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      electron:
+        patterns: [electron, electron-builder, electron-updater]
+  - package-ecosystem: npm
+    directory: /marketpos
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

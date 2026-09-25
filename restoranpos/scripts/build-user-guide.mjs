@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE = path.join(ROOT, 'docs/istifade-telimati.html');

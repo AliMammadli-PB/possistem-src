@@ -52,6 +52,8 @@ public:
      *
      * Accepts either an already-privileged session or a supplied manager PIN.
      * Every successful override is written to the audit log with the approver.
+     * Five wrong PINs lock approvals for 30 s, doubling per lock up to 15 min;
+     * an account still on its shipped default PIN never approves.
      */
     std::string requireManagerApproval(std::string_view permission, const std::string& managerPin,
                                        std::string_view action);
@@ -83,6 +85,9 @@ private:
     ipc::StdioServer& server_;
     db::Database& database_;
     Session session_;
+    int approvalFailures_ = 0;
+    Timestamp approvalLockedUntil_ = 0;
+    Timestamp approvalLockMs_ = 30'000;
 };
 
 using ContextPtr = std::shared_ptr<Context>;

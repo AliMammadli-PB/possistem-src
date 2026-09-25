@@ -1,5 +1,5 @@
 /** Isolated component integration checks using the shipped renderer and deterministic IPC fixtures. */
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';

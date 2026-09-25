@@ -1,8 +1,8 @@
 appId: com.cyberplus.maisonaurelia.pos
 productName: possistem
 executableName: possistem
-copyright: Copyright © CyberPlus
-electronVersion: 43.2.0
+copyright: Copyright © 2026 Ali Mammadli / possistem
+electronVersion: 43.7.5
 directories:
   # Versioned dir avoids EBUSY when release/win-unpacked is locked by a running app.
   output: release-1.7.8
@@ -44,7 +44,7 @@ electronFuses:
   enableCookieEncryption: true
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
-  enableEmbeddedAsarIntegrityValidation: false
+  enableEmbeddedAsarIntegrityValidation: true
   onlyLoadAppFromAsar: true
   grantFileProtocolExtraPrivileges: false
 compression: maximum

@@ -14,7 +14,7 @@ function PsAdminFrame({ children }) {
   const { t } = useI18n();
   const { pathname, search } = useLocation();
   const pages = {'/settings':t.nav.settings,'/admin/catalog':t.nav.catalog,'/admin/staff':t.nav.staff,'/admin/tables':t.nav.adminTables,'/admin/reports':t.nav.reports,'/admin/cash':t.nav.cash,'/admin/backup':psAdminText('Ehtiyat nüsxə','Yedekleme','Backup'),'/admin/gifts':t.nav.gifts,'/dashboard':t.nav.dashboard,'/reconcile':t.nav.reconcile,'/audit':t.nav.audit,'/diagnostics':t.nav.diagnostics,'/settings/license':t.nav.license,'/support':t.nav.support};
-  const ops = {stock:['Anbar','Stok','Inventory'],suppliers:['Təchizat','Tedarik','Purchasing'],vendors:['Təchizatçılar','Tedarikçiler','Suppliers'],guests:['Müştərilər','Müşteriler','Customers'],reservations:['Rezervasiya','Rezervasyon','Reservations'],delivery:['Çatdırılma','Teslimat','Delivery'],roster:['İş qrafiki','Çalışma takvimi','Schedule'],export:['İxrac','Dışa aktar','Export']};
+  const ops = {stock:['Anbar','Stok','Inventory'],suppliers:['Təchizat','Tedarik','Purchasing'],costing:['Kalkulyasiya','Maliyet','Costing'],vendors:['Təchizatçılar','Tedarikçiler','Suppliers'],guests:['Müştərilər','Müşteriler','Customers'],reservations:['Rezervasiya','Rezervasyon','Reservations'],delivery:['Çatdırılma','Teslimat','Delivery'],roster:['İş qrafiki','Çalışma takvimi','Schedule'],export:['İxrac','Dışa aktar','Export']};
   const title = pathname === '/operations' ? psAdminText(...(ops[new URLSearchParams(search).get('tab')] || ops.stock)) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
   return <div className="ps-admin-workspace" data-page={pathname}>
@@ -96,6 +96,7 @@ function PsAdminDialog({children, onClose, busy = false, title}) {
 function psOpsSubtitle(id) {
   const copy = {
     stock: ['Stok qalığını izləyin, məhsul əlavə edin və hərəkətləri idarə edin.','Stokları takip edin, ürün ekleyin ve hareketleri yönetin.','Track stock, add products and manage adjustments.'],
+    costing: ['Yeməyin tərkibini yazın — maya və qazanc avtomatik hesablanır.','Yemeğin içeriğini yazın — maliyet otomatik hesaplanır.','Write what is in the dish — cost is calculated automatically.'],
     suppliers: ['Alış sifarişlərini hazırlayın və gələn malları qəbul edin.','Satın alma siparişlerini hazırlayın ve ürünleri teslim alın.','Prepare purchase orders and receive incoming goods.'],
     vendors: ['Təchizatçıları və hesablaşmaları bir yerdə izləyin.','Tedarikçileri ve hesaplarını tek yerden takip edin.','Keep supplier details and accounts together.'],
     guests: ['Müştəri məlumatları, borclar və loyallıq balansları.','Müşteri bilgileri, borçlar ve sadakat bakiyeleri.','Customer details, credit and loyalty balances.'],

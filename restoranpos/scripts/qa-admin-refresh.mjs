@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';

@@ -1,6 +1,8 @@
 const dgram = require('node:dgram');
 const http = require('node:http');
 const { createPrivateKey, createPublicKey, randomBytes, sign, verify } = require('node:crypto');
+const lanCrypto = require('./lan-crypto.cjs');
+const { verifySignedCommand } = require('./command-auth.cjs');
 
 const MULTICAST_ADDRESS = '239.255.43.17';
 const DISCOVERY_PORT = 43170;
@@ -27,6 +29,7 @@ class MarketSyncService {
     this.rewriteEvents = opts.rewriteEvents;
     this.hydrateImages = opts.hydrateImages;
     this.peers = new Map();
+    this.seenCommands = new Set();
     this.serverVector = {};
     this.timer = null;
     this.udp = null;
@@ -156,6 +159,9 @@ class MarketSyncService {
         if (Math.abs(Date.now() - Number(document.ts)) > 15000 || !this.verifyDocument(document, signature, document.publicKey) ||
             !this.verifyLicenseProof(document.licenseProof, state, document.deviceId, document.publicKey)) return;
         const known = this.peers.get(document.deviceId);
+        // The encryption key is part of the signed beacon, so it cannot be
+        // swapped or stripped without breaking the signature.
+        const encKey = typeof document.encKey === 'string' && /^[0-9a-f]{64}$/i.test(document.encKey) ? document.encKey : null;
         // Beacons are signed but replayable inside the 15s window. Requiring a
         // strictly newer timestamp stops a captured beacon from being replayed
         // from another host to redirect this peer's next event batch.
@@ -164,6 +170,7 @@ class MarketSyncService {
           host: info.address,
           port: document.port,
           publicKey: document.publicKey,
+          encKey,
           // Keep the cursor we already have for this peer; rebuilding it on every
           // beacon re-sends the whole backlog every cycle.
           vector: known?.vector || {},
@@ -182,6 +189,7 @@ class MarketSyncService {
     if (!this.udp || !this.httpPort) return;
     if (!state.activation.licenseProof) return;
     const document = { v: 1, customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, port: this.httpPort, ts: Date.now(), publicKey: state.deviceProof.publicKeyHex, licenseProof: state.activation.licenseProof };
+    if (state.deviceProof.encPublicKeyHex) document.encKey = state.deviceProof.encPublicKeyHex;
     const packet = Buffer.from(JSON.stringify({ ...document, signature: this.signDocument(document, state) }));
     this.udp.send(packet, DISCOVERY_PORT, MULTICAST_ADDRESS, () => undefined);
   }
@@ -192,31 +200,52 @@ class MarketSyncService {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   }
 
+  /**
+   * Verifies a signed peer document, applies its events and returns this till's
+   * signed answer. Returns null when the peer's proof fails.
+   */
+  async exchangeDocument(body, state) {
+    const { signature, publicKey, ...document } = body || {};
+    if (!state || document.customerId !== state.activation.customerId || Math.abs(Date.now() - Number(document.signedAt)) > 300000 || !this.verifyDocument(document, signature, publicKey) ||
+        !this.verifyLicenseProof(document.licenseProof, state, document.deviceId, publicKey)) return null;
+    await this.call('sync.apply', { events: document.events || [] });
+    this.queueHydrate();
+    const outgoing = await this.call('sync.export', { vector: document.vector || {} });
+    const responseDoc = { customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, signedAt: Date.now(), vector: outgoing.vector, events: this.outgoingEvents(outgoing.events), licenseProof: state.activation.licenseProof };
+    return { ...responseDoc, publicKey: state.deviceProof.publicKeyHex, signature: this.signDocument(responseDoc, state) };
+  }
+
   async handleHttp(req, res) {
     try {
-      if (req.method !== 'POST' || req.url !== '/v1/exchange') { res.writeHead(404).end(); return; }
-      const body = await this.readJson(req);
-      const { signature, publicKey, ...document } = body;
+      const sealed = req.url === '/v2/exchange';
+      // /v1 is the plaintext exchange of tills that predate LAN encryption; it
+      // goes away once every till in the field announces an encryption key.
+      if (req.method !== 'POST' || (!sealed && req.url !== '/v1/exchange')) { res.writeHead(404).end(); return; }
       const state = this.activatedState();
-      if (!state || document.customerId !== state.activation.customerId || Math.abs(Date.now() - Number(document.signedAt)) > 300000 || !this.verifyDocument(document, signature, publicKey) ||
-          !this.verifyLicenseProof(document.licenseProof, state, document.deviceId, publicKey)) {
-        res.writeHead(401).end(JSON.stringify({ error: 'peer proof failed' })); return;
+      const raw = await this.readJson(req);
+      let body = raw;
+      let responseKey = null;
+      if (sealed) {
+        if (!state?.deviceProof?.encPrivateKeyPkcs8) { res.writeHead(404).end(); return; }
+        ({ value: body, responseKey } = lanCrypto.openRequest(raw, state.deviceProof.encPrivateKeyPkcs8, state.deviceProof.encPublicKeyHex));
       }
-      await this.call('sync.apply', { events: document.events || [] });
-      this.queueHydrate();
-      const outgoing = await this.call('sync.export', { vector: document.vector || {} });
-      const responseDoc = { customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, signedAt: Date.now(), vector: outgoing.vector, events: this.outgoingEvents(outgoing.events), licenseProof: state.activation.licenseProof };
+      const answer = await this.exchangeDocument(body, state);
+      if (!answer) { res.writeHead(401).end(JSON.stringify({ error: 'peer proof failed' })); return; }
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ...responseDoc, publicKey: state.deviceProof.publicKeyHex, signature: this.signDocument(responseDoc, state) }));
+      res.end(JSON.stringify(sealed ? lanCrypto.sealResponse(answer, responseKey) : answer));
     } catch (error) { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: error.message || String(error) })); }
   }
 
   async exchangePeer(peer, state) {
     const local = await this.call('sync.export', { vector: peer.vector || {} });
     const document = { customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, signedAt: Date.now(), vector: local.vector, events: this.outgoingEvents(local.events), licenseProof: state.activation.licenseProof };
-    const response = await fetch(`http://${peer.host}:${peer.port}/v1/exchange`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...document, publicKey: state.deviceProof.publicKeyHex, signature: this.signDocument(document, state) }), signal: AbortSignal.timeout(1500) });
+    const signed = { ...document, publicKey: state.deviceProof.publicKeyHex, signature: this.signDocument(document, state) };
+    // Sealed whenever the peer announced an encryption key; plaintext /v1 only
+    // for a peer too old to have one.
+    const sealed = peer.encKey ? lanCrypto.sealRequest(signed, peer.encKey) : null;
+    const response = await fetch(`http://${peer.host}:${peer.port}/${sealed ? 'v2' : 'v1'}/exchange`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sealed ? sealed.envelope : signed), signal: AbortSignal.timeout(1500) });
     if (!response.ok) throw new Error(`LAN ${response.status}`);
-    const body = await response.json();
+    const body = sealed ? lanCrypto.openResponse(await response.json(), sealed.responseKey) : await response.json();
     const { signature, publicKey, ...responseDoc } = body;
     if (responseDoc.customerId !== state.activation.customerId || !this.verifyDocument(responseDoc, signature, publicKey) ||
         !this.verifyLicenseProof(responseDoc.licenseProof, state, responseDoc.deviceId, publicKey)) throw new Error('LAN response proof failed');
@@ -273,7 +302,20 @@ class MarketSyncService {
     let snapshot = null;
     try { snapshot = await this.call('state.get'); } catch { snapshot = null; }
     const registerId = snapshot?.settings?.deviceRegisterId || snapshot?.settings?.defaultRegisterId;
-    for (const command of commands) {
+    for (const received of commands) {
+      // Only the control plane's signed copy runs - see command-auth.cjs.
+      const verified = verifySignedCommand(received, {
+        publicKeyHex: state.pinnedLicenseKey?.publicKeyHex,
+        deviceId: state.activation.serverDeviceId,
+        customerId: state.activation.customerId,
+        seen: this.seenCommands,
+      });
+      if (!verified.ok) {
+        console.warn('[market-sync] command refused', received?.id, verified.reason);
+        if (received?.id) await this.reportCommand(state, received.id, 'failed', null, `Əmr imzası etibarsızdır (${verified.reason})`).catch(() => undefined);
+        continue;
+      }
+      const command = verified.command;
       try {
         if (!registerId) throw new Error('Kassa tapılmadı');
         let report;

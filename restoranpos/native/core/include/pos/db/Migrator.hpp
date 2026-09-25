@@ -11,6 +11,13 @@ class Database;
 /** Reports migration/seed progress so the splash screen can show real stages. */
 using ProgressFn = std::function<void(const std::string& key, const std::string& message, int progress)>;
 
+/**
+ * True when `pinHash` still verifies against the PIN this build seeds for
+ * `userId`. That PIN is public (it ships in the source), so such an account must
+ * pick a new PIN before signing in and can never approve anything.
+ */
+bool isShippedDefaultPin(const std::string& userId, const std::string& pinHash);
+
 /** True only when an existing schema will advance to a newer version. */
 bool shouldBackupBeforeMigration(int currentVersion, int targetVersion) noexcept;
 

@@ -63,6 +63,11 @@ test.describe('POS acceptance', () => {
       for (const digit of '9001') {
         await page.getByRole('button', { name: digit, exact: true }).click();
       }
+      // The shipped PIN is public: a fresh till asks for a new one, twice.
+      await expect(page.getByText(/Yeni 4 rəqəmli PIN/)).toBeVisible({ timeout: 15_000 });
+      for (const digit of '4826') await page.getByRole('button', { name: digit, exact: true }).click();
+      await expect(page.getByText(/təkrar daxil edin/)).toBeVisible({ timeout: 15_000 });
+      for (const digit of '4826') await page.getByRole('button', { name: digit, exact: true }).click();
 
       // Floor plan or kitchen home depending on role — administrator lands on tables.
       await expect(page.getByText(/Masa|Floor|Salon/i).first()).toBeVisible({ timeout: 30_000 });

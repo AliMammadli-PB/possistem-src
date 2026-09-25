@@ -3,7 +3,7 @@
  * Full Windows packaging pipeline:
  *   1. Release C++ core
  *   2. Verify restaurant-pos-core.exe
- *   3. Typecheck + electron-vite production build
+ *   3. Typecheck + assemble out/ (scripts/assemble-restaurant.mjs, fail-closed)
  *   4. electron-builder NSIS
  *   5. Verify installer
  *
@@ -96,7 +96,7 @@ const coreSize = fs.statSync(CORE_EXE).size;
 if (coreSize < 100_000) fail(`C++ executable too small (${coreSize} bytes)`);
 log(`core ok: ${CORE_EXE} (${(coreSize / (1024 * 1024)).toFixed(2)} MB)`);
 
-runNpm('build:desktop (electron-vite)', ['run', 'build:desktop']);
+runNpm('build:desktop (assemble out/)', ['run', 'build:desktop']);
 
 const mainJs = path.join(ROOT, 'out', 'main', 'index.js');
 const preloadJs = path.join(ROOT, 'out', 'preload', 'index.js');

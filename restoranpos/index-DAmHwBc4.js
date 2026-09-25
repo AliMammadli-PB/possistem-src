@@ -14913,7 +14913,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "25.09 06:48";
+const _PS_BUILD = "1.7.8 · baa247a";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -20346,17 +20346,39 @@ function LoginPage() {
       setUsers(data.users ?? []);
     });
   }, []);
+  const [pinChange, setPinChange] = reactExports.useState(null); /* POS_DEFAULT_PIN_v1 */
   const submit = reactExports.useCallback(async () => {
     if (pin.length < 4 || busy || submittingRef.current) return;
+    if (pinChange && !pinChange.first) {
+      setPinChange({ old: pinChange.old, first: pin });
+      setPin("");
+      setPinPhase("idle");
+      setError("Yeni PIN-i təkrar daxil edin");
+      return;
+    }
+    if (pinChange && pinChange.first !== pin) {
+      setPinChange({ old: pinChange.old, first: null });
+      setPin("");
+      setPinPhase("err");
+      setError("PIN-lər uyğun gəlmir. Yeni PIN-i yenidən daxil edin");
+      return;
+    }
     submittingRef.current = true;
     setBusy(true);
     setPinPhase("busy");
     setError(null);
-    const res = await window.pos.auth.login(null, pin);
+    const res = pinChange ? await window.pos.auth.login(null, pinChange.old, pin) : await window.pos.auth.login(null, pin);
     if (!res.success) {
       submittingRef.current = false;
       setBusy(false);
       setPin("");
+      if (res.error.code === "E_PIN_CHANGE_REQUIRED") {
+        setPinChange({ old: pin, first: null });
+        setPinPhase("idle");
+        setError("Standart PIN təhlükəsiz deyil. Yeni 4 rəqəmli PIN daxil edin");
+        return;
+      }
+      if (pinChange) setPinChange(res.error.code === "E_VALIDATION" ? { old: pinChange.old, first: null } : null);
       setPinPhase("err");
       if (res.error.code === "E_PIN_LOCKED") setError(t.login.locked);
       else if (res.error.code === "E_INVALID_PIN") setError(t.login.wrongPin);
@@ -20368,7 +20390,7 @@ function LoginPage() {
     await new Promise((done) => window.setTimeout(done, 420));
     setSession({ ...session, authenticated: true });
     navigate(homeRouteForRole(session), { replace: true });
-  }, [selected, pin, busy, navigate, t, setSession]);
+  }, [selected, pin, busy, navigate, t, setSession, pinChange]);
   reactExports.useEffect(() => {
     if (pin.length === 4) void submit();
   }, [pin, submit]);
@@ -20395,7 +20417,7 @@ function LoginPage() {
       if (busy) return;
       if (/^\d$/.test(event.key)) setPin((current) => current.length < 4 ? current + event.key : current);
       else if (event.key === "Backspace") setPin((current) => current.slice(0, -1));
-      else if (event.key === "Escape") { setPin(""); setError(null); setPinPhase("idle"); }
+      else if (event.key === "Escape") { setPin(""); setError(null); setPinPhase("idle"); setPinChange(null); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -24536,7 +24558,8 @@ function PsAdminDialog({ children, onClose, busy = false, title }) {
 }
 function psOpsSubtitle(id) {
   const copy = {
-    stock: ["Stok qal\u0131\u011F\u0131n\u0131 izl\u0259yin, m\u0259hsul \u0259lav\u0259 edin v\u0259 h\u0259r\u0259k\u0259tl\u0259ri idar\u0259 edin.", "Stoklar\u0131 takip edin, \xFCr\xFCn ekleyin ve hareketleri y\xF6netin.", "Track stock, add products and manage adjustments."], costing: ["Yem\u0259yin t\u0259rkibini yaz\u0131n \u2014 maya v\u0259 qazanc avtomatik hesablan\u0131r.", "Yeme\u011Fin i\xE7eri\u011Fini yaz\u0131n \u2014 maliyet otomatik hesaplan\u0131r.", "Write what is in the dish \u2014 cost is calculated automatically."],
+    stock: ["Stok qal\u0131\u011F\u0131n\u0131 izl\u0259yin, m\u0259hsul \u0259lav\u0259 edin v\u0259 h\u0259r\u0259k\u0259tl\u0259ri idar\u0259 edin.", "Stoklar\u0131 takip edin, \xFCr\xFCn ekleyin ve hareketleri y\xF6netin.", "Track stock, add products and manage adjustments."],
+    costing: ["Yem\u0259yin t\u0259rkibini yaz\u0131n \u2014 maya v\u0259 qazanc avtomatik hesablan\u0131r.", "Yeme\u011Fin i\xE7eri\u011Fini yaz\u0131n \u2014 maliyet otomatik hesaplan\u0131r.", "Write what is in the dish \u2014 cost is calculated automatically."],
     suppliers: ["Al\u0131\u015F sifari\u015Fl\u0259rini haz\u0131rlay\u0131n v\u0259 g\u0259l\u0259n mallar\u0131 q\u0259bul edin.", "Sat\u0131n alma sipari\u015Flerini haz\u0131rlay\u0131n ve \xFCr\xFCnleri teslim al\u0131n.", "Prepare purchase orders and receive incoming goods."],
     vendors: ["T\u0259chizat\xE7\u0131lar\u0131 v\u0259 hesabla\u015Fmalar\u0131 bir yerd\u0259 izl\u0259yin.", "Tedarik\xE7ileri ve hesaplar\u0131n\u0131 tek yerden takip edin.", "Keep supplier details and accounts together."],
     guests: ["M\xFC\u015Ft\u0259ri m\u0259lumatlar\u0131, borclar v\u0259 loyall\u0131q balanslar\u0131.", "M\xFC\u015Fteri bilgileri, bor\xE7lar ve sadakat bakiyeleri.", "Customer details, credit and loyalty balances."],

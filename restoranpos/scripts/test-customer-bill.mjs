@@ -87,7 +87,8 @@ try {
   const users = await call('auth.listUsers');
   const admin = users.users.find((user) => user.code === '9001');
   if (!admin) throw new Error('administrator 9001 missing');
-  await call('auth.login', { userId: admin.id, pin: '9001' });
+  // 9001 ships in the source, so a fresh till makes it pick a new PIN first.
+  await call('auth.login', { userId: admin.id, pin: '9001', newPin: '4826' });
   await call('settings.set', { key: 'printer.receipt', value: 'virtual' });
 
   const order = await call(

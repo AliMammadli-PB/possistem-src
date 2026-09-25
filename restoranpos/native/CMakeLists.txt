@@ -92,8 +92,6 @@ target_include_directories(pos_core_lib PRIVATE ${TP}/qrcodegen)
 target_include_directories(pos_core_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 target_link_libraries(pos_core_lib PUBLIC tp_sqlite3 tp_json tp_spdlog)
 target_compile_options(pos_core_lib PRIVATE ${POS_WARNING_FLAGS})
-target_compile_options(pos_core_lib PRIVATE ${POS_WARNING_FLAGS})
-target_compile_options(pos_core_lib PRIVATE ${POS_WARNING_FLAGS})
 
 if(WIN32)
     # bcrypt provides BCryptDeriveKeyPBKDF2 for PIN hashing and BCryptGenRandom

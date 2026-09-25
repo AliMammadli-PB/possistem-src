@@ -136,6 +136,10 @@
       "retryable": false,
       "message": "Account locked after too many failed attempts"
     },
+    "E_PIN_CHANGE_REQUIRED": {
+      "retryable": false,
+      "message": "The default PIN must be changed before signing in"
+    },
     "E_MANAGER_APPROVAL_REQUIRED": {
       "retryable": false,
       "message": "This action requires manager approval"

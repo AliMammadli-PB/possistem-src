@@ -31,6 +31,11 @@ const configIndex = args.indexOf('--config');
 const CONFIG = configIndex >= 0 ? (args[configIndex + 1] ?? 'Release') : 'Release';
 const CLEAN = args.includes('--clean');
 
+{
+  const { verifyThirdParty } = await import('./verify-third-party.mjs');
+  const tampered = verifyThirdParty();
+  if (tampered.length > 0) fail(`vendored dependencies do not match SHA256SUMS: ${tampered.join(', ')}`);
+}
 if (!fs.existsSync(path.join(MARKET_NATIVE, 'third_party', 'sqlite'))) {
   fail('marketpos/native/third_party missing — symlink to ../../restoranpos/native/third_party');
 }

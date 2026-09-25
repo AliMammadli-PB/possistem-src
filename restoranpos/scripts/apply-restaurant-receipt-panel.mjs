@@ -134,6 +134,6 @@ if(!source.includes(mark)){
 const cssPath=path.join(root,'possistem-system.css');
 let css=fs.readFileSync(cssPath,'utf8');
 const cssStart='/* POS_RECEIPT_PANEL_CSS_START */',cssEnd='/* POS_RECEIPT_PANEL_CSS_END */';
-if(css.includes(cssStart)){const a=css.indexOf(cssStart),b=css.indexOf(cssEnd,a);if(b<0)throw Error('Receipt CSS end missing');css=css.slice(0,a)+css.slice(b+cssEnd.length);}
+if(css.includes(cssStart)){const a=css.indexOf(cssStart),b=css.indexOf(cssEnd,a);if(b<0)throw Error('Receipt CSS end missing');css=css.slice(0,a).replace(/\n+$/,'\n')+css.slice(b+cssEnd.length).replace(/^\n+/,'');}
 css=css.trimEnd()+'\n'+cssStart+'\n'+fs.readFileSync(path.join(root,'scripts/admin-ui/receipt-settings-panel.css'),'utf8')+'\n'+cssEnd+'\n';
 fs.writeFileSync(cssPath,css);

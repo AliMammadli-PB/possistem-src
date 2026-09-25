@@ -4,7 +4,7 @@ import path from 'node:path';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
-import {chromium} from 'playwright';
+import {chromium} from '@playwright/test';
 import sharp from 'sharp';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');

@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { mkdir, readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 
 const dist = resolve('market-pos/dist');
 const outputDir = resolve(process.argv[2] || 'market-pos/release/visual-qa');

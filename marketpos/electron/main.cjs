@@ -1,5 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, safeStorage, screen, session, shell } = require('electron');
-const { createCipheriv, createDecipheriv, createHash, createPrivateKey, createPublicKey, generateKeyPairSync, pbkdf2Sync, randomBytes, scryptSync, sign: signPayload, timingSafeEqual, verify: verifySignature } = require('node:crypto');
+const { createCipheriv, createDecipheriv, createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, scryptSync, sign: signPayload, verify: verifySignature } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } = require('node:fs');
 const { hostname } = require('node:os');
@@ -13,8 +13,18 @@ const MARKET_INSTALLATION_ID = 'market-pos';
 /** Must match Restaurant POS owner bind salt (`Zt("tenant-bind")`). */
 const RESTAURANT_TENANT_BIND_ID = 'tenant-bind';
 const SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
-/** Optional pin for the control plane's licence signing key, e.g. "ed25519-42cd45bfa4ca3125". */
-const EXPECTED_LICENSE_KEY_ID = String(process.env.MARKET_POS_EXPECTED_KEY_ID || '').trim();
+/**
+ * Licence signing keys this build trusts. A response signed by any other key is
+ * rejected, including on first activation. Rotation: ship a build that lists the
+ * new key id first, then switch the control plane. MARKET_POS_EXPECTED_KEY_ID
+ * (comma-separated) replaces the list for a private/staging control plane.
+ */
+const TRUSTED_LICENSE_KEY_IDS = new Set(
+  String(process.env.MARKET_POS_EXPECTED_KEY_ID || 'ed25519-42cd45bfa4ca3125')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean),
+);
 
 function isBlockedControlHost(hostnameValue) {
   const host = String(hostnameValue || '').toLowerCase();
@@ -123,46 +133,36 @@ const { CoreSupervisor } = require('./core-supervisor.cjs');
 const { MarketSyncService } = require('./sync-service.cjs');
 const { cacheCatalogImages, rewriteSyncEvents } = require('./catalog-images.cjs');
 const { authorizeCorePayload } = require('./core-payload.cjs');
-const { createPrinterProvider, buildXzReportEscPos } = require('./hardware/printer');
+const { buildXzReportEscPos } = require('./hardware/printer');
 const coreSupervisor = new CoreSupervisor();
 let syncService = null;
 let printerProvider = null;
 
-const DEFAULT_STAFF = [
-  { id: 'u-manager', name: 'MarketPos Müdir', role: 'manager', active: true, registerIds: ['reg-1', 'reg-2', 'reg-3'], warehouseIds: ['wh-main', 'wh-cold', 'wh-sales'], salt: '687f8fbf095f402c0f82586d918206a0', pinHash: '1f5488722c7051e86a233f77e18f5a03bc60264c78d6cf18fc47236ab8f44981' },
-  { id: 'u-head', name: 'MarketPos Baş kassir', role: 'head_cashier', active: true, registerIds: ['reg-1', 'reg-2', 'reg-3'], warehouseIds: ['wh-sales'], salt: 'b1d14ca3484fbedd1d01f981f54f4c74', pinHash: '6c166257c084772d8bd291a4826991f1353e9da2b6bc5082f211a4f0047ca3d8' },
-  { id: 'u-cashier', name: 'MarketPos Kassir', role: 'cashier', active: true, registerIds: ['reg-2'], warehouseIds: ['wh-sales'], salt: 'fe5892f2cb48f1621663fedd138bc8ab', pinHash: '961af08c2dfe98fd30598492d03ae37f22aab332fa7481eca91cbf83adfee452' },
-  { id: 'u-warehouse', name: 'MarketPos Anbar', role: 'warehouse', active: true, registerIds: [], warehouseIds: ['wh-main', 'wh-cold', 'wh-sales'], salt: '42e27db11f3ca2ef0c5a8bad872201b7', pinHash: '72dc9539944ef364c217a072f5daac8611aaec82942f9dc6ba933dbf990a5ff2' },
-];
+const {
+  DEFAULT_STAFF,
+  pinIsShippedDefault,
+  newPinCredential,
+  assertAcceptablePin,
+  publicStaff,
+  createAttemptLimiter,
+  verifyManagerPin: verifyManagerPinAgainst,
+  createSessionStore,
+  resolveSessionUser,
+  pinMatches,
+} = require('./staff-auth.cjs');
+const { registerHardwareIpc } = require('./hardware-ipc.cjs');
+const { createEncryptionKey } = require('./lan-crypto.cjs');
 const LEGACY_STAFF_NAMES = { 'Aysel Məmmədova': 'MarketPos Müdir', 'Murad Əliyev': 'MarketPos Baş kassir', 'Nigar Kərimova': 'MarketPos Kassir', 'Elvin Qasımov': 'MarketPos Anbar' };
 
 let mainWindow = null;
 let updateStatus = { state: 'idle' };
 let autoUpdater = null;
-const authSessions = new Map();
-/** In-memory validity window, re-armed on each launch from the stored session. */
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-const failedLogins = new Map();
+const authSessions = createSessionStore();
+const loginLimiter = createAttemptLimiter();
+const approvalLimiter = createAttemptLimiter();
 
 function userDataFile(name) { return path.join(app.getPath('userData'), name); }
 function ensureUserData() { mkdirSync(app.getPath('userData'), { recursive: true }); }
-/**
- * The shipped staff rows carry a fixed salt+hash, so their PINs are published
- * in this source file and identical on every install (the manager PIN is
- * recoverable with a trivial PBKDF2 sweep). Comparing the stored credential
- * pair against the shipped one detects "still the factory PIN" without needing
- * to know the PIN itself.
- */
-const DEFAULT_PIN_FINGERPRINTS = new Set(DEFAULT_STAFF.map((u) => `${u.salt}:${u.pinHash}`));
-
-function pinIsShippedDefault(user) {
-  return Boolean(user) && DEFAULT_PIN_FINGERPRINTS.has(`${user.salt}:${user.pinHash}`);
-}
-
-function publicStaff(user) {
-  const { salt, pinHash, ...profile } = user;
-  return { ...profile, mustChangePin: pinIsShippedDefault(user) };
-}
 
 function createDeviceProof() {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
@@ -171,6 +171,8 @@ function createDeviceProof() {
   return {
     publicKeyHex: Buffer.from(publicDer).subarray(-32).toString('hex'),
     privateKeyPkcs8: Buffer.from(privateDer).toString('base64'),
+    // X25519 key for sealing LAN replication (see lan-crypto.cjs).
+    ...createEncryptionKey(),
   };
 }
 
@@ -250,13 +252,33 @@ function normalizeActivation(state) {
   return dirty;
 }
 
+/**
+ * The secure state holds the device's private key, the tenant token and staff
+ * PIN hashes. A packaged Windows build (DPAPI is always there) never writes it
+ * in the clear; MARKET_POS_REQUIRE_SECURE_STORAGE=1 enforces that elsewhere.
+ */
+function secureStorageRequired() {
+  return (app.isPackaged && process.platform === 'win32') || process.env.MARKET_POS_REQUIRE_SECURE_STORAGE === '1';
+}
+
 function loadSecureState() {
   ensureUserData();
   const file = userDataFile('market-secure-state.json');
   if (!existsSync(file)) { const initial = defaultSecureState(); saveSecureState(initial); return initial; }
+  let envelope;
   try {
-    const envelope = JSON.parse(readFileSync(file, 'utf8'));
-    const json = envelope.encrypted && safeStorage.isEncryptionAvailable()
+    envelope = JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    envelope = null;
+  }
+  // Encrypted state that cannot be decrypted right now is not damaged: resetting
+  // it would throw away the activation and every staff PIN.
+  if (envelope?.encrypted && !safeStorage.isEncryptionAvailable()) {
+    throw new Error('Təhlükəsiz yaddaş (OS keyring) əlçatan deyil — məlumatlar oxunmadı');
+  }
+  try {
+    if (!envelope) throw new Error('unreadable');
+    const json = envelope.encrypted
       ? safeStorage.decryptString(Buffer.from(envelope.data, 'base64'))
       : Buffer.from(envelope.data, 'base64').toString('utf8');
     const parsed = JSON.parse(json);
@@ -264,6 +286,11 @@ function loadSecureState() {
     let dirty = false;
     if (!parsed.deviceProof?.publicKeyHex || !parsed.deviceProof?.privateKeyPkcs8) {
       parsed.deviceProof = createDeviceProof();
+      dirty = true;
+    } else if (!parsed.deviceProof.encPublicKeyHex || !parsed.deviceProof.encPrivateKeyPkcs8) {
+      // Tills activated before LAN encryption keep their signing key (the licence
+      // is bound to it) and only gain the encryption key.
+      parsed.deviceProof = { ...parsed.deviceProof, ...createEncryptionKey() };
       dirty = true;
     }
     const renamed = parsed.staff.some((user) => LEGACY_STAFF_NAMES[user.name]);
@@ -278,6 +305,8 @@ function loadSecureState() {
     if (dirty) saveSecureState(parsed);
     return parsed;
   } catch {
+    // Damaged beyond reading: keep the file for support, then start clean.
+    try { renameSync(file, `${file}.corrupt-${Date.now()}`); } catch { /* keep going */ }
     const recovered = defaultSecureState();
     saveSecureState(recovered);
     return recovered;
@@ -290,6 +319,9 @@ function saveSecureState(state) {
   const temp = `${file}.tmp`;
   const json = JSON.stringify(state);
   const encrypted = safeStorage.isEncryptionAvailable();
+  if (!encrypted && secureStorageRequired()) {
+    throw new Error('Təhlükəsiz yaddaş (OS keyring) əlçatan deyil — məlumat açıq mətnlə yazılmadı');
+  }
   const data = encrypted ? safeStorage.encryptString(json) : Buffer.from(json, 'utf8');
   writeFileSync(temp, JSON.stringify({ version: 1, encrypted, data: data.toString('base64') }), { encoding: 'utf8', mode: 0o600 });
   renameSync(temp, file);
@@ -354,50 +386,23 @@ function assertTrusted(event) {
 }
 
 /**
- * Matches a manager's PIN against the staff store.
- *
- * This is the only thing that may produce an `approverId`: the core treats that
- * field as proof a manager approved an action, and the renderer cannot set it.
- *
- * The demo PINs that used to be accepted here (2468 / 1357) worked on every
- * install we ever shipped, which made every manager override forgeable by
- * anyone who had seen the README. They now apply only to a till whose staff
- * store holds no manager PIN at all - a fresh install that nobody has set up
- * yet - so a configured venue cannot be opened with them.
+ * A manager's PIN checked against the staff store - the only thing that may
+ * produce an `approverId`. Throttled, and never satisfied by a published PIN.
  */
 function verifyManagerPin(pin) {
-  const state = loadSecureState();
-  const managers = state.staff.filter(
-    (row) => row.active && (row.role === 'manager' || row.role === 'head_cashier'),
-  );
-
-  for (const user of managers) {
-    const actual = pbkdf2Sync(pin, user?.salt || '00000000000000000000000000000000', 120000, 32, 'sha256');
-    const expected = Buffer.from(user.pinHash || '', 'hex');
-    if (expected.length === actual.length && timingSafeEqual(actual, expected)) {
-      return { ok: true, approverId: user.id, role: user.role, name: user.name };
-    }
-  }
-
-  const provisioned = managers.some((row) => String(row.pinHash || '').length > 0);
-  if (!provisioned) {
-    if (pin === '2468') return { ok: true, approverId: 'u-manager', role: 'manager', name: 'MarketPos Müdir' };
-    if (pin === '1357') return { ok: true, approverId: 'u-head', role: 'head_cashier', name: 'MarketPos Baş kassir' };
-  }
-  return { ok: false };
+  return verifyManagerPinAgainst(loadSecureState().staff, String(pin || ''), approvalLimiter);
 }
 
 /** The operator signed in at this till, or '' when nobody is. */
 let currentSessionToken = '';
 
-function requireSession(token, roles) {
-  const sessionInfo = authSessions.get(String(token || ''));
-  if (!sessionInfo || sessionInfo.expiresAt < Date.now()) throw new Error('Sessiya bitib');
-  const state = loadSecureState();
-  const user = state.staff.find((row) => row.id === sessionInfo.userId && row.active);
-  if (!user) throw new Error('İstifadəçi aktiv deyil');
-  if (roles && !roles.includes(user.role)) throw new Error('Buna icazəniz yoxdur');
-  return user;
+/**
+ * The staff row behind a session token. Refuses an account still on a published
+ * PIN (E_PIN_CHANGE_REQUIRED) unless `allowDefaultPin` - only the PIN-change
+ * flow passes that.
+ */
+function requireSession(token, roles, options = {}) {
+  return resolveSessionUser(authSessions, loadSecureState().staff, token, { roles, ...options });
 }
 
 async function requireCorePermission(token, permission) {
@@ -761,10 +766,7 @@ function verifyOnlineLicense(body, state) {
   if (!key || key.algorithm !== 'Ed25519' || !envelope?.payload || !/^[0-9a-f]{128}$/i.test(envelope.signature || '') || !/^[0-9a-f]{64}$/i.test(key.publicKeyHex || '')) throw new Error('Aktivasiya cavabının imzası etibarsızdır');
   const keyId = `ed25519-${createHash('sha256').update(Buffer.from(key.publicKeyHex, 'hex')).digest('hex').slice(0, 16)}`;
   if (key.keyId !== keyId || envelope.keyId !== keyId) throw new Error('Aktivasiya açarının kimliyi uyğun deyil');
-  // Optional build-time pin. Without it the first activation trusts whatever key
-  // the response carries; with it a substituted key is rejected outright. Left
-  // unset so the control plane can still rotate keys.
-  if (EXPECTED_LICENSE_KEY_ID && EXPECTED_LICENSE_KEY_ID !== keyId) throw new Error('Lisenziya imza açarı gözlənilən açarla uyğun deyil');
+  if (!TRUSTED_LICENSE_KEY_IDS.has(keyId)) throw new Error('Lisenziya imza açarı gözlənilən açarla uyğun deyil');
   if (state.pinnedLicenseKey && state.pinnedLicenseKey.keyId !== keyId) throw new Error('Lisenziya imza açarı gözlənilmədən dəyişib');
   const publicKey = createPublicKey({ key: Buffer.concat([SPKI_PREFIX, Buffer.from(key.publicKeyHex, 'hex')]), format: 'der', type: 'spki' });
   const valid = verifySignature(null, Buffer.from(JSON.stringify(envelope.payload)), publicKey, Buffer.from(envelope.signature, 'hex'));
@@ -855,32 +857,28 @@ function registerIpc() {
     if (!licenseAllowsStaffLogin(state.activation)) throw new Error('Cihaz aktivləşdirilməyib');
     const userId = String(input?.userId || '');
     const pin = String(input?.pin || '');
-    const attempt = failedLogins.get(userId) || { count: 0, lockedUntil: 0 };
-    if (attempt.lockedUntil > Date.now()) throw new Error('Çox sayda səhv cəhd. 30 saniyə gözləyin.');
+    loginLimiter.assertOpen(userId);
     const user = state.staff.find((row) => row.id === userId && row.active);
-    const expected = user ? Buffer.from(user.pinHash, 'hex') : Buffer.alloc(32);
-    const actual = pbkdf2Sync(pin, user?.salt || '00000000000000000000000000000000', 120000, 32, 'sha256');
-    if (!user || !timingSafeEqual(actual, expected)) {
-      const count = attempt.count + 1;
-      failedLogins.set(userId, { count: count >= 5 ? 0 : count, lockedUntil: count >= 5 ? Date.now() + 30000 : 0 });
+    if (!user || !pinMatches(user, pin)) {
+      loginLimiter.fail(userId);
       throw new Error('Giriş kodu yanlışdır');
     }
-    failedLogins.delete(userId);
-    const sessionToken = randomBytes(32).toString('hex');
-    authSessions.set(sessionToken, { userId, expiresAt: Date.now() + SESSION_TTL_MS });
+    loginLimiter.succeed(userId);
+    const issued = authSessions.issue(userId);
     // Remembered so core calls can be attributed without every renderer call
     // site having to carry the token: one till, one signed-in operator.
-    currentSessionToken = sessionToken;
-    // Persisted so closing and reopening the app does not ask for the PIN again.
-    // Only an explicit logout ends a shift — a cashier restarting the till (or a
-    // machine rebooting mid-shift) should come straight back to the sale screen.
-    state.staffSession = { token: sessionToken, userId };
+    currentSessionToken = issued.token;
+    // Persisted so a restart does not ask for the PIN again - within the
+    // session's absolute cap, which counts from this sign-in.
+    state.staffSession = issued;
     saveSecureState(state);
-    return { ...publicStaff(user), sessionToken };
+    // An account still on a published PIN gets a session that can do exactly one
+    // thing: market:auth:changePin (the renderer shows that screen first).
+    return { ...publicStaff(user), sessionToken: issued.token };
   });
   ipcMain.handle('market:auth:logout', (event, token) => {
     assertTrusted(event);
-    authSessions.delete(String(token));
+    authSessions.revoke(String(token));
     if (currentSessionToken === String(token)) currentSessionToken = '';
     // Explicit logout is the one thing that ends the persisted session.
     const state = loadSecureState();
@@ -892,10 +890,27 @@ function registerIpc() {
   });
 
   /**
+   * Sets the signed-in operator's own PIN. The one call an account on a
+   * published PIN may make; a published PIN is never accepted as the new one.
+   */
+  ipcMain.handle('market:auth:changePin', (event, input) => {
+    assertTrusted(event);
+    const user = requireSession(input?.sessionToken, undefined, { allowDefaultPin: true });
+    const pin = String(input?.newPin || '');
+    assertAcceptablePin(pin);
+    const state = loadSecureState();
+    const credential = newPinCredential(pin);
+    state.staff = state.staff.map((row) => (row.id === user.id ? { ...row, ...credential } : row));
+    saveSecureState(state);
+    return publicStaff({ ...user, ...credential });
+  });
+
+  /**
    * Restores the signed-in cashier after a restart, or null if nobody is.
    *
    * The renderer calls this before showing the PIN pad: the session lives in the
-   * encrypted secure state, so it survives an app close, a crash and a reboot.
+   * encrypted secure state, so it survives an app close, a crash and a reboot -
+   * but not its absolute cap.
    */
   ipcMain.handle('market:auth:current', (event) => {
     assertTrusted(event);
@@ -906,11 +921,14 @@ function registerIpc() {
     // bypassable just by having been logged in before.
     if (!licenseAllowsStaffLogin(state.activation)) return null;
     const user = state.staff.find((row) => row.id === stored.userId && row.active);
-    if (!user) return null;
-    // Re-arm the in-memory window on every launch so a restored session behaves
-    // exactly like a fresh login.
-    authSessions.set(stored.token, { userId: stored.userId, expiresAt: Date.now() + SESSION_TTL_MS });
-    return { ...publicStaff(user), sessionToken: stored.token };
+    const token = user ? authSessions.restore(stored) : null;
+    if (!token) {
+      state.staffSession = null;
+      saveSecureState(state);
+      return null;
+    }
+    currentSessionToken = token;
+    return { ...publicStaff(user), sessionToken: token };
   });
   ipcMain.handle('market:tenant:status', (event) => {
     assertTrusted(event);
@@ -956,7 +974,7 @@ function registerIpc() {
     const state = loadSecureState();
     state.tenant = null;
     saveSecureState(state);
-    for (const token of authSessions.keys()) authSessions.delete(token);
+    authSessions.clear();
     currentSessionToken = '';
     return { ok: true };
   });
@@ -969,9 +987,8 @@ function registerIpc() {
     if (!profile.name || !roles.includes(profile.role)) throw new Error('İşçi məlumatı düzgün deyil');
     const existing = state.staff.find((row) => row.id === profile.id);
     const pin = String(input?.pin || '');
-    if (!existing && !/^\d{4,8}$/.test(pin)) throw new Error('PIN 4–8 rəqəm olmalıdır');
-    const salt = pin ? randomBytes(16).toString('hex') : existing.salt;
-    const pinHash = pin ? pbkdf2Sync(pin, salt, 120000, 32, 'sha256').toString('hex') : existing.pinHash;
+    if (!existing || pin) assertAcceptablePin(pin);
+    const { salt, pinHash } = pin ? newPinCredential(pin) : existing;
     const next = { id: existing?.id || `u-${Date.now()}`, name: String(profile.name).slice(0, 80), role: profile.role, active: profile.active !== false, registerIds: Array.isArray(profile.registerIds) ? profile.registerIds.slice(0, 20) : [], warehouseIds: Array.isArray(profile.warehouseIds) ? profile.warehouseIds.slice(0, 20) : [], salt, pinHash };
     state.staff = existing ? state.staff.map((row) => row.id === existing.id ? next : row) : [...state.staff, next];
     saveSecureState(state);
@@ -1163,12 +1180,10 @@ function registerIpc() {
     const payload = authorizeCorePayload(
       input?.payload,
       () => {
+        // requireSession refuses an account still on a published PIN, so such a
+        // session reaches the core with no role at all and is refused there.
         try {
-          const user = requireSession(input?.sessionToken || currentSessionToken);
-          // A PIN that is published in this repo must not carry permissions. Blank
-          // the role (keeping actorId for the audit trail) so the core refuses
-          // every permission-gated action until the operator sets a real PIN.
-          return pinIsShippedDefault(user) ? { ...user, role: '' } : user;
+          return requireSession(input?.sessionToken || currentSessionToken);
         } catch {
           return null;
         }
@@ -1224,137 +1239,7 @@ function registerIpc() {
     return { state: coreSupervisor.state };
   });
 
-  const { CorePrinterProvider } = require('./hardware/printer');
-  const { MockFiscalProvider } = require('./hardware/fiscal');
-  const { ManualTerminalProvider, MockTerminalProvider } = require('./hardware/terminal');
-  // Printing goes through the core, which owns the device. The file and mock
-  // providers stay in hardware/printer.js for tests; wiring one here is what
-  // made the till report a printed receipt that never left the machine.
-  const printerSession = () => ({ role: 'manager', actorId: 'system' });
-  printerProvider = new CorePrinterProvider(
-    (method, payload, timeoutMs) => coreSupervisor.invoke(method, payload, timeoutMs),
-    printerSession,
-  );
-  const fiscalProvider = new MockFiscalProvider();
-  let terminalProvider = new ManualTerminalProvider();
-
-  ipcMain.handle('market:printer:list', (event) => { assertTrusted(event); return printerProvider.listPrinters(); });
-  ipcMain.handle('market:printer:health', (event) => { assertTrusted(event); return printerProvider.health(); });
-  // Detection sweeps the LAN and prints a page to each candidate, so it is
-  // gated on a real manager session rather than the placeholder role used for
-  // ordinary receipts - and given room to run, because a subnet sweep plus a
-  // probe per candidate does not finish inside the default timeout.
-  ipcMain.handle('market:printer:detect', async (event, input) => {
-    assertTrusted(event);
-    const user = requireSession(input?.sessionToken, ['manager']);
-    return coreSupervisor.invoke(
-      'printer.detect',
-      { role: user.role, actorId: user.id, probe: input?.probe !== false },
-      90000,
-    );
-  });
-  ipcMain.handle('market:printer:setTarget', async (event, input) => {
-    assertTrusted(event);
-    const user = requireSession(input?.sessionToken, ['manager']);
-    return coreSupervisor.invoke('printer.setTarget', {
-      role: user.role,
-      actorId: user.id,
-      target: String(input?.target || ''),
-    });
-  });
-  ipcMain.handle('market:printer:test', async (event, input) => {
-    assertTrusted(event); requireSession(input?.sessionToken, ['manager']);
-    return printerProvider.printTest({ widthMm: input?.widthMm || 80 });
-  });
-  ipcMain.handle('market:printer:configure', async (event, input) => {
-    assertTrusted(event);
-    const user = requireSession(input?.sessionToken, ['manager']);
-    const target = String(input?.target || '').trim();
-    // The core owns the printer now; 1.4 wrote a file here that nothing read.
-    await coreSupervisor.invoke('printer.setTarget', { role: user.role, actorId: user.id, target });
-    const health = await printerProvider.health();
-    return { ...health, target };
-  });
-  ipcMain.handle('market:printer:report', async (event, input) => {
-    assertTrusted(event); requireSession(input?.sessionToken);
-    const report = input?.report || {};
-    return printerProvider.printRaw(buildXzReportEscPos(report, { widthMm: input?.widthMm || 80 }), {
-      kind: String(report.reportType || 'X').toLowerCase() === 'z' ? 'z-report' : 'x-report',
-    });
-  });
-  ipcMain.handle('market:printer:receipt', async (event, input) => {
-    assertTrusted(event); requireSession(input?.sessionToken);
-    return printerProvider.printReceipt(input?.receipt || {}, { widthMm: input?.widthMm || 80, cut: input?.cut !== false });
-  });
-  ipcMain.handle('market:printer:label', async (event, input) => {
-    assertTrusted(event); await requireCorePermission(input?.sessionToken, 'PRINT_LABEL');
-    const product = input?.product || {}; const count = Math.max(1, Math.min(100, Number(input?.count || 1)));
-    const productName = typeof product.name === 'object' ? (product.name.az || product.name.en || product.name.ru || '') : product.name;
-    const title = Buffer.from(`${String(productName || '').slice(0, 32)}\nKod: ${String(product.internalCode || product.sku || '')}\n${product.color ? `Reng: ${product.color} ` : ''}${product.size ? `Olcu: ${product.size}` : ''}\nQiymet: ${(Number(product.priceMinor || 0) / 100).toFixed(2)} AZN\n`, 'utf8');
-    const code = Buffer.from(String(product.barcode || ''), 'ascii');
-    const barcode = code.length ? Buffer.concat([Buffer.from([0x1d, 0x68, 70, 0x1d, 0x77, 2, 0x1d, 0x6b, 73, code.length]), code, Buffer.from('\n\n')]) : Buffer.from('\n');
-    const payload = Buffer.concat(Array.from({ length: count }, () => Buffer.concat([Buffer.from([0x1b, 0x40, 0x1b, 0x61, 1]), title, barcode])));
-    return printerProvider.printRaw(payload, { kind: 'barcode-label', count });
-  });
-  ipcMain.handle('market:drawer:open', async (event, input) => {
-    assertTrusted(event); requireSession(input?.sessionToken);
-    await coreSupervisor.invoke('drawer.openLogged', {
-      actorId: input?.actorId || 'system',
-      role: input?.role || 'manager',
-      approverId: input?.approverId,
-      reason: input?.reason || 'manual',
-    });
-    return printerProvider.openDrawer();
-  });
-  ipcMain.handle('market:auth:verifyManagerPin', (event, input) => {
-    assertTrusted(event);
-    return verifyManagerPin(String(input?.pin || ''));
-  });
-  ipcMain.handle('market:terminal:pay', async (event, input) => {
-    assertTrusted(event); requireSession(input?.sessionToken);
-    const mode = String(input?.mode || 'manual');
-    terminalProvider = mode === 'mock_integrated' ? new MockTerminalProvider() : new ManualTerminalProvider();
-    const result = await terminalProvider.startPayment({
-      amountMinor: Number(input?.amountMinor) || 0,
-      reference: input?.reference || '',
-    });
-    if (result.status === 'declined') {
-      const err = new Error('Terminal declined');
-      err.code = 'TERMINAL_DECLINED';
-      throw err;
-    }
-    return result;
-  });
-  ipcMain.handle('market:fiscal:processPending', async (event, input) => {
-    assertTrusted(event); requireSession(input?.sessionToken, ['manager']);
-    const pending = await coreSupervisor.invoke('fiscal.listPending', {});
-    if (!pending.success) return pending;
-    const results = [];
-    for (const job of pending.data || []) {
-      try {
-        const req = JSON.parse(job.request_json || '{}');
-        const out = job.kind === 'refund'
-          ? await fiscalProvider.registerRefund(req)
-          : await fiscalProvider.registerSale(req);
-        await coreSupervisor.invoke('fiscal.updateStatus', {
-          id: job.id,
-          status: out.status,
-          fiscalReceiptId: out.fiscalReceiptId,
-          qrData: out.qrData,
-          response: out.response,
-        });
-        results.push({ id: job.id, status: out.status });
-      } catch (error) {
-        await coreSupervisor.invoke('fiscal.updateStatus', {
-          id: job.id,
-          status: 'failed',
-          lastError: error instanceof Error ? error.message : String(error),
-        });
-        results.push({ id: job.id, status: 'failed' });
-      }
-    }
-    return { success: true, data: results };
-  });
+  printerProvider = registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin });
 }
 
 function createWindow() {
