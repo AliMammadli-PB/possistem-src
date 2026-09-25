@@ -1,0 +1,19 @@
+-- Finding a paid sale from the paper the guest brings back.
+--
+-- The refund engine has been complete for a while: per-line amounts priced from
+-- the order's own snapshot, manager approval, idempotency, a cash_movements row
+-- so the drawer's log matches the drawer. What it never had was a way in from
+-- the counter. `payments.refund` takes a paymentId, and the only screen that
+-- knows a paymentId is the payment panel of an order that is still open on a
+-- table. Once the order is closed and the table cleared - which is to say, once
+-- the guest has left - there is no path back to that sale at all.
+--
+-- A guest returning an hour later holds one thing: the printed receipt. It
+-- already carries a number (`R-` plus eight characters from an alphabet with no
+-- I, O, 0 or 1, so it survives being read aloud) and the time it was paid. That
+-- number becomes the way in, so nothing new has to be printed on the paper that
+-- was not already there - only labelled, so the guest knows to keep it.
+--
+-- This index is the whole schema change: lookups are by number, and there was
+-- no index for that because nothing ever looked one up.
+CREATE INDEX IF NOT EXISTS idx_receipts_number ON receipts(number);

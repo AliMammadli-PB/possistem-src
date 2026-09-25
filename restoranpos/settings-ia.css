@@ -1,0 +1,20 @@
+/* Packaged till — Parametrlər / floor chrome on top of index-BsrHjfOR.js */
+html[data-ps-floor="1"] [data-ps-admin-tabs],
+html[data-ps-floor="1"] .ps-settings-tabs,
+html[data-ps-floor="1"] .settings-tabs,
+html[data-ps-catalog="1"] [data-ps-admin-tabs],
+html[data-ps-catalog="1"] .ps-settings-tabs,
+html[data-ps-catalog="1"] .settings-tabs {
+  display: none !important;
+}
+html[data-ps-floor="1"] aside [data-ps-floor-buried] {
+  display: none !important;
+}
+html[data-ps-settings="1"] [data-ps-admin-dump] {
+  display: none !important;
+}
+.ps-settings-title,
+.ps-dash-title {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}

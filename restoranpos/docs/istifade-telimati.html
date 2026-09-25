@@ -1,0 +1,997 @@
+<!doctype html>
+<html lang="az">
+<head>
+<meta charset="utf-8">
+<title>Possistem Restoran POS — İstifadə Təlimatı</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+
+  :root {
+    --ink: #10233f;
+    --muted: #5b6b80;
+    --faint: #8a99ab;
+    --line: #dde4ec;
+    --blue: #0a4f9c;
+    --blue-soft: #eef4fc;
+    --green: #067647;
+    --green-soft: #eaf7f0;
+    --amber: #b54708;
+    --amber-soft: #fff4e8;
+    --red: #b42318;
+    --red-soft: #fdeeec;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "DejaVu Sans", "Noto Sans", "Liberation Sans", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+
+  h1, h2, h3 { line-height: 1.25; }
+
+  /* ---------------------------------------------------------- cover page */
+  .cover {
+    height: 253mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    page-break-after: always;
+  }
+  .cover .eyebrow {
+    font-size: 10pt; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--blue); font-weight: 700;
+  }
+  .cover h1 { font-size: 30pt; margin: 6mm 0 3mm; }
+  .cover .sub { font-size: 13pt; color: var(--muted); max-width: 130mm; }
+  .cover .rule { height: 3px; width: 40mm; background: var(--blue); margin: 8mm 0; }
+  .cover .meta { font-size: 9.5pt; color: var(--faint); }
+  .cover .who {
+    margin-top: 14mm; padding: 6mm; border-radius: 4mm;
+    background: var(--blue-soft); border: 1px solid #cfe0f5;
+  }
+  .cover .who b { display: block; margin-bottom: 2mm; }
+
+  /* ------------------------------------------------------------ contents */
+  .toc { page-break-after: always; }
+  .toc ol { margin: 0; padding-left: 9mm; }
+  .toc > ol > li { margin: 2.2mm 0; font-weight: 600; }
+  .toc ol ol { padding-left: 5mm; margin: 1mm 0; }
+  .toc ol ol li { font-weight: 400; color: var(--muted); font-size: 9.5pt; }
+
+  /* -------------------------------------------------------------- layout */
+  section { page-break-before: always; }
+  section.run-on { page-break-before: auto; }
+
+  h2 {
+    font-size: 16pt; margin: 0 0 1mm;
+    padding-bottom: 2.5mm; border-bottom: 2px solid var(--blue);
+  }
+  h2 .num { color: var(--blue); }
+  .lede { color: var(--muted); margin: 3mm 0 5mm; }
+
+  h3 { font-size: 11.5pt; margin: 6mm 0 2mm; color: var(--blue); }
+  p { margin: 0 0 2.5mm; }
+
+  ol.steps { margin: 0 0 4mm; padding-left: 0; list-style: none; counter-reset: step; }
+  ol.steps > li {
+    counter-increment: step; position: relative;
+    padding: 0 0 2.5mm 9mm; page-break-inside: avoid;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0.3mm;
+    width: 6mm; height: 6mm; border-radius: 50%;
+    background: var(--blue); color: #fff;
+    font-size: 8pt; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  ul.plain { margin: 0 0 3mm; padding-left: 5mm; }
+  ul.plain li { margin-bottom: 1.5mm; }
+
+  .note, .warn, .tip {
+    margin: 3mm 0 4mm; padding: 3.5mm 4mm;
+    border-left: 3px solid; border-radius: 0 2mm 2mm 0;
+    font-size: 9.8pt; page-break-inside: avoid;
+  }
+  .note { background: var(--blue-soft); border-color: var(--blue); }
+  .warn { background: var(--red-soft); border-color: var(--red); }
+  .tip  { background: var(--green-soft); border-color: var(--green); }
+  .note > b:first-child, .warn > b:first-child, .tip > b:first-child {
+    display: block; margin-bottom: 1mm;
+  }
+  .note > b:first-child { color: var(--blue); }
+  .warn > b:first-child { color: var(--red); }
+  .tip  > b:first-child { color: var(--green); }
+
+  table { width: 100%; border-collapse: collapse; margin: 3mm 0 4mm; font-size: 9.5pt; }
+  th, td { text-align: left; padding: 2.2mm 3mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f4f7fb; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  tr { page-break-inside: avoid; }
+
+  .path {
+    font-weight: 600; color: var(--blue);
+    background: var(--blue-soft); padding: 0.6mm 1.6mm; border-radius: 1.5mm;
+    white-space: nowrap;
+  }
+  code {
+    font-family: "DejaVu Sans Mono", monospace; font-size: 9pt;
+    background: #f1f4f8; padding: 0.4mm 1.4mm; border-radius: 1mm;
+  }
+
+  .receipt {
+    font-family: "DejaVu Sans Mono", monospace; font-size: 8.5pt; line-height: 1.35;
+    white-space: pre; background: #fbfcfe; border: 1px dashed var(--line);
+    padding: 4mm; border-radius: 2mm; margin: 3mm 0 4mm;
+    page-break-inside: avoid;
+  }
+
+  .role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin: 3mm 0; }
+  .role-card { border: 1px solid var(--line); border-radius: 2.5mm; padding: 3.5mm; page-break-inside: avoid; }
+  .role-card b { display: block; color: var(--blue); margin-bottom: 1mm; }
+  .role-card span { font-size: 9.3pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ============================================================== cover -->
+<div class="cover">
+  <div class="eyebrow">Possistem</div>
+  <h1>Restoran POS<br>İstifadə Təlimatı</h1>
+  <div class="rule"></div>
+  <p class="sub">
+    Kassanı gündəlik necə işlətməli: masa açmaqdan növbəni bağlamağa,
+    səhv vurulmuş məhsulun pulunu geri qaytarmaqdan anbarı idarə etməyə qədər.
+  </p>
+  <div class="who">
+    <b>Bu təlimat kimin üçündür</b>
+    Restoranın sahibi, müdiri, kassiri, ofisiantı və anbarçısı üçün. Kompüter biliyi tələb olunmur —
+    hər addım ekranda nə görəcəyinizlə birlikdə yazılıb.
+  </div>
+  <p class="meta" style="margin-top:10mm">possistem.az · Restoran POS · Azərbaycan dilində</p>
+</div>
+
+<!-- =========================================================== contents -->
+<div class="toc">
+  <h2><span class="num">Mündəricat</span></h2>
+  <ol>
+    <li>Başlamazdan əvvəl
+      <ol>
+        <li>Proqramın quruluşu — sayt və kassa</li>
+        <li>İlk quraşdırma</li>
+        <li>PIN ilə giriş</li>
+      </ol>
+    </li>
+    <li>Gündəlik iş
+      <ol>
+        <li>Növbənin açılması</li>
+        <li>Masalar və sifariş</li>
+        <li>Mətbəx ekranı (KDS)</li>
+      </ol>
+    </li>
+    <li>Ödəniş və çek</li>
+    <li>Geri qaytarma — səhv vurulmuş məhsul</li>
+    <li>Kassa: hərəkətlər, X və Z hesabat</li>
+    <li>Anbar
+      <ol>
+        <li>Məhsul siyahısı və vəziyyətlər</li>
+        <li>Düzəliş, silinmə, transfer</li>
+        <li>Kalkulyasiya — yeməyin mayası</li>
+      </ol>
+    </li>
+    <li>Təchizat və təchizatçılar</li>
+    <li>Sayım (inventarizasiya)</li>
+    <li>Menyu və kataloq</li>
+    <li>Müştərilər, borc və loyallıq</li>
+    <li>Rezervasiya və çatdırılma</li>
+    <li>İşçilər, rollar və səlahiyyətlər</li>
+    <li>Hesabatlar</li>
+    <li>Parametrlər və printer</li>
+    <li>Ehtiyat nüsxə və lisenziya</li>
+    <li>Sayt — müştəri paneli</li>
+    <li>Problem olduqda</li>
+  </ol>
+</div>
+
+<!-- ================================================================== 1 -->
+<section>
+  <h2><span class="num">1.</span> Başlamazdan əvvəl</h2>
+  <p class="lede">İki ayrı şey var: <b>sayt</b> və <b>kassa proqramı</b>. Hansının nə üçün olduğunu bilmək
+  sonrakı hər şeyi asanlaşdırır.</p>
+
+  <h3>1.1 Proqramın quruluşu</h3>
+  <table>
+    <tr><th style="width:32%">Harada</th><th>Nə üçündür</th></tr>
+    <tr>
+      <td><b>Sayt</b><br><code>possistem.az</code><br>müştəri paneli</td>
+      <td>Proqramı yükləmək, lisenziyanı görmək, işçilərə hansı səlahiyyətin veriləcəyini təyin etmək,
+      restoranın canlı vəziyyətinə baxmaq və bizimlə çatda danışmaq. İnternet tələb olunur.</td>
+    </tr>
+    <tr>
+      <td><b>Kassa proqramı</b><br>restorandakı kompüterdə</td>
+      <td>Bütün gündəlik iş: masa, sifariş, ödəniş, çek, anbar, hesabat.
+      <b>İnternet olmasa da işləyir</b> — məlumat kompüterin öz bazasında saxlanılır və internet
+      qayıdanda sayta göndərilir.</td>
+    </tr>
+  </table>
+
+  <div class="note">
+    <b>Niyə belədir</b>
+    Restoranda internet kəsiləndə satış dayanmamalıdır. Ona görə kassa özü-özünə işləyir,
+    sayt isə yalnız baxmaq və idarə etmək üçündür.
+  </div>
+
+  <h3>1.2 İlk quraşdırma</h3>
+  <ol class="steps">
+    <li>Kompüterdə <b>Possistem Setup</b> faylını açın və quraşdırın. Quraşdırma bitəndə
+    masaüstündə <b>Possistem</b> ikonu yaranır.</li>
+    <li>Proqramı açın. İlk ekranda <b>email və parol</b> soruşulur — bunlar bizim sizin üçün
+    yaratdığımız müştəri hesabının məlumatlarıdır (saytda daxil olduğunuz eyni email).</li>
+    <li>Sonra <b>aktivasiya açarı</b> soruşulur. Açar bu kompüterə bağlanır; başqa kompüterə
+    köçürmək lazım olsa bizə yazın.</li>
+    <li>Kassaya ad verin (məsələn <b>Kassa 1</b>). Ad yalnız bir dəfə soruşulur.</li>
+    <li>Bundan sonra proqram hər açılışda birbaşa <b>PIN ekranı</b> ilə başlayır. Email və parol
+    bir daha soruşulmur.</li>
+  </ol>
+
+  <div class="tip">
+    <b>Hazır gəlir</b>
+    Setup sizin üçün yığılır: restoranın adı, menyusu, masaları, printer ayarları və işçi
+    səlahiyyətləri biz tərəfindən əvvəlcədən qurulur. Siz açıb işləməyə başlayırsınız,
+    sonra hər şeyi Parametrlərdən özünüz dəyişə bilərsiniz.
+  </div>
+
+  <h3>1.3 PIN ilə giriş</h3>
+  <p>Hər işçinin öz 4–8 rəqəmli PIN-i var. Ekranda klaviatura görünür — PIN-i yazın, proqram
+  sizi tanıyır və <b>yalnız sizə icazə verilən bölmələri</b> göstərir.</p>
+  <ul class="plain">
+    <li>Kassir girəndə soldakı menyuda masalar, ödəniş və geri qaytarma olur.</li>
+    <li>Anbarçı girəndə eyni yerdə <b>Anbar</b> olur — ona masa planı lazım deyil.</li>
+    <li>Müdir girəndə hamısı görünür.</li>
+  </ul>
+  <p>Başqa restoran hesabına keçmək lazım olsa, PIN kartının yuxarı sağ küncündəki
+  <span class="path">Hesabı dəyiş</span> düyməsindən istifadə edin.</p>
+
+  <div class="warn">
+    <b>PIN-i paylaşmayın</b>
+    Hər əməliyyat PIN-i yazan adamın adına yazılır. Kassirin PIN-i ilə edilən endirim də,
+    geri qaytarma da onun adına düşür. PIN paylaşılırsa, hesabatlar heç nə demir.
+  </div>
+</section>
+
+<!-- ================================================================== 2 -->
+<section>
+  <h2><span class="num">2.</span> Gündəlik iş</h2>
+  <p class="lede">Günün başlaması, sifarişin alınması və mətbəxə göndərilməsi.</p>
+
+  <h3>2.1 Növbənin açılması</h3>
+  <p>Satışa başlamazdan əvvəl <b>növbə açıq olmalıdır</b>. Növbə — kassada kimin işlədiyini və
+  şüşədə nə qədər pul olduğunu bildirən qeyddir.</p>
+  <ol class="steps">
+    <li><span class="path">İdarə → Kassa</span> bölməsini açın.</li>
+    <li><b>Növbəni aç</b> düyməsini basın.</li>
+    <li>Kassada başlanğıcda olan xırda pulu (<b>açılış məbləği</b>) yazın. Məsələn 50 ₼.</li>
+  </ol>
+  <p>Gün sonunda bu rəqəm kassada olması lazım olan pulla müqayisə olunur — fərq varsa,
+  Z hesabatda görünür.</p>
+
+  <h3>2.2 Masalar və sifariş</h3>
+  <p><span class="path">Masalar</span> ekranı restoranın planıdır. Hər kart bir masadır və rəngi
+  masanın vəziyyətini göstərir: boş, açıq sifariş, ödəniş gözləyir.</p>
+  <ol class="steps">
+    <li>Masaya toxunun — sifariş ekranı açılır.</li>
+    <li>Menyudan məhsulu seçin. Sağ tərəfdə sifariş siyahısı yığılır.</li>
+    <li>Miqdarı dəyişmək üçün sətirdəki <b>+</b> və <b>−</b> düymələrindən istifadə edin.</li>
+    <li>Lazım olsa sətrə <b>qeyd</b> yazın (məsələn «duzsuz»), <b>kurs</b> (birinci/ikinci yemək)
+    və ya <b>oturacaq nömrəsi</b> təyin edin.</li>
+    <li>Sifariş hazır olanda <b>Mətbəxə göndər</b> düyməsini basın. Mətbəx ekranında və mətbəx
+    printerində sifariş görünür.</li>
+  </ol>
+
+  <p><b>Digər əməliyyatlar:</b></p>
+  <table>
+    <tr><th style="width:36%">Nə etmək istəyirsiniz</th><th>Necə</th></tr>
+    <tr><td>Sətri silmək</td><td>Sətri seçin, <b>Ləğv et</b>. Mətbəxə getmiş sətir üçün səbəb və müdir icazəsi tələb oluna bilər.</td></tr>
+    <tr><td>Endirim vermək</td><td>Sifariş ekranında <b>Endirim</b>. Faizlə və ya məbləğlə. Səlahiyyət yoxdursa müdir PIN-i soruşulur.</td></tr>
+    <tr><td>Masanı dəyişmək</td><td>Masalar ekranında sifarişi tutub başqa masaya köçürün.</td></tr>
+    <tr><td>Masaları birləşdirmək</td><td>Masa idarəsindən iki masanı birləşdirin — hesab bir olur.</td></tr>
+    <tr><td>Qonaq sayı</td><td>Sifariş ekranında yazılır; ofisiant hesabatlarında istifadə olunur.</td></tr>
+    <tr><td>Depozit</td><td>Qabaqcadan alınan pul. Sifariş ekranında yazılır, ödənişdə çıxılır.</td></tr>
+  </table>
+
+  <h3>2.3 Mətbəx ekranı (KDS)</h3>
+  <p><span class="path">Mətbəx</span> bölməsi mətbəxdəki ekran üçündür. Göndərilmiş sifarişlər
+  kart kimi görünür.</p>
+  <ul class="plain">
+    <li><b>Hazırlanır</b> — mətbəx işə başladı.</li>
+    <li><b>Hazırdır</b> — yemək çıxarıla bilər.</li>
+    <li><b>Bump</b> (götür) — kart ekrandan yığışdırılır.</li>
+  </ul>
+  <div class="tip">
+    <b>Printer yoxdursa da işləyir</b>
+    Mətbəx printeri olmayan restoranda bu ekran onun yerini tutur. Ucuz bir planşet kifayətdir.
+  </div>
+</section>
+
+<!-- ================================================================== 3 -->
+<section>
+  <h2><span class="num">3.</span> Ödəniş və çek</h2>
+  <p class="lede">Hesabı bağlamağın bütün yolları və müştəriyə verilən çekin üstündə nə yazılır.</p>
+
+  <h3>3.1 Ödənişin alınması</h3>
+  <ol class="steps">
+    <li>Sifariş ekranında <b>Ödəniş</b> düyməsini basın.</li>
+    <li>Ödəniş növünü seçin:
+      <ul class="plain">
+        <li><b>Nağd</b> — müştərinin verdiyi məbləği yazın, proqram qaytarılacaq pulu özü hesablayır.</li>
+        <li><b>Kart</b> — terminal əməliyyatı aparılır.</li>
+        <li><b>Qarışıq</b> — bir hissəsi nağd, bir hissəsi kart.</li>
+        <li><b>Hesabı böl</b> — hesabı bərabər hissələrə və ya seçilmiş məhsullara görə bölür.</li>
+      </ul>
+    </li>
+    <li>Bəxşiş varsa <b>Bəxşiş</b> xanasına yazın.</li>
+    <li>Ödəniş təsdiqlənəndə çek avtomatik çap olunur.</li>
+  </ol>
+
+  <div class="warn">
+    <b>Nağdda diqqət</b>
+    Müştərinin verdiyi pul <b>hesab + bəxşiş</b>-dən az ola bilməz. Bəxşiş kassirin cibindən
+    verilə bilməz — proqram belə ödənişi qəbul etmir.
+  </div>
+
+  <h3>3.2 Çekin üstündə nə var</h3>
+  <p>Müştəriyə verilən çekdə tarix, saat, sifariş nömrəsi, masa, ofisiant, məhsullar, cəm və
+  ödəniş növü yazılır. Çekin <b>ən altında</b> isə ən vacib sətir var:</p>
+
+  <div class="receipt">      ------------------------------------
+                GERİ QAYTARMA KODU
+                   R-ABC23XYZ
+      Qaytarma üçün bu çeki və kodu
+             kassaya təqdim edin.
+      ------------------------------------</div>
+
+  <p>Bu kod həmin satışın şəxsiyyət vəsiqəsidir. Müştəri sabah gəlib «bu məhsulu səhv
+  vurmusunuz» desə, kassir bu kodu yazır və satış bir saniyəyə tapılır.</p>
+
+  <div class="note">
+    <b>Koddakı hərflər</b>
+    Kodda <b>I, O, 0 və 1</b> hərf/rəqəmləri heç vaxt olmur — çünki onlar bir-birinə oxşayır və
+    telefonda deyiləndə səhv salınır. Qalan hərflər isə fərq etmir: kiçik yazsanız da,
+    tireni yazmasanız da proqram tapır.
+  </div>
+
+  <div class="tip">
+    <b>Müştəriyə deyin</b>
+    «Çeki saxlayın» — bir cümlə. Çek atılıbsa satışı tapmaq çətinləşir (sifariş nömrəsi və
+    saatla axtarmaq lazım gəlir).
+  </div>
+
+  <h3>3.3 Çekin yenidən çapı</h3>
+  <p>Çek cırılıbsa və ya printer kağızı bitibsə, sifarişi açıb <b>Çeki çap et</b> deyin.
+  Təkrar çap olunan çekin üstündə «TƏKRAR» yazılır — bu qəsdəndir, iki eyni çekin
+  qarışmaması üçün.</p>
+</section>
+
+<!-- ================================================================== 4 -->
+<section>
+  <h2><span class="num">4.</span> Geri qaytarma — səhv vurulmuş məhsul</h2>
+  <p class="lede">Ən çox rast gəlinən hal: müştəri artıq ödəyib, amma bir məhsul səhv vurulub
+  və ya müştəri ondan imtina edir. Pulu geri qaytarmaq lazımdır.</p>
+
+  <h3>4.1 Addım-addım</h3>
+  <ol class="steps">
+    <li>Soldakı menyudan <span class="path">Geri qaytarma</span> bölməsini açın.</li>
+    <li>Müştərinin çekindəki <b>geri qaytarma kodunu</b> yazın (məsələn <code>R-ABC23XYZ</code>)
+    və <b>Tap</b> düyməsini basın.</li>
+    <li>Ekranda həmin satış açılır: çekin saatı, sifariş nömrəsi, masa, ümumi məbləğ və
+    <b>nə qədərinin geri qaytarıla biləcəyi</b>.</li>
+    <li>Müştəri kartla ödəyibsə və nağd da varsa, <b>hansı ödənişdən</b> qaytarılacağını seçin.</li>
+    <li><b>Səhv vurulan məhsulu seçin</b> — siyahıda hər məhsulun yanında <b>+</b> və <b>−</b>
+    düymələri var. Məsələn 4 çaydan 1-i səhv vurulubsa, çayın yanında <b>1</b> yazın.
+    Proqram qaytarılacaq məbləği özü hesablayır.</li>
+    <li>Məhsul yox, sadəcə məbləğ qaytarılacaqsa, <b>məbləğ</b> xanasına rəqəmi yazın.</li>
+    <li><b>Səbəb</b> seçin və ya yazın. Səbəb olmadan qaytarma mümkün deyil.</li>
+    <li>Lazım olarsa <b>müdir PIN-i</b> yazın.</li>
+    <li><b>Geri qaytar</b> düyməsini basın. Pul qaytarılır və <b>geri qaytarma qəbzi</b> çap olunur —
+    onu müştəriyə verin.</li>
+  </ol>
+
+  <div class="note">
+    <b>Qiymət sonradan dəyişsə də</b>
+    Qaytarılan məbləğ <b>satış anındakı</b> qiymətə görə hesablanır. Menyuda qiyməti
+    artırmısınızsa, keçən həftəki çekdən yenə də ödənilmiş qədər qaytarılır — nə az, nə çox.
+  </div>
+
+  <h3>4.2 Nəyə diqqət etmək lazımdır</h3>
+  <table>
+    <tr><th style="width:38%">Hal</th><th>Proqram nə edir</th></tr>
+    <tr><td>Eyni məhsulu iki dəfə qaytarmaq</td><td>İcazə vermir. Ekranda «qaytarıla bilər» sütununda
+    neçəsinin qaldığı yazılır.</td></tr>
+    <tr><td>Ödənilmiş məbləğdən çox qaytarmaq</td><td>İcazə vermir.</td></tr>
+    <tr><td>Bu çekdən əvvəl qaytarma olub</td><td>Ekranın yuxarısında sarı xəbərdarlıqla
+    əvvəlki qaytarmalar göstərilir — kim, nə vaxt, nə qədər.</td></tr>
+    <tr><td>Düyməyə iki dəfə basmaq</td><td>Pul iki dəfə qaytarılmır. Proqram təkrarı tanıyır.</td></tr>
+    <tr><td>Ödənilməmiş hesabın nömrəsi yazılıb</td><td>Tapılmır — yalnız <b>ödənilmiş</b> çeklərdən
+    qaytarmaq olar.</td></tr>
+  </table>
+
+  <h3>4.3 Nağd qaytarma və kassa</h3>
+  <p>Nağd qaytarılan pul kassa şüşəsindən çıxır, ona görə proqram bunu <b>kassa hərəkəti</b> kimi
+  yazır. Gün sonunda kassa az çıxırsa, səbəbin qaytarma olduğu dərhal görünür —
+  yoxsa kassir günahsız yerə şübhə altında qalar.</p>
+
+  <div class="warn">
+    <b>Səbəbi düzgün yazın</b>
+    «Səhv vurulub» ilə «müştəri imtina etdi» eyni şey deyil. Aylıq hesabatda hansının çox
+    olduğunu görmək problemi tapmağın yeganə yoludur: birincisi kassirin təlimi,
+    ikincisi mətbəxin keyfiyyəti deməkdir.
+  </div>
+
+  <h3>4.4 Hələ ödəniş olmayıbsa</h3>
+  <p>Müştəri hələ ödəməyibsə geri qaytarmaya ehtiyac yoxdur — sadəcə sifariş ekranında
+  həmin sətri <b>Ləğv et</b> deyin. Geri qaytarma yalnız pul artıq alınandan sonra lazımdır.</p>
+</section>
+
+<!-- ================================================================== 5 -->
+<section>
+  <h2><span class="num">5.</span> Kassa: hərəkətlər, X və Z hesabat</h2>
+  <p class="lede">Kassa şüşəsindəki pulun hesabatı. <span class="path">İdarə → Kassa</span></p>
+
+  <h3>5.1 Kassa hərəkətləri</h3>
+  <p>Satışdan başqa səbəblə kassaya pul girirsə və ya çıxırsa, bunu yazmaq lazımdır —
+  yoxsa gün sonunda hesab tutmur.</p>
+  <table>
+    <tr><th style="width:30%">Növ</th><th>Nə vaxt istifadə olunur</th></tr>
+    <tr><td><b>Kassaya mədaxil</b></td><td>Xırda pul gətirilib, sahibdən pul qoyulub.</td></tr>
+    <tr><td><b>Kassadan məxaric</b></td><td>Kuryerə pul verilib, xırda alınıb, təchizatçıya ödənilib.</td></tr>
+    <tr><td><b>Seyfə köçürmə</b></td><td>Kassada çox pul yığılıb, bir hissəsi seyfə aparılır.</td></tr>
+  </table>
+  <p>Hər hərəkətdə <b>səbəb</b> yazılır. Səbəbsiz hərəkət sonradan heç kimə heç nə demir.</p>
+
+  <h3>5.2 X hesabat</h3>
+  <p><b>X hesabat növbəni bağlamır.</b> Sadəcə «bu ana qədər nə olub» sualının cavabıdır:
+  nağd, kart, ümumi satış, açıq masalar. Günün ortasında yoxlamaq üçündür.
+  İstədiyiniz qədər X çıxara bilərsiniz.</p>
+
+  <h3>5.3 Z hesabat və növbənin bağlanması</h3>
+  <ol class="steps">
+    <li>Bütün masaların bağlandığına əmin olun. Açıq masa varsa Z hesabatda xəbərdarlıq çıxır.</li>
+    <li><span class="path">İdarə → Kassa → Z bağla</span> deyin.</li>
+    <li>Kassadakı <b>faktiki pulu</b> sayın və yazın.</li>
+    <li>Proqram gözlənilən məbləği (açılış + nağd satış + bəxşiş − qaytarmalar − məxaric)
+    sizin yazdığınızla müqayisə edir və <b>fərqi</b> göstərir.</li>
+    <li>Z hesabat çap olunur və növbə bağlanır.</li>
+  </ol>
+
+  <div class="warn">
+    <b>Z bir dəfə çıxarılır</b>
+    Z gününü bağlayır. Bağlandıqdan sonra həmin günə yeni satış yazıla bilməz.
+    Gecə növbəsi varsa, günü səhər deyil, növbə bitəndə bağlayın.
+  </div>
+
+  <h3>5.4 Uyğunlaşdırma</h3>
+  <p><span class="path">İdarə → Uyğunlaşdırma</span> — kart terminalı ilə proqramın razılaşmadığı
+  əməliyyatlar burada görünür (məsələn terminal təsdiqləyib, amma əlaqə kəsilib).
+  Hər birini «təsdiqlə» və ya «ləğv et» kimi həll edirsiniz.</p>
+</section>
+
+<!-- ================================================================== 6 -->
+<section>
+  <h2><span class="num">6.</span> Anbar</h2>
+  <p class="lede">Nə qədər mal var, nəyi sifariş etmək lazımdır, nə itib.
+  <span class="path">Anbar</span> — anbarçı girəndə soldakı menyuda ilk sırada olur.</p>
+
+  <h3>6.1 Yuxarıdakı kartlar</h3>
+  <ul class="plain">
+    <li><b>Anbarın dəyəri</b> — hazırda anbarda olan malın maya dəyəri ilə cəmi.</li>
+    <li><b>Minimumdan aşağı</b> — sifariş vermək vaxtı gələn məhsulların sayı.</li>
+    <li><b>Bitib</b> — qalığı sıfır olanlar.</li>
+    <li><b>İtki</b> — son 30 gündə silinmiş malın dəyəri.</li>
+  </ul>
+
+  <h3>6.2 Məhsul siyahısı</h3>
+  <p>Hər sətirdə məhsulun adı, qalığı, minimum həddi və vəziyyəti var. Vəziyyət dörd cürdür:</p>
+  <table>
+    <tr><th>Vəziyyət</th><th>Mənası</th></tr>
+    <tr><td><b>Normal</b></td><td>Kifayət qədər var.</td></tr>
+    <tr><td><b>Minimuma yaxın</b></td><td>Tezliklə sifariş lazımdır.</td></tr>
+    <tr><td><b>Minimumdan aşağı</b></td><td>İndi sifariş verin.</td></tr>
+    <tr><td><b>Bitib</b></td><td>Qalıq yoxdur.</td></tr>
+  </table>
+  <p>Yuxarıdakı axtarış xanası ilə ad və ya kodla tapa, vəziyyət düymələri ilə süzgəcdən keçirə bilərsiniz.</p>
+
+  <h3>6.3 Əl ilə düzəliş və silinmə</h3>
+  <p>Məhsulun üstünə toxunanda sağdan panel açılır:</p>
+  <ul class="plain">
+    <li><b>Düzəliş</b> — qalıq səhv yazılıbsa, düzgün rəqəmi yazırsınız. Səbəb tələb olunur.</li>
+    <li><b>Silinmə (itki)</b> — mal xarab olub, sınıb, vaxtı keçib. Səbəbi seçirsiniz və
+    proqram itkinin <b>maya dəyərini</b> dərhal göstərir.</li>
+    <li><b>Transfer</b> — bir anbardan digərinə köçürmə (mətbəx ↔ bar ↔ əsas anbar).</li>
+  </ul>
+
+  <div class="note">
+    <b>Düzəliş və silinmə eyni şey deyil</b>
+    Düzəliş səhv yazılmış rəqəmi düzəldir. Silinmə isə real itkidir. Onları qarışdırsanız,
+    «bu ay nə qədər zərər gördük» sualının cavabı olmur.
+  </div>
+
+  <h3>6.4 Avtomatik silinmə (reseptlər)</h3>
+  <p>Məhsulun resepti varsa (məsələn 1 çay = 2 q çay yarpağı + 1 şəkər), satış zamanı
+  anbardan avtomatik silinir. Reseptləri <span class="path">Anbar → Resept</span> bölməsindən
+  qurursunuz. Resepti olmayan məhsul satılanda anbar dəyişmir.</p>
+
+  <h3>6.5 Kalkulyasiya — yeməyin mayası</h3>
+  <p><span class="path">Anbar → Kalkulyasiya</span> hər yeməyin nəyə başa gəldiyini və nə qədər
+  qazandırdığını göstərir. Rəqəmlər reseptdən və anbardakı <b>bugünkü</b> qiymətlərdən hesablanır —
+  təchizatçı qiyməti qaldıranda bu cədvəl özü dəyişir.</p>
+
+  <table>
+    <tr><th style="width:24%">Sütun</th><th>Mənası</th></tr>
+    <tr><td><b>Maya</b></td><td>Yeməyin tərkibinin dəyəri. Reseptdəki miqdar × məhsulun qiyməti.</td></tr>
+    <tr><td><b>Qiymət</b></td><td>Menyudakı satış qiyməti.</td></tr>
+    <tr><td><b>Qazanc</b></td><td>Qiymət − maya. Mənfidirsə qırmızı yazılır.</td></tr>
+    <tr><td><b>Maya %</b></td><td>Mayanın qiymətə nisbəti. Restoranda adətən <b>25–35%</b> normal sayılır.</td></tr>
+  </table>
+
+  <p><b>Vəziyyət sütunu dörd cavab verir:</b></p>
+  <ul class="plain">
+    <li><b>Normal</b> — maya faizi qaydasındadır.</li>
+    <li><b>Maya yüksək</b> — 35%-dən çoxdur. Ya qiyməti qaldırmaq, ya porsiyanı yoxlamaq lazımdır.</li>
+    <li><b>Zərər</b> — yemək mayasından ucuz satılır. Hər satışda pul itirirsiniz.</li>
+    <li><b>Kalkulyasiya yoxdur</b> — resept yazılmayıb, yəni mayası <b>bilinmir</b>.</li>
+  </ul>
+
+  <div class="note">
+    <b>Niyə «bilinmir», «sıfır» yox</b>
+    Resepti olmayan yemək ucuz deyil — sadəcə hesablanmayıb. Proqram onu sıfır maya kimi
+    göstərsəydi, həmin yemək ən qazanclı kimi görünər və menyunun orta mayasını yalandan
+    aşağı çəkərdi. Ona görə belə yeməklər ortadan kənarda saxlanılır və ayrıca sayılır.
+  </div>
+
+  <div class="warn">
+    <b>Qiyməti yazılmamış məhsul</b>
+    Tərkibindəki hansısa məhsulun maya dəyəri sıfırdırsa, sarı xəbərdarlıq çıxır. O yemək
+    olduğundan ucuz görünür. <span class="path">Anbar</span> bölməsində həmin məhsulun
+    qiymətini yazın — kalkulyasiya dərhal düzəlir.
+  </div>
+
+  <div class="tip">
+    <b>Ayda bir dəfə</b>
+    Cədvəli <b>maya faizinə görə</b> sıralayın (standart belədir) və yuxarıdakı 5-10 yeməyə baxın.
+    Restoranın qazancı adətən orada itir — satış həcmində yox.
+  </div>
+
+  <h3>6.6 Hərəkətlər tarixçəsi</h3>
+  <p>Hər giriş-çıxış yazılır: nə vaxt, kim, nə qədər, hansı səbəblə. «Bu mal hara getdi»
+  sualının cavabı buradadır.</p>
+</section>
+
+<!-- ================================================================== 7 -->
+<section>
+  <h2><span class="num">7.</span> Təchizat və təchizatçılar</h2>
+  <p class="lede"><span class="path">Təchizat</span> — mal almaq və gələn malı anbara yazmaq.</p>
+
+  <h3>7.1 Alış sifarişi</h3>
+  <ol class="steps">
+    <li><span class="path">Təchizat</span> bölməsini açın. Yuxarıda <b>azalan məhsullar</b> zolağı var.</li>
+    <li><b>Təklif olunan sifariş</b> düyməsi çatışmayan malları avtomatik siyahıya yığır —
+    hər şeyi əl ilə yazmaq lazım deyil.</li>
+    <li>Təchizatçını seçin, miqdarları və qiymətləri yoxlayın, sifarişi yadda saxlayın.</li>
+  </ol>
+
+  <h3>7.2 Mal qəbulu</h3>
+  <p>Mal gələndə sifarişi açın və <b>Qəbul et</b> deyin. Gələn miqdar sifarişdən fərqlidirsə,
+  faktiki gələn rəqəmi yazın. Qəbul ediləndə:</p>
+  <ul class="plain">
+    <li>anbar qalığı artır,</li>
+    <li>maya dəyəri yenidən hesablanır (orta çəkili),</li>
+    <li>təchizatçıya borc yazılır.</li>
+  </ul>
+
+  <h3>7.3 Təchizatçılar</h3>
+  <p><span class="path">Təchizatçılar</span> bölməsində hər təchizatçının əlaqə məlumatı,
+  <b>borc qalığı</b> və ödəniş tarixçəsi var. Ödəniş edəndə <b>Ödəniş</b> düyməsi ilə yazın —
+  borc azalır.</p>
+</section>
+
+<!-- ================================================================== 8 -->
+<section>
+  <h2><span class="num">8.</span> Sayım (inventarizasiya)</h2>
+  <p class="lede">Anbarda faktiki nə olduğunu sayıb proqramdakı rəqəmlə tutuşdurmaq.</p>
+  <ol class="steps">
+    <li><span class="path">Anbar → Sayım</span> bölməsində <b>Yeni sayım</b> açın və anbarı seçin.</li>
+    <li>Siyahı yaranır. Hər məhsulu sayıb <b>faktiki miqdarı</b> yazırsınız.</li>
+    <li>Proqram fərqi göstərir: artıq və ya əskik, hər biri manatla.</li>
+    <li>Yoxlayıb razılaşdıqdan sonra <b>Təsdiqlə</b> deyin — qalıqlar saydığınız rəqəmlə əvəzlənir
+    və fərq hərəkətlər tarixçəsinə yazılır.</li>
+  </ol>
+  <div class="warn">
+    <b>Təsdiqləməzdən əvvəl baxın</b>
+    Təsdiq qalıqları dəyişir. Böyük fərq varsa, əvvəlcə səbəbini axtarın: çox vaxt səbəb
+    resept səhvi və ya yazılmamış silinmədir, oğurluq deyil.
+  </div>
+  <div class="tip">
+    <b>Nə vaxt saymaq</b>
+    Ən yaxşı vaxt — növbə bağlanandan sonra, satış getmirkən. Satış gedərkən saysanız,
+    rəqəm siz sayarkən dəyişir.
+  </div>
+</section>
+
+<!-- ================================================================== 9 -->
+<section>
+  <h2><span class="num">9.</span> Menyu və kataloq</h2>
+  <p class="lede"><span class="path">İdarə → Kataloq</span> — nə satdığınız burada qurulur.</p>
+
+  <h3>9.1 Kateqoriya və məhsul</h3>
+  <ul class="plain">
+    <li><b>Kateqoriya</b> — menyunun bölmələri (İsti yeməklər, İçkilər, Desertlər).</li>
+    <li><b>Məhsul</b> — ad, qiymət, kateqoriya, şəkil, maya dəyəri.</li>
+    <li><b>Şəkil</b> — məhsulun şəklini yükləyə və ya gizlədə bilərsiniz. Şəkilsiz menyu daha sürətli işləyir.</li>
+  </ul>
+
+  <h3>9.2 Əlavə seçimlər (modifikatorlar)</h3>
+  <p>Məsələn «Qəhvə» məhsuluna «Şəkərsiz / Az şəkərli / Şəkərli» seçimi və ya
+  «Əlavə süd (+0.50 ₼)» qoşmaq. Bunlar <b>modifikator qrupları</b> adlanır: qrupu bir dəfə
+  yaradıb bir neçə məhsula qoşursunuz.</p>
+
+  <h3>9.3 Qiymət dəyişikliyi</h3>
+  <p>Qiyməti dəyişəndə köhnə qiymət <b>tarixçədə</b> saxlanılır. Ona görə keçən ayın hesabatı
+  həmin ayın qiymətləri ilə düz qalır və köhnə çekdən qaytarma da düzgün hesablanır.</p>
+
+  <h3>9.4 Satışda yoxdur</h3>
+  <p>Məhsul bu gün bitibsə, silmək lazım deyil — <b>Satışda yoxdur</b> işarələyin.
+  Menyuda sönük görünür və vurula bilmir. Sabah bir toxunuşla qaytarırsınız.</p>
+
+  <h3>9.5 Excel ilə köçürmə</h3>
+  <p>Menyu böyükdürsə, <b>İxrac</b> ilə fayl alıb üzərində işləyə, sonra <b>İdxal</b> ilə geri yükləyə
+  bilərsiniz. İdxal etməzdən əvvəl proqram <b>nəyin dəyişəcəyini göstərir</b> — razılaşmasanız
+  ləğv edirsiniz.</p>
+</section>
+
+<!-- ================================================================= 10 -->
+<section>
+  <h2><span class="num">10.</span> Müştərilər, borc və loyallıq</h2>
+  <p class="lede"><span class="path">Müştərilər</span> — daimi müştəriləri tanımaq və borc yazmaq.</p>
+  <ul class="plain">
+    <li><b>Müştəri kartı</b> — ad, telefon, qeyd.</li>
+    <li><b>Borc (nisyə)</b> — hesabı müştərinin adına yazırsınız. Borc qalığı kartda görünür.</li>
+    <li><b>Borcun ödənilməsi</b> — müştəri pulu gətirəndə <b>Borc ödə</b> ilə yazırsınız.</li>
+    <li><b>Bonus</b> — satışdan bal yığılır, sonrakı hesabdan istifadə oluna bilər.</li>
+  </ul>
+  <div class="warn">
+    <b>Borc icazəsi</b>
+    Kimin borc yaza biləcəyini məhdudlaşdırın. Nəzarətsiz nisyə restoranın ən sakit zərəridir.
+  </div>
+</section>
+
+<!-- ================================================================= 11 -->
+<section>
+  <h2><span class="num">11.</span> Rezervasiya və çatdırılma</h2>
+
+  <h3>11.1 Rezervasiya</h3>
+  <p><span class="path">Masalar → Rezervasiya</span> — masanı qabaqcadan tutmaq: müştərinin adı,
+  telefonu, saat, qonaq sayı. Müştəri gələndə <b>Otur</b> deyirsiniz və rezervasiya sifarişə çevrilir.</p>
+
+  <h3>11.2 Çatdırılma</h3>
+  <ol class="steps">
+    <li><span class="path">Çatdırılma</span> bölməsində sifarişi yaradın, ünvanı yazın.</li>
+    <li>Kuryeri təyin edin.</li>
+    <li>Vəziyyəti izləyin: qəbul edildi → yoldadır → çatdırıldı.</li>
+    <li>Gün sonunda <b>kuryer hesabatı</b> kimin neçə sifariş apardığını və nə qədər pul
+    gətirməli olduğunu göstərir.</li>
+  </ol>
+</section>
+
+<!-- ================================================================= 12 -->
+<section>
+  <h2><span class="num">12.</span> İşçilər, rollar və səlahiyyətlər</h2>
+  <p class="lede">Kimin nə edə biləcəyini siz təyin edirsiniz. Bu, proqramın ən vacib hissəsidir.</p>
+
+  <h3>12.1 İşçi əlavə etmək</h3>
+  <ol class="steps">
+    <li><span class="path">İdarə → İşçilər</span> bölməsini açın.</li>
+    <li><b>Yeni işçi</b> deyin: ad, soyad və <b>rol</b> seçin (ofisiant, kassir, mətbəx, anbarçı,
+    növbə rəhbəri, müdir).</li>
+    <li>4–8 rəqəmli <b>PIN</b> verin.</li>
+    <li>İşçi həmin PIN-lə girir və yalnız roluna aid bölmələri görür.</li>
+  </ol>
+
+  <h3>12.2 Rollar nə deməkdir</h3>
+  <div class="role-grid">
+    <div class="role-card"><b>Ofisiant</b><span>Masa açır, sifariş alır, mətbəxə göndərir.
+    Adətən ödəniş almır və endirim vermir.</span></div>
+    <div class="role-card"><b>Kassir</b><span>Ödəniş alır, çek çap edir. Geri qaytarma üçün
+    çox vaxt müdir icazəsi lazım olur.</span></div>
+    <div class="role-card"><b>Mətbəx</b><span>Yalnız mətbəx ekranını görür.</span></div>
+    <div class="role-card"><b>Anbarçı</b><span>Anbar, təchizat, sayım. Masa planı ona görünmür.</span></div>
+    <div class="role-card"><b>Növbə rəhbəri</b><span>Kassir + endirim, ləğv, X hesabat.</span></div>
+    <div class="role-card"><b>Müdir</b><span>Demək olar hər şey: hesabatlar, parametrlər, işçilər.</span></div>
+  </div>
+
+  <h3>12.3 Səlahiyyətləri dəyişmək</h3>
+  <p>Rolların hazır dəsti var, amma siz hər səlahiyyəti ayrıca aça-bağlaya bilərsiniz.
+  Bunu <b>iki yerdən</b> etmək olar:</p>
+  <table>
+    <tr><th style="width:26%">Harada</th><th>Necə</th></tr>
+    <tr><td><b>Saytda</b><br>müştəri paneli</td>
+        <td><span class="path">İşçi rolları</span> səhifəsində rolu seçib qarşısındakı
+        xanaları işarələyirsiniz. Dəyişiklik <b>2 dəqiqə ərzində</b> özü kassaya düşür —
+        heç nə etmək lazım deyil. İşçi növbəti girişində yeni səlahiyyətlə işləyir.</td></tr>
+    <tr><td><b>Kassada</b></td>
+        <td><span class="path">İdarə → İşçilər</span> bölməsində, elə həmin siyahı.</td></tr>
+  </table>
+
+  <div class="note">
+    <b>Sönük görünən səlahiyyətlər</b>
+    Saytda bəzi səlahiyyətlər sönük və bağlı ola bilər. Bu o deməkdir ki, həmin imkan sizin
+    paketinizə daxil deyil. Lazımdırsa bizə yazın — açırıq və dərhal işləyir.
+  </div>
+
+  <div class="tip">
+    <b>Müdir həmişə tam səlahiyyətlidir</b>
+    Müdirin səlahiyyətini heç kim (hətta səhvən özünüz də) ala bilməz. Bu qəsdəndir:
+    səhvi geri qaytarmağın yeganə yolu budur.
+  </div>
+
+  <h3>12.4 Müdir icazəsi (PIN ilə təsdiq)</h3>
+  <p>Kassirin səlahiyyəti çatmayan əməliyyatda ekran <b>müdir PIN-i</b> soruşur. Müdir gəlib
+  öz PIN-ini yazır, əməliyyat keçir və <b>onun adına</b> qeyd olunur. Beləcə kassirə hər şeyi
+  açmadan işi davam etdirmək mümkün olur.</p>
+
+  <h3>12.5 İş qrafiki və davamiyyət</h3>
+  <p><span class="path">İş qrafiki</span> bölməsində növbələri planlaşdırır, işçilər isə gəlib-getməni
+  PIN ilə qeyd edirlər. Sonra kimin nə qədər işlədiyini görmək olur.</p>
+</section>
+
+<!-- ================================================================= 13 -->
+<section>
+  <h2><span class="num">13.</span> Hesabatlar</h2>
+  <p class="lede"><span class="path">İdarə → Hesabatlar</span> və <span class="path">İdarə paneli</span></p>
+
+  <table>
+    <tr><th style="width:34%">Hesabat</th><th>Nəyi göstərir</th></tr>
+    <tr><td>İdarə paneli</td><td>Bu gün: satış, çek sayı, orta çek, açıq masalar.</td></tr>
+    <tr><td>Günlük / aylıq satış</td><td>Seçilmiş dövr üzrə cəmi.</td></tr>
+    <tr><td>Məhsul üzrə satış</td><td>Ən çox və ən az satılanlar.</td></tr>
+    <tr><td>Kateqoriya üzrə</td><td>Hansı bölmə nə qədər gətirir.</td></tr>
+    <tr><td>Ofisiant / kassir üzrə</td><td>Kim nə qədər satıb.</td></tr>
+    <tr><td>Ödəniş növü üzrə</td><td>Nağd, kart, qarışıq nisbəti.</td></tr>
+    <tr><td>Endirim hesabatı</td><td>Nə qədər endirim verilib, kim tərəfindən.</td></tr>
+    <tr><td>Geri qaytarmalar</td><td>Nə qədər pul qayıdıb və hansı səbəblə.</td></tr>
+    <tr><td>Anbar hesabatı</td><td>Qalıq, dəyər, itki.</td></tr>
+    <tr><td>Audit</td><td>Kim nə etdi: silinmə, endirim, qaytarma, parametr dəyişikliyi.</td></tr>
+  </table>
+
+  <p>Hesabatları <b>ixrac</b> edib mühasibə göndərə bilərsiniz. İstənilən tarix aralığı üçün
+  <b>dövr hesabatı</b> çap oluna bilər.</p>
+
+  <div class="tip">
+    <b>Həftədə bir dəfə</b>
+    Endirim, geri qaytarma və silinmə hesabatlarına baxın. Restoranın pulu adətən burada itir,
+    satışda yox.
+  </div>
+</section>
+
+<!-- ================================================================= 14 -->
+<section>
+  <h2><span class="num">14.</span> Parametrlər və printer</h2>
+  <p class="lede"><span class="path">Parametrlər</span> — soldakı siyahıdan bölmə seçilir.</p>
+
+  <h3>14.1 Restoran məlumatları</h3>
+  <p>Ad, ünvan, telefon, iş saatları, VÖEN, logo. Bunlar <b>çekin başlığında</b> çap olunur.
+  Filialınız varsa, filial adı da burada yazılır — qayıdan çekdən hansı filial olduğu bilinsin.</p>
+
+  <h3>14.2 Printer — avtomatik tapma</h3>
+  <p>Printeri əl ilə qurmaq lazım deyil.</p>
+  <ol class="steps">
+    <li>Printeri qoşun: <b>USB kabeli</b> ilə və ya <b>şəbəkə (LAN) kabeli</b> ilə.</li>
+    <li><span class="path">Parametrlər → Printer</span> bölməsində <b>Printeri tap</b> düyməsini basın.</li>
+    <li>Proqram özü axtarır: USB printerləri, Windows printer növbələri, COM/LPT portları və
+    şəbəkədəki printerləri. Xprinter və digər ESC/POS printerlər tanınır.</li>
+    <li>Tapılan hər namizədə <b>qısa test səhifəsi</b> göndərilir. Hansından kağız çıxdısa,
+    o, kassanın printeri kimi yadda saxlanılır.</li>
+  </ol>
+
+  <h3>14.3 Üç printer: kassa, mətbəx, anbar</h3>
+  <p>Restoranda adətən bir neçə printer olur: mətbəxdə sifariş çıxsın, kassada müştəri çeki
+  çıxsın, anbarda mal qəbulu sənədi çıxsın. Proqram üçünü də ayrı tanıyır.</p>
+  <p><span class="path">Parametrlər → Printerlər</span> bölməsində üç sətir var — hər printer üçün
+  bir sətir. Hər sətirdə onun hansı cihaza bağlandığı yazılır:</p>
+  <div class="receipt">Kassa printeri      Xprinter XP-58        [Dəyiş]
+Mətbəx printeri     Seçilməyib            [Təyin et]
+Anbar printeri      Xprinter XP-80        [Dəyiş]</div>
+
+  <ol class="steps">
+    <li>Bütün printerləri qoşun — USB və ya şəbəkə (LAN) kabeli ilə.</li>
+    <li>Qurmaq istədiyiniz sətirdə <b>«Təyin et»</b> (və ya <b>«Dəyiş»</b>) düyməsini basın.</li>
+    <li><b>«Printeri tap»</b> deyin. Proqram tapdığı <b>birinci cihaza</b> yoxlama vərəqi göndərir
+    və soruşur: «Mətbəx printerindən kağız çıxdı?»</li>
+    <li>Gedin baxın. Kağız çıxdısa — <b>«Bəli»</b>. Çıxmadısa — <b>«Yox, növbətini yoxla»</b>,
+    proqram növbəti cihaza vərəq göndərir.</li>
+    <li>«Bəli» dediyiniz anda həmin printer o rola yazılır və pəncərə bağlanır.</li>
+    <li>Növbəti sətir üçün eyni qaydanı təkrarlayın.</li>
+  </ol>
+  <p>Ekranda <b>1 / 3</b> kimi yazılır — neçənci cihazı yoxladığınız bilinsin deyə.
+  Bağlanmayan rol sarı <b>«Seçilməyib»</b> ilə görünür, yəni nəyin qalxmadığı bir baxışda bilinir.</p>
+
+  <h3>14.4 Printer tapılmırsa — ünvanı əl ilə yazmaq</h3>
+  <p>Şəbəkə printerinin IP-sini bilirsinizsə, axtarmağa ehtiyac yoxdur. Sətri açıb
+  <b>«Əl ilə yaz»</b> deyin:</p>
+  <table>
+    <tr><th style="width:38%">Nə yazmalı</th><th>Nümunə</th></tr>
+    <tr><td>Şəbəkə (LAN) printeri</td><td><code>tcp:192.168.1.51:9100</code></td></tr>
+    <tr><td>Windows printer növbəsi</td><td><code>XP-58</code> — Windows-dakı adı</td></tr>
+  </table>
+  <ol class="steps">
+    <li>Ünvanı yazın.</li>
+    <li><b>«Test çap»</b> deyin — kağız çıxmalıdır.</li>
+    <li>Çıxdısa <b>«Kassa kimi saxla»</b> (və ya Mətbəx / Anbar) deyin.</li>
+  </ol>
+  <div class="tip">
+    <b>Mövcud ünvan özü gəlir</b>
+    Artıq bağlı olan printerin ünvanını dəyişirsinizsə, xana boş gəlmir — köhnə ünvan yazılı olur,
+    yalnız rəqəmi düzəldirsiniz.
+  </div>
+
+  <table>
+    <tr><th style="width:26%">Rol</th><th>Bu printerdən nə çıxır</th></tr>
+    <tr><td><b>Kassa</b></td><td>Müştəri çeki, hesab, geri qaytarma qəbzi, X və Z hesabat, növbə hesabatı.</td></tr>
+    <tr><td><b>Mətbəx</b></td><td>Mətbəx sifariş bileti — sifariş «Mətbəxə göndər» ediləndə.</td></tr>
+    <tr><td><b>Anbar</b></td><td>Mal qəbulu sənədi — Təchizatda «Qəbul et» ediləndə. Sonra
+    «Qəbzi çap et» ilə təkrar çıxarmaq olar. Sənədin altında imza yerləri var.</td></tr>
+  </table>
+
+  <div class="note">
+    <b>Bir printer iki rolu da tuta bilər</b>
+    Mətbəxdə ayrıca printer yoxdursa, həmin sətirdə həm Kassa, həm Mətbəx seçin — hər iki sənəd
+    eyni printerdən çıxar. Rol seçilməyibsə, sənəd kassa printerinə gedir.
+  </div>
+
+  <div class="warn">
+    <b>«Virtual printer» seçməyin</b>
+    Siyahıda «Virtual printer (fayla yazır)» görünə bilər. O, həqiqi printer deyil — çeki
+    kompüterdə fayla yazır, kağız çıxmır. Seçsəniz proqram xəbərdarlıq edir: ekran «çap olundu»
+    desə də, əlinizə kağız gəlmir.
+  </div>
+
+  <div class="warn">
+    <b>Şəbəkə printerinin IP-si dəyişərsə</b>
+    Router printerə yeni IP verərsə, çap dayanar. <b>Printeri tap</b> düyməsini yenidən basın və
+    rolları yenidən seçin — bir dəqiqəlik işdir.
+  </div>
+  <div class="note">
+    <b>Niyə səhifə çap olunur</b>
+    «Printer tapıldı» yazısı kağız çıxdığını sübut etmir. PDF-ə yazan saxta printerlər də
+    «uğurlu» cavab verir. Ona görə proqram real səhifə göndərir — piştaxtada dayanan adam
+    nəyin işlədiyini gözü ilə görür.
+  </div>
+
+  <h3>14.5 Çek ayarları</h3>
+  <ul class="plain">
+    <li><b>Kağız eni</b> — 58 mm və ya 80 mm.</li>
+    <li><b>Kəsmə</b> — çap bitəndə kağızı avtomatik kəsmək.</li>
+    <li><b>Kassa şüşəsi</b> — ödənişdə avtomatik açılsın.</li>
+    <li><b>QR kod</b> — çekə QR kod qoymaq və onun hansı ünvana aparacağını yazmaq
+    (məsələn restoranın xəritə səhifəsi və ya öz saytınız).</li>
+    <li><b>Logo</b> — çekin başında şəkil.</li>
+  </ul>
+  <div class="warn">
+    <b>QR kodu boş qoymayın</b>
+    QR açıqdırsa və ünvan yazılmayıbsa, müştəri boş və ya yanlış səhifəyə düşər.
+    İstifadə etmirsinizsə, QR-ı söndürün.
+  </div>
+
+  <h3>14.6 Ekran</h3>
+  <p>Tam ekran rejimi, ölçü və böyütmə. Toxunma ekranda işləyirsinizsə tam ekran
+  rahatdır — səhvən başqa pəncərəyə keçmək olmur.</p>
+
+  <h3>14.7 Sistem və təhlükəli zona</h3>
+  <p>Ən aşağıdakı qırmızı çərçivəli bölmə <b>geri dönüşü olmayan</b> əməliyyatlar üçündür
+  (məsələn əməliyyat məlumatlarının sıfırlanması). Nə etdiyinizi bilmirsinizsə toxunmayın —
+  əvvəlcə bizə yazın.</p>
+</section>
+
+<!-- ================================================================= 15 -->
+<section>
+  <h2><span class="num">15.</span> Ehtiyat nüsxə və lisenziya</h2>
+
+  <h3>15.1 Ehtiyat nüsxə (backup)</h3>
+  <ol class="steps">
+    <li><span class="path">İdarə → Backup</span> bölməsini açın.</li>
+    <li><b>Nüsxə yarat</b> deyin. Fayl kompüterdə saxlanılır.</li>
+    <li>Faylı <b>başqa yerə</b> də köçürün: USB yaddaş və ya bulud. Kompüter xarab olarsa,
+    onun içindəki nüsxə də gedir.</li>
+  </ol>
+  <p>Bərpa edəndə proqram əvvəlcə <b>nüsxədə nə olduğunu göstərir</b> (tarix, sifariş sayı) —
+  siz baxıb təsdiqləyirsiniz.</p>
+  <div class="tip">
+    <b>Həftədə bir dəfə</b>
+    Cümə axşamı növbə bağlayandan sonra bir nüsxə götürmək kifayətdir.
+  </div>
+
+  <h3>15.2 Lisenziya</h3>
+  <p><span class="path">Parametrlər → Lisenziya</span> bölməsində lisenziyanın vəziyyəti və
+  bitmə tarixi görünür. Lisenziya bu kompüterə bağlıdır.</p>
+  <ul class="plain">
+    <li><b>Kompüteri dəyişirsiniz</b> — bizə yazın, lisenziyanı yeni kompüterə keçiririk.</li>
+    <li><b>İnternet yoxdur</b> — oflayn aktivasiya var: proqram fayl yaradır, bizə göndərirsiniz,
+    cavab faylını yükləyirsiniz.</li>
+  </ul>
+</section>
+
+<!-- ================================================================= 16 -->
+<section>
+  <h2><span class="num">16.</span> Sayt — müştəri paneli</h2>
+  <p class="lede"><code>possistem.az</code> → email və parolunuzla daxil olun.</p>
+  <table>
+    <tr><th style="width:30%">Bölmə</th><th>Nə üçündür</th></tr>
+    <tr><td>İdarə paneli</td><td>Restoranın canlı vəziyyəti: bugünkü satış, açıq masalar, kassanın
+    onlayn olub-olmaması.</td></tr>
+    <tr><td>Yükləmələr</td><td>Proqramın son versiyasını yükləmək.</td></tr>
+    <tr><td>Quraşdırma</td><td>İlk quraşdırma addımları.</td></tr>
+    <tr><td>İşçi rolları</td><td>İşçilərə hansı səlahiyyətin veriləcəyini təyin etmək.</td></tr>
+    <tr><td>Fəaliyyət</td><td>Kassada baş verən mühüm hadisələr.</td></tr>
+    <tr><td>Çat / Dəstək</td><td>Bizimlə birbaşa yazışma. Sualınızı buradan yazın.</td></tr>
+    <tr><td>Parametrlər</td><td>Hesab məlumatları, parolun dəyişdirilməsi.</td></tr>
+  </table>
+
+  <div class="note">
+    <b>Kassa oflayn görünürsə</b>
+    Saytdakı rəqəmlər kassadan gələn son məlumatdır. Kassa internetsiz işləyirsə,
+    sayt həmin son anın mənzərəsini göstərir — səhv deyil, sadəcə köhnədir.
+    İnternet qayıdan kimi özü yenilənir.
+  </div>
+</section>
+
+<!-- ================================================================= 17 -->
+<section>
+  <h2><span class="num">17.</span> Problem olduqda</h2>
+
+  <table>
+    <tr><th style="width:38%">Problem</th><th>Nə etməli</th></tr>
+    <tr><td>Çek çap olunmur</td>
+        <td>Kağızı və kabeli yoxlayın. Sonra <span class="path">Parametrlər → Printer → Printeri tap</span>.
+        Printer dəyişibsə və ya IP ünvanı dəyişibsə, bu, onu yenidən tapır.</td></tr>
+    <tr><td>«Növbə açıq deyil» yazır</td>
+        <td><span class="path">İdarə → Kassa → Növbəni aç</span>.</td></tr>
+    <tr><td>Geri qaytarma kodu tapılmır</td>
+        <td>Çekin <b>ödənilmiş</b> çek olduğuna əmin olun (hesab çeki deyil). Kodu tam yazın.
+        Çek itibsə, sifarişi tarixçədən saat və məbləğlə tapmaq lazımdır.</td></tr>
+    <tr><td>Müdir PIN-i soruşur</td>
+        <td>Bu səlahiyyət həmin rola verilməyib. Müdir PIN-ini yazsın, və ya saytdakı
+        <b>İşçi rolları</b> bölməsindən səlahiyyəti açın.</td></tr>
+    <tr><td>Kassa az çıxdı</td>
+        <td>Z hesabatda fərqə baxın, sonra kassa hərəkətlərini və geri qaytarmaları yoxlayın.
+        Yazılmamış məxaric ən çox rast gəlinən səbəbdir.</td></tr>
+    <tr><td>Anbar rəqəmi tutmur</td>
+        <td>Reseptləri və silinmələri yoxlayın. Sonra sayım edin.</td></tr>
+    <tr><td>Saytda kassa oflayn görünür</td>
+        <td>Restorandakı interneti yoxlayın. Kassa özü işləməyə davam edir.</td></tr>
+    <tr><td>Proqram açılmır</td>
+        <td>Kompüteri yenidən başladın. Davam edirsə, saytdakı çatdan bizə yazın.</td></tr>
+  </table>
+
+  <h3>Gündəlik qısa siyahı</h3>
+  <table>
+    <tr><th style="width:22%">Nə vaxt</th><th>Nə etməli</th></tr>
+    <tr><td><b>Səhər</b></td><td>Növbəni aç, açılış məbləğini yaz, test çap et.</td></tr>
+    <tr><td><b>Gün ərzində</b></td><td>Kassadan çıxan hər pulu yaz. Səbəbsiz hərəkət qoyma.</td></tr>
+    <tr><td><b>Axşam</b></td><td>Masaları bağla, pulu say, Z hesabat çıxar.</td></tr>
+    <tr><td><b>Həftədə bir</b></td><td>Backup götür. Endirim, qaytarma və silinmə hesabatlarına bax.</td></tr>
+    <tr><td><b>Ayda bir</b></td><td>Sayım et. Menyu qiymətlərini yoxla.</td></tr>
+  </table>
+
+  <div class="note" style="margin-top:8mm">
+    <b>Dəstək</b>
+    Saytdakı <b>Çat</b> bölməsindən yazın — sualınız birbaşa bizə gəlir.
+    Kassadakı <span class="path">Dəstək</span> düyməsi də eyni yerə göndərir və
+    problemi araşdırmaq üçün lazım olan texniki məlumatı özü əlavə edir.
+  </div>
+</section>
+
+</body>
+</html>

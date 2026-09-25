@@ -1,0 +1,78 @@
+appId: com.cyberplus.market.pos
+productName: MarketPos
+executableName: MarketPos
+copyright: Copyright © MarketPos
+electronVersion: 43.2.0
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - electron/**/*
+  - build/icon.png
+  - package.json
+  # node_modules here is a symlink into ../restoranpos, and electron-builder's
+  # dependency walk cannot follow it past the first level ("cannot find path
+  # for dependency … @undefined"). electron-updater then shipped without its
+  # own dependencies and every till failed to require it - no auto-update.
+  # The closure is listed by hand; scripts/verify-market-package.mjs checks it.
+  - { from: node_modules/electron-updater, to: node_modules/electron-updater }
+  # A nested node_modules is skipped by the copy above; electron-updater pins its own semver.
+  - { from: node_modules/electron-updater/node_modules/semver, to: node_modules/electron-updater/node_modules/semver }
+  - { from: node_modules/builder-util-runtime, to: node_modules/builder-util-runtime }
+  - { from: node_modules/fs-extra, to: node_modules/fs-extra }
+  - { from: node_modules/graceful-fs, to: node_modules/graceful-fs }
+  - { from: node_modules/jsonfile, to: node_modules/jsonfile }
+  - { from: node_modules/universalify, to: node_modules/universalify }
+  - { from: node_modules/js-yaml, to: node_modules/js-yaml }
+  - { from: node_modules/argparse, to: node_modules/argparse }
+  - { from: node_modules/lazy-val, to: node_modules/lazy-val }
+  - { from: node_modules/lodash.escaperegexp, to: node_modules/lodash.escaperegexp }
+  - { from: node_modules/lodash.isequal, to: node_modules/lodash.isequal }
+  - { from: node_modules/tiny-typed-emitter, to: node_modules/tiny-typed-emitter }
+  - { from: node_modules/debug, to: node_modules/debug }
+  - { from: node_modules/ms, to: node_modules/ms }
+  - { from: node_modules/sax, to: node_modules/sax }
+extraResources:
+  - from: native/build/market-pos-core.exe
+    to: native/win32-x64/market-pos-core.exe
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+nsis:
+  artifactName: MarketPos-Setup-${version}.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MarketPos
+  uninstallDisplayName: MarketPos
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+portable:
+  artifactName: MarketPos-Portable-${version}.${ext}
+  requestExecutionLevel: user
+asar: true
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+npmRebuild: false
+compression: maximum
+publish:
+  provider: generic
+  url: https://possistem.az/marketpos/updates/

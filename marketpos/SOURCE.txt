@@ -1,0 +1,151 @@
+Market POS — mənbə ağacının vəziyyəti
+=====================================
+Son yenilənmə: 2026-09-24
+
+1.4.x GRAFT EDİLDİ — 1.4.7 (24 sentyabr 2026)
+----------------------------------------------
+recovered-source-1.4.x/ (Claude file-history) bu ağaca 3 tərəfli birləşdirildi,
+ortaq baza GitHub-dakı 1.3.0. Nəticə: MarketPos 1.4.7, saytda yayımlanıb.
+
+  - 1.4.4-də olub bu ağacda olmayan 33 handler-in hamısı geri qayıdıb
+    (stock.sn binar artığı idi; state.changed hadisədir və qaytarılıb).
+    loyalty.balance/earn/redeem 1.4-də qəsdən silinib (earn icazəsiz xal
+    yaradırdı); bonus sale.complete içindədir.
+  - Kompüterlər arası ortaq məlumat: electron/sync-service.cjs (LAN multicast +
+    /market-pos/sync/exchange). scripts/test-market-sync-resilience.mjs iki nüvəni
+    sinxronlaşdırır; S1: bir kassada satış o biri PC-də qalığı azaldır.
+  - Migrasiyalar: 004_market_140 və 005_market_sync heç yerdə yox idi, 1.4.4
+    binarından bayt-bayt çıxarıldı. 001-008 checksumları sahədəki 1.4.2/1.4.3/
+    1.4.4 bazaları ilə eynidir. Bu ağacın öz 004/005-i 009/010 oldu; köhnə nömrəli
+    bazalar Migrator-da avtomatik yenidən nömrələnir (native/tests/graft_1_4_test.cpp).
+  - 1.4.6 bu fərqi bilmədən yayımlanmışdı: 1.4.2-1.4.4 bazasında nüvəsi açılmır.
+    1.4.6 main-i nüvə açılmasa da yeniləməni yoxlayır, ona görə 1.4.7-ni özü alır.
+  - Renderer bu ağacınkıdır (1.4-ün bölünmüş səhifələri bərpa olunmayıb); 1.4-dən
+    state.changed canlı yeniləmə, sinxron statusu, kassa qeydiyyatı köçürüldü.
+  - core-supervisor: çöküşdən sonra restart _default bazasını açırdı (1.4.4-dən düzəliş).
+  - electron-builder.yml: electron-updater asılılıqları əl ilə sadalanır
+    (node_modules symlink-dir; olmasa kassa özünü yeniləyə bilmir).
+    verify-market-package.mjs bunu yoxlayır.
+
+KÖHNƏ QEYDLƏR (tarix üçün)
+--------------------------
+1.4.4 İTKİSİ QƏBUL EDİLİB (sahibin qərarı, 21 sentyabr 2026)
+------------------------------------------------------------
+possistem.az-da canlı olan: MarketPos-Setup-1.4.4.exe (19 sentyabr 2026).
+Bu qovluq isə GitHub-dakı 1.3.0 snapshot-ı + 19-21 sentyabrda burada edilən işdir.
+1.4.1 - 1.4.4-ün mənbəyi /home/panda/Desktop/Projects/possistem/possistem/market-pos
+idi, o ağac silinib, commit edilməyib. Serverdə də yoxdur (yoxlanılıb).
+
+Əvvəl package.json qəsdən aşağı nömrədə saxlanılırdı ki, təsadüfi build canlı
+feed-i keçib aşağıdakı 33 handler-i silməsin. Sahib bu riski açıq qəbul etdi:
+market POS-un hələ müştərisi yoxdur, ona görə itiriləcək canlı quraşdırma da
+yoxdur. Versiya indi 1.4.6-dır və bu ağac yayımlanan mənbədir.
+
+Aşağıdakı siyahı ona görə saxlanılır ki, hansı işin geri yazılmalı olduğu
+bilinsin - xəbərdarlıq kimi yox, iş siyahısı kimi.
+
+1.4.4-də olan, bu ağacda OLMAYAN nüvə handler-ləri (33 ədəd)
+-----------------------------------------------------------
+Sinxronizasiya (bütöv alt-sistem):
+  sync.ack  sync.apply  sync.bootstrap  sync.configure  sync.export
+  sync.getServerVector  sync.prune  sync.setPeerVector  sync.setServerVector
+  sync.status   + electron/sync-service.cjs (17 KB)
+Kassa aparatı / xəzinə:
+  cash.open  cash.close  cash.bindDeviceRegister
+  register.create  register.update  treasury.list  treasury.transfer
+Alış və qaytarma:
+  purchase.get  purchase.update  purchase.returns  purchase.returnPartial
+Anbar:
+  stock.movement  stock.snapshot  stock.sn  warehouse.upsert
+Digər:
+  auth.getOverrides  auth.setOverride  product.upsert  staff.save
+  settings.setValue  customer.summary  supplier.summary  loyalty.config
+  state.changed
+Elektron tərəfdə əlavə: electron/catalog-images.cjs,
+  hardware/fiscal-provider.js, hardware/terminal-provider.js,
+  printer.js (99 sətir artıq), main.cjs (574 sətir artıq), preload.cjs (27 sətir artıq)
+
+Bu ağacda olan, 1.4.4-də OLMAYAN işlər (21 handler)
+---------------------------------------------------
+  auth.permissionCatalogue  auth.roles  auth.saveRole  auth.deleteRole
+  courier.list  courier.save  delivery.create  delivery.list
+  delivery.assign  delivery.setStatus  delivery.courierReport
+  recipe.get  recipe.save  schedule.list  schedule.save
+  attendance.clockIn  attendance.clockOut  attendance.list
+  loyalty.balance  loyalty.earn  loyalty.redeem
+Əlavə: electron/core-payload.cjs indi `approverId`-i də renderer-dən qopardır və
+yalnız doğrulanmış müdir PIN-indən yazır (1.4.4-dəki versiya bunu açıq qoymuşdu).
+
+Bərpa üçün nə var
+-----------------
+recovered-1.4.4/ - canlı installer-dən çıxarılmış 1.4.4:
+  electron/*.cjs        - hərfi mənbə (electron main faylları olduğu kimi paketlənir)
+  dist/assets/*.js|css  - renderer (minified, src bərpa olunmur)
+  native/market-pos-core.exe - C++ nüvənin yeganə qalan forması
+  core-handlers-1.4.4.txt    - tam handler siyahısı
+
+Birləşdirmə yolu (kim bunu edəcəksə)
+------------------------------------
+1. electron/ tərəfi hərfi bərpa olunur: recovered-1.4.4/electron/ faylları əsas
+   götürülür, üstünə bu ağacın 94 sətirlik main.cjs dəyişikliyi və yeni
+   core-payload.cjs qoyulur.
+2. C++ tərəfi bərpa olunmur - yuxarıdakı 33 handler recovered-1.4.4/native/
+   binarına baxaraq yenidən yazılmalıdır. Sinxronizasiya alt-sistemi ən böyük hissədir.
+3. Renderer src-i yoxdur; 1.4.4 bundle-ından davranış oxunur, kod oxunmur.
+
+Çap: restoran nüvəsindən köçürüldü (21 sentyabr 2026)
+-----------------------------------------------------
+Market ümumiyyətlə çap edə bilmirdi. `MockPrinterProvider` baytları yaddaşda
+saxlayırdı, `FilePrinterProvider` isə userData/printer-last.bin faylına yazırdı -
+kassa "çek çap olundu" deyirdi, printerdən heç nə çıxmırdı. 1.4.4-də TCP provider
+vardı, yəni IP-ni əl ilə yazsan LAN printeri işləyirdi; USB, Windows növbəsi,
+serial və LPT heç vaxt əlçatan olmayıb və avtomatik tapma yox idi.
+
+İndi restoran nüvəsinin çap hissəsi köçürülüb:
+  native/core/{include,src}/market/printing/DeviceDiscovery.*  - tapma
+  native/core/{include,src}/market/printing/RawSend.*          - 4 nəqliyyat
+  native/core/src/printing/PrinterHandlers.cpp                 - RPC-lər
+Hər ikisi scripts/port-printing-from-restaurant.mjs tərəfindən yaradılır və
+restoran mənbəyi ilə hərfi eynidir (yalnız namespace və logger dəyişir). Restoran
+tərəfdə düzəliş olanda skript yenidən qaçırılır - əl ilə redaktə edilmir.
+
+Nüvə metodları: printer.list, printer.detect, printer.setTarget, printer.send.
+Electron artıq ESC/POS baytlarını qurub nüvəyə verir (CorePrinterProvider);
+Parametrlər → avadanlıq kartında "Printeri tap" düyməsi bütün namizədlərə səhifə
+göndərir və ilk qəbul edəni kassanın printeri kimi yadda saxlayır.
+Testlər: native/tests/printing_test.cpp (portun bütöv gəldiyini yoxlayır).
+
+Səlahiyyətlər: tətbiq olunmayan kataloq düzəldildi (21 sentyabr 2026)
+----------------------------------------------------------------------
+permission_catalogue həmişə STOCK_ADJUSTMENT, RECEIVE_PURCHASE, EDIT_PRODUCT və
+s. vəd edirdi, səlahiyyət ekranı da onları paylayırdı - amma yalnız
+RetailOps.cpp-dəki handler-lər yoxlayırdı. Application.cpp-dəki hər şey sessiyası
+olan istənilən şəxs üçün açıq idi: kassir `market:invoke` ilə malı silə, məhsulu
+silə, növbəni bağlaya bilərdi - öz ekranı düyməni gizlətsə də.
+
+16 handler indi qapılıdır (inventory.adjust/transfer, product.*, purchase.*,
+return.create, cash.*, settings.set, state.importLegacy, report.*). `role`
+main-in doğruladığı sessiyadan gəlir, müdir PIN-i ilə override yolu isə
+işləməyə davam edir. Testlər: native/tests/permission_gate_test.cpp.
+
+Nəticə olaraq boot-dakı birdəfəlik kataloq köçürmələri App.tsx-də girişdən
+SONRAYA keçirildi - əvvəl heç kim daxil olmamış halda kataloqa yazırdılar.
+
+Rollar saytdan (21 sentyabr 2026)
+----------------------------------
+Restoran kassası 20 sentyabrdan rol siyasətini saytdan çəkir; market heç vaxt
+çəkmirdi, ona görə admin panelin və müştəri portalının market işçiləri haqqında
+dediyi hər şey bazada qalırdı. İndi:
+  server: POST /pos/api/market-pos/roles (cihaz imzası ilə, 'market'-ə bağlı)
+  kassa:  heartbeat-dən sonra çəkilir, nüvədə roles.applyPolicy tətbiq edir
+  sayt:   hər iki redaktorda məhsul keçidi (yalnız lisenziyası olan məhsullar)
+`policySource` core-payload.cjs-in sildiyi sahədir - renderer bu handler-ə çata
+bilmir. Testlər: native/tests/role_policy_test.cpp.
+
+Silinmə (itki) səbəbləri
+------------------------
+inventory.waste + inventory.wasteReasons: mənfi düzəliş deyil, ayrıca hərəkət
+növü (WASTE) və qapalı səbəb siyahısı - "bu ay nə atmışıq" sualı ancaq belə
+cavablanır. Ekran səbəb siyahısını nüvədən oxuyur.
+
+Qalan fərqlər (yuxarıdakı 33 handler) hələ yazılmayıb.

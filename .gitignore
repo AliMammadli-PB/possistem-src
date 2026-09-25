@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release*/
+*.exe
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+*.pem
+*.key

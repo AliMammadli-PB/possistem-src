@@ -1,0 +1,4 @@
+possistem Restoran POS — kassa proqramı mənbəyi
+===============================================
+Electron masaüstü POS + C++ core + database migrations.
+node_modules, installer-lər və build qovluqları daxil deyil.

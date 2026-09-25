@@ -1,0 +1,2 @@
+Restaurant C++ core restored from AliMammadli-PB/milioner-pos (2026-09-19T16:09:37+03:00).
+Headers+src under native/core; third_party from local Projects tree if present.

@@ -1,0 +1,2 @@
+Restaurant POS — full source + C++ core + packaged UI.
+Launch: Possistem NEWEST (points here).

@@ -1,0 +1,11 @@
+-- Roles an operator can create and edit.
+--
+-- Only the column lives here. The permission keys and their grants are seeded
+-- by Migrator::ensurePermissionGrants(), which runs after the reference seed
+-- and on every later startup - a migration cannot reference roles that the seed
+-- has not written yet.
+--
+-- `custom` marks the rows an operator made, so the shipped roles keep their
+-- guarantees: an administrator cannot be deleted, and a waiter role always
+-- exists to assign.
+ALTER TABLE roles ADD COLUMN custom INTEGER NOT NULL DEFAULT 0 CHECK (custom IN (0,1));

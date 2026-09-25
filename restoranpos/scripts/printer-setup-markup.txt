@@ -1,0 +1,98 @@
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl border border-hairline bg-elevated p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Printerləri tənzimlə" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 space-y-2", children: PRINTER_ROLES.map((role) => {
+            const target = roleTargets[role.id];
+            const known = target && target !== "auto";
+            const listed = detectedPrinters.find((p) => p.name === target);
+            const open = setupRole === role.id;
+            return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `rounded-xl border px-4 py-3 ${open ? "border-gold/50 bg-gold/5" : "border-hairline"}`, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm font-medium text-cream", children: [role.label, " printeri"] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: `mt-0.5 truncate text-xs ${known ? "text-muted" : "text-warning"}`, children: known ? (listed ? printerLabel(listed) : target) : "Seçilməyib" })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                  type: "button",
+                  onClick: () => open ? closeWizard() : openWizard(role.id),
+                  className: "touch-target shrink-0 rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-sm text-gold hover:bg-gold/20",
+                  children: open ? "Bağla" : (known ? "Dəyiş" : "Təyin et")
+                })
+              ] }),
+
+              open ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 space-y-3 border-t border-hairline pt-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                    type: "button",
+                    disabled: wizardBusy,
+                    onClick: () => { setWizardManual(false); void wizardFind(); },
+                    className: "touch-target rounded-xl bg-gold/25 px-4 py-2.5 text-sm font-medium text-gold hover:bg-gold/35 disabled:opacity-50",
+                    children: wizardBusy && !wizardManual ? "Yoxlanılır…" : "Printeri tap"
+                  }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                    type: "button",
+                    onClick: () => { setWizardManual(true); setWizardNote(""); },
+                    className: `touch-target rounded-xl border px-4 py-2.5 text-sm ${wizardManual ? "border-gold/50 text-gold" : "border-hairline text-muted hover:text-cream"}`,
+                    children: "Əl ilə yaz"
+                  })
+                ] }),
+
+                wizardNote ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-warning", children: wizardNote }) : null,
+
+                // The candidate being asked about. One at a time, because the
+                // operator has to walk to the machine and look.
+                !wizardManual && wizardAt >= 0 && wizardAt < wizardList.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-hairline bg-elevated px-4 py-3", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-faint", children: [wizardAt + 1, " / ", wizardList.length] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 truncate text-sm font-medium text-cream", children: printerLabel(wizardList[wizardAt]) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 truncate font-mono text-xs text-faint", children: wizardList[wizardAt].name }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-sm text-cream", children: ["Bu cihaza yoxlama vərəqi göndərildi. ", role.label, " printerindən kağız çıxdı?"] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 flex flex-wrap gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+                      type: "button",
+                      disabled: wizardBusy || assigningRole !== "",
+                      onClick: () => void wizardKeep(wizardList[wizardAt].name),
+                      className: "touch-target rounded-xl border border-success/60 bg-success/15 px-4 py-2 text-sm text-success disabled:opacity-40",
+                      children: ["Bəli — bu ", role.label, " printeridir"]
+                    }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                      type: "button",
+                      disabled: wizardBusy,
+                      onClick: () => void wizardProbe(wizardList, wizardAt + 1),
+                      className: "touch-target rounded-xl border border-hairline px-4 py-2 text-sm text-muted hover:text-cream disabled:opacity-40",
+                      children: "Yox — növbətini yoxla"
+                    })
+                  ] })
+                ] }) : null,
+
+                // Typing an address. The normal case for a wired restaurant,
+                // not a fallback: the electrician knows the IP.
+                wizardManual ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-hairline bg-elevated px-4 py-3", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Printerin ünvanı" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("input", {
+                    type: "text",
+                    value: wizardAddress,
+                    placeholder: "tcp:192.168.1.51:9100",
+                    onChange: (e) => setWizardAddress(e.target.value),
+                    className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 font-mono text-sm text-cream"
+                  }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-faint", children: "Şəbəkə printeri: tcp:IP:9100 · Windows növbəsi: adını yazın" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 flex flex-wrap gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                      type: "button",
+                      disabled: wizardBusy || !wizardAddress.trim(),
+                      onClick: () => void wizardManualTest(),
+                      className: "touch-target rounded-xl border border-gold/40 px-4 py-2 text-sm text-gold disabled:opacity-40",
+                      children: wizardBusy ? "…" : "Test çap"
+                    }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+                      type: "button",
+                      disabled: assigningRole !== "" || !wizardAddress.trim(),
+                      onClick: () => void wizardKeep(wizardAddress.trim()),
+                      className: "touch-target rounded-xl border border-success/60 bg-success/15 px-4 py-2 text-sm text-success disabled:opacity-40",
+                      children: [role.label, " kimi saxla"]
+                    })
+                  ] })
+                ] }) : null
+              ] }) : null
+            ] }, role.id);
+          }) })
+        ] }),

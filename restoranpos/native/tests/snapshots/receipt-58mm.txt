@@ -1,0 +1,42 @@
+       Maison Aurelia
+   Fine Dining Restaurant
+Neftçilər prospekti 19, Bakı
+     +994 12 505 19 19
+      VÖEN: 1900123456
+============================
+Sifariş:              A-0003
+Masa:                     V1
+Ofisiant:      Leyla Əliyeva
+Qonaq:                     6
+Tarix:      21.01.2026 16:08
+Qəbz:             R-FQ0ABWCR
+----------------------------
+1 x Mal əti
+    tartarı        32.00 AZN
+1 x Trüfel rizotto 52.00 AZN
+    + Kürü         25.00 AZN
+    + Sarımsaqsız
+1 x Fransız toyuğu 42.00 AZN
+    + Kartof fri    5.00 AZN
+    + Sarımsaqsız
+----------------------------
+Ara cəm           156.00 AZN
+Servis haqqı (10%) 15.60 AZN
+ƏDV (18%)          30.89 AZN
+============================
+YEKUN             202.49 AZN
+============================
+Nağd              202.49 AZN
+Qaytarılan məbləğ   7.51 AZN
+
+----------------------------
+     GERİ QAYTARMA KODU
+         R-FQ0ABWCR
+  Qaytarma üçün bu çeki və
+ kodu kassaya təqdim edin.
+
+      Təşəkkür edirik!
+  Sizi yenidən gözləyirik.
+       Maison Aurelia
+
+           [ QR ]

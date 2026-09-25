@@ -1,0 +1,1421 @@
+{
+  "protocolVersion": 1,
+  "$comment": "Single source of truth for the Electron <-> C++ IPC contract. scripts/gen-protocol.mjs generates shared/contracts/protocol.generated.ts and native/core/include/pos/protocol_generated.hpp from this file. Never hand-edit the generated files.",
+  "limits": {
+    "maxMessageBytes": 8388608,
+    "maxInboundQueue": 256,
+    "maxPendingRequests": 200,
+    "defaultTimeoutMs": 3000,
+    "handshakeTimeoutMs": 10000,
+    "heartbeatIntervalMs": 5000,
+    "heartbeatTimeoutMs": 2000,
+    "heartbeatMissLimit": 3,
+    "coreStallKillMs": 90000,
+    "printTimeoutMs": 20000,
+    "paymentTimeoutMs": 120000,
+    "terminalTimeoutMs": 90000,
+    "terminalAckTimeoutMs": 15000,
+    "restartBackoffMs": [
+      500,
+      2000,
+      5000
+    ],
+    "crashWindowMs": 60000,
+    "crashStrikeLimit": 3
+  },
+  "errors": {
+    "E_INTERNAL": {
+      "retryable": false,
+      "http": 500,
+      "message": "Internal core error"
+    },
+    "E_INVALID_REQUEST": {
+      "retryable": false,
+      "message": "Malformed request envelope"
+    },
+    "E_UNKNOWN_METHOD": {
+      "retryable": false,
+      "message": "Unknown method"
+    },
+    "E_PROTOCOL_VERSION": {
+      "retryable": false,
+      "message": "Protocol version mismatch"
+    },
+    "E_PAYLOAD_TOO_LARGE": {
+      "retryable": false,
+      "message": "Payload exceeds maximum message size"
+    },
+    "E_QUEUE_FULL": {
+      "retryable": true,
+      "message": "Core request queue is full"
+    },
+    "E_TIMEOUT": {
+      "retryable": true,
+      "message": "Request timed out"
+    },
+    "E_CANCELED": {
+      "retryable": false,
+      "message": "Request was canceled"
+    },
+    "E_CORE_DOWN": {
+      "retryable": true,
+      "message": "POS core process is not running"
+    },
+    "E_CORE_UNAVAILABLE": {
+      "retryable": true,
+      "message": "POS core is starting up"
+    },
+    "E_CORE_MISSING": {
+      "retryable": false,
+      "message": "POS core executable was not found"
+    },
+    "E_CORE_INCOMPATIBLE": {
+      "retryable": false,
+      "message": "POS core version is incompatible"
+    },
+    "E_CRASH_LOOP": {
+      "retryable": false,
+      "message": "POS core is crash looping"
+    },
+    "E_DB_BUSY": {
+      "retryable": true,
+      "message": "Database is busy"
+    },
+    "E_DB_OPEN": {
+      "retryable": false,
+      "message": "Database could not be opened"
+    },
+    "E_DB_CORRUPT": {
+      "retryable": false,
+      "fatal": true,
+      "message": "Database file is corrupt"
+    },
+    "E_DB_READONLY": {
+      "retryable": false,
+      "message": "Database is read only"
+    },
+    "E_DB_UNSUITABLE_LOCATION": {
+      "retryable": false,
+      "fatal": true,
+      "message": "Database location does not support WAL journaling"
+    },
+    "E_DISK_FULL": {
+      "retryable": false,
+      "message": "Disk is full"
+    },
+    "E_CONSTRAINT": {
+      "retryable": false,
+      "message": "Database constraint violation"
+    },
+    "E_MIGRATION_FAILED": {
+      "retryable": false,
+      "fatal": true,
+      "message": "Database migration failed"
+    },
+    "E_VALIDATION": {
+      "retryable": false,
+      "message": "Request payload failed validation"
+    },
+    "E_NOT_FOUND": {
+      "retryable": false,
+      "message": "Resource was not found"
+    },
+    "E_UNAUTHORIZED": {
+      "retryable": false,
+      "message": "Authentication required"
+    },
+    "E_FORBIDDEN": {
+      "retryable": false,
+      "message": "Insufficient permissions"
+    },
+    "E_INVALID_PIN": {
+      "retryable": false,
+      "message": "Incorrect PIN"
+    },
+    "E_PIN_LOCKED": {
+      "retryable": false,
+      "message": "Account locked after too many failed attempts"
+    },
+    "E_MANAGER_APPROVAL_REQUIRED": {
+      "retryable": false,
+      "message": "This action requires manager approval"
+    },
+    "E_IDEMPOTENCY_KEY_REUSE": {
+      "retryable": false,
+      "message": "Idempotency key reused with a different payload"
+    },
+    "E_IN_PROGRESS": {
+      "retryable": true,
+      "message": "An identical request is still in progress"
+    },
+    "E_ORDER_NOT_FOUND": {
+      "retryable": false,
+      "message": "Order was not found"
+    },
+    "E_ORDER_STATE": {
+      "retryable": false,
+      "message": "Operation is not valid for the current order state"
+    },
+    "E_ORDER_EMPTY": {
+      "retryable": false,
+      "message": "Order has no items"
+    },
+    "E_SOLD_OUT": {
+      "retryable": false,
+      "message": "Product is sold out"
+    },
+    "E_MODIFIER_REQUIRED": {
+      "retryable": false,
+      "message": "A required modifier group has no selection"
+    },
+    "E_MODIFIER_LIMIT": {
+      "retryable": false,
+      "message": "Modifier selection count is outside the allowed range"
+    },
+    "E_TABLE_NOT_FOUND": {
+      "retryable": false,
+      "message": "Table was not found"
+    },
+    "E_TABLE_OCCUPIED": {
+      "retryable": false,
+      "message": "Table already has an open order"
+    },
+    "E_TABLE_STATE": {
+      "retryable": false,
+      "message": "Operation is not valid for the current table state"
+    },
+    "E_PAYMENT_NOT_FOUND": {
+      "retryable": false,
+      "message": "Payment was not found"
+    },
+    "E_PAYMENT_STATE": {
+      "retryable": false,
+      "message": "Illegal payment state transition"
+    },
+    "E_PAYMENT_UNKNOWN_PENDING": {
+      "retryable": false,
+      "message": "Order has an unresolved payment that must be reconciled first"
+    },
+    "E_INSUFFICIENT_PAYMENT": {
+      "retryable": false,
+      "message": "Payments do not cover the order total"
+    },
+    "E_OVERPAYMENT": {
+      "retryable": false,
+      "message": "Payment exceeds the outstanding balance"
+    },
+    "E_PRINTER_UNAVAILABLE": {
+      "retryable": true,
+      "message": "Printer is unavailable"
+    },
+    "E_PRINT_JOB_NOT_FOUND": {
+      "retryable": false,
+      "message": "Print job was not found"
+    },
+    "E_SHIFT_NOT_OPEN": {
+      "retryable": false,
+      "message": "No shift is currently open"
+    },
+    "E_SHIFT_ALREADY_OPEN": {
+      "retryable": false,
+      "message": "A shift is already open on this terminal"
+    },
+    "E_CONFLICT": {
+      "retryable": false,
+      "message": "The operation conflicts with the current state"
+    },
+    "E_STALE_VERSION": {
+      "retryable": true,
+      "message": "Resource was modified by another operator; refresh and retry"
+    },
+    "E_BUSINESS_DAY_CLOSED": {
+      "retryable": false,
+      "message": "Business day is closed"
+    },
+    "E_BUSINESS_DAY_NOT_READY": {
+      "retryable": false,
+      "message": "Business day is not ready for Z close"
+    },
+    "E_LICENSE_REQUIRED": {
+      "retryable": false,
+      "message": "A valid license is required"
+    },
+    "E_LICENSE_EXPIRED": {
+      "retryable": false,
+      "message": "License has expired"
+    },
+    "E_LICENSE_REVOKED": {
+      "retryable": false,
+      "message": "License has been revoked"
+    },
+    "E_FEATURE_DISABLED": {
+      "retryable": false,
+      "message": "This feature is disabled by license flags"
+    },
+    "E_GIFT_REVIEW_REQUIRED": {
+      "retryable": false,
+      "message": "Gift selection requires manager review"
+    },
+    "E_REFUND_LIMIT": {
+      "retryable": false,
+      "message": "Refund exceeds remaining refundable amount"
+    }
+  },
+  "enums": {
+    "Role": [
+      "waiter",
+      "cashier",
+      "kitchen",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "TableStatus": [
+      "available",
+      "occupied",
+      "reserved",
+      "waiting",
+      "ordering",
+      "preparing",
+      "ready",
+      "payment_requested",
+      "cleaning"
+    ],
+    "OrderStatus": [
+      "draft",
+      "open",
+      "sent",
+      "partially_paid",
+      "paid",
+      "closed",
+      "voided"
+    ],
+    "OrderItemStatus": [
+      "draft",
+      "sent",
+      "preparing",
+      "ready",
+      "served",
+      "voided",
+      "held"
+    ],
+    "KitchenStatus": [
+      "new",
+      "accepted",
+      "preparing",
+      "ready",
+      "completed"
+    ],
+    "PaymentStatus": [
+      "created",
+      "waiting_for_terminal",
+      "processing",
+      "approved",
+      "declined",
+      "canceled",
+      "unknown",
+      "refunded"
+    ],
+    "PaymentMethod": [
+      "cash",
+      "card",
+      "mixed",
+      "complimentary"
+    ],
+    "PrintJobStatus": [
+      "queued",
+      "processing",
+      "sent",
+      "failed",
+      "retrying",
+      "completed"
+    ],
+    "PrintJobKind": [
+      "kitchen_ticket",
+      "customer_bill",
+      "customer_receipt",
+      "shift_report",
+      "test_page",
+      "x_report",
+      "z_report",
+      "refund_receipt",
+      "warehouse_slip",
+      "period_report"
+    ],
+    "CoreState": [
+      "idle",
+      "spawning",
+      "handshaking",
+      "ready",
+      "restarting",
+      "crash_loop",
+      "core_missing",
+      "incompatible",
+      "stopping",
+      "stopped"
+    ],
+    "DiscountType": [
+      "percent",
+      "amount",
+      "complimentary"
+    ],
+    "Course": [
+      "starter",
+      "main",
+      "dessert",
+      "drinks"
+    ]
+  },
+  "$methodComment": "auth=requires an authenticated session. perm=required permission key. timeout overrides the default. idempotent=accepts an idempotencyKey and replays the original response.",
+  "methods": {
+    "core.ping": {
+      "auth": false,
+      "timeout": 2000
+    },
+    "core.info": {
+      "auth": false
+    },
+    "core.stats": {
+      "auth": false
+    },
+    "auth.listUsers": {
+      "auth": false
+    },
+    "auth.login": {
+      "auth": false,
+      "timeout": 20000
+    },
+    "auth.logout": {
+      "auth": true
+    },
+    "auth.verifyManagerPin": {
+      "auth": true
+    },
+    "users.create": {
+      "auth": true,
+      "perm": "users.manage",
+      "idempotent": true,
+      "timeout": 15000
+    },
+    "users.update": {
+      "auth": true,
+      "perm": "users.manage",
+      "idempotent": true
+    },
+    "permissions.list": {
+      "auth": true,
+      "perm": "roles.manage"
+    },
+    "roles.list": {
+      "auth": true,
+      "perm": "roles.manage"
+    },
+    "roles.save": {
+      "auth": true,
+      "perm": "roles.manage",
+      "idempotent": true
+    },
+    "roles.delete": {
+      "auth": true,
+      "perm": "roles.manage",
+      "idempotent": true
+    },
+    "roles.applyPolicy": {
+      "auth": false,
+      "internal": true,
+      "timeout": 15000
+    },
+    "users.setPin": {
+      "auth": true,
+      "perm": "users.manage",
+      "idempotent": true,
+      "timeout": 15000
+    },
+    "users.deactivate": {
+      "auth": true,
+      "perm": "users.manage",
+      "idempotent": true
+    },
+    "users.list": {
+      "auth": true,
+      "perm": "users.manage"
+    },
+    "$comment.inventory": "Stock for a restaurant: ingredients are bought, dishes are sold, and a recipe connects them. Quantities are thousandths of the base unit.",
+    "warehouses.list": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "warehouses.save": {
+      "auth": true,
+      "perm": "inventory.manage",
+      "idempotent": true
+    },
+    "ingredients.list": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "ingredients.save": {
+      "auth": true,
+      "perm": "inventory.manage",
+      "idempotent": true
+    },
+    "ingredients.deactivate": {
+      "auth": true,
+      "perm": "inventory.manage",
+      "idempotent": true
+    },
+    "inventory.levels": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "inventory.lowStock": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "inventory.valuation": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "inventory.movements": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "inventory.adjust": {
+      "auth": true,
+      "perm": "inventory.adjust",
+      "idempotent": true
+    },
+    "inventory.transfer": {
+      "auth": true,
+      "perm": "inventory.transfer",
+      "idempotent": true
+    },
+    "inventory.waste": {
+      "auth": true,
+      "perm": "inventory.adjust",
+      "idempotent": true
+    },
+    "recipes.get": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "recipes.save": {
+      "auth": true,
+      "perm": "recipes.manage",
+      "idempotent": true
+    },
+    "stocktake.create": {
+      "auth": true,
+      "perm": "inventory.count",
+      "idempotent": true
+    },
+    "stocktake.get": {
+      "auth": true,
+      "perm": "inventory.count"
+    },
+    "stocktake.list": {
+      "auth": true,
+      "perm": "inventory.count"
+    },
+    "stocktake.count": {
+      "auth": true,
+      "perm": "inventory.count"
+    },
+    "stocktake.post": {
+      "auth": true,
+      "perm": "inventory.count",
+      "idempotent": true,
+      "timeout": 30000
+    },
+    "suppliers.list": {
+      "auth": true,
+      "perm": "suppliers.view"
+    },
+    "suppliers.save": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "suppliers.ledger": {
+      "auth": true,
+      "perm": "suppliers.view"
+    },
+    "suppliers.payments": {
+      "auth": true,
+      "perm": "suppliers.view"
+    },
+    "suppliers.pay": {
+      "auth": true,
+      "perm": "suppliers.pay",
+      "idempotent": true
+    },
+    "purchases.list": {
+      "auth": true,
+      "perm": "suppliers.view"
+    },
+    "purchases.get": {
+      "auth": true,
+      "perm": "suppliers.view"
+    },
+    "purchases.save": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "purchases.receive": {
+      "auth": true,
+      "perm": "suppliers.receive",
+      "idempotent": true,
+      "timeout": 30000
+    },
+    "$comment.guests": "Guests we know by name: house accounts, debt, loyalty points and table bookings.",
+    "customers.list": {
+      "auth": true,
+      "perm": "customers.view"
+    },
+    "customers.get": {
+      "auth": true,
+      "perm": "customers.view"
+    },
+    "customers.save": {
+      "auth": true,
+      "perm": "customers.manage",
+      "idempotent": true
+    },
+    "customers.deactivate": {
+      "auth": true,
+      "perm": "customers.manage",
+      "idempotent": true
+    },
+    "customers.ledger": {
+      "auth": true,
+      "perm": "customers.view"
+    },
+    "customers.payments": {
+      "auth": true,
+      "perm": "customers.view"
+    },
+    "customers.charge": {
+      "auth": true,
+      "perm": "customers.credit",
+      "idempotent": true
+    },
+    "customers.payDebt": {
+      "auth": true,
+      "perm": "customers.credit",
+      "idempotent": true
+    },
+    "loyalty.earn": {
+      "auth": true,
+      "perm": "customers.loyalty",
+      "idempotent": true
+    },
+    "loyalty.redeem": {
+      "auth": true,
+      "perm": "customers.loyalty",
+      "idempotent": true
+    },
+    "loyalty.ledger": {
+      "auth": true,
+      "perm": "customers.view"
+    },
+    "reservations.list": {
+      "auth": true,
+      "perm": "reservations.view"
+    },
+    "reservations.save": {
+      "auth": true,
+      "perm": "reservations.manage",
+      "idempotent": true
+    },
+    "reservations.setStatus": {
+      "auth": true,
+      "perm": "reservations.manage",
+      "idempotent": true
+    },
+    "reservations.seat": {
+      "auth": true,
+      "perm": "reservations.manage",
+      "idempotent": true
+    },
+    "$comment.delivery": "A delivery is an order with a destination and a courier, not a separate kind of sale.",
+    "couriers.list": {
+      "auth": true,
+      "perm": "delivery.view"
+    },
+    "couriers.save": {
+      "auth": true,
+      "perm": "delivery.manage",
+      "idempotent": true
+    },
+    "delivery.list": {
+      "auth": true,
+      "perm": "delivery.view"
+    },
+    "delivery.create": {
+      "auth": true,
+      "perm": "delivery.manage",
+      "idempotent": true
+    },
+    "delivery.assign": {
+      "auth": true,
+      "perm": "delivery.assign",
+      "idempotent": true
+    },
+    "delivery.setStatus": {
+      "auth": true,
+      "perm": "delivery.assign",
+      "idempotent": true
+    },
+    "delivery.courierReport": {
+      "auth": true,
+      "perm": "delivery.view"
+    },
+    "$comment.roster": "The roster is a plan and attendance is a fact; a report that compares them is the point of having both.",
+    "schedule.list": {
+      "auth": true,
+      "perm": "schedule.view"
+    },
+    "schedule.save": {
+      "auth": true,
+      "perm": "schedule.manage",
+      "idempotent": true
+    },
+    "schedule.remove": {
+      "auth": true,
+      "perm": "schedule.manage",
+      "idempotent": true
+    },
+    "attendance.clockIn": {
+      "auth": true,
+      "perm": "schedule.clock",
+      "idempotent": true
+    },
+    "attendance.clockOut": {
+      "auth": true,
+      "perm": "schedule.clock",
+      "idempotent": true
+    },
+    "attendance.list": {
+      "auth": true,
+      "perm": "schedule.view"
+    },
+    "$comment.export": "Reports as CSV, which is what a spreadsheet opens. The renderer saves the text; the core only decides what goes in it.",
+    "$comment.costing": "Kalkulyasiya: what every dish costs to make against what it sells for. The per-dish figure already existed in recipes.get, but only one dish at a time - so nobody could see which dishes lose money, and a dish with no recipe at all was invisible rather than flagged.",
+    "reports.costing": {
+      "auth": true,
+      "perm": "inventory.view",
+      "timeout": 10000
+    },
+    "reports.export": {
+      "auth": true,
+      "perm": "reports.export",
+      "timeout": 30000
+    },
+    "catalog.categories": {
+      "auth": true
+    },
+    "catalog.products": {
+      "auth": true
+    },
+    "catalog.product": {
+      "auth": true
+    },
+    "catalog.modifierGroups": {
+      "auth": true
+    },
+    "catalog.setAvailability": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "tables.list": {
+      "auth": true
+    },
+    "tables.get": {
+      "auth": true
+    },
+    "tables.setStatus": {
+      "auth": true,
+      "perm": "tables.status"
+    },
+    "tables.transfer": {
+      "auth": true,
+      "perm": "order.transfer",
+      "idempotent": true
+    },
+    "tables.merge": {
+      "auth": true,
+      "perm": "order.transfer",
+      "idempotent": true
+    },
+    "tables.split": {
+      "auth": true,
+      "perm": "order.transfer",
+      "idempotent": true
+    },
+    "orders.create": {
+      "auth": true,
+      "idempotent": true
+    },
+    "orders.get": {
+      "auth": true,
+      "perm": "order.view"
+    },
+    "orders.list": {
+      "auth": true,
+      "perm": "order.view"
+    },
+    "orders.addItem": {
+      "auth": true,
+      "idempotent": true
+    },
+    "orders.updateItemQuantity": {
+      "auth": true
+    },
+    "orders.setItemNote": {
+      "auth": true
+    },
+    "orders.setItemSeat": {
+      "auth": true
+    },
+    "orders.setItemCourse": {
+      "auth": true
+    },
+    "orders.holdItem": {
+      "auth": true
+    },
+    "orders.removeItem": {
+      "auth": true
+    },
+    "orders.voidItem": {
+      "auth": true,
+      "perm": "order.void"
+    },
+    "orders.applyDiscount": {
+      "auth": true,
+      "perm": "order.discount"
+    },
+    "orders.setDeposit": {
+      "auth": true,
+      "perm": "payment.take"
+    },
+    "orders.setGuestCount": {
+      "auth": true
+    },
+    "orders.submit": {
+      "auth": true,
+      "idempotent": true,
+      "timeout": 8000
+    },
+    "orders.close": {
+      "auth": true,
+      "idempotent": true
+    },
+    "orders.void": {
+      "auth": true,
+      "perm": "order.void",
+      "idempotent": true
+    },
+    "kds.list": {
+      "auth": true,
+      "perm": "kds.view"
+    },
+    "kds.setStatus": {
+      "auth": true
+    },
+    "kds.bump": {
+      "auth": true
+    },
+    "payments.list": {
+      "auth": true,
+      "perm": "payment.view"
+    },
+    "payments.get": {
+      "auth": true,
+      "perm": "payment.view"
+    },
+    "payments.createCash": {
+      "auth": true,
+      "idempotent": true,
+      "timeout": 30000
+    },
+    "payments.createCard": {
+      "auth": true,
+      "idempotent": true,
+      "timeout": 120000
+    },
+    "payments.cancel": {
+      "auth": true
+    },
+    "payments.reconcile": {
+      "auth": true,
+      "perm": "payment.reconcile",
+      "timeout": 30000
+    },
+    "$comment.refund": "Drives the card terminal exactly as payments.createCard does, so it needs the same budget. At the 3s default the reply could expire while the money had already gone back, and the retry that follows is only safe because the renderer holds one idempotency key for the whole dialog.",
+    "payments.refund": {
+      "auth": true,
+      "perm": "payment.refund",
+      "idempotent": true,
+      "timeout": 120000
+    },
+    "payments.unresolved": {
+      "auth": true,
+      "perm": "payment.reconcile"
+    },
+    "payments.simulate": {
+      "auth": true,
+      "perm": "settings.manage",
+      "$comment": "dev-only mock terminal control"
+    },
+    "receipts.preview": {
+      "auth": true,
+      "timeout": 8000
+    },
+    "receipts.get": {
+      "auth": true
+    },
+    "$comment.receiptsLookup": "The way in from the paper a guest brings back. payments.refund needs a paymentId, and the only screen that knows one belongs to an order still open on a table - so a guest who has left could not be refunded at all. Gated on payment.refund rather than payment.view: it answers 'how much of this sale can still go back', which is the refund decision itself.",
+    "receipts.lookupByCode": {
+      "auth": true,
+      "perm": "payment.refund",
+      "timeout": 8000
+    },
+    "print.enqueue": {
+      "auth": true,
+      "perm": "receipt.print",
+      "timeout": 20000,
+      "idempotent": true
+    },
+    "print.jobs": {
+      "auth": true,
+      "timeout": 10000
+    },
+    "print.retry": {
+      "auth": true,
+      "timeout": 10000
+    },
+    "print.cancel": {
+      "auth": true
+    },
+    "print.printers": {
+      "auth": true,
+      "perm": "printer.manage",
+      "timeout": 20000
+    },
+    "print.detect": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 60000
+    },
+    "print.setPrinter": {
+      "auth": true,
+      "perm": "settings.manage"
+    },
+    "print.previewTest": {
+      "auth": true,
+      "timeout": 8000
+    },
+    "receiptLogo.apply": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 60000
+    },
+    "receiptLogo.clear": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 60000
+    },
+    "shifts.current": {
+      "auth": true
+    },
+    "shifts.open": {
+      "auth": true,
+      "perm": "shift.manage",
+      "idempotent": true
+    },
+    "shifts.close": {
+      "auth": true,
+      "perm": "shift.manage",
+      "idempotent": true
+    },
+    "settings.getAll": {
+      "auth": true
+    },
+    "settings.set": {
+      "auth": true,
+      "perm": "settings.manage"
+    },
+    "$comment.provisionIdentity": "Writes the restaurant's real name/address/phone/VOEN, learned from the control server at activation. auth:false because activation runs on the licence screen with nobody signed in; safe because the handler only overwrites values still equal to a factory seed default, so it can never rename a restaurant an operator has already named.",
+    "settings.applyProvisionedIdentity": {
+      "auth": false
+    },
+    "audit.list": {
+      "auth": true,
+      "perm": "audit.view"
+    },
+    "$comment.auditSync": "Read and acknowledge the forwarding queue. Both are auth:false because the owner sync loop in Electron main runs whether or not a cashier is signed in - gating them on a session would mean a till left at the login screen overnight forwards nothing, and the control panel's history would have holes exactly where an unattended machine was doing something worth seeing.",
+    "audit.pending": {
+      "auth": false
+    },
+    "audit.ack": {
+      "auth": false
+    },
+    "reports.dashboard": {
+      "auth": true,
+      "perm": "reports.view"
+    },
+    "reports.topProducts": {
+      "auth": true,
+      "perm": "reports.view"
+    },
+    "reports.salesSummary": {
+      "auth": true
+    },
+    "$comment.period": "Takings between two instants on the payment clock, plus local-time hour/day buckets. Drives both the period receipt and the dashboard's hourly view; salesSummary is left alone because it mixes payment time with order-opened time and changing it would move numbers people already read.",
+    "reports.period": {
+      "auth": true,
+      "perm": "reports.view",
+      "timeout": 10000
+    },
+    "$comment.remotePeriod": "The same takings query, for a report the owner asked for over WhatsApp. auth:false because the relay runs in Electron main as whoever happens to be signed in at the till - and reports.view belongs to supervisors and up, so an owner's own report would fail for the hours a cashier is on shift. Safe to leave ungated because it answers with money aggregates for a window and nothing else: no names, no order lines, no way to write. Kept separate from reports.period so relaxing this cannot relax the report page the operators use.",
+    "reports.remotePeriod": {
+      "auth": false,
+      "timeout": 15000
+    },
+    "$comment.reports": "X/Z drain the print queue inline, so these need the print budget (printTimeoutMs) plus room, not defaultTimeoutMs. At 3s a slow printer timed out the IPC call while the report itself had already been committed - and the owner's WhatsApp alert, which hangs off a successful result, never fired.",
+    "reports.x": {
+      "auth": true,
+      "perm": "reports.x",
+      "idempotent": true,
+      "timeout": 30000
+    },
+    "reports.z": {
+      "auth": true,
+      "perm": "reports.z",
+      "idempotent": true,
+      "timeout": 30000
+    },
+    "reports.list": {
+      "auth": true,
+      "perm": "reports.view"
+    },
+    "reports.getSnapshot": {
+      "auth": true,
+      "perm": "reports.view"
+    },
+    "businessDay.current": {
+      "auth": true
+    },
+    "businessDay.open": {
+      "auth": true,
+      "perm": "businessDay.manage",
+      "idempotent": true
+    },
+    "businessDay.readiness": {
+      "auth": true,
+      "perm": "reports.z"
+    },
+    "businessDay.close": {
+      "auth": true,
+      "perm": "businessDay.manage",
+      "idempotent": true,
+      "timeout": 30000
+    },
+    "tables.previewTransfer": {
+      "auth": true,
+      "perm": "order.transfer"
+    },
+    "tables.swap": {
+      "auth": true,
+      "perm": "order.transfer",
+      "idempotent": true
+    },
+    "tables.transferItems": {
+      "auth": true,
+      "perm": "order.transfer",
+      "idempotent": true
+    },
+    "tables.updateLayout": {
+      "auth": true,
+      "perm": "tables.layout",
+      "idempotent": true
+    },
+    "tables.upsertArea": {
+      "auth": true,
+      "perm": "tables.layout",
+      "idempotent": true
+    },
+    "tables.archiveArea": {
+      "auth": true,
+      "perm": "tables.layout"
+    },
+    "tables.upsertTable": {
+      "auth": true,
+      "perm": "tables.layout",
+      "idempotent": true
+    },
+    "tables.archiveTable": {
+      "auth": true,
+      "perm": "tables.layout"
+    },
+    "catalog.upsertCategory": {
+      "auth": true,
+      "perm": "catalog.manage",
+      "idempotent": true
+    },
+    "catalog.archiveCategory": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "catalog.upsertProduct": {
+      "auth": true,
+      "perm": "catalog.manage",
+      "idempotent": true
+    },
+    "catalog.archiveProduct": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "catalog.setSoldOut": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "$comment.imageHidden": "Turns a dish's photo off on the order screen. Bulk exists because a venue whose plating looks nothing like the stock artwork wants all of them off at once, and doing that one dish at a time across a 118-item menu is not a setting anyone would find.",
+    "catalog.setImageHidden": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "catalog.setAllImagesHidden": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "catalog.priceHistory": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "catalog.upsertModifierGroup": {
+      "auth": true,
+      "perm": "catalog.manage",
+      "idempotent": true
+    },
+    "catalog.upsertModifier": {
+      "auth": true,
+      "perm": "catalog.manage",
+      "idempotent": true
+    },
+    "catalog.archiveModifier": {
+      "auth": true,
+      "perm": "catalog.manage"
+    },
+    "catalog.setProductModifierGroups": {
+      "auth": true,
+      "perm": "catalog.manage",
+      "idempotent": true
+    },
+    "catalog.importPreview": {
+      "auth": true,
+      "perm": "catalog.import"
+    },
+    "catalog.importCommit": {
+      "auth": true,
+      "perm": "catalog.import",
+      "idempotent": true
+    },
+    "catalog.export": {
+      "auth": true,
+      "perm": "catalog.import"
+    },
+    "gifts.listCampaigns": {
+      "auth": true
+    },
+    "gifts.upsertCampaign": {
+      "auth": true,
+      "perm": "gifts.manage",
+      "idempotent": true
+    },
+    "gifts.evaluateOrder": {
+      "auth": true
+    },
+    "gifts.apply": {
+      "auth": true,
+      "idempotent": true
+    },
+    "gifts.approveReview": {
+      "auth": true,
+      "perm": "gifts.override"
+    },
+    "cash.list": {
+      "auth": true,
+      "perm": "cash.manage"
+    },
+    "cash.movement": {
+      "auth": true,
+      "perm": "cash.manage",
+      "idempotent": true
+    },
+    "payments.createMixed": {
+      "auth": true,
+      "idempotent": true,
+      "timeout": 120000
+    },
+    "payments.splitBill": {
+      "auth": true,
+      "perm": "payment.split",
+      "idempotent": true
+    },
+    "payments.listRefunds": {
+      "auth": true,
+      "perm": "payment.refund"
+    },
+    "$comment.gates": "license.status and tenant.status decide which screen the app shows at startup, and the core answers on one worker thread - so they queue behind whatever it is doing, printing included. At the 3s default a stuck printer expired them and the till was sent to the activation screen mid-service. The reads themselves are trivial; the budget is for the queue.",
+    "license.status": {
+      "auth": false,
+      "timeout": 15000
+    },
+    "license.activate": {
+      "auth": false,
+      "idempotent": true
+    },
+    "license.importOffline": {
+      "auth": false,
+      "idempotent": true
+    },
+    "license.exportOfflineRequest": {
+      "auth": false
+    },
+    "license.heartbeat": {
+      "auth": false
+    },
+    "license.lookup": {
+      "auth": false
+    },
+    "tenant.status": {
+      "auth": false,
+      "timeout": 15000
+    },
+    "tenant.login": {
+      "auth": false
+    },
+    "tenant.logout": {
+      "auth": false
+    },
+    "tenant.openPaymentUrl": {
+      "auth": false
+    },
+    "$whatsappComment": "Owner alert bot pairing. Served entirely by Electron main against the control API; the core never sees these.",
+    "whatsapp.get": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 20000
+    },
+    "whatsapp.save": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 20000
+    },
+    "whatsapp.connect": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 45000
+    },
+    "whatsapp.status": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 20000
+    },
+    "whatsapp.disconnect": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 20000
+    },
+    "whatsapp.test": {
+      "auth": true,
+      "perm": "settings.manage",
+      "timeout": 30000
+    },
+    "backup.create": {
+      "auth": true,
+      "perm": "backup.manage",
+      "timeout": 120000
+    },
+    "backup.list": {
+      "auth": true,
+      "perm": "backup.manage"
+    },
+    "backup.restorePreview": {
+      "auth": true,
+      "perm": "backup.manage"
+    },
+    "backup.restore": {
+      "auth": true,
+      "perm": "backup.manage",
+      "idempotent": true,
+      "timeout": 180000
+    },
+    "system.resetOperational": {
+      "auth": true,
+      "perm": "system.reset",
+      "idempotent": true,
+      "timeout": 120000
+    },
+    "sync.status": {
+      "auth": true
+    },
+    "sync.outbox": {
+      "auth": true
+    }
+  },
+  "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",
+  "events": {
+    "core.ready": "Emitted once on stdout as the first frame after startup.",
+    "core.stage": "Startup progress: { stage, message, progress }.",
+    "core.alert": "Non-fatal condition needing user attention (low disk, printer down).",
+    "core.fatal": "Unrecoverable condition; main drops to safe mode.",
+    "kds.updated": "A kitchen job changed; payload carries the affected order ids.",
+    "tables.updated": "One or more table statuses changed.",
+    "orders.updated": "An order changed outside the caller's own request.",
+    "print.updated": "A print job changed state.",
+    "payment.needsReconciliation": "A payment entered or remains in the unknown state.",
+    "reports.created": "An X or Z snapshot became durable: { kind, sequenceNo, totals, canonical }. Emitted before the print step, so an owner alert never depends on a printer answering."
+  },
+  "permissions": {
+    "order.create": [
+      "waiter",
+      "cashier",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "order.void": [
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "order.discount": [
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "order.transfer": [
+      "waiter",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "order.closeOther": [
+      "manager",
+      "administrator"
+    ],
+    "order.priceOverride": [
+      "manager",
+      "administrator"
+    ],
+    "payment.take": [
+      "cashier",
+      "waiter",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "payment.refund": [
+      "manager",
+      "administrator"
+    ],
+    "payment.reconcile": [
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "shift.manage": [
+      "cashier",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "kds.operate": [
+      "kitchen",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "catalog.manage": [
+      "manager",
+      "administrator"
+    ],
+    "settings.manage": [
+      "manager",
+      "administrator"
+    ],
+    "audit.view": [
+      "manager",
+      "administrator"
+    ],
+    "reports.view": [
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "reports.x": [
+      "cashier",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "reports.z": [
+      "manager",
+      "administrator"
+    ],
+    "businessDay.manage": [
+      "manager",
+      "administrator"
+    ],
+    "cash.manage": [
+      "cashier",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "gifts.manage": [
+      "manager",
+      "administrator"
+    ],
+    "gifts.override": [
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "catalog.import": [
+      "manager",
+      "administrator"
+    ],
+    "backup.manage": [
+      "manager",
+      "administrator"
+    ],
+    "system.reset": [
+      "administrator"
+    ],
+    "license.manage": [
+      "administrator"
+    ],
+    "tables.layout": [
+      "manager",
+      "administrator"
+    ],
+    "payment.split": [
+      "cashier",
+      "supervisor",
+      "manager",
+      "administrator"
+    ],
+    "discount.manage": [
+      "manager",
+      "administrator"
+    ],
+    "users.manage": [
+      "manager",
+      "administrator"
+    ]
+  }
+}

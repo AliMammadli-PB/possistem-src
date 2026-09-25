@@ -1,0 +1,126 @@
+/* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl border border-gold/30 bg-gold/5 p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: autoDetecting,
+              onClick: () => void autoFindPrinter(),
+              className: "touch-target w-full rounded-xl bg-gold/25 px-4 py-3 text-base font-medium text-gold hover:bg-gold/35 disabled:opacity-50",
+              children: autoDetecting ? t.settings.printerAutoRunning : t.settings.printerAuto
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs text-muted", children: t.settings.printerAutoHint })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl border border-hairline bg-elevated p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "1. Hansı printeri qurursunuz" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 flex flex-wrap gap-2", children: PRINTER_ROLES.map((role) => {
+            const on = setupRole === role.id;
+            return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: () => setSetupRole(role.id),
+                "aria-pressed": on,
+                className: `touch-target rounded-xl border px-4 py-2.5 text-sm ${on ? "border-gold/60 bg-gold/15 text-gold" : "border-hairline bg-elevated text-muted hover:border-gold/30"}`,
+                children: [role.label, roleTargets[role.id] && roleTargets[role.id] !== "auto" ? " ✓" : ""]
+              },
+              role.id
+            );
+          }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-muted", children: "2. Aşağıdan «Siyahını yenilə» deyin, sonra bir sətirdə «Test çap» basın. 3. Kağız hansı printerdən çıxdısa, həmin sətirdə «Bura» düyməsini basın — seçilmiş rol həmin printerə yazılır." }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 grid gap-2 sm:grid-cols-3", children: PRINTER_ROLES.map((role) => {
+            const target = roleTargets[role.id];
+            const known = target && target !== "auto";
+            const printer = detectedPrinters.find((p) => p.name === target);
+            return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-hairline px-3 py-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] uppercase tracking-wide text-faint", children: role.label }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: `mt-1 truncate text-sm ${known ? "text-cream" : "text-warning"}`, children: known ? (printer ? printerLabel(printer) : target) : "Seçilməyib" })
+            ] }, role.id);
+          }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: t.settings.printerCandidates }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: detectingPrinters,
+              onClick: () => void refreshPrinters(),
+              className: "touch-target rounded-xl border border-hairline bg-elevated px-3 py-2 text-xs text-cream hover:border-gold/40 disabled:opacity-40",
+              children: detectingPrinters ? t.common.loading : t.settings.printerDetect
+            }
+          )
+        ] }),
+        detectedPrinters.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: detectedPrinters.map((printer) => {
+          const active = selectedTarget === printer.name;
+          const probe = probeResults.find((r) => r.target === printer.name);
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              className: `flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 ${active ? "border-gold/50 bg-gold/10" : "border-hairline bg-elevated hover:border-gold/30"}`,
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => {
+                      setSelectedTarget(printer.name);
+                      setManualOpen(false);
+                    },
+                    className: "touch-target flex min-w-0 flex-1 flex-col text-left",
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "span",
+                        {
+                          className: `truncate font-medium ${active ? "text-gold" : "text-cream"}`,
+                          children: [
+                            printerLabel(printer),
+                            printer.isDefault ? " ✓" : ""
+                          ]
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 truncate font-mono text-xs text-faint", children: printerDetail(printer) }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 truncate font-mono text-[11px] text-faint/70", children: printer.name }),
+                      probe ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "span",
+                        {
+                          className: `mt-1 text-xs ${probe.ok ? "text-success" : "text-warning"}`,
+                          children: probe.ok ? t.settings.printerProbeOk : `${t.settings.printerProbeFail}${probe.error ? ` — ${probe.error}` : ""}`
+                        }
+                      ) : null
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    disabled: testingPrint,
+                    onClick: () => void runTestPrint(printer.name),
+                    className: "touch-target shrink-0 rounded-xl border border-gold/40 px-3 py-2 text-xs text-gold hover:bg-gold/10 disabled:opacity-40",
+                    children: t.settings.testPrint
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2", children: [
+                  // What this printer already answers for. Shown as a label
+                  // rather than a control: it is the answer, not the question.
+                  PRINTER_ROLES.filter((role) => roleTargets[role.id] === printer.name).map((role) =>
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-lg border border-success/50 bg-success/10 px-2 py-1 text-xs text-success", children: role.label }, role.id)
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      disabled: assigningRole !== "" || roleTargets[setupRole] === printer.name,
+                      title: (PRINTER_ROLES.find((r) => r.id === setupRole)?.label ?? "") + " printeri olaraq yadda saxla",
+                      onClick: () => void assignPrinterRole(setupRole, printer.name),
+                      className: "touch-target rounded-xl border border-gold/40 bg-gold/10 px-3 py-2 text-xs text-gold hover:bg-gold/20 disabled:opacity-30",
+                      children: assigningRole === setupRole + ":" + printer.name ? "…" : "Bura"
+                    }
+                  )
+                ] })
+              ]
+            },
+            printer.name
+          );
+        }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "rounded-xl border border-dashed border-hairline px-4 py-3 text-sm text-muted", children: t.settings.printerDetectEmpty }),

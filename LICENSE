@@ -1,0 +1,19 @@
+Copyright (c) 2026 Ali Mammadli / possistem (https://possistem.az). All rights reserved.
+
+This source code is published for reference only. No licence is granted to use,
+copy, modify, merge, publish, distribute, sublicense or sell it, in whole or in
+part, without prior written permission from the copyright holder.
+
+Third-party components keep their own licences and are not covered by the notice
+above:
+
+- restoranpos/native/third_party/sqlite     SQLite amalgamation — public domain
+- restoranpos/native/third_party/nlohmann   nlohmann/json — MIT
+- restoranpos/native/third_party/spdlog     spdlog (bundled fmt) — MIT
+- restoranpos/native/third_party/catch2     Catch2 — Boost Software License 1.0
+- restoranpos/native/third_party/qrcodegen  QR Code generator (Nayuki) — MIT
+
+Product names, packaging and photographs under marketpos/public/assets/wolt/ and
+the reference catalogue in marketpos/src/wolt-catalog-reference.json are
+trademarks and images of their respective owners and are included as demo data
+only.

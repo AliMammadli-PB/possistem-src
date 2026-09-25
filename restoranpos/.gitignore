@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Build output. out/preload is the packaged preload the patch scripts edit, and
+# packaged-renderer/ is the renderer baseline scripts/launch-linux.sh stages from —
+# neither can be regenerated, so both are tracked.
+out/*
+!out/preload/
+release/
+dist/
+*.tsbuildinfo
+
+# C++ build tree
+native/build/
+native/build-*/
+
+# native/third_party/ is vendored and tracked: qrcodegen is not fetched by
+# scripts/fetch-deps.mjs, and the core must build offline.
+
+# Logs & local data
+logs/
+*.log
+control/.data/
+install.log
+el.out.txt
+el.err.txt
+el.out.txt
+el.err.txt
+el.out.txt
+el.err.txt
+
+# Secrets. `.env` holds the session secret and activation pepper for the
+# control plane; it must never be committed or uploaded with the source.
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db
+*.db-wal
+*.db-shm
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

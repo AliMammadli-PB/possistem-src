@@ -1,0 +1,234 @@
+/* Every management destination shares a readable, touch-sized foundation. */
+.ps-admin-workspace:not([data-page="/admin"]){background:#f1f4f9;color:#182844;}
+.ps-admin-workspace:not([data-page="/admin"]) .ps-admin-breadcrumb{min-height:60px;padding:0 clamp(16px,2vw,36px);gap:14px;font-size:14px;color:#63748d;}
+.ps-admin-workspace:not([data-page="/admin"]) .ps-admin-breadcrumb a{min-height:48px;padding:0 10px 0 0;font-size:15px;font-weight:750;color:#315a9f;}
+.ps-admin-workspace:not([data-page="/admin"]) .ps-admin-breadcrumb svg{width:18px;height:18px;}
+.ps-admin-workspace:not([data-page="/admin"]):not([data-page="/dashboard"]):not([data-page="/diagnostics"]) h1{font-size:clamp(27px,2.4vw,36px);line-height:1.15;letter-spacing:-.03em!important;color:#182844;}
+.ps-admin-workspace:not([data-page="/admin"]) h2{font-size:clamp(19px,1.5vw,23px);line-height:1.3;}
+.ps-admin-workspace:not([data-page="/admin"]) .glass h2,
+.ps-admin-workspace[data-page="/operations"] .ps-ops-panel h2,
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar h2{color:#1b2b47;}
+.ps-admin-workspace[data-page="/dashboard"] > .ps-admin-content > div > header h1{color:#182844;}
+.ps-admin-workspace:not([data-page="/admin"]) .ps-page-subtitle{font-size:15px;line-height:1.5;color:#63748d;}
+.ps-admin-workspace:not([data-page="/admin"]) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:52px;font-size:16px;line-height:1.3;border-radius:12px;}
+.ps-admin-workspace:not([data-page="/admin"]) :is(th,td){font-size:14px;line-height:1.45;}
+.ps-admin-workspace:not([data-page="/admin"]) th{font-size:13px;font-weight:800;color:#526580;}
+.ps-admin-workspace:not([data-page="/admin"]) .glass{border-radius:18px!important;box-shadow:0 8px 24px #223b5b0b!important;}
+.ps-admin-workspace:not([data-page="/dashboard"]) .glass .text-cream{color:#1b2d49!important;}
+.ps-admin-workspace:not([data-page="/dashboard"]) .glass .text-muted{color:#60718a!important;}
+.ps-admin-workspace:not([data-page="/dashboard"]) .glass .text-faint{color:#687b95!important;}
+.ps-admin-workspace:not([data-page="/dashboard"]) .glass li[class*="bg-elevated"]{background:#f8faff!important;color:#1b2d49;}
+.ps-admin-workspace:not([data-page="/dashboard"]) .glass label > span:first-child{display:block;margin-bottom:6px;font-size:14px;line-height:1.35;font-weight:750;color:#3d506c;}
+.ps-admin-workspace:not([data-page="/dashboard"]) section.glass > p{font-size:14px;line-height:1.5;}
+.ps-admin-workspace:not([data-page="/dashboard"]) button.btn-gold{min-height:52px;padding:10px 18px;background:#205dd0!important;color:#fff!important;border-radius:11px;font-size:15px;}
+.ps-admin-workspace:not([data-page="/dashboard"]) button[class*="bg-gold/"]{min-height:50px;padding:10px 16px;background:#eaf1ff!important;color:#245abd!important;border:1px solid #cbdaf7!important;border-radius:11px;font-size:15px;}
+.ps-admin-workspace:not([data-page="/admin"]) .ps-empty-state{font-size:15px;line-height:1.5;border-radius:17px;}
+.ps-admin-workspace:not([data-page="/admin"]) .ps-empty-state button{min-height:50px;padding:11px 18px;font-size:15px;}
+.ps-admin-workspace:not([data-page="/admin"]):not([data-page="/operations"]):not([data-page="/settings"]):not([data-page="/admin/catalog"]) .ps-admin-content > div > .mx-auto{width:100%;max-width:1360px!important;padding:clamp(16px,2.1vw,32px)!important;}
+.ps-admin-workspace:not([data-page="/admin"]):not([data-page="/dashboard"]):not([data-page="/operations"]):not([data-page="/settings"]):not([data-page="/admin/catalog"]) .ps-admin-content button{min-height:50px;font-size:14px;}
+.ps-admin-workspace:not([data-page="/admin"]):not([data-page="/dashboard"]):not([data-page="/operations"]):not([data-page="/settings"]):not([data-page="/admin/catalog"]) .ps-admin-content label{font-size:14px;line-height:1.4;}
+.ps-admin-workspace[data-page="/admin/staff"] .ps-admin-content > div{overflow-y:auto;}
+.ps-admin-workspace[data-page="/admin/tables"] .ps-admin-content > div > .mx-auto.grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px;}
+.ps-admin-workspace[data-page="/dashboard"] .ps-admin-content > div > main{padding:clamp(16px,2vw,32px)!important;}
+.ps-admin-workspace[data-page="/dashboard"] .ps-admin-content > div > main label > span{font-size:13px;letter-spacing:0;}
+.ps-admin-workspace[data-page="/dashboard"] .ps-admin-content > div > main button{min-height:48px;font-size:14px;}
+.ps-admin-workspace[data-page="/diagnostics"] .ps-admin-content > div{padding:clamp(16px,2.3vw,36px)!important;}
+
+/* Settings: a permanent section rail, one content surface, and local actions. */
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page{overflow-y:auto!important;overscroll-behavior:contain;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .topbar,
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .sticky-save{display:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .settings-shell{display:grid!important;grid-template-columns:260px minmax(0,1fr);align-items:start;gap:20px;max-width:1760px!important;margin:0 auto;padding:clamp(16px,2vw,36px)!important;width:100%;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .settings-hero{grid-column:1/-1;margin:0 0 6px;padding:0 3px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .settings-hero h1{font-size:clamp(28px,2.6vw,39px);font-weight:850;letter-spacing:-.035em;margin:0 0 9px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .settings-hero p{font-size:15px;line-height:1.5;color:#65758e;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category-bar{grid-column:1;grid-row:2;display:flex!important;flex-direction:column;gap:7px;position:sticky;top:18px;margin:0;padding:15px;background:#142644;border-radius:22px;box-shadow:0 14px 35px #1727461a;min-width:0;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category{display:grid!important;grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;column-gap:12px;min-height:78px;width:100%;padding:11px 12px!important;border:1px solid transparent!important;border-radius:15px!important;background:transparent!important;box-shadow:none!important;color:#d3dff0!important;text-align:left;transform:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category:hover{background:#ffffff15!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category:active{transform:scale(.985)!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category.active{background:#fff!important;border-color:#fff!important;color:#172a49!important;box-shadow:0 7px 16px #09152b20!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category.active:after{display:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category .ci{grid-column:1;grid-row:1/3;width:48px;height:48px;margin:0;border-radius:12px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category .ci svg{width:23px;height:23px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category b{grid-column:2;grid-row:1;align-self:end;font-size:16px;line-height:1.25;font-weight:780;color:inherit;overflow-wrap:anywhere;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category > span:last-child{grid-column:2;grid-row:2;align-self:start;margin-top:3px;font-size:13px;line-height:1.35;color:#a9bbd4;overflow-wrap:anywhere;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category.active > span:last-child{color:#667996;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category.danger b{color:#ffc0ba;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category.danger.active b{color:#bb433d;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack{grid-column:2;grid-row:2;display:flex!important;flex-direction:column;gap:18px!important;min-width:0;padding:clamp(18px,2vw,30px);background:#fff;border:1px solid #dce4ef;border-radius:22px;box-shadow:0 10px 28px #223b5b0a;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack > div{gap:18px!important;min-width:0;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack > div > div:first-child{display:block!important;padding:0 0 20px;border-bottom:1px solid #e8edf4;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack > div > div:first-child h2{font-size:clamp(23px,2vw,30px);font-weight:830;letter-spacing:-.025em;margin:0 0 7px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack > div > div:first-child p{font-size:15px;color:#63748d;line-height:1.45;margin:0;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page :is(.card,.settings-section,.ps-settings-stack section){border-radius:17px!important;border-color:#dce5f1!important;box-shadow:0 3px 13px #223b5b0a!important;min-width:0;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardhead{padding:20px 22px 17px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardhead h2{font-size:20px;line-height:1.25;margin:0 0 6px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardhead h3{font-size:18px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardhead p{font-size:14px;line-height:1.45;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardbody{padding:22px;gap:20px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardbody > .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardbody > .grid > label:nth-child(-n+2){grid-column:1/-1;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page label{min-width:0;font-size:14px;line-height:1.4;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page label > span:first-child{display:block;font-size:14px;font-weight:750;line-height:1.35;letter-spacing:0;text-transform:none;color:#344964;margin-bottom:7px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:54px;width:100%;font-size:16px;border:1px solid #cdd9e9;border-radius:11px;padding:11px 13px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page :is(input,select,textarea):focus-visible{outline:3px solid #92b5f7;outline-offset:2px;border-color:#4d77cd;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .btn{min-height:52px;padding:10px 17px;font-size:15px;font-weight:750;border-radius:11px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-commit{min-height:52px;padding:10px 18px!important;font-size:15px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .account-ribbon{gap:14px;padding:16px 18px;border-radius:16px;flex-wrap:wrap;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .avatar{width:48px;height:48px;font-size:17px;border-radius:12px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .account-ribbon .meta{min-width:0;flex:1;overflow-wrap:anywhere;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .account-ribbon .meta b{font-size:17px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .account-ribbon .meta span{font-size:14px;line-height:1.4;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-logo-thumb{flex-basis:160px;width:160px!important;height:100px!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-logo-row button{min-height:52px;font-size:15px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section{padding:22px!important;gap:17px!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section h2{font-size:20px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section p{font-size:14px;line-height:1.5;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section button{min-height:50px;font-size:15px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-switch{min-height:68px;padding:12px 16px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-switch-title{font-size:16px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-switch-hint{font-size:14px;}
+
+/* Printer setup: the physical device and its role are chosen in one flow. */
+.ps-admin-workspace[data-page="/settings"] .ps-printer-section > h2{font-size:23px!important;margin:0 0 4px;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-section > p{font-size:15px;line-height:1.5;margin-bottom:17px;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-setup{padding:20px;background:#f5f8ff;border:1px solid #cbdcf9;border-radius:18px;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-eyebrow{margin:0 0 15px;font-size:15px;font-weight:800;letter-spacing:0;text-transform:none;color:#244b94;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section.ps-printer-section .flex.flex-wrap{display:flex!important;flex-wrap:wrap!important;gap:8px!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;border-radius:0!important;width:100%!important;max-width:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section.ps-printer-section .flex.flex-wrap > button{min-height:50px!important;padding:9px 14px!important;border:1px solid #c8d9f2!important;border-radius:10px!important;background:#fff!important;color:#2454a2!important;font-size:14px!important;font-weight:750!important;box-shadow:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section.ps-printer-section .flex.flex-wrap > button[class*="bg-gold"]{background:#e9f1ff!important;border-color:#a9c4f2!important;color:#1f56b1!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-setup > div{display:grid;gap:10px;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role{min-width:0;padding:16px 18px;border:1px solid #d6e2f4;border-radius:15px;background:#fff;box-shadow:0 2px 8px #1b43800a;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role.is-open{border-color:#79a4ed;background:#fafdff;box-shadow:0 0 0 3px #dce9ff;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role > div:first-child{gap:12px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section .ps-printer-role .flex.flex-wrap{display:flex!important;gap:10px!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;border-radius:0!important;width:100%!important;max-width:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role-title{margin:0;font-size:17px;font-weight:800;color:#1b2c4b;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role-status{margin-top:5px;font-size:14px;line-height:1.4;overflow-wrap:anywhere;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role-status.is-ready{color:#087355;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role-status.is-missing{color:#a65a10;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section .ps-printer-role .flex.flex-wrap > button.ps-printer-find-button{min-width:155px;min-height:54px!important;padding:11px 17px!important;border:1px solid #1f5dce!important;border-radius:11px!important;background:#1f5dce!important;color:#fff!important;font-size:15px!important;font-weight:800!important;box-shadow:0 5px 12px #205dd025!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-find-button:disabled{opacity:.55;box-shadow:none;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role.is-open > div:last-child{margin-top:16px;padding-top:16px;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role.is-open > div:last-child > div:first-child{display:flex;flex-wrap:wrap;gap:9px;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role.is-open > div:last-child button{min-height:52px;font-size:15px;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section .ps-printer-role .flex.flex-wrap > button:not(.ps-printer-find-button){min-height:52px!important;padding:10px 15px!important;border:1px solid #c7d8f2!important;border-radius:11px!important;background:#fff!important;color:#2355a6!important;font-size:15px!important;font-weight:750!important;box-shadow:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section .ps-printer-role .flex.flex-wrap > button[class*="border-success"]{border-color:#9bd8be!important;background:#eaf8f0!important;color:#08704b!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-role.is-open > div:last-child > div:not(:first-child){border-radius:13px;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-legacy-manual,
+.ps-admin-workspace[data-page="/settings"] .ps-printer-legacy-target,
+.ps-admin-workspace[data-page="/settings"] .ps-printer-legacy-actions,
+.ps-admin-workspace[data-page="/settings"] .ps-printer-legacy-hint{display:none!important;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-section > label{margin-top:18px;padding:16px!important;align-items:center;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-section > label input[type=checkbox]{width:22px;height:22px;flex:none;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-section > label span span:first-child{font-size:15px;font-weight:750;}
+.ps-admin-workspace[data-page="/settings"] .ps-printer-section > label span span:last-child{font-size:13px;line-height:1.4;}
+
+/* Inventory, purchasing, guests, reservations, delivery and roster. */
+.ps-admin-workspace[data-page="/operations"] .ps-operations-page{padding:clamp(16px,2.2vw,36px);overscroll-behavior:contain;}
+.ps-admin-workspace[data-page="/operations"] .ps-operations-page > header{margin-bottom:22px;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px;max-width:1440px;overflow:visible;padding:9px;margin-bottom:20px;border:0;border-radius:17px;background:#e5ebf4;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-tabs button{display:grid;place-items:center;min-width:0;min-height:54px;padding:10px 13px!important;border:1px solid transparent!important;border-radius:12px!important;background:transparent!important;color:#51627c!important;font-size:15px;font-weight:750;line-height:1.25;white-space:normal;text-align:center;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-tabs button[aria-current="page"]{border-color:#bcd0f5!important;background:#fff!important;color:#2058bc!important;box-shadow:0 4px 12px #233e690e!important;}
+.ps-admin-workspace[data-page="/operations"] .ps-stock-metrics{grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px;}
+.ps-admin-workspace[data-page="/operations"] .ps-stock-metric{min-height:120px;padding:19px;border-radius:16px;}
+.ps-admin-workspace[data-page="/operations"] .ps-stock-metric p:first-child{font-size:13px;font-weight:750;letter-spacing:0;}
+.ps-admin-workspace[data-page="/operations"] .ps-stock-metric > p:nth-child(2){font-size:28px;line-height:1.2;margin-top:11px;}
+.ps-admin-workspace[data-page="/operations"] .ps-stock-metric > p:last-child{font-size:13px;line-height:1.4;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-panel > .space-y-4 > section{border-radius:17px;padding:clamp(17px,2vw,26px);}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-panel label > span{font-size:14px;line-height:1.35;font-weight:750;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-button{min-height:50px;padding:11px 17px!important;font-size:14px!important;line-height:1.25;white-space:normal;text-align:center;border-radius:11px!important;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-panel button[aria-pressed]{min-height:48px;padding:10px 12px!important;font-size:14px!important;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-table{border-radius:16px;overscroll-behavior-x:contain;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-table table{min-width:720px;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-table th{height:52px;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-table td{height:70px;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-table td .ps-ops-button{min-height:48px;padding:9px 12px!important;font-size:13px!important;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-composer{border-radius:17px!important;}
+.ps-admin-workspace[data-page="/operations"] .ps-ops-composer > button{min-height:64px;padding:17px 22px;font-size:17px;font-weight:750;}
+.ps-admin-workspace[data-page="/operations"] .ps-composer-body{padding:0 22px 23px;}
+
+/* Catalog: keep its rich hierarchy while exposing reorder and menu controls. */
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-page > .border-b{padding:20px 25px!important;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-hint{font-size:15px;line-height:1.45;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-body{grid-template-columns:260px minmax(0,1fr)!important;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cats{background:#f7f9fd!important;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cats-head{padding:17px 17px 10px;font-size:13px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cat-main{min-height:56px;font-size:15px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-count{font-size:12px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar{padding:18px 22px;gap:12px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar h2{font-size:21px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-search{min-height:52px;font-size:16px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-new-btn,
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-add button{min-width:52px;min-height:52px;font-size:15px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-thead{min-height:48px;font-size:13px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-row{min-height:88px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-row-copy strong{font-size:17px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-price{font-size:17px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-shift{width:48px;min-height:48px!important;font-size:16px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-kebab{width:48px;height:48px;min-height:48px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-menu button{min-height:48px;font-size:15px;}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-mods > summary{min-height:54px;font-size:15px;}
+
+/* Modal actions remain usable at every scale. */
+.ps-admin-workspace .ps-admin-dialog{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);border-radius:18px;}
+.ps-admin-workspace .ps-admin-dialog .ps-dialog-top{padding:18px 22px;font-size:20px;}
+.ps-admin-workspace .ps-admin-dialog .ps-dialog-top button{width:48px;min-height:48px;}
+.ps-admin-workspace .ps-admin-dialog .ps-dialog-body{padding:22px;gap:18px;}
+.ps-admin-workspace .ps-admin-dialog .ps-dialog-body label > span{font-size:14px;}
+.ps-admin-workspace .ps-admin-dialog .ps-dialog-body button{min-height:48px;}
+
+@media(max-width:1020px){
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .settings-shell{display:block!important;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .settings-hero{margin-bottom:20px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category-bar{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));position:static;margin-bottom:16px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category{min-height:76px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-body{grid-template-columns:220px minmax(0,1fr)!important;}
+}
+@media(max-width:900px){
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-body{display:flex!important;flex-direction:column;overflow:auto;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cats{width:100%!important;max-height:none;flex:none;border-right:0!important;border-bottom:1px solid #dce4ef!important;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cat-list{display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;padding:5px 12px 12px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cat{flex:0 0 auto;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cat-main{min-width:120px;min-height:52px;gap:10px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-main{flex:1!important;min-height:440px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-thead{display:none!important;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row{display:grid!important;grid-template-columns:48px 56px minmax(0,1fr) 48px!important;grid-template-rows:auto auto auto;gap:5px 10px;min-width:0;min-height:118px;padding:12px 14px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row > :nth-child(1){grid-column:1;grid-row:1/4;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row > :nth-child(2){grid-column:2;grid-row:1/3;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row > :nth-child(3){grid-column:3;grid-row:1;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row > :nth-child(4){grid-column:3;grid-row:2;text-align:left;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row > :nth-child(5){grid-column:3;grid-row:3;justify-self:start;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row > :nth-child(6){grid-column:4;grid-row:1/3;}
+}
+@media(max-width:600px){
+ .ps-admin-workspace:not([data-page="/admin"]) .ps-admin-breadcrumb{min-height:54px;padding:0 14px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .settings-shell{padding:16px 12px 28px!important;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category-bar{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:9px;border-radius:17px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category{grid-template-columns:40px minmax(0,1fr);min-height:64px;column-gap:8px;padding:9px!important;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category .ci{width:40px;height:40px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category .ci svg{width:21px;height:21px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category b{font-size:14px;align-self:center;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .category > span:last-child{display:none;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack{padding:16px;border-radius:18px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardbody{padding:16px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardbody > .grid{grid-template-columns:1fr;gap:14px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardbody > .grid > label:nth-child(-n+2){grid-column:auto;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .cardhead{padding:16px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-settings-page .ps-settings-stack section{padding:16px!important;}
+ .ps-admin-workspace[data-page="/settings"] .ps-printer-setup{padding:14px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-printer-role{padding:14px;}
+ .ps-admin-workspace[data-page="/settings"] .ps-printer-find-button{width:100%;}
+ .ps-admin-workspace[data-page="/operations"] .ps-operations-page{padding:16px 12px;}
+ .ps-admin-workspace[data-page="/operations"] .ps-ops-tabs{grid-template-columns:repeat(2,minmax(0,1fr));}
+ .ps-admin-workspace[data-page="/operations"] .ps-stock-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}
+ .ps-admin-workspace[data-page="/operations"] .ps-stock-metric:first-child{grid-column:1/-1;}
+ .ps-admin-workspace[data-page="/operations"] .ps-ops-panel > .space-y-4 > section{padding:16px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar{padding:14px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar .ps-catalog-search{flex-basis:100%;max-width:none;margin:0;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar .ps-catalog-new-btn{margin-left:0;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-list > .ps-catalog-row{grid-template-columns:48px 48px minmax(0,1fr) 48px!important;gap:5px 8px;}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-row img{width:48px;height:55px;}
+ .ps-admin-workspace .ps-admin-dialog .ps-dialog-body > .grid,
+ .ps-admin-workspace .ps-admin-dialog .ps-dialog-body > [class~="sm:grid-cols-[2fr_1fr_1fr_auto]"]{grid-template-columns:1fr!important;}
+}
+@media(prefers-reduced-motion:reduce){.ps-admin-workspace[data-page="/settings"] .ps-settings-page .category{transition:none!important;}}

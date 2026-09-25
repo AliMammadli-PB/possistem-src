@@ -1,0 +1,54 @@
+appId: com.cyberplus.maisonaurelia.pos
+productName: possistem
+executableName: possistem
+copyright: Copyright © CyberPlus
+electronVersion: 43.2.0
+directories:
+  # Versioned dir avoids EBUSY when release/win-unpacked is locked by a running app.
+  output: release-1.7.8
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: native/build/restaurant-pos-core.exe
+    to: native/win32-x64/restaurant-pos-core.exe
+  - from: database/migrations
+    to: native/migrations
+  - from: database/seed
+    to: native/seed
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Possistem-Setup-${version}.${ext}
+  icon: build/icon.ico
+  # Production packaging is fail-closed in scripts/package-win.mjs when CSC_LINK is absent.
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: possistem
+  uninstallDisplayName: possistem
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+asar: true
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: false
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+compression: maximum
+publish:
+  provider: generic
+  url: https://possistem.az/pos-updates/
+
