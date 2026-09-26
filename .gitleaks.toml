@@ -16,4 +16,6 @@ regexes = [
   # production licence verification public key and key id
   '''1338db4cbec4934a387a1cc73c3589f3b0f58dac63be7fed0bf2a7e455e336c3''',
   '''ed25519-42cd45bfa4ca3125''',
+  # localStorage key names of the retail tills (cyberplus.geyim.pos.v2), not credentials
+  '''cyberplus\.(market|geyim)\.pos\.[a-z0-9.-]+''',
 ]
