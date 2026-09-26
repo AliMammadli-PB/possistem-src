@@ -6,8 +6,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { APP_DIR } from './pos-app.mjs';
 
-const MARKET = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'marketpos');
+const MARKET = APP_DIR;
 const MIGRATIONS_DIR = path.join(MARKET, 'database', 'migrations');
 const SEED_DIR = path.join(MARKET, 'database', 'seed');
 const OUT = path.join(MARKET, 'native', 'core', 'include', 'market', 'db', 'migrations_generated.hpp');

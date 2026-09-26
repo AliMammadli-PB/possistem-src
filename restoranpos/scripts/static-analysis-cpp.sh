@@ -14,7 +14,7 @@ trap 'rm -rf "$WORK"' EXIT
 CHECKS='-*,clang-analyzer-core.*,clang-analyzer-cplusplus.*,clang-analyzer-deadcode.*,clang-analyzer-security.*,clang-analyzer-unix.*,bugprone-use-after-move,bugprone-dangling-handle,bugprone-infinite-loop,bugprone-undefined-memory-manipulation,bugprone-sizeof-expression,bugprone-string-constructor,bugprone-suspicious-string-compare,bugprone-integer-division,bugprone-unused-return-value,bugprone-exception-escape'
 
 status=0
-for product in restoranpos marketpos; do
+for product in restoranpos marketpos geyimpos; do
   src="$ROOT/$product/native"
   build="$WORK/$product"
   cmake -S "$src" -B "$build" -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \

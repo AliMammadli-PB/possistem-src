@@ -16,12 +16,13 @@ bazasına tək sahib olan C++20 nüvə prosesi.
   C++ nüvə (*-core.exe)  ── SQLite (WAL) ── yeganə yazıçı; icazələri ikinci dəfə yoxlayır
 ```
 
-| | Restoran POS (`restoranpos/`) | Market POS (`marketpos/`) |
-|---|---|---|
-| Main | `index.js` (paketlənmiş, yamaqlanmış) → `out/main/index.js` | `electron/main.cjs` + modullar |
-| Preload | `out/preload/index.js` → `window.pos` (`pos:*` kanalları) | `electron/preload.cjs` → `window.market` |
-| Renderer | `packaged-renderer/` (paket bundle + yamaqlar) | `src/` (React + Vite) |
-| Nüvə | `native/` → `restaurant-pos-core.exe` | `native/` → `market-pos-core.exe` |
+| | Restoran POS (`restoranpos/`) | Market POS (`marketpos/`) | Geyim POS (`geyimpos/`) |
+|---|---|---|---|
+| Main | `index.js` (paketlənmiş, yamaqlanmış) → `out/main/index.js` | `electron/main.cjs` + modullar | Market ilə eyni (fork) |
+| Preload | `out/preload/index.js` → `window.pos` (`pos:*` kanalları) | `electron/preload.cjs` → `window.market` | eyni kanallar (`market:*`) |
+| Renderer | `packaged-renderer/` (paket bundle + yamaqlar) | `src/` (React + Vite) | `src/` (React + Vite, geyim ekranları) |
+| Nüvə | `native/` → `restaurant-pos-core.exe` | `native/` → `market-pos-core.exe` | `native/` → `geyim-pos-core.exe` (+ `011_apparel.sql`) |
+| Lisenziya | `restaurant` | `market` | açar `geyim`; lisenziya market ailəsindəndir (`features.vertical = 'geyim'`), yeniləmə kanalı `possistem.az/geyimpos/updates/` |
 
 ## Etibar sərhədləri
 

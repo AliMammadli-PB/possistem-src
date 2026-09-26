@@ -1,0 +1,10 @@
+{
+  "name": "GeyimPos",
+  "short_name": "GeyimPos",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#10172a",
+  "theme_color": "#10172a",
+  "lang": "az",
+  "icons": []
+}

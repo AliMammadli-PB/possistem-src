@@ -27,11 +27,15 @@ jobs:
           cache-dependency-path: |
             restoranpos/package-lock.json
             marketpos/package-lock.json
+            geyimpos/package-lock.json
       - name: Install (restaurant + shared tooling)
         working-directory: restoranpos
         run: npm ci --no-audit --no-fund
       - name: Install (market UI)
         working-directory: marketpos
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install (Geyim UI)
+        working-directory: geyimpos
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Versions agree (package, lock, CMake, Electron)
         working-directory: restoranpos
@@ -39,7 +43,7 @@ jobs:
       - name: Vendored C++ dependencies match SHA256SUMS
         working-directory: restoranpos
         run: node scripts/verify-third-party.mjs
-      - name: Typecheck (restaurant + market)
+      - name: Typecheck (restaurant, market, Geyim)
         working-directory: restoranpos
         run: npm run typecheck
       - name: Lint (Electron main, build and patch scripts)
@@ -56,14 +60,19 @@ jobs:
       - name: Market renderer build
         working-directory: restoranpos
         run: npm run market:build
+      - name: Geyim renderer build
+        working-directory: restoranpos
+        run: npm run geyim:build
       - name: npm audit (high and above)
         run: |
           (cd restoranpos && npm audit --audit-level=high)
           (cd marketpos && npm audit --audit-level=high)
+          (cd geyimpos && npm audit --audit-level=high)
       - name: SBOM
         run: |
           (cd restoranpos && npm sbom --sbom-format cyclonedx > ../sbom-restoranpos.cdx.json)
           (cd marketpos && npm sbom --sbom-format cyclonedx > ../sbom-marketpos.cdx.json)
+          (cd geyimpos && npm sbom --sbom-format cyclonedx > ../sbom-geyimpos.cdx.json)
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
@@ -104,6 +113,12 @@ jobs:
           node scripts/build-market-core.mjs
           WINE=$(command -v wine || command -v wine64)
           cd ../marketpos/native/build && "$WINE" ./market_core_tests.exe --reporter compact
+      - name: Geyim core
+        working-directory: restoranpos
+        run: |
+          POS_APP=geyimpos node scripts/build-market-core.mjs
+          WINE=$(command -v wine || command -v wine64)
+          cd ../geyimpos/native/build && "$WINE" ./market_core_tests.exe --reporter compact
 
   cpp-static:
     name: C++ static analysis (clang-tidy)

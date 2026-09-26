@@ -1,12 +1,13 @@
-# possistem — Restoran POS + Market POS
+# possistem — Restoran POS + Market POS + Geyim POS
 
-Mənbə kodu: iki oflayn işləyən Windows kassa proqramı. Hər ikisi Electron qabığıdır və yerli
+Mənbə kodu: üç oflayn işləyən Windows kassa proqramı. Hamısı Electron qabığıdır və yerli
 SQLite bazasına sahib olan C++20 nüvə (`*-core.exe`) ilə NDJSON üzərindən danışır.
 
 | Qovluq | Məhsul | Quruluş |
 |---|---|---|
 | [`restoranpos/`](restoranpos) | Restoran POS | Electron + C++ nüvə (`native/`, 112 fayl, testlərlə). Renderer paketlənmiş bundle-dır (`index-DAmHwBc4.js`) və `scripts/apply-restaurant-*.mjs` yamaqları ilə dəyişdirilir. |
 | [`marketpos/`](marketpos) | Market POS | Electron + React/Vite (`src/`) + C++ nüvə (`native/`). |
+| [`geyimpos/`](geyimpos) | Geyim POS | Market POS-un geyim mağazası üçün forku: model × ölçü × rəng variantları, CODE128 etiket, əllə barkod klaviaturası, dəyişmə. Bax: [geyimpos/README.md](geyimpos/README.md). |
 
 Sayt, lisenziya/idarəetmə API-si və admin/partnyor panelləri possistem.az serverində işləyir və bu
 repoya daxil deyil.
@@ -21,19 +22,22 @@ istifadə edir), şəbəkə tələb olunmur.
 cd restoranpos
 npm ci                        # restoran + ortaq alətlər
 (cd ../marketpos && npm ci)   # market UI asılılıqları
+(cd ../geyimpos && npm ci)    # Geyim UI asılılıqları
 
 npm run build:core            # native/build/restaurant-pos-core.exe
 TZ=TRT-3 npm run test:core     # qəbz snapshot-ları UTC+3
 npm run market:build:core     # ../marketpos/native/build/market-pos-core.exe
 npm run market:test:core
+npm run geyim:build:core      # ../geyimpos/native/build/geyim-pos-core.exe (POS_APP=geyimpos)
 
 npm run check:versions        # versiyalar uyğundur
 node scripts/verify-third-party.mjs   # vendored C++ SHA-256 yoxlaması
-npm run typecheck             # restoran (node + web) və market
+npm run typecheck             # restoran (node + web), market və Geyim
 npm run lint                  # ESLint
 npx vitest run                # unit testlər
 npm run build:desktop         # restoran: yamaqlar → packaged-renderer/ → out/ (strict)
 npm run market:build          # market renderer → ../marketpos/dist
+npm run geyim:build           # Geyim renderer → ../geyimpos/dist
 bash scripts/static-analysis-cpp.sh   # clang-tidy (clang, cmake, ninja lazımdır)
 ```
 

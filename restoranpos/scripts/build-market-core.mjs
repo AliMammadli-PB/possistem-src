@@ -7,9 +7,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { APP_DIR, CORE_NAME, POS_APP } from './pos-app.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MARKET_NATIVE = path.join(ROOT, '..', 'marketpos', 'native');
+const MARKET_NATIVE = path.join(APP_DIR, 'native');
 const BUILD = path.join(MARKET_NATIVE, 'build');
 const isWin = os.platform() === 'win32';
 
@@ -37,7 +38,7 @@ const CLEAN = args.includes('--clean');
   if (tampered.length > 0) fail(`vendored dependencies do not match SHA256SUMS: ${tampered.join(', ')}`);
 }
 if (!fs.existsSync(path.join(MARKET_NATIVE, 'third_party', 'sqlite'))) {
-  fail('marketpos/native/third_party missing — symlink to ../../restoranpos/native/third_party');
+  fail(`${POS_APP}/native/third_party missing — symlink to ../../restoranpos/native/third_party`);
 }
 
 run(process.execPath, [path.join(ROOT, 'scripts', 'gen-market-protocol.mjs')]);
@@ -67,7 +68,7 @@ if (cross) {
 run(configure[0], configure.slice(1));
 run(cmake, ['--build', BUILD, '--config', CONFIG, '-j', String(os.cpus().length || 4)]);
 
-const exeName = cross || isWin ? 'market-pos-core.exe' : 'market-pos-core';
+const exeName = cross || isWin ? `${CORE_NAME}.exe` : CORE_NAME;
 const exe = path.join(BUILD, exeName);
 if (!fs.existsSync(exe)) fail(`expected binary missing: ${exe}`);
 log(`OK ${exe}`);

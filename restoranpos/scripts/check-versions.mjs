@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MARKET = path.resolve(ROOT, '..', 'marketpos');
+const GEYIM = path.resolve(ROOT, '..', 'geyimpos');
 
 const json = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const cmakeVersion = (file) => /project\([^)]*VERSION\s+([0-9.]+)\)/.exec(fs.readFileSync(file, 'utf8'))?.[1];
@@ -22,7 +23,7 @@ function same(label, values) {
   if (distinct.size !== 1) problems.push(`${label}: ${Object.entries(values).map(([k, v]) => `${k}=${v}`).join(', ')}`);
 }
 
-for (const [label, dir] of [['restaurant', ROOT], ['market', MARKET]]) {
+for (const [label, dir] of [['restaurant', ROOT], ['market', MARKET], ['geyim', GEYIM]]) {
   const pkg = json(path.join(dir, 'package.json'));
   const lock = json(path.join(dir, 'package-lock.json'));
   same(`${label} version`, {
@@ -38,6 +39,7 @@ same('electron runtime', {
   'restoranpos lock': restaurantLock.packages?.['node_modules/electron']?.version,
   'restoranpos electron-builder.yml': builderElectron(path.join(ROOT, 'electron-builder.yml')),
   'marketpos electron-builder.yml': builderElectron(path.join(MARKET, 'electron-builder.yml')),
+  'geyimpos electron-builder.yml': builderElectron(path.join(GEYIM, 'electron-builder.yml')),
 });
 
 if (problems.length) {

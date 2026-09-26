@@ -1392,13 +1392,25 @@ void Application::registerHandlers(ipc::StdioServer& server) {
   server.on("product.delete", [this](const nlohmann::json& p) {
     requirePermission(db_, p, "EDIT_PRODUCT");
     const auto id = requireString(p, "id");
-    db_.exec("UPDATE products SET active = 0 WHERE id = '" + id + "';");
+    db_.execBound("UPDATE products SET active = 0 WHERE id = ?", {id});
     emitProductSync(db_, id);
     audit(db_, p.value("actorId", "system"), "PRODUCT_DELETE", id);
     return nlohmann::json{{"ok", true}};
   });
   server.on("barcode.resolve", [this](const nlohmann::json& p) {
     std::string barcode = requireString(p, "barcode");
+    // Clothing tags are often alphanumeric CODE128: look the code up as
+    // scanned first, and only then as digits (EAN, scale barcodes).
+    std::string raw = barcode;
+    raw.erase(0, raw.find_first_not_of(" \t\r\n"));
+    raw.erase(raw.find_last_not_of(" \t\r\n") + 1);
+    if (!raw.empty()) {
+      auto exact = db_.query(
+          "SELECT p.* FROM products p WHERE p.active = 1 AND (p.barcode = ?1 OR p.sku = ?1 OR EXISTS "
+          "(SELECT 1 FROM product_barcodes b WHERE b.product_id = p.id AND b.barcode = ?1)) LIMIT 1",
+          {raw}, {});
+      if (!exact.empty()) return productRowToJson(exact[0], db_);
+    }
     barcode.erase(std::remove_if(barcode.begin(), barcode.end(), [](unsigned char c) { return !std::isdigit(c); }),
                   barcode.end());
     auto scaled = resolveScaleBarcode(db_, barcode);
@@ -1662,7 +1674,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
     const auto id = requireString(p, "id");
     auto rows = db_.query("SELECT * FROM held_carts WHERE id = ?", {id}, {});
     if (rows.empty()) throw PosError("E_NOT_FOUND", "held cart not found");
-    db_.exec("DELETE FROM held_carts WHERE id = '" + id + "';");
+    db_.execBound("DELETE FROM held_carts WHERE id = ?", {id});
     return nlohmann::json{{"id", id},
                           {"label", rows[0].at("label")},
                           {"createdAt", rows[0].at("created_at")},
@@ -1688,7 +1700,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
         applyStockDelta(db_, "SALE_RETURN", it.at("product_id").get<std::string>(), wh,
                         it.at("qty").get<std::int64_t>(), "sale", saleId, actor, "refund", true);
       }
-      db_.exec("UPDATE sales SET refunded = 1 WHERE id = '" + saleId + "';");
+      db_.execBound("UPDATE sales SET refunded = 1 WHERE id = ?", {saleId});
       audit(db_, actor, "SALE_REFUND", rows[0].at("receipt_no").get<std::string>());
       db_.commit();
     } catch (...) {
@@ -1869,8 +1881,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
     try {
       db_.exec("UPDATE cash_sessions SET status='closed', closed_at=" + std::to_string(nowMs()) +
                " WHERE register_id='" + registerId + "' AND status='open';");
-      db_.exec("UPDATE registers SET status='closed', operator_id=NULL, opened_at=NULL WHERE id='" + registerId +
-               "';");
+      db_.execBound("UPDATE registers SET status='closed', operator_id=NULL, opened_at=NULL WHERE id = ?", {registerId});
       audit(db_, operatorId, "REGISTER_CLOSE", registerId);
       db_.commit();
     } catch (...) {

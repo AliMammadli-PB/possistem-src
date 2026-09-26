@@ -1206,8 +1206,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
       sqlite3_prepare_v2(db.raw(), "UPDATE purchase_orders SET supplier=?, expected_at=?, warehouse_id=?, lines_json=?, total_minor=?, updated_at=? WHERE id=?", -1, &stmt, nullptr);
       sqlite3_bind_text(stmt, 1, p.value("supplier", old.at("supplier").get<std::string>()).c_str(), -1, SQLITE_TRANSIENT); sqlite3_bind_text(stmt, 2, p.value("expectedAt", old.value("expectedAt", "")).c_str(), -1, SQLITE_TRANSIENT);
       sqlite3_bind_text(stmt, 3, normalizeWarehouseId(db, p.value("warehouseId", std::string{})).c_str(), -1, SQLITE_TRANSIENT); sqlite3_bind_text(stmt, 4, json.c_str(), -1, SQLITE_TRANSIENT); sqlite3_bind_int64(stmt, 5, total); sqlite3_bind_int64(stmt, 6, nowMs()); sqlite3_bind_text(stmt, 7, id.c_str(), -1, SQLITE_TRANSIENT); sqlite3_step(stmt); sqlite3_finalize(stmt);
-      db.exec("DELETE FROM purchase_order_lines WHERE purchase_id='" + id +
-              "' AND returned_qty=0;");
+      db.execBound("DELETE FROM purchase_order_lines WHERE purchase_id = ? AND returned_qty=0", {id});
       for (const auto& line : lines) {
         const auto productId = requireString(line, "productId");
         auto existing = db.query(
@@ -1468,8 +1467,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
       sqlite3_step(stmt);
       sqlite3_finalize(stmt);
 
-      db.exec("UPDATE registers SET status='closed', operator_id=NULL, opened_at=NULL WHERE id='" + registerId +
-              "';");
+      db.execBound("UPDATE registers SET status='closed', operator_id=NULL, opened_at=NULL WHERE id = ?", {registerId});
       audit(db, p.value("actorId", session.at("operator_id").get<std::string>()), "Z_CLOSE", registerId);
       db.commit();
     } catch (...) {
@@ -1525,7 +1523,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (p.contains("saleId")) {
-      db.exec("UPDATE sales SET fiscal_status='pending' WHERE id='" + p.at("saleId").get<std::string>() + "';");
+      db.execBound("UPDATE sales SET fiscal_status='pending' WHERE id = ?", {p.at("saleId").get<std::string>()});
     }
     return db.query("SELECT * FROM fiscal_queue WHERE id = ?", {id}, {})[0];
   });
@@ -1558,7 +1556,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
       const std::string saleId = rows[0]["sale_id"].get<std::string>();
       const std::string fs = status == "success" ? "success" : status == "rejected" ? "rejected" : "failed";
       if (status == "success" || status == "rejected" || status == "failed") {
-        db.exec("UPDATE sales SET fiscal_status='" + fs + "' WHERE id='" + saleId + "';");
+        db.execBound("UPDATE sales SET fiscal_status = ? WHERE id = ?", {fs, saleId});
       }
     }
     return rows.empty() ? nlohmann::json::object() : rows[0];
@@ -1700,7 +1698,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         }
       }
       if (full) {
-        db.exec("UPDATE sales SET refunded = 1 WHERE id='" + saleId + "';");
+        db.execBound("UPDATE sales SET refunded = 1 WHERE id = ?", {saleId});
         // Everything came back, so the customer is owed exactly what they paid.
         // Per-line proration can still land a qəpik or two off across many
         // lines; put the residual on the last line so the refund reconciles to
@@ -1793,7 +1791,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
     const auto id = requireString(p, "id");
     const auto status = requireString(p, "status");
     if (status != "draft" && status != "counting" && status != "review" && status != "canceled") throw PosError("E_VALIDATION", "invalid stocktake status");
-    db.exec("UPDATE stocktakes SET status='" + status + "' WHERE id='" + id + "';");
+    db.execBound("UPDATE stocktakes SET status = ? WHERE id = ?", {status, id});
     return db.query("SELECT * FROM stocktakes WHERE id = ?", {id}, {})[0];
   });
 

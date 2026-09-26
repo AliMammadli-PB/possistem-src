@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import pngToIco from 'png-to-ico';
 import {verifyMarketModules} from './verify-market-package.mjs';
+import {APP_DIR, ARTIFACT_NAME, CORE_NAME, ICON_FILE} from './pos-app.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MARKET = path.join(ROOT, '..', 'marketpos');
+const MARKET = APP_DIR;
 const BUILD = path.join(MARKET, 'build');
 const RELEASE = path.join(MARKET, 'release');
 const marketPackage = JSON.parse(fs.readFileSync(path.join(MARKET, 'package.json'), 'utf8'));
@@ -34,7 +35,7 @@ function run(command, args, cwd = ROOT) {
 }
 
 async function generateIcon() {
-  const source = path.join(MARKET, 'public', 'assets', 'marketpos-app-icon-v2.png');
+  const source = path.join(MARKET, 'public', 'assets', ICON_FILE);
   const iconPng = path.join(BUILD, 'icon.png');
   await sharp(source).resize(512, 512).png().toFile(iconPng);
   const sizes = [16, 24, 32, 48, 64, 128, 256];
@@ -57,8 +58,8 @@ if (!signingConfigured) {
 verifyMarketModules();
 await generateIcon();
 run(process.execPath, [path.join(ROOT, 'scripts', 'build-market-core.mjs')]);
-const coreExe = path.join(MARKET, 'native', 'build', 'market-pos-core.exe');
-const coreLinux = path.join(MARKET, 'native', 'build', 'market-pos-core');
+const coreExe = path.join(MARKET, 'native', 'build', `${CORE_NAME}.exe`);
+const coreLinux = path.join(MARKET, 'native', 'build', CORE_NAME);
 let builderConfig = 'electron-builder.yml';
 if (!fs.existsSync(coreExe)) {
   if (fs.existsSync(coreLinux) && process.platform !== 'win32') {
@@ -87,8 +88,8 @@ run(process.execPath, [
 verifyMarketModules({archive:true});
 
 const expected = [
-  path.join(RELEASE, `MarketPos-Setup-${marketVersion}.exe`),
-  path.join(RELEASE, `MarketPos-Portable-${marketVersion}.exe`),
+  path.join(RELEASE, `${ARTIFACT_NAME}-Setup-${marketVersion}.exe`),
+  path.join(RELEASE, `${ARTIFACT_NAME}-Portable-${marketVersion}.exe`),
 ];
 for (const file of expected) {
   if (!fs.existsSync(file)) fail(`Missing artifact: ${file}`);

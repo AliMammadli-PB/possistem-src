@@ -5,9 +5,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { APP_DIR } from './pos-app.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MARKET = path.join(ROOT, '..', 'marketpos');
+const MARKET = APP_DIR;
 const SPEC = JSON.parse(fs.readFileSync(path.join(MARKET, 'shared', 'contracts', 'protocol.json'), 'utf8'));
 
 const BANNER = `/**

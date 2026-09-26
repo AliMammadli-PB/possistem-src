@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Refresh this repo from the working trees (restoranpos + marketpos).
+# Refresh this repo from the working trees (restoranpos, marketpos, geyimpos).
 # Builds, installers, dependencies, local databases and secrets stay out.
 set -euo pipefail
 SRC="/home/panda/Desktop/possistem(restoranpos)"
@@ -24,4 +24,6 @@ rsync -a --delete --delete-excluded "${COMMON[@]}" \
 rsync -a --delete --delete-excluded "${COMMON[@]}" \
   --exclude=/recovered-1.4.4/ --exclude=/recovered-source-1.4.x/ --exclude=/out/ \
   "$SRC/marketpos/" "$HERE/marketpos/"
-du -sh "$HERE/restoranpos" "$HERE/marketpos"
+rsync -a --delete --delete-excluded "${COMMON[@]}" \
+  "$SRC/geyimpos/" "$HERE/geyimpos/"
+du -sh "$HERE/restoranpos" "$HERE/marketpos" "$HERE/geyimpos"

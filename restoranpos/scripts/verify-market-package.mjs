@@ -5,9 +5,10 @@ import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import * as asar from '@electron/asar';
+import {APP_DIR} from './pos-app.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MARKET = path.resolve(ROOT, '..', 'marketpos');
+const MARKET = APP_DIR;
 const ELECTRON = path.join(MARKET, 'electron');
 const packagePath = path.join(MARKET, 'release', 'win-unpacked', 'resources', 'app.asar');
 
