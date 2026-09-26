@@ -11,6 +11,7 @@
  *   emcmake cmake -S native -B native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
  *   cmake --build native/build-wasm --target market_core_wasm
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +22,19 @@ const OUT = path.resolve(process.argv[2] ?? path.join(HERE, 'dist'));
 const WASM = path.resolve(process.argv[3] ?? path.join(ROOT, 'native', 'build-wasm'));
 const DIST = path.join(ROOT, 'dist');
 
+/**
+ * Writes `content` under a content-addressed name. Cloudflare gives .js files
+ * a 4-hour browser cache, so a fixed name (bridge.js) could pair yesterday's
+ * bridge with today's UI; a new version now always has a new name.
+ */
+function publish(dir, name, content) {
+  const ext = path.extname(name);
+  const hashed = `${path.basename(name, ext)}-${createHash('sha256').update(content).digest('hex').slice(0, 10)}${ext}`;
+  fs.writeFileSync(path.join(dir, hashed), content);
+  return hashed;
+}
+
+
 for (const file of [path.join(DIST, 'index.html'), path.join(WASM, 'market-pos-core.wasm')]) {
   if (!fs.existsSync(file)) throw new Error(`missing ${file}`);
 }
@@ -29,18 +43,23 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.cpSync(DIST, OUT, { recursive: true, dereference: true });
 const demo = path.join(OUT, 'demo');
 fs.mkdirSync(demo, { recursive: true });
-for (const file of ['market-pos-core.mjs', 'market-pos-core.wasm']) {
-  fs.copyFileSync(path.join(WASM, file), path.join(demo, file));
-}
+const wasm = publish(demo, 'market-pos-core.wasm', fs.readFileSync(path.join(WASM, 'market-pos-core.wasm')));
+const loader = fs.readFileSync(path.join(WASM, 'market-pos-core.mjs'), 'utf8');
+if (!loader.includes('"market-pos-core.wasm"')) throw new Error('core loader: wasm file name not found');
+const core = publish(demo, 'market-pos-core.mjs', loader.replaceAll('"market-pos-core.wasm"', `"${wasm}"`));
 
 const template = fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8');
-for (const slot of ['/*PRELOAD*/', '/*CORE_PAYLOAD*/']) {
+for (const slot of ['/*PRELOAD*/', '/*CORE_PAYLOAD*/', "'./market-pos-core.mjs'"]) {
   if (!template.includes(slot)) throw new Error(`bridge template lost its ${slot} slot`);
 }
 const read = (file) => fs.readFileSync(path.join(ROOT, 'electron', file), 'utf8');
-fs.writeFileSync(
-  path.join(demo, 'bridge.js'),
-  template.replace('/*CORE_PAYLOAD*/', () => read('core-payload.cjs')).replace('/*PRELOAD*/', () => read('preload.cjs')),
+const bridge = publish(
+  demo,
+  'bridge.js',
+  template
+    .replace('/*CORE_PAYLOAD*/', () => read('core-payload.cjs'))
+    .replace('/*PRELOAD*/', () => read('preload.cjs'))
+    .replace("'./market-pos-core.mjs'", `'./${core}'`),
 );
 
 // Product photos resolve to market-pos://app/assets/…, a scheme Electron main
@@ -69,6 +88,6 @@ html = html
   // possistem.az is behind Cloudflare, which injects its analytics beacon.
   .replace("connect-src 'self'", "connect-src 'self' https://cloudflareinsights.com")
   .replace('<title>MarketPos</title>', '<title>possistem · Market POS demo</title>')
-  .replace(bundleTag[0], `<script type="module" src="./demo/bridge.js"></script>\n    ${bundleTag[0]}`);
+  .replace(bundleTag[0], `<script type="module" src="./demo/${bridge}"></script>\n    ${bundleTag[0]}`);
 fs.writeFileSync(indexPath, html);
 process.stdout.write(`[market demo-web] ${OUT}\n`);

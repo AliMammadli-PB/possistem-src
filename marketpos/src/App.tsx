@@ -804,7 +804,7 @@ function licenseAllowsPin(activation: ActivationStatus | null) {
   return !!activation && activation.mode === 'active' && activation.validUntil > Date.now();
 }
 
-function AuthGate({ lang, setLang, staff, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; staff: StaffProfile[]; onLogin: (pin: string) => Promise<void> }) {
+function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; staff: StaffProfile[]; onLogin: (pin: string) => Promise<void> }) {
   const [tenant, setTenant] = useState<TenantStatus | null>(null);
   const [activation, setActivation] = useState<ActivationStatus | null>(null);
   const [ready, setReady] = useState(!window.marketSystem);
@@ -833,7 +833,7 @@ function AuthGate({ lang, setLang, staff, onLogin }: { lang: Lang; setLang: (lan
   }, []);
 
   if (!window.marketSystem) {
-    return <LoginScreen lang={lang} setLang={setLang} staff={staff} onLogin={onLogin} />;
+    return <LoginScreen lang={lang} onLogin={onLogin} />;
   }
   if (!ready) {
     return (
@@ -866,7 +866,15 @@ function AuthGate({ lang, setLang, staff, onLogin }: { lang: Lang; setLang: (lan
       />
     );
   }
-  return <LoginScreen lang={lang} setLang={setLang} staff={staff} onLogin={onLogin} activation={activation} tenant={tenant} />;
+  return (
+    <LoginScreen
+      lang={lang}
+      onLogin={onLogin}
+      onTenantLogout={() => {
+        void window.marketSystem?.tenant.logout().then(() => setTenant({ authenticated: false })).catch(() => undefined);
+      }}
+    />
+  );
 }
 
 function TenantLoginScreen({ lang, setLang, onSuccess }: { lang: Lang; setLang: (lang: Lang) => void; onSuccess: (tenant: TenantStatus) => void }) {
@@ -1081,18 +1089,18 @@ function ActivationGateScreen({
   );
 }
 
-function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
+/**
+ * Staff sign-in, the same screen as the restaurant till's: the PIN alone names
+ * the person (main.cjs findStaffByPin), so there is no list to pick from.
+ */
+function LoginScreen({ lang, onLogin, onTenantLogout }: {
   lang: Lang;
-  setLang: (lang: Lang) => void;
-  staff: StaffProfile[];
   onLogin: (pin: string) => Promise<void>;
-  activation?: ActivationStatus | null;
-  tenant?: TenantStatus | null;
+  onTenantLogout?: () => void;
 }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const activeStaff = staff.filter((row) => row.active);
 
   const submit = async (nextPin = pin) => {
     if (nextPin.length < 4 || busy) return;
@@ -1109,27 +1117,11 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
     }
   };
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (busy) return;
-      if (/^\d$/.test(event.key)) {
-        setPin((value) => {
-          if (value.length >= 4) return value;
-          const next = value + event.key;
-          if (next.length === 4) void submit(next);
-          return next;
-        });
-      } else if (event.key === 'Backspace') setPin((value) => value.slice(0, -1));
-      else if (event.key === 'Escape') { setPin(''); setError(''); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
-
   const pressKey = (key: string) => {
     if (busy) return;
-    if (key === 'clear') { setPin(''); return; }
+    if (key === 'clear') { setPin(''); setError(''); return; }
     if (key === 'back') { setPin((value) => value.slice(0, -1)); return; }
+    setError('');
     setPin((value) => {
       if (value.length >= 4) return value;
       const next = value + key;
@@ -1138,84 +1130,77 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
     });
   };
 
-  return (
-    <main className="ps-login-screen" style={{ backgroundImage: 'url(./assets/login-bg.png)' }}>
-      <div className="ps-login-veil" aria-hidden />
-      <div className="ps-login-glow" aria-hidden />
-      <div className="ps-login-grid">
-        <section className="ps-login-brand">
-          <div className="ps-login-brand-head">
-            <span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" draggable={false} /></span>
-            <div>
-              <p className="brand-wordmark">MarketPos</p>
-              <p className="brand-sub">{tr(lang, 'loginTagline')}</p>
-            </div>
-            <label className="ps-login-lang">
-              <Languages />
-              <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Language">
-                <option value="az">AZ</option>
-                <option value="ru">RU</option>
-                <option value="en">EN</option>
-              </select>
-            </label>
-          </div>
-          <div className="ps-login-brand-copy">
-            <p className="brand-kicker">{tr(lang, 'loginEyebrow')}</p>
-            <h1>{tr(lang, 'loginWelcome')}</h1>
-            <div className="ps-login-rule"><i /><span>{tr(lang, 'loginShiftHint')}</span></div>
-          </div>
-          <div className="ps-login-secure"><ShieldCheck /><span>{tr(lang, 'loginSecure')}</span></div>
-        </section>
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (/^\d$/.test(event.key)) pressKey(event.key);
+      else if (event.key === 'Backspace') pressKey('back');
+      else if (event.key === 'Escape') pressKey('clear');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
-        <section className="ps-login-glass">
-          <div className="ps-login-glass-shine" aria-hidden />
-          {activation && window.marketSystem && (
-            <div className="ps-login-license">
-              <header>
-                <h3>{tr(lang, 'activation')}</h3>
-                <em className="pill ok">{licenseModeLabel(lang, activation.mode)}</em>
-              </header>
-              <div className="license-meta">
-                <span><small>{tr(lang, 'licenseCustomer')}</small><b>{activation.customerName}</b></span>
-                <span><small>{tr(lang, 'licenseDevice')}</small><b>{shortHwid(activation.deviceId)}</b></span>
-                <span><small>{tr(lang, 'licenseValidUntil')}</small><b>{new Date(activation.validUntil).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ')}</b></span>
-                <span><small>{tr(lang, 'tenantEmail')}</small><b>{tenant && 'email' in tenant ? tenant.email : '—'}</b></span>
-              </div>
+  return (
+    <main className="mp-staff">
+      <div className="mp-staff-photo" style={{ backgroundImage: 'url(./assets/login-bg.png)' }} aria-hidden="true" />
+      <div className="mp-staff-grid">
+        <section className="mp-staff-brand">
+          <div className="mp-staff-brand-mark">
+            <span className="mp-staff-tile" aria-hidden="true"><img src="./assets/brand-mark.png" alt="" draggable={false} /></span>
+            <p className="mp-staff-product">Market POS</p>
+          </div>
+          <div className="mp-staff-welcome">
+            <p className="mp-staff-kicker">{tr(lang, 'staffSignIn')}</p>
+            <h1>{tr(lang, 'loginWelcome')}</h1>
+            <div className="mp-staff-rule"><span aria-hidden="true" /><span>{tr(lang, 'loginShiftHint')}</span></div>
+          </div>
+          <div className="mp-staff-secure">
+            <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 3.8 26 8v7.2c0 6.2-3.7 10.3-10 13-6.3-2.7-10-6.8-10-13V8l10-4.2Z" stroke="currentColor" strokeWidth="1.25" /><path d="m11.5 16 3 3 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span>{tr(lang, 'loginSecure')}</span>
+          </div>
+        </section>
+        <section className="mp-staff-card">
+          <div className="mp-staff-card-line" aria-hidden="true" />
+          {onTenantLogout ? (
+            <button type="button" className="mp-staff-tenant-out" onClick={onTenantLogout} disabled={busy}>
+              <LogOut aria-hidden="true" />{tr(lang, 'switchAccount')}
+            </button>
+          ) : null}
+          <div className="mp-staff-pin">
+            <h3 className="mp-staff-pin-title">{tr(lang, 'pinTitle')}</h3>
+            <p className="mp-staff-pin-hint">{tr(lang, 'pinHint')}</p>
+            <div className={`mp-staff-pin-dots${busy ? ' is-busy' : ''}`} aria-label={`${pin.length} / 4`}>
+              {[0, 1, 2, 3].map((index) => (
+                <span key={index} className={`mp-staff-pin-cell${index < pin.length ? ' is-on' : ''}`}><span /></span>
+              ))}
+              <span className="mp-staff-pin-count">{pin.length}/4</span>
             </div>
-          )}
-          <div className="ps-login-pin ps-login-pin--solo">
-              <section className="ps-pin-entry">
-                <p className="brand-kicker">{tr(lang, 'loginEnterPin')}</p>
-                <h3>{tr(lang, 'loginPinTitle')}</h3>
-                <p className="ps-login-hint">{tr(lang, 'loginPinHint')}</p>
-                <div className="ps-pin-dots" aria-label={`${pin.length} / 4`}>
-                  {[0, 1, 2, 3].map((index) => (
-                    <span key={index} className={pin.length > index ? 'filled' : ''}>
-                      <i />
-                    </span>
-                  ))}
-                  <em>{pin.length}/4</em>
-                </div>
-                <div className="ps-pin-pad" aria-label="PIN klaviaturası">
-                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'].map((key) => {
-                    const action = key === 'clear' || key === 'back';
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={action ? 'pin-key action' : 'pin-key'}
-                        disabled={busy || (key === 'clear' && !pin) || (key === 'back' && !pin)}
-                        aria-label={key === 'clear' ? 'PIN təmizlə' : key === 'back' ? 'Son rəqəmi sil' : `${key}`}
-                        onClick={() => pressKey(key)}
-                      >
-                        {key === 'back' ? '←' : key === 'clear' ? 'C' : key}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="ps-pin-error">{error && <p className="form-error">{error}</p>}</div>
-                <p className="ps-pin-staff-count">{activeStaff.length} {tr(lang, 'loginActiveStaff').toLocaleLowerCase(lang)} · {tr(lang, 'loginKeyboardHint')}</p>
-              </section>
+            <div className="mp-staff-pad" aria-label={tr(lang, 'pinPad')}>
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'].map((key) => {
+                const action = key === 'clear' || key === 'back';
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={action ? 'mp-staff-key mp-staff-key--action' : 'mp-staff-key'}
+                    disabled={busy || (action && !pin)}
+                    aria-label={key === 'clear' ? tr(lang, 'pinClear') : key === 'back' ? tr(lang, 'pinBack') : key}
+                    onClick={() => pressKey(key)}
+                  >
+                    {key === 'clear' ? (
+                      <svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M7 8.2h14M10 8.2l.8-2.6h6.4l.8 2.6M9 11.3l.8 10.4h8.4l.8-10.4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" /><path d="M12.3 13.2v5.3m3.4-5.3v5.3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /></svg>
+                    ) : key === 'back' ? (
+                      <svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M10.3 7.4h12.2a2.7 2.7 0 0 1 2.7 2.7v7.8a2.7 2.7 0 0 1-2.7 2.7H10.3L3.4 14l6.9-6.6Z" stroke="currentColor" strokeWidth="1.45" strokeLinejoin="round" /><path d="m14.3 11 6 6m0-6-6 6" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" /></svg>
+                    ) : key}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mp-staff-pin-status">
+              {error ? (
+                <div className="mp-staff-pin-error" role="alert"><span aria-hidden="true">!</span><span>{error}</span></div>
+              ) : null}
+            </div>
           </div>
         </section>
       </div>
