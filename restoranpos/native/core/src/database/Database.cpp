@@ -486,6 +486,13 @@ void Database::backupTo(const std::string& destinationPath) {
         throw PosError(std::string(protocol::err::kInternal),
                        "Database backup destination must differ from the source");
     }
+    // Windows refuses to replace a directory with the finished file, but some
+    // file systems (and Wine) let the rename swallow an empty one: refuse up front.
+    std::error_code kindError;
+    if (std::filesystem::is_directory(destination, kindError)) {
+        throw PosError(std::string(protocol::err::kDbOpen),
+                       "Database backup destination is a directory");
+    }
 
     const auto parent = destination.parent_path();
     std::filesystem::create_directories(parent, pathError);
