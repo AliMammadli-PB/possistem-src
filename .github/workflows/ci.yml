@@ -95,12 +95,15 @@ jobs:
         working-directory: restoranpos
         run: |
           node scripts/build-core.mjs --config Release
-          ctest --test-dir native/build --output-on-failure
+          # binfmt_misc is not available to the runner, so the .exe runs through wine explicitly.
+          WINE=$(command -v wine || command -v wine64)
+          cd native/build && "$WINE" ./core_tests.exe --reporter compact
       - name: Market core
         working-directory: restoranpos
         run: |
           node scripts/build-market-core.mjs
-          ctest --test-dir ../marketpos/native/build --output-on-failure
+          WINE=$(command -v wine || command -v wine64)
+          cd ../marketpos/native/build && "$WINE" ./market_core_tests.exe --reporter compact
 
   cpp-static:
     name: C++ static analysis (clang-tidy)
