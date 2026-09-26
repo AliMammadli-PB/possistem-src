@@ -43,6 +43,15 @@ public:
         return value;
     }
 
+    /** Non-blocking pop; nullopt when nothing is queued. */
+    std::optional<T> tryPop() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (items_.empty()) return std::nullopt;
+        T value = std::move(items_.front());
+        items_.pop_front();
+        return value;
+    }
+
     /** Wakes every waiter; pop() drains what remains and then returns nullopt. */
     void close() {
         {

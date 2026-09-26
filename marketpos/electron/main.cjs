@@ -149,6 +149,8 @@ const {
   createSessionStore,
   resolveSessionUser,
   pinMatches,
+  findStaffByPin,
+  pinTaken,
 } = require('./staff-auth.cjs');
 const { registerHardwareIpc } = require('./hardware-ipc.cjs');
 const { createEncryptionKey } = require('./lan-crypto.cjs');
@@ -855,15 +857,20 @@ function registerIpc() {
     const state = loadSecureState();
     if (!state.tenant?.token) throw new Error('Əvvəlcə müştəri hesabına daxil olun');
     if (!licenseAllowsStaffLogin(state.activation)) throw new Error('Cihaz aktivləşdirilməyib');
-    const userId = String(input?.userId || '');
     const pin = String(input?.pin || '');
-    loginLimiter.assertOpen(userId);
-    const user = state.staff.find((row) => row.id === userId && row.active);
-    if (!user || !pinMatches(user, pin)) {
-      loginLimiter.fail(userId);
+    // No userId: the PIN alone names the person, as on the restaurant till.
+    // The till, not an account, is what gets guessed at, so it is what locks.
+    const limiterKey = String(input?.userId || '') || 'pin-only';
+    loginLimiter.assertOpen(limiterKey);
+    const user = input?.userId
+      ? state.staff.find((row) => row.id === String(input.userId) && row.active && pinMatches(row, pin))
+      : findStaffByPin(state.staff, pin);
+    if (!user) {
+      loginLimiter.fail(limiterKey);
       throw new Error('Giriş kodu yanlışdır');
     }
-    loginLimiter.succeed(userId);
+    loginLimiter.succeed(limiterKey);
+    const userId = user.id;
     const issued = authSessions.issue(userId);
     // Remembered so core calls can be attributed without every renderer call
     // site having to carry the token: one till, one signed-in operator.
@@ -899,6 +906,8 @@ function registerIpc() {
     const pin = String(input?.newPin || '');
     assertAcceptablePin(pin);
     const state = loadSecureState();
+    // Sign-in is by PIN alone, so two people may never share one.
+    if (pinTaken(state.staff, pin, user.id)) throw new Error('Bu PIN artıq başqa işçidə var - başqa PIN seçin');
     const credential = newPinCredential(pin);
     state.staff = state.staff.map((row) => (row.id === user.id ? { ...row, ...credential } : row));
     saveSecureState(state);
@@ -988,6 +997,7 @@ function registerIpc() {
     const existing = state.staff.find((row) => row.id === profile.id);
     const pin = String(input?.pin || '');
     if (!existing || pin) assertAcceptablePin(pin);
+    if (pin && pinTaken(state.staff, pin, existing?.id)) throw new Error('Bu PIN artıq başqa işçidə var - başqa PIN seçin');
     const { salt, pinHash } = pin ? newPinCredential(pin) : existing;
     const next = { id: existing?.id || `u-${Date.now()}`, name: String(profile.name).slice(0, 80), role: profile.role, active: profile.active !== false, registerIds: Array.isArray(profile.registerIds) ? profile.registerIds.slice(0, 20) : [], warehouseIds: Array.isArray(profile.warehouseIds) ? profile.warehouseIds.slice(0, 20) : [], salt, pinHash };
     state.staff = existing ? state.staff.map((row) => row.id === existing.id ? next : row) : [...state.staff, next];

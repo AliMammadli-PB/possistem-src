@@ -21,7 +21,7 @@ const security = {
 
 export default [
   {
-    ignores: ['**/node_modules/**', '**/*.bak-*', '**/out/**', '**/dist/**', '**/release*/**', 'restoranpos/packaged-renderer/**',
+    ignores: ['**/node_modules/**', '**/*.bak-*', '**/out/**', '**/dist/**', '**/release*/**', 'restoranpos/packaged-renderer/**', '**/demo-web/dist/**',
       // generated from the vendored Nayuki QR library / a code fragment spliced into the bundle
       'restoranpos/scripts/lib/ps-qr.mjs', 'restoranpos/scripts/catalog-return-snippet.js'],
   },
@@ -34,6 +34,12 @@ export default [
       'no-empty': ['error', { allowEmptyCatch: true }],
       'no-unused-vars': ['error', { args: 'none', ignoreRestSiblings: true }],
     },
+  },
+  {
+    // The live-demo bridges run in the browser in place of Electron main.
+    files: ['restoranpos/demo-web/**/*.{js,mjs}', 'marketpos/demo-web/**/*.{js,mjs}'],
+    languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: { ...globals.browser, ...globals.node } },
+    rules: { ...security, 'no-undef': 'error', 'no-unreachable': 'error', 'no-dupe-keys': 'error' },
   },
   {
     files: ['restoranpos/scripts/**/*.mjs'],

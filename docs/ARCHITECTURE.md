@@ -98,6 +98,38 @@ Restoran UI-nin TypeScript mənbəyi bu repoda **yoxdur** — məhsul paketlənm
 bilən `scripts/apply-restaurant-*.mjs` fayllarındadır; hər biri dəqiq bir uyğunluq tələb edir və
 marker ilə idempotentdir. `tests/disabled-no-renderer-source/` köhnə mənbəyə bağlı testləri saxlayır.
 
+## Canlı demo (possistem.az)
+
+Saytdakı demo proqramın özüdür, surət deyil: real renderer və real C++ nüvə WebAssembly-yə
+kompilyasiya olunub brauzerdə işləyir. Electron main-in yerinə kiçik bir körpü dayanır.
+
+| | Restoran | Market |
+|---|---|---|
+| Nüvə (WASM) | `native/wasm/demo_core.cpp` → `pos_core_wasm` | `native/wasm/demo_core.cpp` → `market_core_wasm` |
+| Körpü | `demo-web/bridge.template.js` (preload olduğu kimi daxil edilir) | `demo-web/bridge.template.js` (preload + `core-payload.cjs`) |
+| Demo məlumatı | `demo-web/seed.js` — hər açılışda real API ilə | renderer-in öz ilk açılış idxalı |
+| Paket | `node demo-web/build.mjs <out> <wasm-build>` | eyni |
+
+Brauzerdə thread yoxdur, ona görə nüvələr sinxron rejimdə işləyir (`StdioServer::useInlineMode` +
+`processFrame`, market: `processLine`). Baza yaddaşdadır və hər ziyarətdə sıfırdan qurulur. Körpü yalnız
+main-in öz işini görür (lisenziya/tenant statusu, işçi sessiyası, `authorizeCorePayload`); qalan hər şey
+nüvənin eyni qaydaları ilə cavablanır. Printer, fayl saxlama, yeniləmə kimi masaüstü funksiyaları
+"Demo versiyada bu funksiya işləmir" qaytarır.
+
+```bash
+source ~/.cache/emsdk/emsdk_env.sh
+emcmake cmake -S restoranpos/native -B restoranpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build restoranpos/native/build-wasm --target pos_core_wasm
+emcmake cmake -S marketpos/native -B marketpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build marketpos/native/build-wasm --target market_core_wasm
+(cd restoranpos && npm run build:desktop && npm run market:build)
+node restoranpos/demo-web/build.mjs <sayt>/public/pos-demo-app/restoran
+node marketpos/demo-web/build.mjs <sayt>/public/pos-demo-app/market
+```
+
+Demo PIN-ləri: restoran Admin 1234, Elvin 2222, Nigar 3333; market Müdir 1234, Kassir 2222,
+Anbar 3333, Baş kassir 4444.
+
 ## Server
 
 possistem.az (lisenziya API, admin/partnyor panelləri, sayt) ayrıca deploy olunur və bu repoya daxil

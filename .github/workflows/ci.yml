@@ -113,6 +113,29 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build clang clang-tidy
       - run: bash restoranpos/scripts/static-analysis-cpp.sh
 
+  demo-wasm:
+    name: live demo (both cores in WebAssembly)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install latest
+          "$RUNNER_TEMP/emsdk/emsdk" activate latest
+      - name: Build both cores to WebAssembly
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcmake cmake -S restoranpos/native -B restoranpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build restoranpos/native/build-wasm --target pos_core_wasm
+          emcmake cmake -S marketpos/native -B marketpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build marketpos/native/build-wasm --target market_core_wasm
+      - run: node restoranpos/demo-web/smoke.mjs restoranpos/native/build-wasm marketpos/native/build-wasm
+
   secrets:
     name: secret scan
     runs-on: ubuntu-24.04

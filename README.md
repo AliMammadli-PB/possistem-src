@@ -38,7 +38,7 @@ bash scripts/static-analysis-cpp.sh   # clang-tidy (clang, cmake, ninja lazımd�
 ```
 
 Sənədlər: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (etibar sərhədləri, təhlükəsizlik modeli,
-buraxılış), [SECURITY.md](SECURITY.md) (zəifliyi özəl bildirmək), [CONTRIBUTING.md](CONTRIBUTING.md).
+buraxılış, possistem.az-dakı canlı demonun WebAssembly quruluşu), [SECURITY.md](SECURITY.md) (zəifliyi özəl bildirmək), [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Restoranı Linux-da işə salmaq: `scripts/launch-linux.sh` yamaqları tətbiq edir, `packaged-renderer/`
 və `out/`-u yığır, sonra Electron-u açır. Restoran renderer-in TypeScript mənbəyi yoxdur: paketlənmiş bundle yalnız

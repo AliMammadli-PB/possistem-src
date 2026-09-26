@@ -14913,7 +14913,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.7.8 · baa247a";
+const _PS_BUILD = "1.7.8 · 21e3d99";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -19101,14 +19101,14 @@ function DiagnosticsPage() {
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "mb-8", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-[0.4em] text-gold-dim", children: "possistem" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-2 font-display text-3xl text-gradient-gold", children: "System Diagnostics" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-2 font-display text-3xl text-gradient-gold", children: "Sistem diaqnostikası" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "gold-rule mt-4 w-40 opacity-50" })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass mb-6 rounded-2xl p-6", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-5 flex items-center justify-between gap-4", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Server, { className: "h-5 w-5 text-gold" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg", children: "POS Core" })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg", children: "POS nüvəsi" })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `rounded-full border px-3 py-1 text-xs font-medium ${tone}`, children: status?.state ?? "connecting…" })
           ] }),
@@ -19162,7 +19162,7 @@ function DiagnosticsPage() {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass rounded-2xl p-6", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-5 flex items-center gap-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(HardDrive, { className: "h-5 w-5 text-gold" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg", children: "Environment" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg", children: "Mühit" })
           ] }),
           info ? /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "grid grid-cols-1 gap-3 text-sm", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "App version", value: info.version }),
@@ -19317,8 +19317,8 @@ function KdsPage() {
               job.itemName ?? "—"
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-0.5 text-[11px] text-faint", children: [
-              job.station,
-              job.elapsedMinutes != null ? ` · ${job.elapsedMinutes}m` : ""
+              /* POS_I18N_FIXES_v1 */({ kitchen: "Mətbəx", bar: "Bar", cold: "Soyuq sex", hot: "İsti sex", grill: "Qril", pastry: "Şirniyyat", dessert: "Desert" })[job.station] ?? job.station,
+              job.elapsedMinutes != null ? ` · ${job.elapsedMinutes} dəq` : ""
             ] })
           ] }) }),
           job.modifiers && job.modifiers.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs text-warning", children: job.modifiers.map((m) => m.name).join(", ") }),
@@ -21087,7 +21087,7 @@ function OrderPage() {
             order?.guestCount ?? table?.seats ?? 0,
             " ",
             t.order.guests.toLowerCase(),
-            order ? ` · ${order.status}` : ""
+            order ? ` · ${/* POS_I18N_STATUS_v1 */({ draft: "qaralama", held: "gözləmədə", open: "açıq", sent: "mətbəxə göndərilib", preparing: "hazırlanır", ready: "hazırdır", served: "verilib", paid: "ödənilib", closed: "bağlanıb", voided: "ləğv edilib" })[order.status] ?? order.status}` : ""
           ] })
         ] })
       ] }),
@@ -21190,7 +21190,7 @@ function OrderPage() {
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-sm text-cream", children: item.name }),
                 item.modifiers && item.modifiers.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-[11px] text-faint", children: item.modifiers.map((m) => m.name).join(", ") }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted", children: item.status })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted", children: /* POS_I18N_STATUS_v1 */({ draft: "qaralama", held: "gözləmədə", open: "açıq", sent: "mətbəxə göndərilib", preparing: "hazırlanır", ready: "hazırdır", served: "verilib", paid: "ödənilib", closed: "bağlanıb", voided: "ləğv edilib" })[item.status] ?? item.status })
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-right", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: item.lineTotalMinor, className: "text-sm text-gold" }),
@@ -21811,7 +21811,7 @@ function PaymentPage() {
           ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 space-y-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Payments" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Ödənişlər" }),
           payments.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted", children: "—" }) : payments.map((p) => {
             const outcome = cardOutcomeLabel(p.status, {
               approved: t.payment.approved,
@@ -22435,7 +22435,7 @@ function ReceiptPage() {
             type: "button",
             onClick: () => void copyDebug(),
             className: "rounded-xl border border-hairline px-3 py-2 text-xs text-muted hover:text-cream",
-            children: "Copy JSON"
+            children: "JSON-u kopyala"
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -22495,7 +22495,7 @@ function ReceiptPage() {
         ] }) : null
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "glass overflow-auto rounded-2xl p-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-base text-cream", children: "Print jobs" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-base text-cream", children: "Çap tapşırıqları" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "gold-rule mt-2 w-16 opacity-50" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "mt-4 space-y-2", children: [
           jobs.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("li", { className: "text-sm text-muted", children: "—" }),
@@ -22709,7 +22709,7 @@ function SafeModePage() {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6 flex items-center gap-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-12 w-12 items-center justify-center rounded-full border border-danger/40 bg-danger/10", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { className: "h-6 w-6 text-danger" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-text", children: "Safe Mode" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-text", children: "Təhlükəsiz rejim" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted", children: REASON[status?.state ?? ""] ?? "The POS core is unavailable." })
           ] })
         ] }),

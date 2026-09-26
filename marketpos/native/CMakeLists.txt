@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 project(market_pos_core LANGUAGES C CXX VERSION 1.4.8)
 
+# The WebAssembly demo build: the core reports refusals as exceptions, and
+# Emscripten turns exception catching off unless asked.
+if(EMSCRIPTEN)
+  add_compile_options(-fexceptions)
+  add_link_options(-fexceptions)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -53,8 +60,10 @@ target_include_directories(market_core_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/co
 target_link_libraries(market_core_lib PUBLIC tp_sqlite3 tp_json tp_spdlog)
 target_compile_options(market_core_lib PRIVATE ${MARKET_WARNING_FLAGS})
 target_compile_definitions(market_core_lib PUBLIC MARKET_CORE_VERSION="${PROJECT_VERSION}")
-find_package(Threads REQUIRED)
-target_link_libraries(market_core_lib PUBLIC Threads::Threads)
+if(NOT EMSCRIPTEN)
+  find_package(Threads REQUIRED)
+  target_link_libraries(market_core_lib PUBLIC Threads::Threads)
+endif()
 if(WIN32)
   # bcrypt was already here; the rest are what the ported printing needs:
   # setupapi and winspool to enumerate printers, iphlpapi for the ARP cache,
@@ -67,6 +76,19 @@ set_target_properties(market_pos_core PROPERTIES OUTPUT_NAME market-pos-core)
 target_link_libraries(market_pos_core PRIVATE market_core_lib)
 if(WIN32)
   set_target_properties(market_pos_core PROPERTIES SUFFIX ".exe")
+endif()
+
+# The same core in WebAssembly for the possistem.az live demo (emcmake cmake).
+if(EMSCRIPTEN)
+  add_executable(market_core_wasm ${CMAKE_CURRENT_SOURCE_DIR}/wasm/demo_core.cpp)
+  set_target_properties(market_core_wasm PROPERTIES OUTPUT_NAME market-pos-core SUFFIX ".mjs")
+  target_link_libraries(market_core_wasm PRIVATE market_core_lib)
+  target_link_options(market_core_wasm PRIVATE
+    -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web,worker,node
+    -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=2MB
+    -sEXPORTED_FUNCTIONS=_market_boot,_market_call,_malloc,_free
+    -sEXPORTED_RUNTIME_METHODS=ccall,FS,stringToUTF8,lengthBytesUTF8,UTF8ToString)
+  return()
 endif()
 
 enable_testing()

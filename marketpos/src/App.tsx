@@ -13,7 +13,7 @@ import { createInitialState, demoStaff, initialProducts } from './data';
 import { CatalogAisleNav } from './CatalogAisleNav';
 import { ChangePinScreen } from './ChangePinScreen';
 import { cashChange, canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
-import { roleLabel, tr, unitLabel, viewLabel } from './i18n';
+import { auditActionLabel, auditDetailLabel, roleLabel, tr, unitLabel, viewLabel } from './i18n';
 import { marketCoreClient } from './core/client';
 import { ProductVisual } from './ProductVisual';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
@@ -26,7 +26,7 @@ import { useBarcodeScanner } from './useBarcodeScanner';
 import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, PurchaseOrder, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
 
 import { marketBooks, stockLines } from './books';
-import { money, newId } from './format';
+import { longDate, money, newId } from './format';
 import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
 import { ProductModal, WarehouseModal, RegisterModal, PurchaseModal, TransferModal, WasteModal, StaffModal, RoleAvatar, Kpi, Modal, Field } from './forms';
 const STORE_KEY = 'cyberplus.market.pos.v2';
@@ -474,17 +474,18 @@ export default function App() {
     return () => { active = false; window.clearInterval(timer); };
   }, [session, staff, coreReady, state.settings.storeName, state.settings.terminalName, state.sales, state.registers, state.products, state.warehouses, state.syncQueue]);
 
-  const login = async (userId: string, pin: string) => {
+  const login = async (pin: string) => {
     try {
       let user: SessionUser;
       if (window.marketSystem) {
-        user = await window.marketSystem.auth.login(userId, pin);
+        // The PIN alone names the person, as on the restaurant till.
+        user = await window.marketSystem.auth.login('', pin);
       } else {
         // Browser preview (npm run market:dev) has no staff store; it is never a
         // shipped till, so a production web build refuses sign-in outright.
-        const profile = demoStaff.find((row) => row.id === userId);
+        const profile = demoStaff[0];
         if (!import.meta.env.DEV || !profile || !/^\d{4,8}$/.test(pin)) throw new Error(t('invalidPin'));
-        user = { ...profile, sessionToken: `browser-${userId}` };
+        user = { ...profile, sessionToken: `browser-${profile.id}` };
       }
       setSession(user);
       const first = ROLE_VIEWS[user.role][0] ?? 'dashboard';
@@ -803,7 +804,7 @@ function licenseAllowsPin(activation: ActivationStatus | null) {
   return !!activation && activation.mode === 'active' && activation.validUntil > Date.now();
 }
 
-function AuthGate({ lang, setLang, staff, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; staff: StaffProfile[]; onLogin: (userId: string, pin: string) => Promise<void> }) {
+function AuthGate({ lang, setLang, staff, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; staff: StaffProfile[]; onLogin: (pin: string) => Promise<void> }) {
   const [tenant, setTenant] = useState<TenantStatus | null>(null);
   const [activation, setActivation] = useState<ActivationStatus | null>(null);
   const [ready, setReady] = useState(!window.marketSystem);
@@ -1084,23 +1085,21 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
   lang: Lang;
   setLang: (lang: Lang) => void;
   staff: StaffProfile[];
-  onLogin: (userId: string, pin: string) => Promise<void>;
+  onLogin: (pin: string) => Promise<void>;
   activation?: ActivationStatus | null;
   tenant?: TenantStatus | null;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const activeStaff = staff.filter((row) => row.active);
-  const current = activeStaff.find((row) => row.id === selected) ?? null;
 
   const submit = async (nextPin = pin) => {
-    if (!selected || nextPin.length < 4 || busy) return;
+    if (nextPin.length < 4 || busy) return;
     setBusy(true);
     setError('');
     try {
-      await onLogin(selected, nextPin);
+      await onLogin(nextPin);
     } catch (reason) {
       const raw = reason instanceof Error ? reason.message : '';
       setError(/yanlış|invalid|wrong|pin|remote method/i.test(raw) || !raw ? tr(lang, 'invalidPin') : raw);
@@ -1112,7 +1111,7 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!selected || busy) return;
+      if (busy) return;
       if (/^\d$/.test(event.key)) {
         setPin((value) => {
           if (value.length >= 4) return value;
@@ -1121,7 +1120,7 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
           return next;
         });
       } else if (event.key === 'Backspace') setPin((value) => value.slice(0, -1));
-      else if (event.key === 'Escape') { setSelected(null); setPin(''); setError(''); }
+      else if (event.key === 'Escape') { setPin(''); setError(''); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1184,52 +1183,7 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
               </div>
             </div>
           )}
-          {!current ? (
-            <div className="ps-login-staff">
-              <header>
-                <div>
-                  <p className="brand-kicker">01 / {tr(lang, 'loginAccess')}</p>
-                  <h2>{tr(lang, 'selectUser')}</h2>
-                  <p className="ps-login-hint">{tr(lang, 'loginChooseHint')}</p>
-                </div>
-                <span className="ps-login-count">{activeStaff.length}<br />{tr(lang, 'loginActiveStaff')}</span>
-              </header>
-              <div className="ps-staff-grid">
-                {activeStaff.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    className="ps-staff-card"
-                    onClick={() => { setSelected(user.id); setPin(''); setError(''); }}
-                  >
-                    <RoleAvatar role={user.role} name={user.name} />
-                    <span className="ps-staff-copy">
-                      <b>{user.name}</b>
-                      <small>{roleLabel(user.role, lang)}</small>
-                    </span>
-                    <ChevronRight className="ps-staff-arrow" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="ps-login-pin">
-              <aside className="ps-pin-aside">
-                <div>
-                  <button type="button" className="ps-pin-back" onClick={() => { setSelected(null); setPin(''); setError(''); }}>
-                    <ChevronRight className="ps-pin-back-icon" />{tr(lang, 'switchUser')}
-                  </button>
-                  <div className="ps-pin-identity">
-                    <RoleAvatar role={current.role} name={current.name} />
-                    <h2>{current.name}</h2>
-                    <p>{roleLabel(current.role, lang)}</p>
-                  </div>
-                </div>
-                <div className="ps-pin-aside-foot">
-                  <p>02 / {tr(lang, 'loginVerification')}</p>
-                  <p>{tr(lang, 'loginKeyboardHint')}</p>
-                </div>
-              </aside>
+          <div className="ps-login-pin ps-login-pin--solo">
               <section className="ps-pin-entry">
                 <p className="brand-kicker">{tr(lang, 'loginEnterPin')}</p>
                 <h3>{tr(lang, 'loginPinTitle')}</h3>
@@ -1260,9 +1214,9 @@ function LoginScreen({ lang, setLang, staff, onLogin, activation, tenant }: {
                   })}
                 </div>
                 <div className="ps-pin-error">{error && <p className="form-error">{error}</p>}</div>
+                <p className="ps-pin-staff-count">{activeStaff.length} {tr(lang, 'loginActiveStaff').toLocaleLowerCase(lang)} · {tr(lang, 'loginKeyboardHint')}</p>
               </section>
-            </div>
-          )}
+          </div>
         </section>
       </div>
     </main>
@@ -1276,7 +1230,7 @@ function Dashboard({ state, staff, session, lang, onView }: { state: PersistedSt
   const open = state.registers.filter((register) => register.status === 'open');
   const totalStock = state.products.reduce((sum, product) => sum + stockOf(product), 0);
   const roleMessage: Record<Role, string> = { manager: 'Satış, kassa, anbar və işçi vəziyyəti tam nəzarətdədir.', head_cashier: 'Açıq kassaları, qaytarmaları və növbə satışlarını idarə edin.', cashier: 'Kassanızı açın, barkodu oxudun və sürətli satış edin.', warehouse: 'Kritik qalıqları, depoları və alış sifarişlərini idarə edin.' };
-  return <div className="module-page dashboard"><section className="welcome-card"><div><p>{new Date().toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2>Salam, {session.name.split(' ')[0]}</h2><span>{roleMessage[session.role]}</span></div><div className="live-badge"><Activity /><span>CANLI<small>{state.settings.storeName}</small></span></div></section><section className="kpi-grid"><Kpi icon={CircleDollarSign} label={tr(lang, 'todaySales')} value={money(revenue, lang)} note={`${activeSales.length} ${tr(lang, 'transactions').toLowerCase()}`} tone="green" /><Kpi icon={Store} label={tr(lang, 'openRegisters')} value={`${open.length} / ${state.registers.length}`} note={open.map((row) => row.name).join(' · ')} tone="blue" /><Kpi icon={TriangleAlert} label={tr(lang, 'criticalProducts')} value={String(critical.length)} note={critical.slice(0, 2).map((row) => row.name[lang]).join(' · ')} tone="amber" /><Kpi icon={Boxes} label={tr(lang, 'totalStock')} value={String(totalStock)} note={`${state.warehouses.length} ${tr(lang, 'warehouses').toLowerCase()}`} tone="violet" /></section><section className="dashboard-grid"><article className="panel-card quick-card"><div className="panel-title"><div><p>OPERATIONS</p><h3>{tr(lang, 'quickActions')}</h3></div></div><div className="quick-grid">{canAccess(session.role, 'sale') && <button onClick={() => onView('sale')}><span><ShoppingBasket /></span><b>{tr(lang, 'newSale')}</b><small>{tr(lang, 'scanReady')}</small><ChevronRight /></button>}{canAccess(session.role, 'inventory') && <button onClick={() => onView('inventory')}><span><PackageSearch /></span><b>{tr(lang, 'inventory')}</b><small>{critical.length} {tr(lang, 'low').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'purchases') && <button onClick={() => onView('purchases')}><span><Truck /></span><b>{tr(lang, 'purchases')}</b><small>{state.purchaseOrders.filter((row) => row.status === 'ordered').length} {tr(lang, 'ordered').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'registers') && <button onClick={() => onView('registers')}><span><Store /></span><b>{tr(lang, 'registers')}</b><small>{open.length} {tr(lang, 'active').toLowerCase()}</small><ChevronRight /></button>}</div></article><article className="panel-card"><div className="panel-title"><div><p>SECURITY AUDIT</p><h3>{tr(lang, 'audit')}</h3></div><FileClock /></div><div className="activity-list">{state.audits.slice(0, 5).map((entry) => <div key={entry.id}><span><Activity /></span><p><b>{entry.action.replaceAll('_', ' ')}</b><small>{entry.detail} · {staff.find((row) => row.id === entry.actorId)?.name ?? 'System'}</small></p><time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div></article></section></div>;
+  return <div className="module-page dashboard"><section className="welcome-card"><div><p>{longDate(new Date(), lang)}</p><h2>Salam, {session.name.split(' ')[0]}</h2><span>{roleMessage[session.role]}</span></div><div className="live-badge"><Activity /><span>CANLI<small>{state.settings.storeName}</small></span></div></section><section className="kpi-grid"><Kpi icon={CircleDollarSign} label={tr(lang, 'todaySales')} value={money(revenue, lang)} note={`${activeSales.length} ${tr(lang, 'transactions').toLowerCase()}`} tone="green" /><Kpi icon={Store} label={tr(lang, 'openRegisters')} value={`${open.length} / ${state.registers.length}`} note={open.map((row) => row.name).join(' · ')} tone="blue" /><Kpi icon={TriangleAlert} label={tr(lang, 'criticalProducts')} value={String(critical.length)} note={critical.slice(0, 2).map((row) => row.name[lang]).join(' · ')} tone="amber" /><Kpi icon={Boxes} label={tr(lang, 'totalStock')} value={String(totalStock)} note={`${state.warehouses.length} ${tr(lang, 'warehouses').toLowerCase()}`} tone="violet" /></section><section className="dashboard-grid"><article className="panel-card quick-card"><div className="panel-title"><div><p>{tr(lang, 'quickOpsKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'quickActions')}</h3></div></div><div className="quick-grid">{canAccess(session.role, 'sale') && <button onClick={() => onView('sale')}><span><ShoppingBasket /></span><b>{tr(lang, 'newSale')}</b><small>{tr(lang, 'scanReady')}</small><ChevronRight /></button>}{canAccess(session.role, 'inventory') && <button onClick={() => onView('inventory')}><span><PackageSearch /></span><b>{tr(lang, 'inventory')}</b><small>{critical.length} {tr(lang, 'low').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'purchases') && <button onClick={() => onView('purchases')}><span><Truck /></span><b>{tr(lang, 'purchases')}</b><small>{state.purchaseOrders.filter((row) => row.status === 'ordered').length} {tr(lang, 'ordered').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'registers') && <button onClick={() => onView('registers')}><span><Store /></span><b>{tr(lang, 'registers')}</b><small>{open.length} {tr(lang, 'active').toLowerCase()}</small><ChevronRight /></button>}</div></article><article className="panel-card"><div className="panel-title"><div><p>{tr(lang, 'auditKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'audit')}</h3></div><FileClock /></div><div className="activity-list">{state.audits.slice(0, 5).map((entry) => <div key={entry.id}><span><Activity /></span><p><b>{auditActionLabel(entry.action, lang)}</b><small>{auditDetailLabel(entry.detail, lang)} · {staff.find((row) => row.id === entry.actorId)?.name ?? tr(lang, 'systemActor')}</small></p><time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div></article></section></div>;
 }
 
 function SalePage({ state, setState, session, lang, cart, setCart, cloudConnected, notify, coreReady, onRefresh, audit }: { state: PersistedState; setState: React.Dispatch<React.SetStateAction<PersistedState>>; session: SessionUser; lang: Lang; cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; cloudConnected: boolean; notify: (text: string) => void; coreReady: boolean; onRefresh: () => Promise<PersistedState>; audit: (fn: (state: PersistedState) => PersistedState, action?: string, detail?: string) => void }) {
@@ -1597,7 +1551,7 @@ function PaymentModal({ lang, totalMinor, onClose, onComplete }: { lang: Lang; t
   const cashMinor = parseMoneyInput(cashPart);
   const cardMinor = Math.max(0, totalMinor - cashMinor);
   const valid = method === 'card' || method === 'mixed' ? method === 'card' || (cashMinor > 0 && cardMinor >= 0) : tenderedMinor >= totalMinor;
-  return <Modal title={tr(lang, 'pay')} subtitle={`${tr(lang, 'total')} · ${money(totalMinor, lang)}`} onClose={onClose} wide><div className="payment-layout"><section><div className="payment-methods"><button className={method === 'cash' ? 'active' : ''} onClick={() => setMethod('cash')}><CircleDollarSign /><b>{tr(lang, 'cash')}</b><small>AZN</small></button><button className={method === 'card' ? 'active' : ''} onClick={() => setMethod('card')}><CreditCard /><b>{tr(lang, 'card')}</b><small>POS terminal</small></button><button className={method === 'mixed' ? 'active' : ''} onClick={() => setMethod('mixed')}><WalletCards /><b>{tr(lang, 'mixed')}</b><small>Nağd + kart</small></button></div>{method === 'cash' && <><label className="money-field">{tr(lang, 'tendered')}<span><input autoFocus value={tendered} onChange={(event) => setTendered(event.target.value)} inputMode="decimal" /> AZN</span></label><div className="quick-cash">{[totalMinor, Math.ceil(totalMinor / 500) * 500, Math.ceil(totalMinor / 1000) * 1000, 5000, 10000].filter((value, index, rows) => rows.indexOf(value) === index).map((value) => <button key={value} onClick={() => setTendered((value / 100).toFixed(2))}>{money(value, lang)}</button>)}</div></>}{method === 'mixed' && <div className="split-fields"><label>{tr(lang, 'cash')}<input value={cashPart} onChange={(event) => setCashPart(event.target.value)} inputMode="decimal" /></label><label>{tr(lang, 'card')}<input value={(cardMinor / 100).toFixed(2)} disabled /></label></div>}{(method === 'card' || method === 'mixed') && <label className="money-field">Terminal ref (manual)<span><input value={terminalRef} onChange={(e) => setTerminalRef(e.target.value)} placeholder="RRN / auth" /></span></label>}<div className="payment-summary"><div><span>{tr(lang, 'total')}</span><b>{money(totalMinor, lang)}</b></div><div><span>{tr(lang, 'tendered')}</span><b>{money(method === 'mixed' ? cashMinor + cardMinor : tenderedMinor, lang)}</b></div><div className="change"><span>{tr(lang, 'change')}</span><strong>{money(method === 'cash' ? change : 0, lang)}</strong></div></div></section><aside className="receipt-preview"><div className="receipt-paper"><p>MARKETPOS SUPERMARKET</p><small>{new Date().toLocaleString('az-AZ')}</small><hr /><span>YEKUN <b>{money(totalMinor, lang)}</b></span><span>{method.toUpperCase()} <b>{money(method === 'cash' ? tenderedMinor : totalMinor, lang)}</b></span><span>QALIQ <b>{money(method === 'cash' ? change : 0, lang)}</b></span><hr /><small>Alış-verişiniz üçün təşəkkür edirik</small></div></aside></div><button className="modal-primary payment-complete" disabled={!valid} onClick={() => onComplete({ method, amountMinor: totalMinor, tenderedMinor: method === 'cash' ? tenderedMinor : totalMinor, changeMinor: method === 'cash' ? change : 0, cashMinor: method === 'mixed' ? cashMinor : undefined, cardMinor: method === 'mixed' ? cardMinor : method === 'card' ? totalMinor : undefined, terminalRef: terminalRef || undefined })}><Check />{tr(lang, 'completePayment')}<strong>{method === 'cash' ? `${tr(lang, 'change')}: ${money(change, lang)}` : money(totalMinor, lang)}</strong></button></Modal>;
+  return <Modal title={tr(lang, 'pay')} subtitle={`${tr(lang, 'total')} · ${money(totalMinor, lang)}`} onClose={onClose} wide><div className="payment-layout"><section><div className="payment-methods"><button className={method === 'cash' ? 'active' : ''} onClick={() => setMethod('cash')}><CircleDollarSign /><b>{tr(lang, 'cash')}</b><small>AZN</small></button><button className={method === 'card' ? 'active' : ''} onClick={() => setMethod('card')}><CreditCard /><b>{tr(lang, 'card')}</b><small>POS terminal</small></button><button className={method === 'mixed' ? 'active' : ''} onClick={() => setMethod('mixed')}><WalletCards /><b>{tr(lang, 'mixed')}</b><small>Nağd + kart</small></button></div>{method === 'cash' && <><label className="money-field">{tr(lang, 'tendered')}<span><input autoFocus value={tendered} onChange={(event) => setTendered(event.target.value)} inputMode="decimal" /> AZN</span></label><div className="quick-cash">{[totalMinor, Math.ceil(totalMinor / 500) * 500, Math.ceil(totalMinor / 1000) * 1000, 5000, 10000].filter((value, index, rows) => rows.indexOf(value) === index).map((value) => <button key={value} onClick={() => setTendered((value / 100).toFixed(2))}>{money(value, lang)}</button>)}</div></>}{method === 'mixed' && <div className="split-fields"><label>{tr(lang, 'cash')}<input value={cashPart} onChange={(event) => setCashPart(event.target.value)} inputMode="decimal" /></label><label>{tr(lang, 'card')}<input value={(cardMinor / 100).toFixed(2)} disabled /></label></div>}{(method === 'card' || method === 'mixed') && <label className="money-field">Terminal ref (manual)<span><input value={terminalRef} onChange={(e) => setTerminalRef(e.target.value)} placeholder="RRN / auth" /></span></label>}<div className="payment-summary"><div><span>{tr(lang, 'total')}</span><b>{money(totalMinor, lang)}</b></div><div><span>{tr(lang, 'tendered')}</span><b>{money(method === 'mixed' ? cashMinor + cardMinor : tenderedMinor, lang)}</b></div><div className="change"><span>{tr(lang, 'change')}</span><strong>{money(method === 'cash' ? change : 0, lang)}</strong></div></div></section><aside className="receipt-preview"><div className="receipt-paper"><p>MARKETPOS SUPERMARKET</p><small>{new Date().toLocaleString('az-AZ')}</small><hr /><span>YEKUN <b>{money(totalMinor, lang)}</b></span><span>{tr(lang, method).toLocaleUpperCase('az')} <b>{money(method === 'cash' ? tenderedMinor : totalMinor, lang)}</b></span><span>QALIQ <b>{money(method === 'cash' ? change : 0, lang)}</b></span><hr /><small>Alış-verişiniz üçün təşəkkür edirik</small></div></aside></div><button className="modal-primary payment-complete" disabled={!valid} onClick={() => onComplete({ method, amountMinor: totalMinor, tenderedMinor: method === 'cash' ? tenderedMinor : totalMinor, changeMinor: method === 'cash' ? change : 0, cashMinor: method === 'mixed' ? cashMinor : undefined, cardMinor: method === 'mixed' ? cardMinor : method === 'card' ? totalMinor : undefined, terminalRef: terminalRef || undefined })}><Check />{tr(lang, 'completePayment')}<strong>{method === 'cash' ? `${tr(lang, 'change')}: ${money(change, lang)}` : money(totalMinor, lang)}</strong></button></Modal>;
 }
 
 function InventoryPage({ state, lang, canEdit, onDenied, onAdd, onEdit, onTransfer, onWaste }: { state: PersistedState; lang: Lang; canEdit: boolean; onDenied: () => void; onAdd: () => void; onEdit: (product: Product) => void; onTransfer: () => void; onWaste: () => void }) {

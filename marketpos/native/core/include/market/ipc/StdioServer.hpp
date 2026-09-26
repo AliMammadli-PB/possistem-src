@@ -30,8 +30,17 @@ class StdioServer {
   /** Blocking read-eval loop. Returns process exit code. */
   int run();
 
+  /**
+   * Handles one request frame on the caller's thread and returns what it
+   * wrote (the response, then any events), newline-terminated. Used by the
+   * WebAssembly build behind the possistem.az demo, which has no stdin.
+   */
+  std::string processLine(const std::string& line);
+
  private:
   void writeFrame(const nlohmann::json& doc);
+  void handleLine(std::string line);
+  std::string* capture_ = nullptr;
   std::unordered_map<std::string, Handler> handlers_;
   std::unordered_map<std::string, std::string> mutating_;
 };

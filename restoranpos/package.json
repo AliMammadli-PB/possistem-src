@@ -10,7 +10,7 @@
   "scripts": {
     "postinstall": "node scripts/fetch-deps.mjs",
     "dev": "node scripts/build-core.mjs --config Debug && node scripts/assemble-restaurant.mjs --allow-partial && electron .",
-    "lint": "cd .. && restoranpos/node_modules/.bin/eslint -c restoranpos/eslint.config.mjs marketpos/electron restoranpos/scripts",
+    "lint": "cd .. && restoranpos/node_modules/.bin/eslint -c restoranpos/eslint.config.mjs marketpos/electron restoranpos/scripts restoranpos/demo-web marketpos/demo-web",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && npm run market:typecheck",
     "build:core": "node scripts/build-core.mjs --config Release",
     "build:core:debug": "node scripts/build-core.mjs --config Debug",

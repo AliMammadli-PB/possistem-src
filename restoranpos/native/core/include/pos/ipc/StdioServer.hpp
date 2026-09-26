@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include "pos/Common.hpp"
 #include "pos/ipc/BoundedQueue.hpp"
@@ -94,6 +95,23 @@ public:
     void run();
 
     void requestStop();
+
+    /**
+     * Inline mode for embedders without threads (the WebAssembly build behind
+     * the possistem.az demo): start() spawns nothing and every frame is handled
+     * on the caller's thread by processFrame().
+     */
+    void useInlineMode() { started_.store(true); }
+
+    /**
+     * Handles one request frame synchronously and returns every frame produced
+     * since the last call - events first queued (e.g. startup stages), then the
+     * response - in order, without trailing newlines.
+     */
+    std::vector<std::string> processFrame(const std::string& line);
+
+    /** Frames queued outside a request (startup stages, core.ready). */
+    std::vector<std::string> drainOutbound();
 
     /** Invoked after the queues drain, before the process exits. */
     void onShutdown(std::function<void()> hook) { shutdownHook_ = std::move(hook); }

@@ -796,9 +796,9 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         "SELECT permission, grp, label FROM permission_catalogue ORDER BY grp, permission", {}, {});
     nlohmann::json groups = nlohmann::json::object();
     for (const auto& row : rows) {
-      groups[row.value("grp", "other")].push_back(
-          nlohmann::json{{"permission", row.value("permission", "")},
-                         {"label", row.value("label", "")}});
+      groups[db::columnOr(row, "grp", "other")].push_back(
+          nlohmann::json{{"permission", db::columnOr(row, "permission", "")},
+                         {"label", db::columnOr(row, "label", "")}});
     }
     return nlohmann::json{{"groups", groups}};
   });
@@ -1287,8 +1287,8 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
                      {"label", row.at("label")},
                      {"createdAt", row.at("created_at")},
                      {"cashierId", columnOr(row, "cashier_id", "")},
-                     {"registerId", row.value("register_id", "")},
-                     {"discountMinor", row.value("discount_minor", 0)},
+                     {"registerId", db::columnOr(row, "register_id", "")},
+                     {"discountMinor", db::columnOr(row, "discount_minor", 0)},
                      {"customerId", row.contains("customer_id") && !row["customer_id"].is_null() ? row["customer_id"] : nlohmann::json(nullptr)},
                      {"customerName", row.contains("customer_name") ? row.at("customer_name") : nullptr},
                      {"lines", nlohmann::json::parse(row.at("lines_json").get<std::string>())}});
@@ -1355,7 +1355,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
                       {saleCustomerId}, {});
     }
     return nlohmann::json{
-        {"storeName", settingsMap.value("storeName", "\"MarketPos\"")},
+        {"storeName", db::columnOr(settingsMap, "storeName", "MarketPos Supermarket")},
         {"receiptNo", s.at("receipt_no")},
         {"createdAt", s.at("created_at")},
         {"cashierId", s.at("cashier_id")},
@@ -2262,11 +2262,11 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         const std::string sku = row.at("sku").get<std::string>();
         const std::string barcode = row.at("barcode").get<std::string>();
         const std::string nameAz = row.at("name").get<std::string>();
-        const std::string nameRu = row.value("nameRu", "");
-        const std::string nameEn = row.value("nameEn", "");
-        const std::string category = row.value("category", "Digər");
-        const std::string unit = row.value("unit", "əd");
-        const std::string supplier = row.value("supplier", "");
+        const std::string nameRu = db::columnOr(row, "nameRu", "");
+        const std::string nameEn = db::columnOr(row, "nameEn", "");
+        const std::string category = db::columnOr(row, "category", "Digər");
+        const std::string unit = db::columnOr(row, "unit", "əd");
+        const std::string supplier = db::columnOr(row, "supplier", "");
         sqlite3_bind_text(stmt, 1, id.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, sku.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 3, barcode.c_str(), -1, SQLITE_TRANSIENT);
@@ -2276,9 +2276,9 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         sqlite3_bind_text(stmt, 7, category.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 8, unit.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int64(stmt, 9, row.at("priceMinor").get<std::int64_t>());
-        sqlite3_bind_int64(stmt, 10, row.value("costMinor", 0));
-        sqlite3_bind_int64(stmt, 11, row.value("minStock", 0));
-        sqlite3_bind_int64(stmt, 12, row.value("taxRate", 18));
+        sqlite3_bind_int64(stmt, 10, db::columnOr(row, "costMinor", 0));
+        sqlite3_bind_int64(stmt, 11, db::columnOr(row, "minStock", 0));
+        sqlite3_bind_int64(stmt, 12, db::columnOr(row, "taxRate", 18));
         sqlite3_bind_text(stmt, 13, supplier.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 14, "#2563eb", -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 15, imageJson.c_str(), -1, SQLITE_TRANSIENT);

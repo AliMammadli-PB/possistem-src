@@ -46,6 +46,10 @@ void StdioServer::markMutating(const std::string& method, const std::string& rea
 
 void StdioServer::writeFrame(const nlohmann::json& doc) {
   const std::string line = doc.dump(-1, ' ', true, nlohmann::json::error_handler_t::replace) + "\n";
+  if (capture_) {
+    capture_->append(line);
+    return;
+  }
   std::fwrite(line.data(), 1, line.size(), stdout);
   std::fflush(stdout);
 }
@@ -54,43 +58,58 @@ void StdioServer::emitEvent(const std::string& event, const nlohmann::json& payl
   writeFrame({{"type", "event"}, {"event", event}, {"payload", payload}});
 }
 
-int StdioServer::run() {
-  std::string line;
-  while (std::getline(std::cin, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty()) continue;
-    nlohmann::json req;
-    try {
-      req = nlohmann::json::parse(line);
-    } catch (const std::exception& ex) {
-      logging::warn(std::string("bad json frame: ") + ex.what());
-      continue;
-    }
-    const std::string requestId = req.value("requestId", "");
-    const std::string method = req.value("method", "");
-    nlohmann::json payload = req.contains("payload") && !req["payload"].is_null() ? req["payload"] : nlohmann::json::object();
+void StdioServer::handleLine(std::string line) {
+  if (!line.empty() && line.back() == '\r') line.pop_back();
+  if (line.empty()) return;
+  nlohmann::json req;
+  try {
+    req = nlohmann::json::parse(line);
+  } catch (const std::exception& ex) {
+    logging::warn(std::string("bad json frame: ") + ex.what());
+    return;
+  }
+  const std::string requestId = req.value("requestId", "");
+  const std::string method = req.value("method", "");
+  nlohmann::json payload = req.contains("payload") && !req["payload"].is_null() ? req["payload"] : nlohmann::json::object();
 
-    nlohmann::json resp = {{"requestId", requestId}, {"success", false}, {"data", nullptr}, {"error", nullptr}};
-    try {
-      resp["data"] = dispatch(method, payload);
-      resp["success"] = true;
-    } catch (const PosError& err) {
-      nlohmann::json error = {{"code", err.code()}, {"message", err.message()}, {"retryable", err.retryable()}};
-      if (!err.details().is_null()) error["details"] = err.details();
-      resp["error"] = error;
-    } catch (const std::exception& ex) {
-      resp["error"] = {{"code", "E_INTERNAL"}, {"message", ex.what()}, {"retryable", true}};
-    }
-    writeFrame(resp);
-    // Announced after the response so the caller's await resolves before the
-    // refresh it triggers, otherwise every mutation races its own re-read.
-    if (resp.value("success", false)) {
-      const auto mutation = mutating_.find(method);
-      if (mutation != mutating_.end()) {
-        emitEvent("state.changed", {{"reason", mutation->second}});
-      }
+  nlohmann::json resp = {{"requestId", requestId}, {"success", false}, {"data", nullptr}, {"error", nullptr}};
+  try {
+    resp["data"] = dispatch(method, payload);
+    resp["success"] = true;
+  } catch (const PosError& err) {
+    nlohmann::json error = {{"code", err.code()}, {"message", err.message()}, {"retryable", err.retryable()}};
+    if (!err.details().is_null()) error["details"] = err.details();
+    resp["error"] = error;
+  } catch (const std::exception& ex) {
+    resp["error"] = {{"code", "E_INTERNAL"}, {"message", ex.what()}, {"retryable", true}};
+  }
+  writeFrame(resp);
+  // Announced after the response so the caller's await resolves before the
+  // refresh it triggers, otherwise every mutation races its own re-read.
+  if (resp.value("success", false)) {
+    const auto mutation = mutating_.find(method);
+    if (mutation != mutating_.end()) {
+      emitEvent("state.changed", {{"reason", mutation->second}});
     }
   }
+}
+
+std::string StdioServer::processLine(const std::string& line) {
+  std::string frames;
+  capture_ = &frames;
+  try {
+    handleLine(line);
+  } catch (...) {
+    capture_ = nullptr;
+    throw;
+  }
+  capture_ = nullptr;
+  return frames;
+}
+
+int StdioServer::run() {
+  std::string line;
+  while (std::getline(std::cin, line)) handleLine(line);
   logging::info("stdin EOF — shutting down");
   return 0;
 }

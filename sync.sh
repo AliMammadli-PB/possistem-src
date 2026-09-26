@@ -14,6 +14,7 @@ COMMON=(
   --exclude='*.exe' --exclude='*.dll' --exclude='*.node' --exclude='*.asar' --exclude='*.blockmap'
   --exclude='*.tsbuildinfo' --exclude='*.orig' --exclude='*.pre-*' --exclude='*.bak-*'
   --exclude='.impeccable/' --exclude='graft/' --exclude='resources/rustdesk/' --exclude='test-results/'
+  --exclude='demo-web/dist/'
 )
 rsync -a --delete --delete-excluded "${COMMON[@]}" \
   --exclude=/control --exclude=/ops/ --exclude=/artifacts/ --exclude='/sayt test/' --exclude=/chat.md \

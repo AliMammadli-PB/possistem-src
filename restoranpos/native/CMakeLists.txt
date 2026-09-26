@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 project(restaurant_pos_core LANGUAGES C CXX VERSION 1.7.8)
 
+# The WebAssembly demo build: the core throws PosError for every refusal, and
+# Emscripten turns exception catching off unless asked.
+if(EMSCRIPTEN)
+    add_compile_options(-fexceptions)
+    add_link_options(-fexceptions)
+endif()
+
 # ---------------------------------------------------------------- toolchain --
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -115,6 +122,21 @@ target_compile_definitions(pos_core_lib PUBLIC
 add_executable(restaurant_pos_core ${CMAKE_CURRENT_SOURCE_DIR}/sidecar/main.cpp)
 set_target_properties(restaurant_pos_core PROPERTIES OUTPUT_NAME restaurant-pos-core)
 target_link_libraries(restaurant_pos_core PRIVATE pos_core_lib)
+
+# ---------------------------------------------------------------- web demo ---
+# The same core in WebAssembly for the possistem.az live demo (emcmake cmake).
+if(EMSCRIPTEN)
+    add_executable(pos_core_wasm ${CMAKE_CURRENT_SOURCE_DIR}/wasm/demo_core.cpp)
+    set_target_properties(pos_core_wasm PROPERTIES OUTPUT_NAME restaurant-pos-core SUFFIX ".mjs")
+    target_link_libraries(pos_core_wasm PRIVATE pos_core_lib)
+    target_link_options(pos_core_wasm PRIVATE
+        -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web,worker,node
+        -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=2MB
+        -sEXPORTED_FUNCTIONS=_pos_boot,_pos_call,_malloc,_free
+        -sEXPORTED_RUNTIME_METHODS=ccall,FS,stringToUTF8,lengthBytesUTF8,UTF8ToString
+        -fexceptions)
+    return()
+endif()
 
 # ------------------------------------------------------------------- tests ---
 enable_testing()

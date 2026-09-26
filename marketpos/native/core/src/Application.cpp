@@ -5,6 +5,7 @@
 #include "market/printing/PrinterHandlers.hpp"
 #include "market/Warehouse.hpp"
 #include "market/protocol_generated.hpp"
+#include <cmath>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -84,16 +85,16 @@ nlohmann::json productRowToJson(const nlohmann::json& row, db::Database& db) {
     warehouseStock[s["warehouse_id"].get<std::string>()] = qty;
     totalStock += qty;
   }
-  nlohmann::json image = nlohmann::json::parse(row.value("image_json", "{\"kind\":\"sprite\",\"index\":0}"));
+  nlohmann::json image = nlohmann::json::parse(db::columnOr(row, "image_json", "{\"kind\":\"sprite\",\"index\":0}"));
   return {
       {"id", id},
       {"sku", row.at("sku")},
       {"barcode", row.at("barcode")},
-      {"internalCode", row.value("internal_code", "")},
-      {"color", row.value("color", "")},
-      {"size", row.value("size", "")},
+      {"internalCode", db::columnOr(row, "internal_code", "")},
+      {"color", db::columnOr(row, "color", "")},
+      {"size", db::columnOr(row, "size", "")},
       {"parentProductId", row.contains("parent_product_id") && !row["parent_product_id"].is_null() ? row["parent_product_id"] : nlohmann::json(nullptr)},
-      {"name", {{"az", row.at("name_az")}, {"ru", row.value("name_ru", "")}, {"en", row.value("name_en", "")}}},
+      {"name", {{"az", row.at("name_az")}, {"ru", db::columnOr(row, "name_ru", "")}, {"en", db::columnOr(row, "name_en", "")}}},
       {"category", row.at("category")},
       {"unit", row.at("unit")},
       {"priceMinor", row.at("price_minor")},
@@ -453,7 +454,11 @@ std::optional<std::int64_t> requestedStock(const nlohmann::json& product, std::i
 
 void saveProduct(db::Database& db, const nlohmann::json& product, bool isCreate) {
   const std::string id = product.at("id").get<std::string>();
+  // Tills send {az, ru, en}; the portal sends a plain string and a float price.
   const auto& name = product.at("name");
+  const std::string nameAz = name.is_string() ? name.get<std::string>() : name.at("az").get<std::string>();
+  const std::string nameRu = name.is_object() ? name.value("ru", "") : "";
+  const std::string nameEn = name.is_object() ? name.value("en", "") : "";
   const std::string imageJson = product.value("image", nlohmann::json{{"kind", "sprite"}, {"index", 0}}).dump();
   sqlite3_stmt* stmt = nullptr;
   const char* sql =
@@ -474,12 +479,12 @@ void saveProduct(db::Database& db, const nlohmann::json& product, bool isCreate)
   sqlite3_bind_text(stmt, 1, id.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, product.at("sku").get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 3, product.at("barcode").get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 4, name.at("az").get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 5, name.value("ru", "").c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 6, name.value("en", "").c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 4, nameAz.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 5, nameRu.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 6, nameEn.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 7, product.value("category", "").c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 8, product.value("unit", "əd").c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int64(stmt, 9, product.at("priceMinor").get<std::int64_t>());
+  sqlite3_bind_int64(stmt, 9, static_cast<std::int64_t>(std::llround(product.at("priceMinor").get<double>())));
   sqlite3_bind_int64(stmt, 10, product.value("costMinor", 0));
   sqlite3_bind_int64(stmt, 11, product.value("minStock", 0));
   sqlite3_bind_int64(stmt, 12, product.value("taxRate", 18));
@@ -539,8 +544,8 @@ void emitWarehouseSync(db::Database& db, const std::string& warehouseId) {
   const auto logicalAt = nowMs();
   const auto& row = rows[0];
   appendSyncEvent(db, "warehouse.upsert", {{"warehouse", {{"id", row.at("id")}, {"code", row.at("code")},
-                    {"name", row.at("name")}, {"address", row.value("address", "")},
-                    {"manager", row.value("manager", "")}, {"active", row.at("active").get<std::int64_t>() != 0}}},
+                    {"name", row.at("name")}, {"address", db::columnOr(row, "address", "")},
+                    {"manager", db::columnOr(row, "manager", "")}, {"active", row.at("active").get<std::int64_t>() != 0}}},
                     {"logicalAt", logicalAt}});
 }
 
@@ -612,8 +617,8 @@ nlohmann::json exportState(db::Database& db) {
     warehouses.push_back({{"id", row.at("id")},
                           {"code", row.at("code")},
                           {"name", row.at("name")},
-                          {"address", row.value("address", "")},
-                          {"manager", row.value("manager", "")},
+                          {"address", db::columnOr(row, "address", "")},
+                          {"manager", db::columnOr(row, "manager", "")},
                           {"active", row.at("active").get<std::int64_t>() != 0}});
   }
 
@@ -623,7 +628,7 @@ nlohmann::json exportState(db::Database& db) {
     nlohmann::json r = {{"id", row.at("id")},
                         {"code", row.at("code")},
                         {"name", row.at("name")},
-                        {"location", row.value("location", "")},
+                        {"location", db::columnOr(row, "location", "")},
                         {"status", row.at("status")},
                         {"openingFloatMinor", row.at("opening_float_minor")}};
     if (!row["operator_id"].is_null()) r["operatorId"] = row["operator_id"];
@@ -637,16 +642,16 @@ nlohmann::json exportState(db::Database& db) {
     const auto id = row.at("id").get<std::string>();
     auto structured = db.query("SELECT id, product_id AS productId, qty, cost_minor AS costMinor, returned_qty AS returnedQty FROM purchase_order_lines WHERE purchase_id=? ORDER BY rowid", {id}, {});
     purchaseOrders.push_back({{"id", row.at("id")},
-                              {"documentNo", row.value("document_no", id)},
+                              {"documentNo", db::columnOr(row, "document_no", id)},
                               {"supplier", row.at("supplier")},
-                              {"expectedAt", row.value("expected_at", "")},
+                              {"expectedAt", db::columnOr(row, "expected_at", "")},
                               {"createdAt", row.at("created_at")},
-                              {"updatedAt", row.value("updated_at", row.at("created_at"))},
+                              {"updatedAt", db::columnOr(row, "updated_at", row.at("created_at"))},
                               {"createdBy", row.at("created_by")},
                               {"warehouseId", row.at("warehouse_id")},
                               {"status", row.at("status")},
-                              {"totalMinor", row.value("total_minor", 0)},
-                              {"paymentStatus", row.value("payment_status", "unpaid")},
+                              {"totalMinor", db::columnOr(row, "total_minor", 0)},
+                              {"paymentStatus", db::columnOr(row, "payment_status", "unpaid")},
                               {"lines", structured.empty() ? nlohmann::json::parse(row.at("lines_json").get<std::string>()) : structured}});
   }
 
@@ -657,7 +662,7 @@ nlohmann::json exportState(db::Database& db) {
                          {"label", row.at("label")},
                          {"createdAt", row.at("created_at")},
                          {"lines", nlohmann::json::parse(row.at("lines_json").get<std::string>())},
-                         {"discountMinor", row.value("discount_minor", 0)},
+                         {"discountMinor", db::columnOr(row, "discount_minor", 0)},
                          {"customerId", row.contains("customer_id") && !row["customer_id"].is_null() ? row["customer_id"] : nlohmann::json(nullptr)},
                          {"customerName", row.contains("customer_name") && !row["customer_name"].is_null() ? row["customer_name"] : nlohmann::json(nullptr)},
                          {"note", row.contains("note") && !row["note"].is_null() ? row["note"] : nlohmann::json(nullptr)}});
@@ -670,7 +675,7 @@ nlohmann::json exportState(db::Database& db) {
                             {"createdAt", row.at("created_at")},
                             {"actorId", row.at("actor_id")},
                             {"action", row.at("action")},
-                            {"detail", row.value("detail", "")}});
+                            {"detail", db::columnOr(row, "detail", "")}});
   }
 
   auto settingsRows = db.query("SELECT key, value FROM settings");
@@ -898,10 +903,15 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
     std::snprintf(buf, sizeof(buf), "%02d%02d%02d", (tm.tm_year + 1900) % 100, tm.tm_mon + 1, tm.tm_mday);
     return std::string(buf);
   }();
-  const auto seq = db.queryInt("SELECT COUNT(*) FROM sales") + 1;
-  char receiptBuf[32];
-  std::snprintf(receiptBuf, sizeof(receiptBuf), "M-%s-%04lld", day.c_str(), static_cast<long long>(seq));
-  const std::string receiptNo = payload.value("receiptNo", std::string(receiptBuf));
+  // Receipt numbers carry the register code. Sales are never replicated
+  // between tills, so numbering from this PC's own COUNT(*) had two tills
+  // issue the same M-<day>-0001.
+  const auto registerCode = db.queryText("SELECT code FROM registers WHERE id = ?", {registerId}, {});
+  const std::string prefix = "M-" + (registerCode.empty() ? std::string() : registerCode + "-") + day + "-";
+  const auto seq = db.queryInt("SELECT COUNT(*) FROM sales WHERE receipt_no LIKE ?", {prefix + "%"}) + 1;
+  char seqBuf[16];
+  std::snprintf(seqBuf, sizeof(seqBuf), "%04lld", static_cast<long long>(seq));
+  const std::string receiptNo = payload.value("receiptNo", prefix + seqBuf);
 
   db.begin();
   try {

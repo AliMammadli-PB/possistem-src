@@ -390,14 +390,14 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
 
   return (
     <section className="panel-card settings-card hardware-settings">
-      <div className="panel-title"><h3>Printer · çekmece · fiscal · terminal</h3><Printer /></div>
+      <div className="panel-title"><h3>Printer · pul qutusu · fiskal · terminal</h3><Printer /></div>
       <p className="hint">
         {/* "No printer chosen" and "chosen but unreachable" are different
             problems for the operator, so the line says which one this is. */}
         {!health?.configured
           ? 'Printer seçilməyib'
           : `${health.target} · ${health.online ? 'hazır' : 'cavab vermir'}`}
-        {fiscalPending ? ` · ${fiscalPending} fiscal növbədə` : ''}
+        {fiscalPending ? ` · ${fiscalPending} fiskal növbədə` : ''}
       </p>
       <div className="hardware-controls">
         <label className="field">
@@ -743,5 +743,5 @@ export function FiscalBadge({ coreReady }: { coreReady: boolean }) {
     return () => window.clearInterval(id);
   }, [coreReady]);
   if (!n) return null;
-  return <em className="pill" title="Fiscal pending">{n} fiscal</em>;
+  return <em className="pill" title="Fiskal çeklər növbədə">{n} fiskal</em>;
 }

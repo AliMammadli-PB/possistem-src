@@ -67,6 +67,21 @@ function publicStaff(user) {
 }
 
 /**
+ * Sign-in by PIN alone, as on the restaurant till: the PIN names the person.
+ * Returns the one active account holding it, or null (none, or - which
+ * staff saving forbids - more than one).
+ */
+function findStaffByPin(staff, pin) {
+  const matches = (Array.isArray(staff) ? staff : []).filter((row) => row.active && pinMatches(row, pin));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/** True when another active account already signs in with this PIN. */
+function pinTaken(staff, pin, exceptId) {
+  return (Array.isArray(staff) ? staff : []).some((row) => row.id !== exceptId && row.active && pinMatches(row, pin));
+}
+
+/**
  * Failed-attempt throttle: `max` misses lock the key, each further lock doubles
  * (capped), and a success clears it.
  */
@@ -183,6 +198,8 @@ module.exports = {
   SESSION_ABSOLUTE_MS,
   hashPin,
   pinMatches,
+  findStaffByPin,
+  pinTaken,
   pinIsShippedDefault,
   isShippedDefaultPin,
   newPinCredential,

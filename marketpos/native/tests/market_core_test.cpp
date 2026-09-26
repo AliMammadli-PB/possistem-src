@@ -145,7 +145,7 @@ TEST_CASE("core binary: ping barcode sale stock refund", "[ipc]") {
              {"method", "state.importLegacy"},
              {"protocolVersion", 1},
              {"timestamp", 1},
-             {"payload", {{"snapshot", snap}}}});
+             {"payload", {{"snapshot", snap}, {"role", "manager"}, {"actorId", "u1"}}}});
   REQUIRE(readFrame()["success"] == true);
 
   writeLine({{"requestId", "1"},
@@ -203,7 +203,7 @@ TEST_CASE("core binary: ping barcode sale stock refund", "[ipc]") {
              {"method", "return.create"},
              {"protocolVersion", 1},
              {"timestamp", 1},
-             {"payload", {{"saleId", saleId}, {"actorId", "u1"}}}});
+             {"payload", {{"saleId", saleId}, {"actorId", "u1"}, {"role", "manager"}}}});
   REQUIRE(readFrame()["success"] == true);
 
   writeLine({{"requestId", "7"},
@@ -227,6 +227,15 @@ TEST_CASE("core binary: ping barcode sale stock refund", "[ipc]") {
              {"payload", {{"productId", "p1"}, {"warehouseId", "wh-sales"}}}});
   REQUIRE(readFrame()["data"]["qty"] == 13);
 
+  // Cash in/out belongs to a drawer session; the sales above only needed the register open.
+  writeLine({{"requestId", "open-session"}, {"method", "cash.openSession"},
+             {"protocolVersion", 1}, {"timestamp", 1},
+             {"payload", {{"registerId", "reg-1"}, {"operatorId", "u1"}, {"openingFloatMinor", 0},
+                          {"actorId", "u1"}, {"role", "manager"}}}});
+  const auto opened = readFrame();
+  INFO(opened.dump());
+  REQUIRE(opened["success"] == true);
+
   const nlohmann::json portalCash = {
       {"registerId", "reg-1"}, {"amountMinor", 100}, {"reason", "test"},
       {"actorId", "u1"}, {"role", "manager"},
@@ -235,7 +244,9 @@ TEST_CASE("core binary: ping barcode sale stock refund", "[ipc]") {
     writeLine({{"requestId", "portal-cash-" + std::to_string(attempt)},
                {"method", "cash.cashIn"}, {"protocolVersion", 1}, {"timestamp", 1},
                {"payload", portalCash}});
-    REQUIRE(readFrame()["success"] == true);
+    const auto cashIn = readFrame();
+    INFO(cashIn.dump());
+    REQUIRE(cashIn["success"] == true);
   }
   writeLine({{"requestId", "portal-cash-list"}, {"method", "cash.movements"},
              {"protocolVersion", 1}, {"timestamp", 1},
@@ -278,7 +289,7 @@ TEST_CASE("core binary: ping barcode sale stock refund", "[ipc]") {
   REQUIRE(afterPurchase["data"]["suppliers"][0]["dueMinor"] == 200);
   const nlohmann::json supplierPayment = {
       {"supplierName", "Sınaq təchizatçı"}, {"amountMinor", 100},
-      {"actorId", "u1"}, {"portalCommandId", "44444444-4444-4444-8444-444444444444"}};
+      {"actorId", "u1"}, {"role", "manager"}, {"portalCommandId", "44444444-4444-4444-8444-444444444444"}};
   for (int attempt = 0; attempt < 2; ++attempt) {
     writeLine({{"requestId", "portal-supplier-pay-" + std::to_string(attempt)},
                {"method", "supplier.pay"}, {"protocolVersion", 1}, {"timestamp", 1},
@@ -297,8 +308,10 @@ TEST_CASE("core binary: ping barcode sale stock refund", "[ipc]") {
              {"method", "cash.closeSession"},
              {"protocolVersion", 1},
              {"timestamp", 1},
-             {"payload", {{"registerId", "reg-1"}, {"operatorId", "u1"}}}});
-  REQUIRE(readFrame()["success"] == true);
+             {"payload", {{"registerId", "reg-1"}, {"operatorId", "u1"}, {"actorId", "u1"}, {"role", "manager"}}}});
+  const auto closedSession = readFrame();
+  INFO(closedSession.dump());
+  REQUIRE(closedSession["success"] == true);
   writeLine({{"requestId", "9"},
              {"method", "sale.complete"},
              {"protocolVersion", 1},
@@ -401,7 +414,7 @@ TEST_CASE("phase1: hold permissions cash xz", "[ipc][phase1]") {
       {"settings", {{"defaultWarehouseId", "wh-sales"}, {"defaultRegisterId", "reg-1"}}},
   };
   writeLine({{"requestId", "imp"}, {"method", "state.importLegacy"}, {"protocolVersion", 1}, {"timestamp", 1},
-             {"payload", {{"snapshot", snap}}}});
+             {"payload", {{"snapshot", snap}, {"role", "manager"}, {"actorId", "u1"}}}});
   REQUIRE(readFrame()["success"] == true);
 
   writeLine({{"requestId", "open"},
@@ -643,6 +656,8 @@ TEST_CASE("phase1: hold permissions cash xz", "[ipc][phase1]") {
   auto rcpt = readFrame();
   INFO("sale.receipt response: " << rcpt.dump());
   REQUIRE(rcpt["success"] == true);
+  // No storeName setting: the receipt header is the plain default, not a JSON-quoted one.
+  REQUIRE(rcpt["data"]["storeName"] == "MarketPos Supermarket");
   REQUIRE(rcpt["data"]["loyaltyEarnedMinor"].get<std::int64_t>() == 7);
   REQUIRE(rcpt["data"]["loyaltyBalanceMinor"].get<std::int64_t>() == 7);
 
@@ -683,6 +698,7 @@ TEST_CASE("phase1: hold permissions cash xz", "[ipc][phase1]") {
                       {"priceMinor", 100.0},
                       {"active", false}}}}}}}}}}});
   auto deact = readFrame();
+  INFO(deact.dump());
   REQUIRE(deact["success"] == true);
   REQUIRE(deact["data"].value("rejected", 0) == 0);
 

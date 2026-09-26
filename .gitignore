@@ -19,3 +19,4 @@ release*/
 *.dmp
 *.mdmp
 crashpad/
+demo-web/dist/

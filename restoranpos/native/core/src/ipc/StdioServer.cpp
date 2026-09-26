@@ -300,6 +300,18 @@ void StdioServer::run() {
     std::fflush(stdout);
 }
 
+std::vector<std::string> StdioServer::processFrame(const std::string& line) {
+    handleLine(line);
+    while (auto request = inbound_.tryPop()) dispatch(*request);
+    return drainOutbound();
+}
+
+std::vector<std::string> StdioServer::drainOutbound() {
+    std::vector<std::string> frames;
+    while (auto frame = outbound_.tryPop()) frames.push_back(std::move(*frame));
+    return frames;
+}
+
 void StdioServer::requestStop() {
     stopping_.store(true);
     inbound_.close();

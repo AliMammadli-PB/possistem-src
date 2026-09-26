@@ -209,3 +209,30 @@ describe('market core supervisor bounds', () => {
     for (const [, p] of sup.pending) clearTimeout(p.timer);
   });
 });
+
+describe('market PIN-only sign-in', () => {
+  const staff = [
+    { id: 'm', name: 'Müdir', role: 'manager', active: true, ...auth.newPinCredential('1234') },
+    { id: 'a', name: 'Anbar', role: 'warehouse', active: true, ...auth.newPinCredential('3333') },
+    { id: 'x', name: 'Keçmiş', role: 'cashier', active: false, ...auth.newPinCredential('5555') },
+  ];
+
+  it('the PIN names the person, whatever their role', () => {
+    expect(auth.findStaffByPin(staff, '1234')?.id).toBe('m');
+    expect(auth.findStaffByPin(staff, '3333')?.id).toBe('a');
+    expect(auth.findStaffByPin(staff, '9999')).toBeNull();
+    expect(auth.findStaffByPin(staff, '5555')).toBeNull(); // deactivated
+  });
+
+  it('two active people can never share a PIN', () => {
+    expect(auth.pinTaken(staff, '3333', 'm')).toBe(true);
+    expect(auth.pinTaken(staff, '3333', 'a')).toBe(false); // keeping one's own
+    expect(auth.pinTaken(staff, '5555', 'm')).toBe(false); // only active accounts count
+    const clash = [...staff, { id: 'd', name: 'Dublikat', role: 'cashier', active: true, ...auth.newPinCredential('1234') }];
+    expect(auth.findStaffByPin(clash, '1234')).toBeNull();
+  });
+
+  it('shipped default accounts still sign in by PIN, then must change it', () => {
+    for (const user of auth.DEFAULT_STAFF) expect(auth.pinIsShippedDefault(user)).toBe(true);
+  });
+});
