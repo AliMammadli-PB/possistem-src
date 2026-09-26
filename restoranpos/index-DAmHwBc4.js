@@ -12496,7 +12496,7 @@ const az = {
     cash: "Kassa",
     reports: "Hesabatlar",
     license: "Lisenziya",
-    backup: "Backup",
+    backup: "Ehtiyat nüsxə",
     staff: "İşçilər",
     whatsapp: "WhatsApp"
   },
@@ -12887,17 +12887,17 @@ const az = {
     switchAccount: "Hesabı dəyiş"
   },
   backup: {
-    title: "Backup",
-    create: "Backup yarat",
-    list: "Backup siyahısı",
-    empty: "Backup yoxdur",
+    /* POS_I18N_BACKUP_DIAG_v1 */title: "Ehtiyat nüsxə",
+    create: "Ehtiyat nüsxə yarat",
+    list: "Ehtiyat nüsxələr",
+    empty: "Ehtiyat nüsxə yoxdur",
     note: "Qeyd",
-    createSuccess: "Backup yaradıldı",
+    createSuccess: "Ehtiyat nüsxə yaradıldı",
     restore: "Bərpa et",
-    restoreTitle: "Backup-dan bərpa",
-    restoreWarn: "Bu backup-dan sonrakı bütün məlumat silinəcək.",
+    restoreTitle: "Ehtiyat nüsxədən bərpa",
+    restoreWarn: "Bu nüsxədən sonrakı bütün məlumat silinəcək.",
     restoreLost: "{orders} sifariş · {payments} ödəniş · {days} iş günü itəcək",
-    restoreMissing: "Backup faylı tapılmadı",
+    restoreMissing: "Ehtiyat nüsxə faylı tapılmadı",
     restorePin: "Admin PIN",
     restoreConfirm: "Bəli, bərpa et",
     restoreDone: "Bərpa tamamlandı — proqramı yenidən başladın"
@@ -14913,7 +14913,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.7.8 · 21e3d99";
+const _PS_BUILD = "1.7.9 · fd501e4";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -19114,18 +19114,18 @@ function DiagnosticsPage() {
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "grid grid-cols-1 gap-3 text-sm sm:grid-cols-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "PID", value: status?.pid ? String(status.pid) : "—" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Core version", value: status?.coreVersion ?? "—" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Restart attempts", value: String(status?.attempt ?? 0) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Nüvə versiyası", value: status?.coreVersion ?? "—" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Yenidən başlatma cəhdləri", value: String(status?.attempt ?? 0) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               Row$2,
               {
-                label: "Last exit code",
+                label: "Son çıxış kodu",
                 value: status?.lastExitCode === null ? "—" : String(status?.lastExitCode ?? "—")
               }
             ),
-            status?.stage && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Stage", value: `${status.stage.message} (${status.stage.progress}%)` }),
-            status?.busy && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Busy with", value: `${status.busy.method} (${status.busy.ms} ms)` }),
-            status?.lastError && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Last error", value: status.lastError.message, danger: true })
+            status?.stage && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Mərhələ", value: `${status.stage.message} (${status.stage.progress}%)` }),
+            status?.busy && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Hazırda icra edir", value: `${status.busy.method} (${status.busy.ms} ms)` }),
+            status?.lastError && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Son xəta", value: status.lastError.message, danger: true })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 flex flex-wrap items-center gap-4", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -19165,14 +19165,14 @@ function DiagnosticsPage() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg", children: "Mühit" })
           ] }),
           info ? /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "grid grid-cols-1 gap-3 text-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "App version", value: info.version }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Proqram versiyası", value: info.version }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Electron", value: info.electron }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Chromium", value: info.chrome }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Node", value: info.node }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Mode", value: info.isDev ? "development" : "packaged" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Core path", value: info.corePath, mono: true }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Database", value: info.dbPath, mono: true }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Logs", value: info.logDir, mono: true })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Rejim", value: info.isDev ? "development" : "packaged" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Nüvə yolu", value: info.corePath, mono: true }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Verilənlər bazası", value: info.dbPath, mono: true }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Row$2, { label: "Jurnallar", value: info.logDir, mono: true })
           ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shimmer h-4 rounded bg-elevated" }, i)) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
@@ -22715,11 +22715,11 @@ function SafeModePage() {
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "gold-rule mb-6 opacity-40" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "mb-8 space-y-3 text-sm", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "State", value: status?.state ?? "unknown" }),
-          status?.lastError && /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Error", value: status.lastError.message, danger: true }),
-          status?.lastExitCode !== null && status?.lastExitCode !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Exit code", value: String(status.lastExitCode) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Core path", value: status?.corePath ?? "unknown", mono: true }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Restart attempts", value: String(status?.attempt ?? 0) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Vəziyyət", value: status?.state ?? "unknown" }),
+          status?.lastError && /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Xəta", value: status.lastError.message, danger: true }),
+          status?.lastExitCode !== null && status?.lastExitCode !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Çıxış kodu", value: String(status.lastExitCode) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Nüvə yolu", value: status?.corePath ?? "unknown", mono: true }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Row, { label: "Yenidən başlatma cəhdləri", value: String(status?.attempt ?? 0) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(

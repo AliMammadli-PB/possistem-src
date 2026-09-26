@@ -59,6 +59,7 @@ const bridge = publish(
   template
     .replace('/*CORE_PAYLOAD*/', () => read('core-payload.cjs'))
     .replace('/*PRELOAD*/', () => read('preload.cjs'))
+    .replaceAll('__APP_VERSION__', JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version)
     .replace("'./market-pos-core.mjs'", `'./${core}'`),
 );
 

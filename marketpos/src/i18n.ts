@@ -3,6 +3,7 @@ import { CATALOG_AISLES } from './catalogCategories';
 import type { Lang, Role, View } from './types';
 
 const az: Record<string, string> = {
+  priceScope: 'Qiymət əhatəsi', kickerWarehouses: 'Anbar şəbəkəsi', kickerRoles: 'Rola görə giriş', kickerReturns: 'Qaytarma masası', kickerOwner: 'MarketPos sahibkar',
   staffSignIn: 'Heyət girişi', switchAccount: 'Hesabı dəyiş', pinTitle: 'PIN kodunuzu daxil edin', pinHint: 'Hesabınıza daxil olmaq üçün 4 rəqəmli şəxsi kodunuzu yazın.', pinPad: 'PIN klaviaturası', pinClear: 'PIN-i təmizlə', pinBack: 'Son rəqəmi sil',
   systemActor: 'Sistem',
   quickOpsKicker: 'Əməliyyatlar', auditKicker: 'Təhlükəsizlik jurnalı',
@@ -16,6 +17,7 @@ const az: Record<string, string> = {
 
 
 const ru: Record<string, string> = {
+  priceScope: 'Охват цены', kickerWarehouses: 'Складская сеть', kickerRoles: 'Доступ по ролям', kickerReturns: 'Стол возвратов', kickerOwner: 'Владелец MarketPos',
   staffSignIn: 'Вход персонала', switchAccount: 'Сменить аккаунт', pinTitle: 'Введите PIN-код', pinHint: 'Введите свой 4-значный личный код, чтобы войти.', pinPad: 'PIN-клавиатура', pinClear: 'Очистить PIN', pinBack: 'Удалить последнюю цифру',
   systemActor: 'Система',
   quickOpsKicker: 'Операции', auditKicker: 'Журнал безопасности',
@@ -28,6 +30,7 @@ const ru: Record<string, string> = {
 
 
 const en: Record<string, string> = {
+  priceScope: 'Price scope', kickerWarehouses: 'Warehouse network', kickerRoles: 'Role-based access', kickerReturns: 'Returns desk', kickerOwner: 'MarketPos owner',
   staffSignIn: 'Staff sign-in', switchAccount: 'Switch account', pinTitle: 'Enter your PIN', pinHint: 'Type your 4-digit personal code to sign in.', pinPad: 'PIN keypad', pinClear: 'Clear PIN', pinBack: 'Delete last digit',
   systemActor: 'System',
   quickOpsKicker: 'Operations', auditKicker: 'Security audit',

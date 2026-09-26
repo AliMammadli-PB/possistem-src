@@ -60,6 +60,7 @@ const bridge = publish(
   'bridge.js',
   template
     .replace('/*PRELOAD*/', () => preload)
+    .replaceAll('__APP_VERSION__', JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version)
     .replace("'./restaurant-pos-core.mjs'", `'./${core}'`)
     .replace("'./seed.js'", `'./${seed}'`),
 );

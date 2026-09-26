@@ -81,7 +81,8 @@ const releaseDir = fs.existsSync(path.join(ROOT, 'electron-builder.yml'))
   ? (() => {
       const yml = fs.readFileSync(path.join(ROOT, 'electron-builder.yml'), 'utf8');
       const match = yml.match(/^\s*output:\s*(\S+)/m);
-      return match ? path.join(ROOT, match[1]) : path.join(ROOT, 'release');
+      // electron-builder expands ${version} in directories.output; so must we.
+      return match ? path.join(ROOT, match[1].replaceAll('${version}', pkg.version)) : path.join(ROOT, 'release');
     })()
   : path.join(ROOT, 'release');
 const installerPath = path.join(releaseDir, installerName);

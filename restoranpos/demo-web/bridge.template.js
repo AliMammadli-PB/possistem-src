@@ -93,7 +93,7 @@ const ready = (async () => {
     const login = coreCall('auth.login', { userId: '', pin: '1234' });
     if (login.success) session = login.data.session;
   }
-  coreStatus = { ...coreStatus, state: 'ready', seq: 2, coreVersion: '1.7.8', stage: { key: 'ready', message: 'System ready', progress: 100 } };
+  coreStatus = { ...coreStatus, state: 'ready', seq: 2, coreVersion: '__APP_VERSION__', stage: { key: 'ready', message: 'System ready', progress: 100 } };
   emit('pos:coreStatus', coreStatus);
 })();
 ready.catch((err) => {
@@ -112,7 +112,7 @@ async function invoke({ method, payload, options }) {
   const body = payload ?? {};
   switch (method) {
     case '__app.info':
-      return ok({ version: '1.7.8', electron: '', chrome: '', node: '', platform: 'win32', isDev: false, dbPath: '', logDir: '', corePath: '' });
+      return ok({ version: '__APP_VERSION__', electron: '', chrome: '', node: '', platform: 'win32', isDev: false, dbPath: '', logDir: '', corePath: '' });
     case 'license.status':
     case 'license.heartbeat':
     case 'license.lookup':

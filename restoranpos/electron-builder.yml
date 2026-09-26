@@ -5,7 +5,7 @@ copyright: Copyright © 2026 Ali Mammadli / possistem
 electronVersion: 43.7.5
 directories:
   # Versioned dir avoids EBUSY when release/win-unpacked is locked by a running app.
-  output: release-1.7.8
+  output: release-${version}
   buildResources: build
 files:
   - out/**/*

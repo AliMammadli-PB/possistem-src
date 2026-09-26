@@ -705,7 +705,7 @@ export function PlatformStubsPage({ coreReady, notify }: { coreReady: boolean; n
           <p className="hint">{String(sync?.note ?? 'Multi-branch sync hazırlanır')}</p>
           <div className="cash-ops-report">
             <div><small>Gözləyən entity</small><b>{Number(sync?.pendingEntities ?? 0)}</b></div>
-            <div><small>Price scope</small><b>{scopeCount}</b></div>
+            <div><small>Qiymət əhatəsi</small><b>{scopeCount}</b></div>
           </div>
         </article>
         <article className="panel-card">
