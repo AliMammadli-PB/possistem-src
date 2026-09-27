@@ -34,6 +34,8 @@ import { marketBooks, stockLines } from './books';
 import { longDate, money, newId } from './format';
 import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
 import { WarehouseModal, RegisterModal, PurchaseModal, TransferModal, WasteModal, StaffModal, RoleAvatar, Kpi, Modal, Field, NumPad } from './forms';
+// Imported, not a fixed ./assets path: the hashed name means no cache can serve an old picture.
+import loginBg from './assets/login-bg.png';
 const STORE_KEY = 'cyberplus.geyim.pos.v2';
 const LEGACY_MIGRATED_KEY = 'cyberplus.geyim.pos.core-migrated';
 
@@ -792,7 +794,7 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
   }
   if (!ready) {
     return (
-      <main className="ps-login-screen" style={{ backgroundImage: 'url(./assets/login-bg.png)' }}>
+      <main className="ps-login-screen" style={{ backgroundImage: `url(${loginBg})` }}>
         <div className="ps-login-veil" aria-hidden />
         <div className="ps-login-glass ps-auth-loading"><ShieldCheck /><p>{tr(lang, 'loginSecure')}</p></div>
       </main>
@@ -867,7 +869,7 @@ function TenantLoginScreen({ lang, setLang, onSuccess }: { lang: Lang; setLang: 
   };
 
   return (
-    <main className="ps-login-screen" style={{ backgroundImage: 'url(./assets/login-bg.png)' }}>
+    <main className="ps-login-screen" style={{ backgroundImage: `url(${loginBg})` }}>
       <div className="ps-login-veil" aria-hidden />
       <div className="ps-login-glow" aria-hidden />
       <div className="ps-login-grid">
@@ -977,7 +979,7 @@ function ActivationGateScreen({
   };
 
   return (
-    <main className="ps-login-screen" style={{ backgroundImage: 'url(./assets/login-bg.png)' }}>
+    <main className="ps-login-screen" style={{ backgroundImage: `url(${loginBg})` }}>
       <div className="ps-login-veil" aria-hidden />
       <div className="ps-login-glow" aria-hidden />
       <div className="ps-login-grid">
@@ -1097,7 +1099,7 @@ function LoginScreen({ lang, onLogin, onTenantLogout }: {
 
   return (
     <main className="mp-staff">
-      <div className="mp-staff-photo" style={{ backgroundImage: 'url(./assets/login-bg.png)' }} aria-hidden="true" />
+      <div className="mp-staff-photo" style={{ backgroundImage: `url(${loginBg})` }} aria-hidden="true" />
       <div className="mp-staff-grid">
         <section className="mp-staff-brand">
           <div className="mp-staff-brand-mark">

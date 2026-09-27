@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { KeyRound, LogOut } from 'lucide-react';
 import { tr } from './i18n';
 import type { Lang, SessionUser, StaffProfile } from './types';
+// Imported, not a fixed ./assets path: the hashed name means no cache can serve an old picture.
+import loginBg from './assets/login-bg.png';
 
 /**
  * Shown right after sign-in while the account still holds a factory PIN. Main
@@ -35,7 +37,7 @@ export function ChangePinScreen({ lang, session, onChanged, onLogout }: {
   };
 
   return (
-    <main className="ps-login-screen" style={{ backgroundImage: 'url(./assets/login-bg.png)' }}>
+    <main className="ps-login-screen" style={{ backgroundImage: `url(${loginBg})` }}>
       <div className="ps-login-veil" aria-hidden />
       <form className="ps-login-glass" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <h2><KeyRound /> {tr(lang, 'pinChangeTitle')}</h2>
