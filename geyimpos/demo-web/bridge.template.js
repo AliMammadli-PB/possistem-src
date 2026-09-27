@@ -68,8 +68,8 @@ let currentToken = '';
 // The demo database starts empty on every visit, so the till's "catalogue
 // already imported" flags from an earlier visit must not survive it.
 try {
-  localStorage.removeItem('cyberplus.geyim.pos.core-migrated');
-  localStorage.removeItem('cyberplus.geyim.pos.catalog-sync');
+  localStorage.removeItem('possistem.geyim.pos.core-migrated');
+  localStorage.removeItem('possistem.geyim.pos.catalog-sync');
 } catch {
   /* storage blocked: nothing was remembered either */
 }

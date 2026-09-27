@@ -1,6 +1,6 @@
 # AGENTS.md — start here
 
-CyberPlus POS: an offline-first restaurant till (Windows, Electron + C++20 core
+possistem Restoran POS: an offline-first restaurant till (Windows, Electron + C++20 core
 + SQLite) plus a multi-tenant control platform (Fastify + Postgres + MySQL live
 mirror + WhatsApp bot) that sells and supervises it.
 
@@ -40,7 +40,7 @@ If you changed the control API and you are **on the control server**:
 
 ```bash
 sudo bash control/scripts/deploy-local-api.sh
-journalctl -u cyberplus-pos-control -n 50 --no-pager
+journalctl -u possistem-pos-control -n 50 --no-pager
 ```
 
 If you changed the desktop app, bump the version in **three** files

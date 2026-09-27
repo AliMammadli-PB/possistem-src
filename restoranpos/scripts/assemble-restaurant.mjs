@@ -88,6 +88,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-command-signature.mjs',
   'apply-restaurant-default-pin.mjs',
   'apply-restaurant-i18n-fixes.mjs',
+  'apply-restaurant-legacy-names.mjs',
   'apply-restaurant-buildstamp.mjs',
 ];
 

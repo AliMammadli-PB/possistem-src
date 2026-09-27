@@ -53,7 +53,7 @@ const config = source
   .replace(/^\s*artifactName:\s*.*$/m, `  artifactName: ${slug}-POS-Setup-\${version}.\${ext}`)
   .replace(/^\s*shortcutName:\s*.*$/m, `  shortcutName: "${profile.productName.replace(/"/g, '\\"')} POS"`)
   .replace(/^\s*uninstallDisplayName:\s*.*$/m, `  uninstallDisplayName: "${profile.productName.replace(/"/g, '\\"')} POS"`);
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cyberplus-customer-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'possistem-customer-'));
 const configPath = path.join(tempDir, 'electron-builder.customer.yml');
 fs.writeFileSync(configPath, config, 'utf8');
 try {

@@ -1,4 +1,4 @@
-const CACHE = 'cyberplus-market-pos-v1';
+const CACHE = 'possistem-market-pos-v1';
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', './index.html'])));
   self.skipWaiting();

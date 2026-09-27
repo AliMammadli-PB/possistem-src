@@ -67,8 +67,12 @@ let currentToken = '';
 // The demo database starts empty on every visit, so the till's "catalogue
 // already imported" flags from an earlier visit must not survive it.
 try {
-  localStorage.removeItem('cyberplus.market.pos.core-migrated');
-  localStorage.removeItem('cyberplus.market.pos.catalog-sync');
+  // Old visits stored the same flags under the previous name, which the till
+  // would move back into place.
+  for (const prefix of ['possistem', 'cyberplus']) {
+    localStorage.removeItem(`${prefix}.market.pos.core-migrated`);
+    localStorage.removeItem(`${prefix}.market.pos.catalog-sync`);
+  }
 } catch {
   /* storage blocked: nothing was remembered either */
 }

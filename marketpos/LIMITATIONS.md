@@ -8,7 +8,7 @@ Son yenilənmə: 2026-09-24
 |-------|--------|
 | Bütün disk (`find` + sudo) | `SyncHandlers*` / `sync.bootstrap` **C++ faylı yox** (silinmiş ağac) |
 | GitHub `AliMammadli-PB/possistem` | Yalnız **1.3.0** snapshot (12 sen); sync handler **yox**, heç vaxt push olunmayıb |
-| GitHub `offlinepos` / `possistemaz` | Eyni — köhnə market-pos, sync yox |
+| Digər köhnə GitHub repoları | Eyni — köhnə market-pos, sync yox |
 | VPS (`pos` /opt) | Yalnız control API + market web dist; C++ mənbə **yox** |
 | Trash / Timeshift | Bərpa edilə bilən market-pos ağacı **yox** |
 | **Claude Code file-history** | **TAPILDI** — 1.4.x sync C++ + electron (17–18 sen sessiyaları) |

@@ -36,8 +36,8 @@ import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketComman
 import { WarehouseModal, RegisterModal, PurchaseModal, TransferModal, WasteModal, StaffModal, RoleAvatar, Kpi, Modal, Field, NumPad } from './forms';
 // Imported, not a fixed ./assets path: the hashed name means no cache can serve an old picture.
 import loginBg from './assets/login-bg.png';
-const STORE_KEY = 'cyberplus.geyim.pos.v2';
-const LEGACY_MIGRATED_KEY = 'cyberplus.geyim.pos.core-migrated';
+const STORE_KEY = 'possistem.geyim.pos.v2';
+const LEGACY_MIGRATED_KEY = 'possistem.geyim.pos.core-migrated';
 
 const STOCK_VIEWS = new Set<View>(['inventory', 'warehouses', 'purchases', 'stocktake']);
 // The owner's rule: a missing permission never hides a button; using it says so.

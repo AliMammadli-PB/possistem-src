@@ -115,7 +115,7 @@ if (/^\d{4,5}$/.test(process.env.GEYIM_POS_AUTOMATION_PORT || '')) {
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
-app.setAppUserModelId('com.cyberplus.geyim.pos');
+app.setAppUserModelId('com.possistem.geyim.pos');
 app.setName('GeyimPos');
 // Isolate Geyim POS data from Restaurant POS (%APPDATA%/POSSISTEM/GeyimPOS).
 {
@@ -298,7 +298,7 @@ function loadSecureState() {
     const renamed = parsed.staff.some((user) => LEGACY_STAFF_NAMES[user.name]);
     if (renamed) {
       parsed.staff = parsed.staff.map((user) => ({ ...user, name: LEGACY_STAFF_NAMES[user.name] || user.name }));
-      if (parsed.activation.customerName === 'CyberPlus Geyim' || parsed.activation.customerName === 'Geyim Mağazası') {
+      if (parsed.activation.customerName === 'Geyim Mağazası') {
         parsed.activation.customerName = 'GeyimPos';
       }
       dirty = true;

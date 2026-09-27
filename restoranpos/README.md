@@ -143,9 +143,9 @@ Publish a new build:
 
 ```bash
 # bump the three version files, then:
-npm run package:win
-POS_SSH_USER=server POS_SSH_PASS='…' npm run publish:updates
-node scripts/sync-release-db.mjs      # register the row the app reads
+POS_ALLOW_UNSIGNED_PACKAGE=1 npm run package:win   # or with CSC_LINK for a signed build
+node scripts/publish-release.mjs restaurant        # market | geyim for the retail tills
+# needs the `pos` SSH alias (key auth); portal and site read latest.yml, no DB row
 ```
 
 Host layout:
@@ -156,9 +156,9 @@ https://possistem.az/pos-updates/Possistem-Setup-x.y.z.exe
 https://possistem.az/pos-source/   # optional source archive
 ```
 
-`latest.yml` carries `version`, `path`, `sha512` (**base64**) and `size`; the
-`releases` row in the control database must name the same version, otherwise
-in-app "Yeniləmə yoxla" and the installer disagree. Step-by-step playbooks live
+`latest.yml` carries `version`, `path`, `sha512` (**base64**) and `size`. The
+till, the customer portal and the site's release card all read it; the old
+`releases` table is no longer consulted. Step-by-step playbooks live
 in [`docs/releases/`](docs/releases).
 
 Override the feed with `UPDATE_URL` / `UPDATE_PROVIDER` if needed.

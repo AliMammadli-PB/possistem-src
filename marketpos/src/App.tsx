@@ -29,9 +29,20 @@ import { marketBooks, stockLines } from './books';
 import { longDate, money, newId } from './format';
 import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
 import { ProductModal, WarehouseModal, RegisterModal, PurchaseModal, TransferModal, WasteModal, StaffModal, RoleAvatar, Kpi, Modal, Field } from './forms';
-const STORE_KEY = 'cyberplus.market.pos.v2';
-const LEGACY_MIGRATED_KEY = 'cyberplus.market.pos.core-migrated';
-const CATALOG_SYNC_KEY = 'cyberplus.market.pos.catalog-sync';
+const STORE_KEY = 'possistem.market.pos.v2';
+const LEGACY_MIGRATED_KEY = 'possistem.market.pos.core-migrated';
+const CATALOG_SYNC_KEY = 'possistem.market.pos.catalog-sync';
+// The local keys used the old company name; a till keeps its values under the
+// new names (losing catalog-sync would re-run the catalogue import).
+for (const name of ['v2', 'core-migrated', 'catalog-sync']) {
+  try {
+    const legacy = `cyberplus.market.pos.${name}`;
+    const value = localStorage.getItem(legacy);
+    if (value === null) continue;
+    if (localStorage.getItem(`possistem.market.pos.${name}`) === null) localStorage.setItem(`possistem.market.pos.${name}`, value);
+    localStorage.removeItem(legacy);
+  } catch { /* storage blocked: nothing to move */ }
+}
 const CATALOG_SYNC_TOKEN = 'bravo-narimanov-azinko-catalog-aisles-v1';
 
 const STOCK_VIEWS = new Set<View>(['inventory', 'warehouses', 'purchases', 'stocktake']);
