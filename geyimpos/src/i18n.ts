@@ -99,6 +99,7 @@ const AUDIT_AZ: Record<string, string> = {
   PURCHASE_RECEIVE: 'Mal qəbulu', PORTAL_PURCHASE_RECEIVE: 'Portaldan mal qəbulu', PURCHASE_EDIT: 'Alış redaktə edildi',
   PURCHASE_RETURN: 'Təchizatçıya qaytarma', STOCKTAKE_POST: 'İnventarizasiya təsdiqləndi', STOCK_WARN: 'Stok xəbərdarlığı',
   STOCK_MISMATCH: 'Stok uyğunsuzluğu', ROLE_POLICY_APPLY: 'Səlahiyyətlər yeniləndi',
+  PRODUCT_CREATE: 'Məhsul yaradıldı', PRODUCT_UPDATE: 'Məhsul dəyişdirildi', PRODUCT_DELETE: 'Məhsul silindi', PRODUCT_SAVE: 'Məhsul yadda saxlanıldı',
 };
 const AUDIT_DETAIL_AZ: Record<string, string> = { 'imported localStorage snapshot': 'İlk açılış məlumatı' };
 const humanize = (code: string) => code.charAt(0) + code.slice(1).toLowerCase().replaceAll('_', ' ');

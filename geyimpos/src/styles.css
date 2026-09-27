@@ -442,3 +442,13 @@ span.modal-left{display:flex;align-items:center}
 .catalog-pane>.catalog-aisle-chips button.active svg,.catalog-pane>.catalog-aisle-chips button.active b{color:#fff}
 .catalog-pane>.catalog-aisle-chips button.active b{background:rgba(255,255,255,.18)}
 @media (pointer:coarse){.barcode-keys button{min-height:62px;font-size:21px}.catalog-pane>.catalog-aisle-chips button{min-height:48px}}
+
+/* Geyim sale tiles run sideways: colour/photo on the left, name, sizes and price on
+   the right, so a 3-row page still shows every name on a 768px-high till. */
+.product-grid-page>.product-card-lg{grid-template-rows:none;grid-template-columns:minmax(64px,34%) minmax(0,1fr);min-height:96px}
+.product-grid-page>.product-card-lg>.product-visual{height:100%;min-height:0;padding:0;border-bottom:0;border-right:1px solid #edf1f6}
+.product-grid-page>.product-card-lg>.product-visual.placeholder{padding:0}
+.product-grid-page>.product-card-lg .product-copy{align-content:center;padding:8px 10px 28px}
+.product-grid-page>.product-card-lg .product-copy strong{min-height:0;font-size:11.5px}
+.product-grid-page>.product-card-lg .product-price{right:10px;bottom:8px;font-size:13px}
+.product-grid-page>.product-card-lg .product-visual.placeholder .apparel-icon{width:44px;height:44px}

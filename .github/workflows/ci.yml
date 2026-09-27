@@ -132,7 +132,7 @@ jobs:
       - run: bash restoranpos/scripts/static-analysis-cpp.sh
 
   demo-wasm:
-    name: live demo (both cores in WebAssembly)
+    name: live demo (all three cores in WebAssembly)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -152,6 +152,9 @@ jobs:
           cmake --build restoranpos/native/build-wasm --target pos_core_wasm
           emcmake cmake -S marketpos/native -B marketpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build marketpos/native/build-wasm --target market_core_wasm
+          emcmake cmake -S geyimpos/native -B geyimpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build geyimpos/native/build-wasm --target market_core_wasm
+          test -s geyimpos/native/build-wasm/geyim-pos-core.wasm
       - run: node restoranpos/demo-web/smoke.mjs restoranpos/native/build-wasm marketpos/native/build-wasm
 
   secrets:
