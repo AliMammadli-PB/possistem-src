@@ -32,8 +32,8 @@ routes (`/market-pos/*`) are shared on purpose; the licence product is `geyim`.
 - **Touch and mouse.** `(pointer: coarse)` enlarges the targets. The payment
   and barcode pads work with either.
 - **Look.** It keeps the possistem blue. Its own things are:
-  - the hanger icon and boutique login background (`design/*.svg`, rendered by
-    sharp);
+  - the hanger icon (`design/app-icon.svg`, rendered by sharp); the login
+    background is the same photo as the other tills;
   - apparel icons (`src/ApparelIcon.tsx`);
   - the sidebar order;
   - the sale layout: barcode pad left, category chips on top.

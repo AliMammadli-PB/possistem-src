@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(geyim_pos_core LANGUAGES C CXX VERSION 1.0.0)
+project(geyim_pos_core LANGUAGES C CXX VERSION 1.0.1)
 
 # The WebAssembly demo build: the core reports refusals as exceptions, and
 # Emscripten turns exception catching off unless asked.
