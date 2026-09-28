@@ -29,6 +29,7 @@ jobs:
             marketpos/package-lock.json
             geyimpos/package-lock.json
             aptekpos/package-lock.json
+            topdanpos/package-lock.json
       - name: Install (restaurant + shared tooling)
         working-directory: restoranpos
         run: npm ci --no-audit --no-fund
@@ -41,13 +42,16 @@ jobs:
       - name: Install (Aptek UI)
         working-directory: aptekpos
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install (Topdan UI)
+        working-directory: topdanpos
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Versions agree (package, lock, CMake, Electron)
         working-directory: restoranpos
         run: npm run check:versions
       - name: Vendored C++ dependencies match SHA256SUMS
         working-directory: restoranpos
         run: node scripts/verify-third-party.mjs
-      - name: Typecheck (restaurant, market, Geyim, Aptek)
+      - name: Typecheck (restaurant, market, Geyim, Aptek, Topdan)
         working-directory: restoranpos
         run: npm run typecheck
       - name: Lint (Electron main, build and patch scripts)
@@ -70,18 +74,23 @@ jobs:
       - name: Aptek renderer build
         working-directory: restoranpos
         run: npm run aptek:build
+      - name: Topdan renderer build
+        working-directory: restoranpos
+        run: npm run topdan:build
       - name: npm audit (high and above)
         run: |
           (cd restoranpos && npm audit --audit-level=high)
           (cd marketpos && npm audit --audit-level=high)
           (cd geyimpos && npm audit --audit-level=high)
           (cd aptekpos && npm audit --audit-level=high)
+          (cd topdanpos && npm audit --audit-level=high)
       - name: SBOM
         run: |
           (cd restoranpos && npm sbom --sbom-format cyclonedx > ../sbom-restoranpos.cdx.json)
           (cd marketpos && npm sbom --sbom-format cyclonedx > ../sbom-marketpos.cdx.json)
           (cd geyimpos && npm sbom --sbom-format cyclonedx > ../sbom-geyimpos.cdx.json)
           (cd aptekpos && npm sbom --sbom-format cyclonedx > ../sbom-aptekpos.cdx.json)
+          (cd topdanpos && npm sbom --sbom-format cyclonedx > ../sbom-topdanpos.cdx.json)
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
@@ -134,6 +143,12 @@ jobs:
           POS_APP=aptekpos node scripts/build-market-core.mjs
           WINE=$(command -v wine || command -v wine64)
           cd ../aptekpos/native/build && "$WINE" ./market_core_tests.exe --reporter compact
+      - name: Topdan core
+        working-directory: restoranpos
+        run: |
+          POS_APP=topdanpos node scripts/build-market-core.mjs
+          WINE=$(command -v wine || command -v wine64)
+          cd ../topdanpos/native/build && "$WINE" ./market_core_tests.exe --reporter compact
 
   cpp-static:
     name: C++ static analysis (clang-tidy)
@@ -173,6 +188,9 @@ jobs:
           emcmake cmake -S aptekpos/native -B aptekpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build aptekpos/native/build-wasm --target market_core_wasm
           test -s aptekpos/native/build-wasm/aptek-pos-core.wasm
+          emcmake cmake -S topdanpos/native -B topdanpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build topdanpos/native/build-wasm --target market_core_wasm
+          test -s topdanpos/native/build-wasm/topdan-pos-core.wasm
       - run: node restoranpos/demo-web/smoke.mjs restoranpos/native/build-wasm marketpos/native/build-wasm
 
   secrets:

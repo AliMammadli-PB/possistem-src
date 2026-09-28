@@ -1,0 +1,1496 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity, BookUser, Gauge, ArrowLeftRight, ArrowRightLeft, FileText, Tags, BadgeDollarSign, Boxes, Building2, Check,
+  ChevronRight, CircleDollarSign, ClipboardList, Cloud, CloudOff, Download,
+  Expand, FileClock, ImagePlus, KeyRound, Languages, LockKeyhole, LogOut, MapPin,
+  Monitor, PackageCheck, PackagePlus, PackageSearch, Plus, ReceiptText,
+  RefreshCw, RotateCcw, Search, Settings, ShieldCheck,
+  ShoppingBasket, Smartphone, Store, Trash2, TriangleAlert, Truck, UserCog,
+  WalletCards, Warehouse as WarehouseIcon, X,
+} from 'lucide-react';
+
+import { createInitialState, demoStaff } from './data';
+import { CatalogAisleNav } from './CatalogAisleNav';
+import { ChangePinScreen } from './ChangePinScreen';
+import { canAccess, ROLE_VIEWS, stockOf } from './domain';
+import { auditActionLabel, auditDetailLabel, roleLabel, tr, viewLabel } from './i18n';
+import { marketCoreClient } from './core/client';
+import { ProductVisual } from './ProductVisual';
+import { RolePermissionsPanel } from './RolePermissionsPanel';
+import { InventoryProductGrid } from './SaleProductGrid';
+import { ShelvesPanel } from './Shelves';
+import { qtyLabel } from './wholesale';
+import { GoodsModal, StockReceiveModal } from './ProductForm';
+import { InvoiceSale } from './InvoiceSale';
+import { CustomersPage } from './Customers';
+import { WholesaleReports } from './Reports';
+import { LabelModal } from './Labels';
+import { ReturnModal, type ExchangeCredit } from './ReturnModal';
+import {
+  FiscalBadge, HardwareSettingsCard, ImportCsvPage, PlatformStubsPage,
+  RegistersOpsPage, ReportsOpsPage, StocktakePage,
+} from './RetailOpsPanels';
+import type { ActivationStatus, CartLine, Lang, PersistedState, Product, PurchaseOrder, Register, Role, Sale, SessionUser, Shelf, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
+
+import { marketBooks, stockLines } from './books';
+import { longDate, money, newId } from './format';
+import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
+import { WarehouseModal, RegisterModal, PurchaseModal, TransferModal, WasteModal, StaffModal, RoleAvatar, Kpi, Field } from './forms';
+// Imported, not a fixed ./assets path: the hashed name means no cache can serve an old picture.
+import loginBg from './assets/login-bg.png';
+const STORE_KEY = 'possistem.topdan.pos.v2';
+const LEGACY_MIGRATED_KEY = 'possistem.topdan.pos.core-migrated';
+
+const STOCK_VIEWS = new Set<View>(['inventory', 'warehouses', 'purchases', 'stocktake']);
+// The owner's rule: a missing permission never hides a button; using it says so.
+const DENIED = 'Buna icazəniz yoxdur';
+/** Electron wraps a main-process refusal in "Error invoking remote method …"; show the refusal itself. */
+/** True when the element (or one it sits in) is something a person acts on. */
+function actsOn(target: EventTarget | null, root: Element): boolean {
+  for (let el = target instanceof Element ? target : null; el && el !== root; el = el.parentElement) {
+    if (el.matches('button, a, input, select, textarea, label, [role="button"], [role="tab"], [contenteditable="true"]')) return true;
+    if (getComputedStyle(el).cursor === 'pointer') return true;
+  }
+  return false;
+}
+
+/**
+ * A closed section, fully drawn: looking is free, acting on it is refused.
+ * The owner's rule - the screen keeps its buttons; pressing one says why not.
+ */
+function LockedArea({ locked, onDenied, children }: { locked: boolean; onDenied: () => void; children: React.ReactNode }) {
+  if (!locked) return <>{children}</>;
+  const refuse = (event: React.SyntheticEvent) => {
+    if (!actsOn(event.target, event.currentTarget)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.type !== 'pointerdown') onDenied();
+  };
+  return (
+    <div
+      className="locked-area"
+      data-ps-locked="true"
+      onClickCapture={refuse}
+      onPointerDownCapture={refuse}
+      onSubmitCapture={refuse}
+      onKeyDownCapture={(event) => { if (event.key !== 'Tab' && !event.key.startsWith('Arrow') && event.key !== 'Escape') refuse(event); }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function cleanNotice(message: string | null): string | null {
+  if (!message) return message;
+  const bare = message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
+  return /icazə yoxdur|PERMISSION_DENIED|role required/i.test(bare) ? DENIED : bare;
+}
+const MARKET_AREAS = ['dashboard', 'sale', 'inventory', 'warehouses', 'purchases', 'returns', 'reports', 'registers', 'stocktake', 'customers', 'import', 'staff', 'settings'];
+// What each PC is for, set by the owner on possistem.az (Kompüterlər): the
+// website's areas are narrowed to it, so the store-room PC opens on stock.
+const STATION_VIEWS: Record<string, string[]> = {
+  cashier: ['sale', 'returns', 'registers', 'customers', 'settings'],
+  waiter: ['sale', 'customers', 'settings'],
+  kitchen: ['sale', 'settings'],
+  warehouse: ['inventory', 'warehouses', 'purchases', 'stocktake', 'import', 'reports', 'settings'],
+};
+function narrowByStation(access: string[] | null, station: string | undefined): string[] | null {
+  const allowed = station ? STATION_VIEWS[station] : undefined;
+  if (!allowed) return access;
+  return (access ?? MARKET_AREAS).filter((key) => allowed.includes(key));
+}
+
+function loadState(): PersistedState {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') as (Omit<PersistedState, 'schemaVersion'> & { schemaVersion: number }) | null;
+    if (parsed?.schemaVersion === 5 && Array.isArray(parsed.products)) return parsed as PersistedState;
+  } catch { /* Corrupt local state must not block the till. */ }
+  return createInitialState();
+}
+
+export default function App() {
+  const initial = useRef(loadState()).current;
+  const [state, setState] = useState<PersistedState>(initial);
+  const [coreReady, setCoreReady] = useState(false);
+  const [coreError, setCoreError] = useState<string | null>(null);
+  const [staff, setStaff] = useState<StaffProfile[]>(demoStaff);
+  const [session, setSession] = useState<SessionUser | null>(null);
+  const [lang, setLang] = useState<Lang>('az');
+  const [view, setView] = useState<View>('dashboard');
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [online, setOnline] = useState(navigator.onLine);
+  const [cloudConnected, setCloudConnected] = useState(false);
+  const [inventoryOn, setInventoryOn] = useState(true);
+  // What the website last allowed, kept across restarts: a till that starts
+  // offline must not come up with every screen the head admin closed open again.
+  const [marketAccess, setMarketAccess] = useState<string[] | null>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('market.access') ?? 'null');
+      return Array.isArray(saved) ? saved : null;
+    } catch { return null; }
+  });
+  const [notice, setNoticeRaw] = useState<string | null>(null);
+  const setNotice = useCallback((message: string | null) => setNoticeRaw(cleanNotice(message)), []);
+  const deny = useCallback(() => setNoticeRaw(DENIED), []);
+  const [productModal, setProductModal] = useState<{ product: Product | null } | null>(null);
+  const [receiveProduct, setReceiveProduct] = useState<Product | null>(null);
+  const [labelProducts, setLabelProducts] = useState<Product[] | null>(null);
+  const [returning, setReturning] = useState<Sale | null>(null);
+  const [exchangeCredit, setExchangeCredit] = useState<ExchangeCredit | null>(null);
+  const [warehouseModal, setWarehouseModal] = useState(false);
+  const [registerModal, setRegisterModal] = useState(false);
+  const [purchaseModal, setPurchaseModal] = useState(false);
+  const [staffModal, setStaffModal] = useState(false);
+  const [transferModal, setTransferModal] = useState(false);
+  const [wasteModal, setWasteModal] = useState(false);
+
+  const t = (key: string) => tr(lang, key);
+
+  const refreshFromCore = async () => {
+    const next = await marketCoreClient.getState();
+    setState(next);
+    return next;
+  };
+
+  // The core announces every write - its own, and another till's arriving
+  // through sync.apply - so a price or a stock count changed on one PC lands on
+  // every other PC's screen without anyone refreshing. A receipt or a sync batch
+  // is many writes; they collapse into one read.
+  useEffect(() => {
+    if (!coreReady || !window.marketCore?.onEvent) return;
+    let timer = 0;
+    const off = window.marketCore.onEvent((evt) => {
+      if (evt?.event !== 'state.changed') return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void refreshFromCore().catch(() => undefined); }, 200);
+    });
+    return () => { window.clearTimeout(timer); off(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coreReady]);
+
+  // Safety net: a dropped frame must not strand the till on stale data.
+  useEffect(() => {
+    if (!coreReady) return;
+    const timer = window.setInterval(() => { void refreshFromCore().catch(() => undefined); }, 60000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coreReady]);
+
+  // The sync service (LAN peers + cloud) says whether this till is talking to
+  // the others; the cloud badge follows it rather than only the 30 s heartbeat.
+  const [syncStatus, setSyncStatus] = useState<{ mode: 'vps' | 'lan' | 'offline'; peerCount: number; pending: number } | null>(null);
+  useEffect(() => {
+    const sync = window.marketSystem?.sync;
+    if (!sync?.onChanged) return;
+    void sync.status?.().then((status) => setSyncStatus(status)).catch(() => undefined);
+    return sync.onChanged((status) => {
+      setSyncStatus(status);
+      if (typeof status?.vpsConnected === 'boolean') setCloudConnected(status.vpsConnected);
+    });
+  }, [coreReady]);
+
+  // Several PCs share one shop's data, so each PC must be its own register -
+  // two tills ringing up on one register would share a drawer and a Z report.
+  // The first person who works a till names it; the core binds the register to
+  // this device (settings.deviceRegisterId, never synced).
+  const [registerName, setRegisterName] = useState('');
+  const [registerBusy, setRegisterBusy] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const bindThisRegister = async () => {
+    if (!session || !registerName.trim()) return;
+    setRegisterBusy(true); setRegisterError(null);
+    try {
+      await marketCoreClient.cash.bindDeviceRegister(registerName.trim(), session.id, Date.now());
+      await refreshFromCore();
+    } catch (error) {
+      setRegisterError(error instanceof Error ? error.message : String(error));
+    } finally { setRegisterBusy(false); }
+  };
+
+  const mutate = (fn: (previous: PersistedState) => PersistedState, action?: string, detail?: string) => {
+    // Browser / core-unavailable fallback only. Electron retail mutations go through C++.
+    if (coreReady && marketCoreClient.available()) {
+      void (async () => {
+        try {
+          if (action && session) await marketCoreClient.audit.append(session.id, action, detail || action);
+          await refreshFromCore();
+        } catch (err) {
+          setNotice(err instanceof Error ? err.message : String(err));
+        }
+      })();
+      return;
+    }
+    setState((previous) => {
+      const next = fn(previous);
+      if (!action || !session) return next;
+      return { ...next, audits: [{ id: newId('audit'), createdAt: Date.now(), actorId: session.id, action, detail: detail || action }, ...next.audits].slice(0, 200), syncQueue: cloudConnected ? next.syncQueue : next.syncQueue + 1 };
+    });
+  };
+  useEffect(() => {
+    let cancelled = false;
+    // Read-only. The catalogue migrations below write, and writing needs a
+    // permission - which needs somebody signed in, which has not happened yet
+    // when this runs. Splitting the two is what lets the core refuse a stock
+    // or catalogue write from a session that was never allowed to make one.
+    const boot = async () => {
+      if (!marketCoreClient.available()) return;
+      try {
+        for (let i = 0; i < 40; i += 1) {
+          const status = await marketCoreClient.status();
+          if (status.state === 'ready') break;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        const status = await marketCoreClient.status();
+        if (status.state !== 'ready') throw new Error(`core state: ${status.state}`);
+        const snapshot = await marketCoreClient.getState();
+        if (cancelled) return;
+        setState({ ...snapshot, schemaVersion: 5, products: snapshot.products ?? [] });
+        setCoreReady(true);
+        setCoreError(null);
+      } catch (err) {
+        if (!cancelled) setCoreError(err instanceof Error ? err.message : String(err));
+      }
+    };
+    void boot();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    // The one-time move of this till's local state into the core, once
+    // somebody is signed in: it writes, so it runs as that person and is
+    // refused if their role may not - then the next person who may runs it.
+    if (!coreReady || !session) return;
+    if (localStorage.getItem(LEGACY_MIGRATED_KEY) === '1') return;
+
+    let cancelled = false;
+    const migrate = async () => {
+      try {
+        let snapshot = await marketCoreClient.getState();
+        if (!snapshot.products || snapshot.products.length === 0) {
+          snapshot = await marketCoreClient.importLegacy(loadState());
+        }
+        localStorage.setItem(LEGACY_MIGRATED_KEY, '1');
+        if (!cancelled) setState({ ...snapshot, schemaVersion: 5, products: snapshot.products ?? [] });
+      } catch {
+        // Not permitted, or offline: the flag stays unset and the next sign-in tries again.
+      }
+    };
+    void migrate();
+    return () => { cancelled = true; };
+  }, [coreReady, session]);
+
+  useEffect(() => {
+    if (coreReady) {
+      localStorage.removeItem(STORE_KEY);
+      return;
+    }
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  }, [state, coreReady]);
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => { setOnline(false); setCloudConnected(false); };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
+  }, []);
+  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(null), 3000); return () => window.clearTimeout(timer); }, [notice]);
+  useEffect(() => {
+    const toggle = (event: KeyboardEvent) => {
+      if (event.key !== 'F11') return;
+      event.preventDefault();
+      void window.marketSystem?.display.toggleFullscreen();
+    };
+    window.addEventListener('keydown', toggle);
+    return () => window.removeEventListener('keydown', toggle);
+  }, []);
+  useEffect(() => { void (window.marketSystem?.staff.list() ?? Promise.resolve(demoStaff)).then(setStaff).catch(() => setStaff(demoStaff)); }, []);
+  useEffect(() => {
+    if (!session || !window.marketSystem) return;
+    let active = true;
+    let pushing = false;
+    const push = async () => {
+      if (pushing) return;
+      pushing = true;
+      try {
+      const sentAck = readCommandIds(ACK_PENDING_KEY).slice(-40);
+      const sentFail = readCommandIds(FAIL_PENDING_KEY).slice(-40);
+      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      const sales = state.sales.filter((sale) => !sale.refunded && sale.createdAt >= dayStart.getTime());
+      const dailySalesMinor = sales.reduce((sum, sale) => sum + sale.totalMinor, 0);
+      const cashMinor = sales.reduce((sum, sale) => sum + (sale.payment.method === 'card' ? 0 : sale.payment.cashMinor ?? sale.payment.amountMinor), 0);
+      const cardMinor = sales.reduce((sum, sale) => sum + (sale.payment.method === 'cash' ? 0 : sale.payment.cardMinor ?? sale.payment.amountMinor), 0);
+      const lowStock = state.products.filter((product) => product.active && stockOf(product) <= product.minStock);
+      const cashMovements = coreReady && marketCoreClient.available()
+        ? await marketCoreClient.cash.movements().catch(() => undefined) : undefined;
+      const finance = coreReady && marketCoreClient.available()
+        ? await marketCoreClient.portal.finance().catch(() => undefined) : undefined;
+      const response = await window.marketSystem?.sync.push(session.sessionToken, {
+        storeName: state.settings.storeName,
+        terminalName: state.settings.terminalName,
+        dailySalesMinor,
+        transactionCount: sales.length,
+        cashMinor,
+        cardMinor,
+        openRegisters: state.registers.filter((row) => row.status === 'open').length,
+        criticalStock: lowStock.length,
+        queue: state.syncQueue,
+        registers: state.registers.map((register) => ({
+          id: register.id,
+          name: register.name,
+          status: register.status,
+          operatorName: staff.find((row) => row.id === register.operatorId)?.name ?? null,
+          salesMinor: sales.filter((sale) => sale.registerId === register.id).reduce((sum, sale) => sum + sale.totalMinor, 0),
+        })),
+        lowStock: lowStock.slice(0, 100).map((product) => ({ id: product.id, name: product.name.az, sku: product.sku, barcode: product.barcode, stock: stockOf(product), minStock: product.minStock })),
+        warehouses: state.warehouses.map((warehouse) => ({ id: warehouse.id, name: warehouse.name, active: warehouse.active, totalStock: state.products.reduce((sum, product) => sum + Math.max(0, product.warehouseStock[warehouse.id] ?? 0), 0) })),
+        updatedAt: Date.now(),
+        lines: stockLines(state),
+        ...(sentAck.length ? { appliedCommandIds: sentAck } : {}),
+        ...(sentFail.length ? { failedCommandIds: sentFail } : {}),
+        ...(sentFail.length ? { failedCommandReasons: failedCommandReasons().filter((row) => sentFail.includes(row.id)) } : {}),
+      }, marketBooks(state, cashMovements, finance));
+      if (!active || !response) return;
+      if (response.connected) {
+        clearPending(ACK_PENDING_KEY, sentAck);
+        clearPending(FAIL_PENDING_KEY, sentFail);
+      }
+      setCloudConnected(response.connected);
+      // Only a real answer changes what is allowed. An offline or failed push
+      // carries no list, and reading that as "no restriction" opened every
+      // screen the head admin had closed the moment the network dropped.
+      if (response.connected) {
+        setInventoryOn(response.inventory !== false);
+        const access = narrowByStation(Array.isArray(response.access) ? response.access : null, response.device?.station);
+        setMarketAccess(access);
+        try { localStorage.setItem('market.access', JSON.stringify(access)); } catch { /* private storage */ }
+      }
+      if (response.connected) setState((previous) => ({ ...previous, syncQueue: 0 }));
+      const canApplyPortal = session.role === 'manager' || session.role === 'warehouse' || session.role === 'head_cashier';
+      if (response.connected && canApplyPortal) {
+        let changed = false;
+        for (const cmd of response.commands ?? []) {
+          if (!cmd?.id || readCommandIds(ACK_KEY).includes(cmd.id) || readCommandIds(FAIL_KEY).includes(cmd.id)) continue;
+          try {
+            const result = await applyMarketCommand(cmd, session, coreReady, state);
+            if (result === 'local') {
+              const body = cmd.body ?? {};
+              const str = (key: string) => (typeof body[key] === 'string' ? body[key] : '');
+              const num = (key: string) => Math.trunc(Number(body[key]) || 0);
+              setState((previous) => {
+                if (cmd.kind === 'warehouse.create') {
+                  const warehouse = { id: str('id') || newId('wh'), code: 'WH', name: str('name'), address: '', manager: '', active: true };
+                  return { ...previous, warehouses: [...previous.warehouses, warehouse] };
+                }
+                if (cmd.kind === 'warehouse.rename') return { ...previous, warehouses: previous.warehouses.map((row) => row.id === str('id') ? { ...row, name: str('name') || row.name } : row) };
+                if (cmd.kind === 'warehouse.close') return { ...previous, warehouses: previous.warehouses.map((row) => row.id === str('id') ? { ...row, active: false } : row) };
+                const touch = (qtyFor: (current: number) => number) => ({
+                  ...previous,
+                  products: previous.products.map((product) => product.id !== str('productId') ? product : {
+                    ...product,
+                    warehouseStock: { ...product.warehouseStock, [str('warehouseId')]: qtyFor(product.warehouseStock[str('warehouseId')] ?? 0) },
+                  }),
+                });
+                if (cmd.kind === 'stock.receive' || cmd.kind === 'stock.adjust') return touch((current) => current + num('qty'));
+                if (cmd.kind === 'stock.count') return touch(() => num('qty'));
+                if (cmd.kind === 'stock.waste') return touch((current) => current - Math.abs(num('qty')));
+                if (cmd.kind === 'stock.transfer') {
+                  return { ...previous, products: previous.products.map((product) => product.id !== str('productId') ? product : { ...product, warehouseStock: { ...product.warehouseStock, [str('fromWarehouseId')]: (product.warehouseStock[str('fromWarehouseId')] ?? 0) - Math.abs(num('qty')), [str('toWarehouseId')]: (product.warehouseStock[str('toWarehouseId')] ?? 0) + Math.abs(num('qty')) } }) };
+                }
+                if (cmd.kind === 'product.save') {
+                  const existing = previous.products.find((row) => row.barcode && str('barcode') && row.barcode === str('barcode'));
+                  const created = productFromCard(body, existing);
+                  if (!existing) return { ...previous, products: [created, ...previous.products] };
+                  return { ...previous, products: previous.products.map((row) => row.id === existing.id ? created : row) };
+                }
+                return previous;
+              });
+            } else if (result === 'ok') changed = true;
+            else continue;
+            rememberCommandId(ACK_KEY, cmd.id);
+            rememberCommandId(ACK_PENDING_KEY, cmd.id);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (!/icazə|permission|forbidden/i.test(message)) rememberFailure(cmd.id, message);
+          }
+        }
+        if (changed && coreReady) await refreshFromCore();
+      }
+      } finally { pushing = false; }
+    };
+    void push();
+    const timer = window.setInterval(() => void push(), 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session, staff, coreReady, state.settings.storeName, state.settings.terminalName, state.sales, state.registers, state.products, state.warehouses, state.syncQueue]);
+
+  const login = async (pin: string) => {
+    try {
+      let user: SessionUser;
+      if (window.marketSystem) {
+        // The PIN alone names the person, as on the restaurant till.
+        user = await window.marketSystem.auth.login('', pin);
+      } else {
+        // Browser preview (npm run market:dev) has no staff store; it is never a
+        // shipped till, so a production web build refuses sign-in outright.
+        const profile = demoStaff[0];
+        if (!import.meta.env.DEV || !profile || !/^\d{4,8}$/.test(pin)) throw new Error(t('invalidPin'));
+        user = { ...profile, sessionToken: `browser-${profile.id}` };
+      }
+      setSession(user);
+      const first = ROLE_VIEWS[user.role][0] ?? 'dashboard';
+      setView(first);
+      setNotice(`${user.name} · ${roleLabel(user.role, lang)}`);
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : '';
+      throw new Error(/yanlış|invalid|wrong|pin/i.test(raw) || !raw ? t('invalidPin') : raw.includes('remote method') ? t('invalidPin') : raw);
+    }
+  };
+
+  const logout = async () => {
+    if (session && window.marketSystem) await window.marketSystem.auth.logout(session.sessionToken).catch(() => false);
+    setSession(null); setCart([]); setView('dashboard');
+  };
+
+  useEffect(() => {
+    if (!session || !window.marketSystem?.activation?.refresh) return;
+    let alive = true;
+    const refreshLicense = async () => {
+      try {
+        const status = await window.marketSystem!.activation.refresh();
+        if (!alive) return;
+        if ((status as ActivationStatus & { inventory?: boolean }).inventory === false) setInventoryOn(false);
+        if (status.mode === 'expired' || status.mode === 'revoked') {
+          if (session) await window.marketSystem!.auth.logout(session.sessionToken).catch(() => false);
+          setSession(null);
+          setCart([]);
+          setView('dashboard');
+          setNotice(tr(lang, 'licenseBlocked'));
+        }
+      } catch { /* offline: keep session */ }
+    };
+    void refreshLicense();
+    const timer = window.setInterval(() => void refreshLicense(), 5 * 60 * 1000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [session?.sessionToken, lang]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (!inventoryOn && STOCK_VIEWS.has(view)) {
+      setView('dashboard');
+      return;
+    }
+    if (marketAccess && !marketAccess.includes(view)) {
+      const next = ROLE_VIEWS[session.role].find((id) => marketAccess.includes(id) && (inventoryOn || !STOCK_VIEWS.has(id)));
+      if (next) setView(next);
+    }
+  }, [inventoryOn, view, marketAccess, session]);
+
+  if (!session) return <AuthGate lang={lang} setLang={setLang} staff={staff} onLogin={login} />;
+  if (session.mustChangePin && window.marketSystem) {
+    return (
+      <ChangePinScreen
+        lang={lang}
+        session={session}
+        onChanged={(profile) => {
+          setSession({ ...session, ...profile, mustChangePin: false });
+          setStaff((rows) => rows.map((row) => (row.id === profile.id ? { ...row, ...profile } : row)));
+        }}
+        onLogout={() => void logout()}
+      />
+    );
+  }
+
+  const needsRegister = coreReady && marketCoreClient.available() && !state.settings.deviceRegisterId &&
+    (session.role === 'cashier' || session.role === 'head_cashier' || session.role === 'manager');
+  if (needsRegister) {
+    return (
+      <div className="modal-backdrop register-setup-backdrop" role="presentation">
+        <form className="modal register-setup-modal" onSubmit={(event) => { event.preventDefault(); void bindThisRegister(); }}>
+          <header className="modal-head">
+            <div>
+              <p className="brand-kicker">{t('registers')}</p>
+              <h2>{t('registerSetupTitle')}</h2>
+              <p>{t('registerSetupHint')}</p>
+            </div>
+            <Store aria-hidden="true" />
+          </header>
+          <div className="modal-body">
+            <label className="field">
+              <span>{t('registerName')}</span>
+              <input autoFocus maxLength={80} value={registerName} onChange={(event) => setRegisterName(event.target.value)} disabled={registerBusy} />
+            </label>
+            {registerError && <p className="form-error">{registerError}</p>}
+          </div>
+          <div className="modal-actions">
+            <button className="modal-primary" type="submit" disabled={registerBusy || !registerName.trim()}>
+              <Check />{registerBusy ? '…' : t('registerSetupContinue')}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  const viewAllowed = (id: View) => (inventoryOn || !STOCK_VIEWS.has(id)) && (marketAccess == null || marketAccess.includes(id));
+  const allowedViews = ROLE_VIEWS[session.role].filter((id) => viewAllowed(id));
+  const safeSetView = (next: View) => { if (canAccess(session.role, next) && viewAllowed(next)) setView(next); else deny(); };
+  const allNav: Array<{ id: View; icon: typeof Store }> = [
+    // Topdan order: the invoice, the buyers and their debts, the goods, purchases, then reports.
+    { id: 'sale', icon: FileText }, { id: 'customers', icon: BookUser }, { id: 'inventory', icon: Boxes },
+    { id: 'purchases', icon: Truck }, { id: 'reports', icon: Activity }, { id: 'returns', icon: ArrowLeftRight },
+    { id: 'stocktake', icon: ClipboardList }, { id: 'warehouses', icon: WarehouseIcon }, { id: 'dashboard', icon: Gauge },
+    { id: 'registers', icon: Store }, { id: 'staff', icon: UserCog }, { id: 'import', icon: Download },
+    { id: 'platform', icon: Cloud }, { id: 'mobile', icon: Smartphone }, { id: 'settings', icon: Settings },
+  ];
+  // Every screen stays in the sidebar; the locked ones are dimmed and refuse.
+  const nav = allNav;
+
+  const productMap = new Map(state.products.map((product) => [product.id, product]));
+
+  const saveGoods = (product: Product) => {
+    void (async () => {
+      try {
+        if (coreReady && marketCoreClient.available()) {
+          const exists = state.products.some((row) => row.id === product.id);
+          // An edit never moves stock (that is a receipt or a stocktake); a new product may bring its opening stock.
+          const { stock: _stock, warehouseStock, ...fields } = product;
+          if (exists) await marketCoreClient.products.save({ ...fields, warehouseStock: {} }, session.id);
+          else await marketCoreClient.products.create({ ...fields, warehouseStock }, session.id);
+          await refreshFromCore();
+        } else {
+          mutate((previous) => ({ ...previous, products: previous.products.some((row) => row.id === product.id) ? previous.products.map((row) => row.id === product.id ? product : row) : [product, ...previous.products] }), 'PRODUCT_SAVE', product.name.az);
+        }
+        setProductModal(null); setNotice(t('productSaved'));
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  };
+
+  const receiveOrder = (order: PurchaseOrder) => {
+    void (async () => {
+      try {
+        if (coreReady && marketCoreClient.available()) {
+          await marketCoreClient.purchases.receive(order.id, session.id);
+          await refreshFromCore();
+        } else {
+          mutate((previous) => ({
+            ...previous,
+            products: previous.products.map((product) => {
+              const qty = order.lines.find((line) => line.productId === product.id)?.qty ?? 0;
+              return qty ? { ...product, warehouseStock: { ...product.warehouseStock, [order.warehouseId]: (product.warehouseStock[order.warehouseId] ?? 0) + qty } } : product;
+            }),
+            purchaseOrders: previous.purchaseOrders.map((row) => row.id === order.id ? { ...row, status: 'received' } : row),
+          }), 'PURCHASE_RECEIVE', order.id);
+        }
+        setNotice(`${order.id} · ${t('received')}`);
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  };
+
+  const refundSale = (sale: Sale) => {
+    void (async () => {
+      try {
+        if (coreReady && marketCoreClient.available()) {
+          await marketCoreClient.returns.create(sale.id, session.id);
+          await refreshFromCore();
+        } else {
+          mutate((previous) => ({ ...previous, sales: previous.sales.map((row) => row.id === sale.id ? { ...row, refunded: true } : row), products: previous.products.map((product) => { const qty = sale.items.find((line) => line.productId === product.id)?.qty ?? 0; return qty ? { ...product, warehouseStock: { ...product.warehouseStock, [previous.settings.defaultWarehouseId]: (product.warehouseStock[previous.settings.defaultWarehouseId] ?? 0) + qty } } : product; }) }), 'SALE_REFUND', sale.receiptNo);
+        }
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  };
+
+  const toggleRegister = (register: Register) => {
+    void (async () => {
+      try {
+        if (coreReady && marketCoreClient.available()) {
+          if (register.status === 'closed') await marketCoreClient.cash.open(register.id, session.id, register.openingFloatMinor || 0);
+          else await marketCoreClient.cash.close(register.id, session.id);
+          await refreshFromCore();
+        } else {
+          mutate((previous) => ({ ...previous, registers: previous.registers.map((row) => row.id === register.id ? { ...row, status: row.status === 'open' ? 'closed' : 'open', openedAt: row.status === 'closed' ? Date.now() : undefined, operatorId: row.status === 'closed' ? session.id : undefined } : row) }), 'REGISTER_TOGGLE', register.code);
+        }
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  };
+
+  return (
+    <div className="market-shell">
+      <aside className="rail">
+        <button className="brand-mark" onClick={() => safeSetView('dashboard')} aria-label="TopdanPos ana səhifə"><span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" /></span><span>TopdanPos</span></button>
+        <nav>{nav.map(({ id, icon: Icon }) => { const locked = !allowedViews.includes(id); return <button key={id} className={view === id ? 'active' : ''} aria-disabled={locked || undefined} onClick={() => locked ? deny() : safeSetView(id)} title={locked ? `${viewLabel(id, lang)} · ${DENIED}` : viewLabel(id, lang)}><Icon /><span>{viewLabel(id, lang)}</span></button>; })}</nav>
+        <button className="rail-user" type="button" onClick={() => void logout()} title={t('logout')} aria-label={t('logout')}>
+          <RoleAvatar role={session.role} name={session.name} compact />
+          <span><b>{session.name}</b><small>{t('logout')}</small></span>
+          <LogOut />
+        </button>
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <div className="store-title">{state.settings.logoUrl ? <img src={state.settings.logoUrl} alt="" /> : <span className="ps-brand-mark store-mini"><img src="./assets/brand-mark.png" alt="" /></span>}<div><p>TOPDAN POS · TOPDAN SATIŞ VƏ ANBAR</p><h1>{viewLabel(view, lang)}</h1></div></div>
+          <div className="top-actions">
+            <div className={`connection ${online ? 'online' : ''}`}>{online ? <Cloud /> : <CloudOff />}<span>{online ? (cloudConnected ? t('online') : t('offline')) : t('offline')}{state.syncQueue ? ` · ${state.syncQueue} ${t('pending')}` : ''}{syncStatus?.peerCount ? ` · ${syncStatus.peerCount} kassa (LAN)` : ''}</span></div>
+            <FiscalBadge coreReady={coreReady} />
+            <div className="terminal-pill"><Monitor /><span>{state.settings.terminalName}<small>{state.registers.find((row) => row.id === state.settings.defaultRegisterId)?.name}</small></span></div>
+            <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Language"><option value="az">AZ</option><option value="ru">RU</option><option value="en">EN</option></select>
+            <button className="icon-button" onClick={() => void window.marketSystem?.display.toggleFullscreen()} title="F11"><Expand /></button>
+            <button type="button" className="topbar-logout" onClick={() => void logout()} aria-label={t('logout')}><LogOut />{t('logout')}</button>
+          </div>
+        </header>
+
+        <main className="page-area">
+          <LockedArea locked={!viewAllowed(view)} onDenied={deny}>
+          {view === 'dashboard' && <Dashboard state={state} staff={staff} session={session} lang={lang} onView={safeSetView} />}
+          {view === 'sale' && <InvoiceSale state={state} setState={setState} session={session} lang={lang} cart={cart} setCart={setCart} cloudConnected={cloudConnected} notify={setNotice} coreReady={coreReady} onRefresh={refreshFromCore} exchangeCredit={exchangeCredit} onExchangeDone={() => setExchangeCredit(null)} />}
+          {view === 'inventory' && <InventoryPage state={state} lang={lang} session={session} notify={setNotice} coreReady={coreReady} canEdit={session.role === 'manager' || session.role === 'warehouse'} onDenied={deny} onAdd={() => setProductModal({ product: null })} onEdit={(product) => setProductModal({ product })} onLabels={setLabelProducts} onTransfer={() => setTransferModal(true)} onWaste={() => setWasteModal(true)} />}
+          {view === 'warehouses' && <WarehousesPage state={state} lang={lang} onAdd={() => setWarehouseModal(true)} onTransfer={() => setTransferModal(true)} />}
+          {view === 'purchases' && <PurchasesPage state={state} lang={lang} onAdd={() => setPurchaseModal(true)} onReceive={receiveOrder} />}
+          {view === 'returns' && <ReturnsPage state={state} lang={lang} onRefund={refundSale} onPartial={coreReady ? setReturning : undefined} />}
+          {view === 'reports' && <><WholesaleReports state={state} lang={lang} coreReady={coreReady} /><ReportsOpsPage state={state} staff={staff} lang={lang} coreReady={coreReady} /></>}
+          {view === 'registers' && <RegistersOpsPage state={state} staff={staff} session={session} lang={lang} coreReady={coreReady} onAdd={() => setRegisterModal(true)} onToggle={toggleRegister} onRefresh={refreshFromCore} notify={setNotice} />}
+          {view === 'stocktake' && <StocktakePage state={state} session={session} coreReady={coreReady} notify={setNotice} onRefresh={refreshFromCore} />}
+          {view === 'customers' && <CustomersPage session={session} lang={lang} settings={state.settings} coreReady={coreReady} notify={setNotice} />}
+          {view === 'import' && <ImportCsvPage session={session} coreReady={coreReady} notify={setNotice} />}
+          {view === 'platform' && <PlatformStubsPage coreReady={coreReady} notify={setNotice} />}
+          {view === 'staff' && <><StaffPage staff={staff} lang={lang} onAdd={() => setStaffModal(true)} /><RolePermissionsPanel actorRole={session.role} /></>}
+          {view === 'mobile' && <MobilePage state={state} staff={staff} lang={lang} cloudConnected={cloudConnected} />}
+          {view === 'settings' && <SettingsPage state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={(settings) => {
+            void (async () => {
+              try {
+                if (coreReady && marketCoreClient.available()) {
+                  await marketCoreClient.settings.set(settings, session.id);
+                  await refreshFromCore();
+                } else mutate((previous) => ({ ...previous, settings }), 'SETTINGS_SAVE', settings.storeName);
+              } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
+            })();
+          }} />}
+          </LockedArea>
+        </main>
+      </section>
+
+      {returning && <ReturnModal lang={lang} sale={returning} products={productMap} session={session} onClose={() => setReturning(null)} onDone={(credit) => { setReturning(null); void refreshFromCore(); setNotice(tr(lang, credit ? 'exchange' : 'refunded')); if (credit) { setExchangeCredit(credit); setCart([]); safeSetView('sale'); } }} />}
+      {labelProducts && <LabelModal lang={lang} products={labelProducts} storeName={state.settings.storeName} session={session} notify={setNotice} onClose={() => setLabelProducts(null)} />}
+      {productModal && <GoodsModal key={productModal.product?.id ?? 'new'} lang={lang} products={state.products} session={session} warehouseId={state.settings.defaultWarehouseId} product={productModal.product} onClose={() => setProductModal(null)} onSave={saveGoods} onReceive={(product) => { setProductModal(null); setReceiveProduct(product); }} />}
+      {receiveProduct && <StockReceiveModal lang={lang} product={receiveProduct} session={session} warehouseId={state.settings.defaultWarehouseId} onClose={() => setReceiveProduct(null)} onDone={(text) => { setReceiveProduct(null); setNotice(`${t('stockReceived')} · ${text}`); void refreshFromCore(); }} />}
+      {warehouseModal && <WarehouseModal lang={lang} onClose={() => setWarehouseModal(false)} onSave={(warehouse) => {
+        void (async () => {
+          try {
+            if (coreReady && marketCoreClient.available()) {
+              await marketCoreClient.warehouses.create(warehouse, session.id);
+              await refreshFromCore();
+            } else mutate((previous) => ({ ...previous, warehouses: [...previous.warehouses, warehouse], products: previous.products.map((product) => ({ ...product, warehouseStock: { ...product.warehouseStock, [warehouse.id]: 0 } })) }), 'WAREHOUSE_CREATE', warehouse.name);
+            setWarehouseModal(false); setNotice(t('warehouseSaved'));
+          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
+        })();
+      }} />}
+      {registerModal && <RegisterModal lang={lang} onClose={() => setRegisterModal(false)} onSave={(register) => {
+        void (async () => {
+          try {
+            if (coreReady && marketCoreClient.available()) {
+              await marketCoreClient.cash.createRegister(register);
+              await refreshFromCore();
+            } else mutate((previous) => ({ ...previous, registers: [...previous.registers, register] }), 'REGISTER_CREATE', register.name);
+            setRegisterModal(false); setNotice(t('registerSaved'));
+          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
+        })();
+      }} />}
+      {purchaseModal && <PurchaseModal lang={lang} products={state.products} warehouses={state.warehouses} session={session} onClose={() => setPurchaseModal(false)} onSave={(order) => {
+        void (async () => {
+          try {
+            if (coreReady && marketCoreClient.available()) {
+              await marketCoreClient.purchases.create(order);
+              await refreshFromCore();
+            } else mutate((previous) => ({ ...previous, purchaseOrders: [order, ...previous.purchaseOrders] }), 'PURCHASE_CREATE', order.id);
+            setPurchaseModal(false); setNotice(t('orderSaved'));
+          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
+        })();
+      }} />}
+      {transferModal && <TransferModal lang={lang} products={state.products} warehouses={state.warehouses} onClose={() => setTransferModal(false)} onSave={(productId, from, to, qty) => {
+        void (async () => {
+          try {
+            if (coreReady && marketCoreClient.available()) {
+              await marketCoreClient.inventory.transfer({ productId, fromWarehouseId: from, toWarehouseId: to, qty, actorId: session.id });
+              await refreshFromCore();
+            } else mutate((previous) => ({ ...previous, products: previous.products.map((product) => product.id !== productId ? product : { ...product, warehouseStock: { ...product.warehouseStock, [from]: (product.warehouseStock[from] ?? 0) - qty, [to]: (product.warehouseStock[to] ?? 0) + qty } }) }), 'STOCK_TRANSFER', `${productMap.get(productId)?.sku} · ${qty}`);
+            setTransferModal(false); setNotice(t('stockAdded'));
+          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
+        })();
+      }} />}
+      {wasteModal && <WasteModal lang={lang} products={state.products} warehouses={state.warehouses} onClose={() => setWasteModal(false)} onSave={(input) => {
+        void (async () => {
+          try {
+            await marketCoreClient.inventory.waste({ ...input, actorId: session.id });
+            await refreshFromCore();
+            setWasteModal(false);
+            setNotice('Silinmə qeyd edildi');
+          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
+        })();
+      }} />}
+      {staffModal && <StaffModal lang={lang} registers={state.registers} warehouses={state.warehouses} onClose={() => setStaffModal(false)} onSave={async (profile, pin) => { const saved = window.marketSystem ? await window.marketSystem.staff.save(session.sessionToken, profile, pin) : { ...profile, id: newId('u') } as StaffProfile; setStaff((rows) => [...rows, saved]); setStaffModal(false); setNotice(t('staffSaved')); }} />}
+      {notice && <div className="toast" role="status">{notice === DENIED ? <TriangleAlert /> : <Check />}{notice}</div>}
+      {coreError && <div className="toast"><TriangleAlert />Core: {coreError}</div>}
+    </div>
+  );
+}
+
+function shortHwid(deviceId?: string) {
+  if (!deviceId) return '…';
+  if (deviceId.length <= 16) return deviceId;
+  return `${deviceId.slice(0, 8)}…${deviceId.slice(-4)}`;
+}
+
+function licenseModeLabel(lang: Lang, mode: ActivationStatus['mode'] | undefined) {
+  if (mode === 'active') return tr(lang, 'active');
+  if (mode === 'expired') return tr(lang, 'expired');
+  if (mode === 'revoked') return tr(lang, 'revoked');
+  if (mode === 'unlicensed') return tr(lang, 'unlicensed');
+  return tr(lang, 'trial');
+}
+
+function licenseAllowsPin(activation: ActivationStatus | null) {
+  return !!activation && activation.mode === 'active' && activation.validUntil > Date.now();
+}
+
+function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; staff: StaffProfile[]; onLogin: (pin: string) => Promise<void> }) {
+  const [tenant, setTenant] = useState<TenantStatus | null>(null);
+  const [activation, setActivation] = useState<ActivationStatus | null>(null);
+  const [ready, setReady] = useState(!window.marketSystem);
+
+  useEffect(() => {
+    if (!window.marketSystem) return;
+    let cancelled = false;
+    const boot = async () => {
+      try {
+        const [tenantStatus, license] = await Promise.all([
+          window.marketSystem!.tenant.status(),
+          window.marketSystem!.activation.refresh().catch(() => window.marketSystem!.activation.status()),
+        ]);
+        if (cancelled) return;
+        setTenant(tenantStatus);
+        setActivation(license);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    };
+    void boot();
+    const timer = window.setInterval(() => {
+      void window.marketSystem?.activation.refresh().then(setActivation).catch(() => undefined);
+    }, 5 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
+
+  if (!window.marketSystem) {
+    return <LoginScreen lang={lang} onLogin={onLogin} />;
+  }
+  if (!ready) {
+    return (
+      <main className="ps-login-screen" style={{ backgroundImage: `url(${loginBg})` }}>
+        <div className="ps-login-veil" aria-hidden />
+        <div className="ps-login-glass ps-auth-loading"><ShieldCheck /><p>{tr(lang, 'loginSecure')}</p></div>
+      </main>
+    );
+  }
+  if (!tenant?.authenticated) {
+    return (
+      <TenantLoginScreen
+        lang={lang}
+        setLang={setLang}
+        onSuccess={(next) => setTenant(next)}
+      />
+    );
+  }
+  if (!licenseAllowsPin(activation)) {
+    return (
+      <ActivationGateScreen
+        lang={lang}
+        setLang={setLang}
+        tenant={tenant}
+        activation={activation}
+        onActivated={(next) => setActivation(next)}
+        onTenantLogout={() => {
+          void window.marketSystem?.tenant.logout().then(() => setTenant({ authenticated: false }));
+        }}
+      />
+    );
+  }
+  return (
+    <LoginScreen
+      lang={lang}
+      onLogin={onLogin}
+      onTenantLogout={() => {
+        void window.marketSystem?.tenant.logout().then(() => setTenant({ authenticated: false })).catch(() => undefined);
+      }}
+    />
+  );
+}
+
+function TenantLoginScreen({ lang, setLang, onSuccess }: { lang: Lang; setLang: (lang: Lang) => void; onSuccess: (tenant: TenantStatus) => void }) {
+  const [email, setEmail] = useState(() => {
+    try { return localStorage.getItem('topdanpos.tenant.email') || ''; } catch { return ''; }
+  });
+  const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(() => {
+    try { return localStorage.getItem('topdanpos.tenant.remember') === '1'; } catch { return false; }
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    if (!email.trim() || !password || busy || !window.marketSystem) return;
+    setBusy(true);
+    setError('');
+    try {
+      const status = await window.marketSystem.tenant.login(email.trim(), password);
+      try {
+        if (remember) {
+          localStorage.setItem('topdanpos.tenant.remember', '1');
+          localStorage.setItem('topdanpos.tenant.email', email.trim());
+        } else {
+          localStorage.removeItem('topdanpos.tenant.remember');
+          localStorage.removeItem('topdanpos.tenant.email');
+        }
+      } catch { /* ignore */ }
+      onSuccess(status);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : tr(lang, 'tenantWrongCredentials'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="ps-login-screen" style={{ backgroundImage: `url(${loginBg})` }}>
+      <div className="ps-login-veil" aria-hidden />
+      <div className="ps-login-glow" aria-hidden />
+      <div className="ps-login-grid">
+        <section className="ps-login-brand">
+          <div className="ps-login-brand-head">
+            <span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" draggable={false} /></span>
+            <div>
+              <p className="brand-wordmark">TopdanPos</p>
+              <p className="brand-sub">{tr(lang, 'loginTagline')}</p>
+            </div>
+            <label className="ps-login-lang">
+              <Languages />
+              <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Language">
+                <option value="az">AZ</option>
+                <option value="ru">RU</option>
+                <option value="en">EN</option>
+              </select>
+            </label>
+          </div>
+          <div className="ps-login-brand-copy">
+            <p className="brand-kicker">{tr(lang, 'tenantEyebrow')}</p>
+            <h1>{tr(lang, 'tenantWelcome')}</h1>
+            <div className="ps-login-rule"><i /><span>{tr(lang, 'tenantHint')}</span></div>
+          </div>
+          <div className="ps-login-secure"><ShieldCheck /><span>{tr(lang, 'loginSecure')}</span></div>
+        </section>
+        <section className="ps-login-glass">
+          <div className="ps-login-glass-shine" aria-hidden />
+          <form className="ps-tenant-form" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+            <header>
+              <p className="brand-kicker">01 / {tr(lang, 'tenantAccess')}</p>
+              <h2>{tr(lang, 'tenantLogin')}</h2>
+              <p className="ps-login-hint">{tr(lang, 'tenantLoginHint')}</p>
+            </header>
+            <label>
+              <span>{tr(lang, 'tenantEmail')}</span>
+              <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} />
+            </label>
+            <label>
+              <span>{tr(lang, 'tenantPassword')}</span>
+              <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} />
+            </label>
+            <label className="ps-tenant-remember">
+              <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+              <span>{tr(lang, 'tenantRemember')}</span>
+            </label>
+            {error && <p className="form-error">{error}</p>}
+            <button type="submit" className="modal-primary" disabled={busy || !email.trim() || !password}>
+              <LockKeyhole />{busy ? '…' : tr(lang, 'tenantContinue')}
+            </button>
+          </form>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function ActivationGateScreen({
+  lang, setLang, tenant, activation, onActivated, onTenantLogout,
+}: {
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+  tenant: Extract<TenantStatus, { authenticated: true }>;
+  activation: ActivationStatus | null;
+  onActivated: (status: ActivationStatus) => void;
+  onTenantLogout: () => void;
+}) {
+  const [activationKey, setActivationKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  // A partner renewing the licence on the website unlocks the till from here.
+  const recheck = async () => {
+    if (!window.marketSystem || busy) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const status = await window.marketSystem.activation.refresh();
+      onActivated(status);
+      if (!licenseAllowsPin(status)) setMessage('Lisenziya hələ uzadılmayıb — partnyorunuza və ya POSSISTEM-ə müraciət edin');
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const redeem = async () => {
+    if (!window.marketSystem || busy) return;
+    const key = activationKey.trim();
+    if (key.length < 12) {
+      setMessage(tr(lang, 'requiredFields'));
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      const status = await window.marketSystem.activation.activate(null, key);
+      onActivated(status);
+      setActivationKey('');
+      setMessage(tr(lang, 'active'));
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="ps-login-screen" style={{ backgroundImage: `url(${loginBg})` }}>
+      <div className="ps-login-veil" aria-hidden />
+      <div className="ps-login-glow" aria-hidden />
+      <div className="ps-login-grid">
+        <section className="ps-login-brand">
+          <div className="ps-login-brand-head">
+            <span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" draggable={false} /></span>
+            <div>
+              <p className="brand-wordmark">TopdanPos</p>
+              <p className="brand-sub">{tr(lang, 'loginTagline')}</p>
+            </div>
+            <label className="ps-login-lang">
+              <Languages />
+              <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Language">
+                <option value="az">AZ</option>
+                <option value="ru">RU</option>
+                <option value="en">EN</option>
+              </select>
+            </label>
+          </div>
+          <div className="ps-login-brand-copy">
+            <p className="brand-kicker">{tr(lang, 'activation')}</p>
+            <h1>{tr(lang, 'licenseGateTitle')}</h1>
+            <div className="ps-login-rule"><i /><span>{tr(lang, 'licenseGateHint')}</span></div>
+          </div>
+          <div className="ps-login-secure"><ShieldCheck /><span>{tenant.email}</span></div>
+        </section>
+        <section className="ps-login-glass">
+          <div className="ps-login-glass-shine" aria-hidden />
+          <div className={`ps-login-license blocked`}>
+            <header>
+              <h3>{tr(lang, 'activation')}</h3>
+              <em className="pill warn">{licenseModeLabel(lang, activation?.mode)}</em>
+            </header>
+            <div className="license-meta">
+              <span><small>{tr(lang, 'licenseCustomer')}</small><b>{activation?.customerName || tenant.customerName}</b></span>
+              <span><small>{tr(lang, 'licenseDevice')}</small><b>{shortHwid(activation?.deviceId)}</b></span>
+              <span><small>{tr(lang, 'licenseValidUntil')}</small><b>{activation?.validUntil ? new Date(activation.validUntil).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ') : '—'}</b></span>
+              <span><small>{tr(lang, 'tenantEmail')}</small><b>{tenant.email}</b></span>
+            </div>
+            <p>{tr(lang, 'licenseBlocked')}</p>
+            <div className="activation-row">
+              <input
+                value={activationKey}
+                onChange={(event) => setActivationKey(event.target.value)}
+                placeholder="MPOS-XXXX-XXXX-XXXX"
+                aria-label={tr(lang, 'activationKey')}
+                disabled={busy}
+              />
+              <button type="button" className="modal-primary" disabled={busy} onClick={() => void redeem()}>
+                <KeyRound />{tr(lang, 'activateNow')}
+              </button>
+            </div>
+            {activation?.serverDeviceId && (
+              <button type="button" className="ps-tenant-switch" disabled={busy} onClick={() => void recheck()}>
+                <RefreshCw />Serverdən yoxla
+              </button>
+            )}
+            {message && <p className="form-error">{message}</p>}
+            <button type="button" className="ps-tenant-switch" onClick={onTenantLogout}>{tr(lang, 'tenantSwitchAccount')}</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+/**
+ * Staff sign-in, the same screen as the restaurant till's: the PIN alone names
+ * the person (main.cjs findStaffByPin), so there is no list to pick from.
+ */
+function LoginScreen({ lang, onLogin, onTenantLogout }: {
+  lang: Lang;
+  onLogin: (pin: string) => Promise<void>;
+  onTenantLogout?: () => void;
+}) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (nextPin = pin) => {
+    if (nextPin.length < 4 || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onLogin(nextPin);
+    } catch (reason) {
+      const raw = reason instanceof Error ? reason.message : '';
+      setError(/yanlış|invalid|wrong|pin|remote method/i.test(raw) || !raw ? tr(lang, 'invalidPin') : raw);
+      setPin('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pressKey = (key: string) => {
+    if (busy) return;
+    if (key === 'clear') { setPin(''); setError(''); return; }
+    if (key === 'back') { setPin((value) => value.slice(0, -1)); return; }
+    setError('');
+    setPin((value) => {
+      if (value.length >= 4) return value;
+      const next = value + key;
+      if (next.length === 4) void submit(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (/^\d$/.test(event.key)) pressKey(event.key);
+      else if (event.key === 'Backspace') pressKey('back');
+      else if (event.key === 'Escape') pressKey('clear');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  return (
+    <main className="mp-staff">
+      <div className="mp-staff-photo" style={{ backgroundImage: `url(${loginBg})` }} aria-hidden="true" />
+      <div className="mp-staff-grid">
+        <section className="mp-staff-brand">
+          <div className="mp-staff-brand-mark">
+            <span className="mp-staff-tile" aria-hidden="true"><img src="./assets/brand-mark.png" alt="" draggable={false} /></span>
+            <p className="mp-staff-product">Topdan POS</p>
+          </div>
+          <div className="mp-staff-welcome">
+            <p className="mp-staff-kicker">{tr(lang, 'staffSignIn')}</p>
+            <h1>{tr(lang, 'loginWelcome')}</h1>
+            <div className="mp-staff-rule"><span aria-hidden="true" /><span>{tr(lang, 'loginShiftHint')}</span></div>
+          </div>
+          <div className="mp-staff-secure">
+            <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 3.8 26 8v7.2c0 6.2-3.7 10.3-10 13-6.3-2.7-10-6.8-10-13V8l10-4.2Z" stroke="currentColor" strokeWidth="1.25" /><path d="m11.5 16 3 3 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span>{tr(lang, 'loginSecure')}</span>
+          </div>
+        </section>
+        <section className="mp-staff-card">
+          <div className="mp-staff-card-line" aria-hidden="true" />
+          {onTenantLogout ? (
+            <button type="button" className="mp-staff-tenant-out" onClick={onTenantLogout} disabled={busy}>
+              <LogOut aria-hidden="true" />{tr(lang, 'switchAccount')}
+            </button>
+          ) : null}
+          <div className="mp-staff-pin">
+            <h3 className="mp-staff-pin-title">{tr(lang, 'pinTitle')}</h3>
+            <p className="mp-staff-pin-hint">{tr(lang, 'pinHint')}</p>
+            <div className={`mp-staff-pin-dots${busy ? ' is-busy' : ''}`} aria-label={`${pin.length} / 4`}>
+              {[0, 1, 2, 3].map((index) => (
+                <span key={index} className={`mp-staff-pin-cell${index < pin.length ? ' is-on' : ''}`}><span /></span>
+              ))}
+              <span className="mp-staff-pin-count">{pin.length}/4</span>
+            </div>
+            <div className="mp-staff-pad" aria-label={tr(lang, 'pinPad')}>
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'].map((key) => {
+                const action = key === 'clear' || key === 'back';
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={action ? 'mp-staff-key mp-staff-key--action' : 'mp-staff-key'}
+                    disabled={busy || (action && !pin)}
+                    aria-label={key === 'clear' ? tr(lang, 'pinClear') : key === 'back' ? tr(lang, 'pinBack') : key}
+                    onClick={() => pressKey(key)}
+                  >
+                    {key === 'clear' ? (
+                      <svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M7 8.2h14M10 8.2l.8-2.6h6.4l.8 2.6M9 11.3l.8 10.4h8.4l.8-10.4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" /><path d="M12.3 13.2v5.3m3.4-5.3v5.3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /></svg>
+                    ) : key === 'back' ? (
+                      <svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M10.3 7.4h12.2a2.7 2.7 0 0 1 2.7 2.7v7.8a2.7 2.7 0 0 1-2.7 2.7H10.3L3.4 14l6.9-6.6Z" stroke="currentColor" strokeWidth="1.45" strokeLinejoin="round" /><path d="m14.3 11 6 6m0-6-6 6" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" /></svg>
+                    ) : key}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mp-staff-pin-status">
+              {error ? (
+                <div className="mp-staff-pin-error" role="alert"><span aria-hidden="true">!</span><span>{error}</span></div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function Dashboard({ state, staff, session, lang, onView }: { state: PersistedState; staff: StaffProfile[]; session: SessionUser; lang: Lang; onView: (view: View) => void }) {
+  const activeSales = state.sales.filter((sale) => !sale.refunded);
+  const revenue = activeSales.reduce((sum, sale) => sum + sale.totalMinor, 0);
+  const critical = state.products.filter((product) => stockOf(product) <= product.minStock);
+  const open = state.registers.filter((register) => register.status === 'open');
+  const totalStock = state.products.reduce((sum, product) => sum + stockOf(product), 0);
+  const roleMessage: Record<Role, string> = { manager: 'Satış, kassa, anbar və işçi vəziyyəti tam nəzarətdədir.', head_cashier: 'Açıq kassaları, qaytarmaları və növbə satışlarını idarə edin.', cashier: 'Kassanızı açın, barkodu oxudun və sürətli satış edin.', warehouse: 'Kritik qalıqları, depoları və alış sifarişlərini idarə edin.' };
+  return <div className="module-page dashboard"><section className="welcome-card"><div><p>{longDate(new Date(), lang)}</p><h2>Salam, {session.name.split(' ')[0]}</h2><span>{roleMessage[session.role]}</span></div><div className="live-badge"><Activity /><span>CANLI<small>{state.settings.storeName}</small></span></div></section><section className="kpi-grid"><Kpi icon={CircleDollarSign} label={tr(lang, 'todaySales')} value={money(revenue, lang)} note={`${activeSales.length} ${tr(lang, 'transactions').toLowerCase()}`} tone="green" /><Kpi icon={Store} label={tr(lang, 'openRegisters')} value={`${open.length} / ${state.registers.length}`} note={open.map((row) => row.name).join(' · ')} tone="blue" /><Kpi icon={TriangleAlert} label={tr(lang, 'criticalProducts')} value={String(critical.length)} note={critical.slice(0, 2).map((row) => row.name[lang]).join(' · ')} tone="amber" /><Kpi icon={Boxes} label={tr(lang, 'totalStock')} value={String(totalStock)} note={`${state.warehouses.length} ${tr(lang, 'warehouses').toLowerCase()}`} tone="violet" /></section><section className="dashboard-grid"><article className="panel-card quick-card"><div className="panel-title"><div><p>{tr(lang, 'quickOpsKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'quickActions')}</h3></div></div><div className="quick-grid">{canAccess(session.role, 'sale') && <button onClick={() => onView('sale')}><span><ShoppingBasket /></span><b>{tr(lang, 'newSale')}</b><small>{tr(lang, 'scanReady')}</small><ChevronRight /></button>}{canAccess(session.role, 'inventory') && <button onClick={() => onView('inventory')}><span><PackageSearch /></span><b>{tr(lang, 'inventory')}</b><small>{critical.length} {tr(lang, 'low').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'purchases') && <button onClick={() => onView('purchases')}><span><Truck /></span><b>{tr(lang, 'purchases')}</b><small>{state.purchaseOrders.filter((row) => row.status === 'ordered').length} {tr(lang, 'ordered').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'registers') && <button onClick={() => onView('registers')}><span><Store /></span><b>{tr(lang, 'registers')}</b><small>{open.length} {tr(lang, 'active').toLowerCase()}</small><ChevronRight /></button>}</div></article><article className="panel-card"><div className="panel-title"><div><p>{tr(lang, 'auditKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'audit')}</h3></div><FileClock /></div><div className="activity-list">{state.audits.slice(0, 5).map((entry) => <div key={entry.id}><span><Activity /></span><p><b>{auditActionLabel(entry.action, lang)}</b><small>{auditDetailLabel(entry.detail, lang)} · {staff.find((row) => row.id === entry.actorId)?.name ?? tr(lang, 'systemActor')}</small></p><time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div></article></section></div>;
+}
+
+function InventoryPage({ state, lang, session, notify, coreReady, canEdit, onDenied, onAdd, onEdit, onTransfer, onWaste, onLabels }: { state: PersistedState; lang: Lang; session: SessionUser; notify: (text: string) => void; coreReady: boolean; canEdit: boolean; onDenied: () => void; onAdd: () => void; onEdit: (product: Product) => void; onTransfer: () => void; onWaste: () => void; onLabels: (products: Product[]) => void }) {
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('all');
+  const [mode, setMode] = useState<'list' | 'shelves'>('list');
+  const [shelves, setShelves] = useState<Shelf[]>([]);
+  const [shelfTick, setShelfTick] = useState(0);
+  useEffect(() => {
+    if (mode !== 'shelves' || !coreReady || !marketCoreClient.available()) return;
+    let cancelled = false;
+    void marketCoreClient.shelves.list().then((shelfRows) => {
+      if (!cancelled) setShelves(shelfRows);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [mode, coreReady, state.products, shelfTick]);
+  const categories = useMemo(() => [...new Set(state.products.map((product) => product.category))], [state.products]);
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const product of state.products) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
+    return counts;
+  }, [state.products]);
+  const rows = useMemo(
+    () => state.products.filter((product) => {
+      if (category !== 'all' && product.category !== category) return false;
+      if (!query) return true;
+      const needle = query.toLowerCase();
+      return product.barcode.toLowerCase().includes(needle)
+        || product.sku.toLowerCase().includes(needle)
+        || (product.internalCode ?? '').toLowerCase().includes(needle)
+        || (product.inn ?? '').toLowerCase().includes(needle)
+        || (product.manufacturer ?? '').toLowerCase().includes(needle)
+        || (product.shelf ?? '').toLowerCase() === needle
+        || product.name[lang].toLowerCase().includes(needle);
+    }),
+    [state.products, query, lang, category],
+  );
+  const value = useMemo(
+    () => state.products.reduce((sum, product) => sum + product.costMinor * stockOf(product), 0),
+    [state.products],
+  );
+  const activeCount = useMemo(() => state.products.filter((p) => p.active).length, [state.products]);
+  const lowCount = useMemo(() => state.products.filter((p) => stockOf(p) <= p.minStock).length, [state.products]);
+
+  return (
+    <div className="module-page inventory-page">
+      <section className="kpi-grid three">
+        <Kpi icon={Boxes} label={tr(lang, 'product')} value={String(state.products.length)} note={`${activeCount} ${tr(lang, 'active').toLowerCase()}`} tone="green" />
+        <Kpi icon={TriangleAlert} label={tr(lang, 'low')} value={String(lowCount)} note="Minimum səviyyə" tone="amber" />
+        <Kpi icon={BadgeDollarSign} label={tr(lang, 'inventory')} value={money(value, lang)} note="Maya dəyəri" tone="blue" />
+      </section>
+      <section className="data-card inventory-card-shell">
+        <div className="data-title">
+          <div className="segmented inventory-mode">
+            <button type="button" className={mode === 'list' ? 'active' : ''} onClick={() => setMode('list')}><Boxes />{tr(lang, 'inventory')}</button>
+            <button type="button" className={mode === 'shelves' ? 'active' : ''} onClick={() => setMode('shelves')}><MapPin />{tr(lang, 'shelves')}</button>
+          </div>
+          <div className="data-actions">
+            <label className="table-search">
+              <Search />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tr(lang, 'search')} />
+            </label>
+            <button type="button" aria-disabled={!canEdit || undefined} onClick={canEdit ? onTransfer : onDenied}><ArrowRightLeft />{tr(lang, 'transfer')}</button>
+            <button type="button" aria-disabled={!canEdit || undefined} onClick={canEdit ? onWaste : onDenied}><Trash2 />Silinmə</button>
+            <button type="button" disabled={!rows.length} onClick={() => onLabels(rows)}><Tags />{tr(lang, 'printLabels')}</button>
+            <button type="button" className="primary-action" aria-disabled={!canEdit || undefined} onClick={canEdit ? onAdd : onDenied}><PackagePlus />{tr(lang, 'newGoods')}</button>
+          </div>
+        </div>
+        {mode === 'shelves' && <ShelvesPanel key={shelves.length ? 'loaded' : 'empty'} lang={lang} products={state.products} shelves={shelves} session={session} canEdit={canEdit} notify={notify} onChanged={() => setShelfTick((n) => n + 1)} onEdit={canEdit ? onEdit : onDenied} />}
+        {mode === 'list' && <div className="inventory-catalog-layout">
+          <aside className="catalog-aisles inventory-aisles">
+            <h2>{tr(lang, 'catalogAisles')}</h2>
+            <CatalogAisleNav
+              lang={lang}
+              categories={categories}
+              counts={categoryCounts}
+              total={state.products.length}
+              value={category}
+              onChange={setCategory}
+              layout="rail"
+            />
+          </aside>
+          <InventoryProductGrid products={rows} lang={lang} money={money} canEdit onEdit={canEdit ? onEdit : onDenied} />
+        </div>}
+      </section>
+    </div>
+  );
+}
+
+function WarehousesPage({ state, lang, onAdd, onTransfer }: { state: PersistedState; lang: Lang; onAdd: () => void; onTransfer: () => void }) {
+  return <div className="module-page"><section className="page-intro"><div><p>{tr(lang, 'kickerWarehouses').toLocaleUpperCase(lang)}</p><h2>{tr(lang, 'warehouses')}</h2><span>{state.warehouses.length} aktiv saxlama nöqtəsi</span></div><div><button onClick={onTransfer}><ArrowRightLeft />{tr(lang, 'transfer')}</button><button className="primary-action" onClick={onAdd}><Plus />{tr(lang, 'addWarehouse')}</button></div></section><div className="warehouse-grid">{state.warehouses.map((warehouse) => { const units = state.products.reduce((sum, product) => sum + (product.warehouseStock[warehouse.id] ?? 0), 0); const value = state.products.reduce((sum, product) => sum + (product.warehouseStock[warehouse.id] ?? 0) * product.costMinor, 0); return <article className="warehouse-card" key={warehouse.id}><header><span><WarehouseIcon /></span><div><small>{warehouse.code}</small><h3>{warehouse.name}</h3></div><em className="pill ok">{tr(lang, 'active')}</em></header><p>{warehouse.address}</p><div className="warehouse-stats"><div><small>SKU</small><b>{state.products.filter((product) => (product.warehouseStock[warehouse.id] ?? 0) > 0).length}</b></div><div><small>{tr(lang, 'stock')}</small><b>{units}</b></div><div><small>Dəyər</small><b>{money(value, lang)}</b></div></div><footer><span><UserCog />{warehouse.manager}</span><button onClick={onTransfer}>{tr(lang, 'transfer')}<ChevronRight /></button></footer></article>; })}</div></div>;
+}
+
+function PurchasesPage({ state, lang, onAdd, onReceive }: { state: PersistedState; lang: Lang; onAdd: () => void; onReceive: (order: PurchaseOrder) => void }) {
+  const products = new Map(state.products.map((product) => [product.id, product]));
+  const pending = state.purchaseOrders.filter((row) => row.status === 'ordered').length;
+  return (
+    <div className="module-page purchases-page">
+      <section className="page-intro">
+        <div>
+          <h2>{tr(lang, 'purchases')}</h2>
+          <span>{pending} {tr(lang, 'ordered').toLowerCase()}</span>
+        </div>
+        <button className="primary-action" onClick={onAdd}><Plus />{tr(lang, 'createOrder')}</button>
+      </section>
+      <div className="po-grid">
+        {state.purchaseOrders.map((order) => {
+          const warehouse = state.warehouses.find((row) => row.id === order.warehouseId);
+          const units = order.lines.reduce((sum, line) => sum + line.qty, 0);
+          const received = order.status === 'received';
+          return (
+            <article className={received ? 'po-card received' : 'po-card'} key={order.id}>
+              <header className="po-head">
+                <div className="po-title">
+                  <h3>{order.supplier}</h3>
+                  <small>{order.id}</small>
+                </div>
+                <em className={received ? 'pill ok' : 'pill info'}>{received ? tr(lang, 'received') : tr(lang, 'ordered')}</em>
+              </header>
+              <div className="po-meta">
+                <span><small>{tr(lang, 'expectedDate')}</small><strong>{new Date(order.expectedAt).toLocaleDateString()}</strong></span>
+                <span><small>Depo</small><strong>{warehouse?.code ?? '—'}</strong></span>
+                <span><small>SKU</small><strong>{order.lines.length}</strong></span>
+                <span><small>{tr(lang, 'stock')}</small><strong>{units}</strong></span>
+              </div>
+              <ul className="po-lines">
+                {order.lines.map((line) => (
+                  <li key={line.productId}>
+                    <span>{products.get(line.productId)?.name[lang] ?? line.productId}</span>
+                    <b>+{line.qty}</b>
+                  </li>
+                ))}
+              </ul>
+              <footer className="po-foot">
+                <button type="button" className={received ? 'po-receive done' : 'po-receive'} disabled={received} onClick={() => onReceive(order)}>
+                  {received ? <Check /> : <PackageCheck />}
+                  {received ? tr(lang, 'received') : tr(lang, 'receive')}
+                </button>
+              </footer>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ReturnsPage({ state, lang, onRefund, onPartial }: { state: PersistedState; lang: Lang; onRefund: (sale: Sale) => void; onPartial?: (sale: Sale) => void }) {
+  const [query, setQuery] = useState(''); const products = new Map(state.products.map((product) => [product.id, product]));
+  const rows = state.sales.filter((sale) => !query || sale.receiptNo.toLowerCase().includes(query.toLowerCase()));
+  return <div className="module-page"><section className="return-search"><RotateCcw /><div><p>{tr(lang, 'kickerReturns').toLocaleUpperCase(lang)}</p><h2>{tr(lang, 'returns')}</h2></div><label><ReceiptText /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Qəbz nömrəsi..." /></label></section><div className="receipt-list">{rows.map((sale) => <article key={sale.id}><div className="receipt-badge"><ReceiptText /></div><div className="receipt-main"><small>{new Date(sale.createdAt).toLocaleString()}</small><h3>{sale.receiptNo}</h3><p>{sale.items.map((line) => { const product = products.get(line.productId); return `${product?.name[lang] ?? ""} · ${product ? qtyLabel(product, line.qty, lang) : `×${line.qty}`}`; }).join(' · ')}</p></div><strong>{money(sale.totalMinor, lang)}</strong><span className="payment-chip">{sale.payment.method === 'cash' ? <CircleDollarSign /> : <WalletCards />}{tr(lang, sale.payment.method)}</span>{onPartial && <button disabled={sale.refunded} onClick={() => onPartial(sale)}><ArrowLeftRight />{tr(lang, 'partialReturn')} / {tr(lang, 'exchange')}</button>}<button disabled={sale.refunded} onClick={() => onRefund(sale)}>{sale.refunded ? <Check /> : <RotateCcw />}{sale.refunded ? tr(lang, 'refunded') : tr(lang, 'refund')}</button></article>)}</div></div>;
+}
+
+function StaffPage({ staff, lang, onAdd }: { staff: StaffProfile[]; lang: Lang; onAdd: () => void }) {
+  const permissionText: Record<Role, string> = { manager: 'Bütün modullar, ayarlar, işçilər və hesabatlar', head_cashier: 'Satış, qaytarma, hesabat və kassa növbələri', cashier: 'Satış və şəxsi kassa növbəsi', warehouse: 'Məhsul, depo və alış sifarişləri' };
+  return <div className="module-page"><section className="page-intro"><div><p>{tr(lang, 'kickerRoles').toLocaleUpperCase(lang)}</p><h2>{tr(lang, 'staff')}</h2><span>{staff.filter((row) => row.active).length} {tr(lang, 'active').toLowerCase()}</span></div><button className="primary-action" onClick={onAdd}><Plus />{tr(lang, 'addStaff')}</button></section><div className="staff-grid">{staff.map((user) => <article key={user.id}><RoleAvatar role={user.role} name={user.name} /><div><h3>{user.name}</h3><em>{roleLabel(user.role, lang)}</em><p>{permissionText[user.role]}</p><div className="permission-pills">{ROLE_VIEWS[user.role].slice(0, 5).map((view) => <span key={view}>{viewLabel(view, lang)}</span>)}</div></div><b className={user.active ? 'pill ok' : 'pill'}>{user.active ? tr(lang, 'active') : 'Passiv'}</b></article>)}</div></div>;
+}
+
+function MobilePage({ state, staff, lang, cloudConnected }: { state: PersistedState; staff: StaffProfile[]; lang: Lang; cloudConnected: boolean }) {
+  const sales = state.sales.filter((sale) => !sale.refunded); const revenue = sales.reduce((sum, sale) => sum + sale.totalMinor, 0); const low = state.products.filter((product) => stockOf(product) <= product.minStock);
+  return <div className="module-page mobile-module"><section className="page-intro"><div><p>POSSISTEM.AZ / TOPDAN POS</p><h2>{tr(lang, 'ownerLive')}</h2><span>{tr(lang, 'remoteNote')}</span></div><div className={`connection ${cloudConnected ? 'online' : ''}`}>{cloudConnected ? <Cloud /> : <CloudOff />}{cloudConnected ? tr(lang, 'connected') : tr(lang, 'offline')}</div></section><section className="mobile-showcase"><div className="phone-frame"><div className="phone-notch" /><header><div><small>{tr(lang, 'kickerOwner').toLocaleUpperCase(lang)}</small><h3>{state.settings.storeName}</h3></div><span className={cloudConnected ? 'online-dot' : ''} /></header><div className="phone-content"><p>Bugün · Canlı baxış</p><article className="phone-revenue"><small>{tr(lang, 'todaySales')}</small><strong>{money(revenue, lang)}</strong><span>{sales.length} çek</span></article><div className="phone-kpis"><span><small>{tr(lang, 'transactions')}</small><b>{sales.length}</b></span><span><small>{tr(lang, 'openRegisters')}</small><b>{state.registers.filter((row) => row.status === 'open').length}</b></span><span><small>{tr(lang, 'low')}</small><b>{low.length}</b></span><span><small>{tr(lang, 'staff')}</small><b>{staff.filter((row) => row.active).length}</b></span></div><h4>Kassalar</h4>{state.registers.map((register) => <div className="phone-row" key={register.id}><span className={register.status === 'open' ? 'online-dot' : ''} /><p><b>{register.name}</b><small>{staff.find((row) => row.id === register.operatorId)?.name ?? 'Bağlı'}</small></p><strong>{money(state.sales.filter((sale) => sale.registerId === register.id && !sale.refunded).reduce((sum, sale) => sum + sale.totalMinor, 0), lang)}</strong></div>)}<h4>Kritik stok</h4>{low.slice(0, 3).map((product) => <div className="phone-row" key={product.id}><ProductVisual image={product.image} compact alt={product.name[lang]} accent={product.accent} category={product.category} /><p><b>{product.name[lang]}</b><small>{product.sku}</small></p><strong className="danger">{stockOf(product)}</strong></div>)}</div><nav><span><Activity />Panel</span><span><ReceiptText />Satış</span><span><Boxes />Stok</span><span><Settings />Ayar</span></nav></div><div className="mobile-copy"><span><Smartphone /></span><h3>Mağaza cibinizdə</h3><p>Satış məbləği, kassa vəziyyəti, kassir performansı və kritik stoklar sahibkar hesabında telefon ölçüsünə uyğun göstərilir.</p><ul><li><Check />30 saniyəlik canlı sinxron</li><li><Check />POS offline olsa növbə saxlanılır</li><li><Check />Hər müştəri üçün ayrı tenant məlumatı</li><li><Check />AZ / RU / EN interfeys</li></ul><div className="portal-address"><Cloud /><span>Sahibkar ünvanı<b>possistem.az/topdanpos</b></span></div></div></section></div>;
+}
+function SettingsPage({ state, session, lang, coreReady, notify, onSettings }: { state: PersistedState; session: SessionUser; lang: Lang; coreReady: boolean; notify: (text: string) => void; onSettings: (settings: StoreSettings) => void }) {
+  const [draft, setDraft] = useState(state.settings); const [display, setDisplay] = useState<{ prefs: { mode: 'fullscreen' | 'windowed'; width: number; height: number; zoomFactor: number }; presets: Array<{ id: string; label: string; mode: 'fullscreen' | 'windowed'; width: number; height: number }> } | null>(null);
+  const [activation, setActivation] = useState<ActivationStatus | null>(null); const [activationKey, setActivationKey] = useState(''); const [update, setUpdate] = useState<UpdateStatus>({ state: 'idle' }); const [info, setInfo] = useState<{ version: string; updateUrl: string; controlUrl: string; packaged: boolean } | null>(null); const [message, setMessage] = useState(''); const [checkingUpdate, setCheckingUpdate] = useState(false);
+  useEffect(() => { if (!window.marketSystem) return; void window.marketSystem.display.get().then(setDisplay); void window.marketSystem.activation.status().then(setActivation); void window.marketSystem.update.status().then(setUpdate); void window.marketSystem.app.info().then(setInfo); return window.marketSystem.update.onChanged(setUpdate); }, []);
+  useEffect(() => {
+    if (activation?.mode !== 'active') return;
+    const branded: StoreSettings = {
+      ...state.settings,
+      storeName: activation.branding?.productName || activation.customerName,
+      legalName: activation.customer?.legalName || activation.customerName,
+      address: activation.customer?.address || state.settings.address,
+      phone: activation.customer?.phone || state.settings.phone,
+      taxId: activation.customer?.taxId || state.settings.taxId,
+      logoUrl: activation.branding?.logoDataUrl || state.settings.logoUrl,
+    };
+    setDraft(branded);
+    onSettings(branded);
+    // A server device id changes only after a successful activation/re-activation.
+  }, [activation?.serverDeviceId]);
+  const chooseLogo = async () => { const url = await window.marketSystem?.image.pick(session.sessionToken); if (url) setDraft((value) => ({ ...value, logoUrl: url })); };
+  const checkUpdate = async () => { if (checkingUpdate) return; setCheckingUpdate(true); setMessage(''); try { if (!window.marketSystem) { setUpdate({ state: 'disabled', message: 'Yeniləmə masaüstü Setup versiyasında işləyir' }); return; } setUpdate({ state: 'checking' }); const status = await window.marketSystem.update.check(session.sessionToken); setUpdate(status); } catch { setUpdate({ state: 'error', message: 'Yeniləmə serverinə qoşulmaq mümkün olmadı' }); setMessage('İnternet bağlantısını yoxlayın və yenidən cəhd edin'); } finally { setCheckingUpdate(false); } };
+  const updateText = update.state === 'idle' ? 'Yoxlanılmayıb' : update.state === 'checking' ? 'Yoxlanılır...' : update.state === 'not_available' ? 'Son versiyadır' : update.state === 'available' ? `v${update.version} tapıldı` : update.state === 'downloading' ? `${update.percent}% yüklənir` : update.state === 'downloaded' ? `v${update.version} hazırdır` : update.message;
+  return (
+    <div className="module-page settings-grid">
+      <HardwareSettingsCard session={session} lang={lang} notify={notify} />
+      <section className="panel-card settings-card">
+        <div className="panel-title">
+          <h3>Mağaza məlumatları</h3>
+          <Building2 />
+        </div>
+        {!coreReady && <p className="hint">Core offline — local settings only.</p>}
+        <div className="logo-picker">
+          <button type="button" onClick={() => void chooseLogo()}>
+            {draft.logoUrl ? <img src={draft.logoUrl} alt="Logo" /> : <ImagePlus />}
+            <span>{tr(lang, 'chooseImage')}</span>
+          </button>
+          <p>Logo qəbz, giriş, telefon paneli və hesabatlarda görünəcək.</p>
+        </div>
+        <div className="form-grid">
+          <Field label="Mağaza adı" value={draft.storeName} onChange={(value) => setDraft({ ...draft, storeName: value })} />
+          <Field label="Hüquqi ad" value={draft.legalName} onChange={(value) => setDraft({ ...draft, legalName: value })} />
+          <Field label="VÖEN" value={draft.taxId} onChange={(value) => setDraft({ ...draft, taxId: value })} />
+          <Field label="Telefon" value={draft.phone} onChange={(value) => setDraft({ ...draft, phone: value })} />
+          <Field label={tr(lang, 'address')} value={draft.address} onChange={(value) => setDraft({ ...draft, address: value })} wide />
+          <Field label={tr(lang, 'terminal')} value={draft.terminalName} onChange={(value) => setDraft({ ...draft, terminalName: value })} />
+        </div>
+        <button type="button" className="modal-primary" onClick={() => { onSettings(draft); setMessage('Mağaza məlumatları yadda saxlanıldı'); }}>
+          <Check />{tr(lang, 'save')}
+        </button>
+      </section>
+
+      <section className="panel-card settings-card">
+        <div className="panel-title">
+          <h3>{tr(lang, 'update')}</h3>
+          <RefreshCw className={checkingUpdate ? 'spin' : ''} />
+        </div>
+        <div className={`update-box ${update.state}`}>
+          <span><Download /></span>
+          <div>
+            <small>{tr(lang, 'version')}</small>
+            <b>{info?.version ?? '1.0.0'} · {updateText}</b>
+            <p>{info?.updateUrl ?? 'https://possistem.az/topdanpos/updates/'}</p>
+          </div>
+        </div>
+        {update.state === 'downloading' && (
+          <div className="progress"><span style={{ width: `${update.percent}%` }} /></div>
+        )}
+        <div className="button-row">
+          <button type="button" disabled={checkingUpdate || update.state === 'downloading'} onClick={() => void checkUpdate()}>
+            <RefreshCw className={checkingUpdate ? 'spin' : ''} />
+            {checkingUpdate ? 'Yoxlanılır...' : tr(lang, 'checkUpdate')}
+          </button>
+          {update.state === 'downloaded' && (
+            <button type="button" className="primary-action" onClick={() => void window.marketSystem?.update.install(session.sessionToken)}>
+              {tr(lang, 'installUpdate')}
+            </button>
+          )}
+        </div>
+        <p className="hint">Setup ilə qurulan proqram hər 30 dəqiqədə serveri yoxlayır, yeniləməni avtomatik yükləyir və təhlükəsiz çıxışda quraşdırır.</p>
+      </section>
+
+      <section className="panel-card settings-card">
+        <div className="panel-title">
+          <h3>{tr(lang, 'activation')}</h3>
+          <ShieldCheck />
+        </div>
+        <div className={`activation-box ${activation?.mode ?? 'trial'}`}>
+          <ShieldCheck />
+          <div>
+            <small>{activation?.mode === 'active' ? tr(lang, 'active') : activation?.mode === 'expired' ? tr(lang, 'expired') : activation?.mode === 'revoked' ? tr(lang, 'revoked') : activation?.mode === 'unlicensed' ? tr(lang, 'unlicensed') : tr(lang, 'trial')}</small>
+            <b>{activation?.customerName ?? state.settings.storeName}</b>
+            <p>Cihaz: {activation?.deviceId.slice(0, 16) ?? '...'}</p>
+            <p>Bitmə: {activation ? new Date(activation.validUntil).toLocaleDateString() : '...'}</p>
+          </div>
+        </div>
+        <label className="activation-input">
+          Aktivasiya açarı
+          <input value={activationKey} onChange={(event) => setActivationKey(event.target.value)} placeholder="MPOS-XXXX-XXXX-XXXX" />
+        </label>
+        <button
+          type="button"
+          className="modal-primary"
+          onClick={() => void window.marketSystem?.activation.activate(session.sessionToken, activationKey).then((status) => {
+            setActivation(status);
+            setMessage('Aktivasiya tamamlandı');
+          }).catch((error: Error) => setMessage(error.message))}
+        >
+          <KeyRound />Aktivləşdir
+        </button>
+        <p className="hint">Açar cihazla bağlanır və serverin Ed25519 imzası yoxlanmadan qəbul edilmir.</p>
+      </section>
+
+      <section className="panel-card settings-card">
+        <div className="panel-title">
+          <h3>{tr(lang, 'display')}</h3>
+          <Monitor />
+        </div>
+        <div className="preset-grid">
+          {display?.presets.map((preset) => (
+            <button
+              type="button"
+              key={preset.id}
+              className={display.prefs.mode === preset.mode && (preset.mode === 'fullscreen' || display.prefs.width === preset.width) ? 'active' : ''}
+              onClick={() => void window.marketSystem?.display.set(session.sessionToken, {
+                mode: preset.mode,
+                width: preset.width || 1500,
+                height: preset.height || 940,
+                zoomFactor: display.prefs.zoomFactor,
+              }).then((prefs) => setDisplay({ ...display, prefs })).catch(() => setMessage('Ekran ölçüsü tətbiq olunmadı'))}
+            >
+              <Monitor />
+              <b>{preset.label}</b>
+              <small>{preset.mode === 'fullscreen' ? 'F11' : `${preset.width}×${preset.height}`}</small>
+            </button>
+          ))}
+        </div>
+        <div className="zoom-row">
+          <span>UI ölçüsü</span>
+          {[0.8, 0.9, 1, 1.1, 1.2].map((zoom) => (
+            <button
+              type="button"
+              key={zoom}
+              className={display?.prefs.zoomFactor === zoom ? 'active' : ''}
+              onClick={() => display && void window.marketSystem?.display.set(session.sessionToken, { ...display.prefs, zoomFactor: zoom }).then((prefs) => setDisplay({ ...display, prefs })).catch(() => setMessage('UI ölçüsü tətbiq olunmadı'))}
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+          ))}
+        </div>
+        <p className="hint">F11 düyməsi istənilən ekranda tam ekranı açıb-bağlayır. 1024×768 terminallar ayrıca optimallaşdırılıb.</p>
+      </section>
+
+      {message && (
+        <div className="settings-message">
+          <Check />{message}
+          <button type="button" onClick={() => setMessage('')}><X /></button>
+        </div>
+      )}
+    </div>
+  );
+}
+

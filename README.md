@@ -1,6 +1,6 @@
-# possistem — Restoran, Market, Geyim və Aptek POS
+# possistem — Restoran, Market, Geyim, Aptek və Topdan POS
 
-Mənbə kodu: dörd oflayn işləyən Windows kassa proqramı. Hamısı Electron qabığıdır və yerli
+Mənbə kodu: beş oflayn işləyən Windows kassa proqramı. Hamısı Electron qabığıdır və yerli
 SQLite bazasına sahib olan C++20 nüvə (`*-core.exe`) ilə NDJSON üzərindən danışır.
 
 | Qovluq | Məhsul | Quruluş |
@@ -8,7 +8,8 @@ SQLite bazasına sahib olan C++20 nüvə (`*-core.exe`) ilə NDJSON üzərindən
 | [`restoranpos/`](restoranpos) | Restoran POS | Electron + C++ nüvə (`native/`, 112 fayl, testlərlə). Renderer paketlənmiş bundle-dır (`index-DAmHwBc4.js`) və `scripts/apply-restaurant-*.mjs` yamaqları ilə dəyişdirilir. |
 | [`marketpos/`](marketpos) | Market POS | Electron + React/Vite (`src/`) + C++ nüvə (`native/`). |
 | [`geyimpos/`](geyimpos) | Geyim POS | Market POS-un geyim mağazası üçün forku: model × ölçü × rəng variantları, CODE128 etiket, əllə barkod klaviaturası, dəyişmə. Bax: [geyimpos/README.md](geyimpos/README.md). |
-| [`aptekpos/`](aptekpos) | Aptek POS | Aptek üçün fork: dərman kartı (INN, doza, forma), seriya və son istifadə tarixi (FEFO, vaxtı keçmiş satılmır), resept jurnalı, qutu/ədəd satışı, GS1 DataMatrix. Bax: [aptekpos/README.md](aptekpos/README.md). |
+| [`aptekpos/`](aptekpos) | Aptek POS | Aptek üçün fork: dərman kartı (INN, doza, forma), seriya və son istifadə tarixi (FEFO, vaxtı keçmiş satılmır), resept jurnalı, qutu/ədəd satışı, GS1 DataMatrix, rəflər. Bax: [aptekpos/README.md](aptekpos/README.md). |
+| [`topdanpos/`](topdanpos) | Topdan POS | Topdan satış və anbar üçün fork: satış qaimədir (alıcı → sətirlər → ödəniş), 3 qiymət səviyyəsi (pərakəndə/topdan/diler) alıcıya görə nüvədə tətbiq olunur, yeşik/ədəd, nisyə limiti və borc, üzləşmə aktı, A4 qaimə-faktura. Bax: [topdanpos/README.md](topdanpos/README.md). |
 
 Sayt, lisenziya/idarəetmə API-si və admin/partnyor panelləri possistem.az serverində işləyir və bu
 repoya daxil deyil.
@@ -25,6 +26,7 @@ npm ci                        # restoran + ortaq alətlər
 (cd ../marketpos && npm ci)   # market UI asılılıqları
 (cd ../geyimpos && npm ci)    # Geyim UI asılılıqları
 (cd ../aptekpos && npm ci)    # Aptek UI asılılıqları
+(cd ../topdanpos && npm ci)   # Topdan UI asılılıqları
 
 npm run build:core            # native/build/restaurant-pos-core.exe
 TZ=TRT-3 npm run test:core     # qəbz snapshot-ları UTC+3
@@ -32,16 +34,18 @@ npm run market:build:core     # ../marketpos/native/build/market-pos-core.exe
 npm run market:test:core
 npm run geyim:build:core      # ../geyimpos/native/build/geyim-pos-core.exe (POS_APP=geyimpos)
 npm run aptek:build:core      # ../aptekpos/native/build/aptek-pos-core.exe (POS_APP=aptekpos)
+npm run topdan:build:core     # ../topdanpos/native/build/topdan-pos-core.exe (POS_APP=topdanpos)
 
 npm run check:versions        # versiyalar uyğundur
 node scripts/verify-third-party.mjs   # vendored C++ SHA-256 yoxlaması
-npm run typecheck             # restoran (node + web), market, Geyim və Aptek
+npm run typecheck             # restoran (node + web), market, Geyim, Aptek və Topdan
 npm run lint                  # ESLint
 npx vitest run                # unit testlər
 npm run build:desktop         # restoran: yamaqlar → packaged-renderer/ → out/ (strict)
 npm run market:build          # market renderer → ../marketpos/dist
 npm run geyim:build           # Geyim renderer → ../geyimpos/dist
 npm run aptek:build           # Aptek renderer → ../aptekpos/dist
+npm run topdan:build          # Topdan renderer → ../topdanpos/dist
 bash scripts/static-analysis-cpp.sh   # clang-tidy (clang, cmake, ninja lazımdır)
 ```
 

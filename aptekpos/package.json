@@ -3,7 +3,7 @@
   "productName": "AptekPos",
   "private": true,
   "version": "1.0.1",
-  "description": "Offline-first clothing store POS (AZ/RU/EN)",
+  "description": "Offline-first pharmacy POS (AZ/RU/EN)",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",

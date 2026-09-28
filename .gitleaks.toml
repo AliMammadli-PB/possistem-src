@@ -17,5 +17,5 @@ regexes = [
   '''1338db4cbec4934a387a1cc73c3589f3b0f58dac63be7fed0bf2a7e455e336c3''',
   '''ed25519-42cd45bfa4ca3125''',
   # localStorage key names of the retail tills (possistem.geyim.pos.v2), not credentials
-  '''(possistem|cyberplus)\.(market|geyim|aptek)\.pos\.[a-z0-9.${}-]+''',
+  '''(possistem|cyberplus)\.(market|geyim|aptek|topdan)\.pos\.[a-z0-9.${}-]+''',
 ]

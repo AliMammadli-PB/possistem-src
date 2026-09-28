@@ -3,7 +3,7 @@
  * Publishes a built installer to its update feed on possistem.az, over the
  * `pos` SSH alias (key auth only; no password is ever used or stored).
  *
- *   node scripts/publish-release.mjs restaurant|market|geyim|aptek
+ *   node scripts/publish-release.mjs restaurant|market|geyim|aptek|topdan
  *
  * Uploads the Setup .exe and .blockmap (resumable, retried), then latest.yml as
  * latest.yml.new. The swap only happens on the server once the sha512 in the
@@ -23,6 +23,7 @@ const APPS = {
   market: () => ({ release: path.join(ROOT, '..', 'marketpos', 'release'), feed: '/var/www/marketpos/updates' }),
   geyim: () => ({ release: path.join(ROOT, '..', 'geyimpos', 'release'), feed: '/var/www/geyimpos/updates' }),
   aptek: () => ({ release: path.join(ROOT, '..', 'aptekpos', 'release'), feed: '/var/www/aptekpos/updates' }),
+  topdan: () => ({ release: path.join(ROOT, '..', 'topdanpos', 'release'), feed: '/var/www/topdanpos/updates' }),
 };
 const app = process.argv[2];
 if (!APPS[app]) throw new Error(`usage: publish-release.mjs ${Object.keys(APPS).join('|')}`);
