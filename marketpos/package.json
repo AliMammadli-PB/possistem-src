@@ -2,7 +2,7 @@
   "name": "marketpos",
   "productName": "MarketPos",
   "private": true,
-  "version": "1.4.10",
+  "version": "1.4.11",
   "description": "Offline-first retail market POS (AZ/RU/EN)",
   "main": "electron/main.cjs",
   "scripts": {

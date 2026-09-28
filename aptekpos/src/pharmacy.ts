@@ -151,3 +151,23 @@ function toResult(fields: Record<string, string>) {
   }
   return { gtin, ean13: gtin.startsWith('0') ? gtin.slice(1) : undefined, expiry, lot: fields['10'], serial: fields['21'] };
 }
+
+/** EAN-13 check digit for 12 digits. */
+export function ean13CheckDigit(first12: string): number {
+  if (!/^\d{12}$/.test(first12)) throw new Error('EAN-13 needs 12 digits');
+  const sum = [...first12].reduce((acc, digit, index) => acc + Number(digit) * (index % 2 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10;
+}
+
+/**
+ * An in-store EAN-13 for goods without a manufacturer barcode (the 20-29 prefix
+ * is GS1's range for numbers a shop assigns itself, so it never collides with a
+ * medicine's own code). Printed on the price tag, it scans like any other.
+ */
+export function nextInternalBarcode(taken: Set<string>, start = Date.now() % 1_000_000_000): string {
+  for (let n = start; ; n += 1) {
+    const body = `20${String(n % 10_000_000_000).padStart(10, '0')}`;
+    const code = `${body}${ean13CheckDigit(body)}`;
+    if (!taken.has(code)) return code;
+  }
+}

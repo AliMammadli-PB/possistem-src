@@ -265,6 +265,15 @@
     },
     "platform.aggregatorStatus": {
       "description": "Delivery aggregator provider stub"
+    },
+    "shelf.list": {
+      "description": "Pharmacy shelves with how many medicines each holds"
+    },
+    "shelf.save": {
+      "description": "Create or rename a shelf (EDIT_PRODUCT)"
+    },
+    "shelf.delete": {
+      "description": "Delete an empty shelf (EDIT_PRODUCT)"
     }
   }
 }

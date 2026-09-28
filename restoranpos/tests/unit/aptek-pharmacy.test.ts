@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expiryState, nextLot, packPriceOf, parseGs1, qtyLabel, unitPriceFromPack, type Lot } from '../../../aptekpos/src/pharmacy';
+import { ean13CheckDigit, expiryState, nextInternalBarcode, nextLot, packPriceOf, parseGs1, qtyLabel, unitPriceFromPack, type Lot } from '../../../aptekpos/src/pharmacy';
 import { initialProducts } from '../../../aptekpos/src/data';
 
 const para = { packUnits: 20, splitAllowed: true, dosageForm: 'tablet', priceMinor: 15 };
@@ -45,5 +45,13 @@ describe('Aptek POS pharmacy rules', () => {
       { id: 'd', product_id: 'p', lot_number: 'EMPTY', expires_at: now + 10 * 86_400_000, qty_remaining: 0 },
     ];
     expect(nextLot(lots, now)?.lot_number).toBe('SOON');
+  });
+
+  it('makes in-store EAN-13 barcodes that skip codes already taken', () => {
+    expect(ean13CheckDigit('400638133393')).toBe(1); // 4006381333931, a published EAN-13
+    const first = nextInternalBarcode(new Set(), 42);
+    expect(first).toBe('2000000000428');
+    expect(first.slice(-1)).toBe(String(ean13CheckDigit(first.slice(0, 12))));
+    expect(nextInternalBarcode(new Set([first]), 42)).toBe('2000000000435');
   });
 });

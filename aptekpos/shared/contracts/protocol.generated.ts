@@ -129,6 +129,9 @@ export type MethodName =
   | 'platform.priceScopes'
   | 'platform.eqaimeStatus'
   | 'platform.aggregatorStatus'
+  | 'shelf.list'
+  | 'shelf.save'
+  | 'shelf.delete'
 ;
 
 export type EventName =
@@ -262,6 +265,9 @@ export const METHOD_NAMES = [
   'platform.priceScopes',
   'platform.eqaimeStatus',
   'platform.aggregatorStatus',
+  'shelf.list',
+  'shelf.save',
+  'shelf.delete',
 ] as const;
 
 export const METHOD_META: Record<MethodName, { description?: string }> = {
@@ -362,4 +368,7 @@ export const METHOD_META: Record<MethodName, { description?: string }> = {
   'platform.priceScopes': { description: "Branch/warehouse price scope stub" },
   'platform.eqaimeStatus': { description: "E-qaimə provider interface stub" },
   'platform.aggregatorStatus': { description: "Delivery aggregator provider stub" },
+  'shelf.list': { description: "Pharmacy shelves with how many medicines each holds" },
+  'shelf.save': { description: "Create or rename a shelf (EDIT_PRODUCT)" },
+  'shelf.delete': { description: "Delete an empty shelf (EDIT_PRODUCT)" },
 };

@@ -96,11 +96,12 @@ TEST_CASE("a database from the 1.3.0 line is renumbered, not refused", "[graft]"
 
   App app(dir);
   auto rows = app.app->database().query("SELECT version, name FROM database_migrations ORDER BY version");
-  REQUIRE(rows.size() == 11);
+  REQUIRE(rows.size() == 12);
   REQUIRE(rows[3].at("name") == "004_market_140.sql");
   REQUIRE(rows[8].at("name") == "009_role_catalogue.sql");
   REQUIRE(rows[9].at("name") == "010_delivery_recipes_roster.sql");
   REQUIRE(rows[10].at("name") == "011_pharmacy.sql");
+  REQUIRE(rows[11].at("name") == "012_shelves.sql");
 }
 
 TEST_CASE("a portal purchase order delivered twice is written once", "[graft]") {

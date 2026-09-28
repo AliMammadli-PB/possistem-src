@@ -3,17 +3,17 @@
  * stock only ever arrives as a lot (number, expiry, quantity), so every box on
  * the shelf can be traced to its batch and sold first-expiry-first-out.
  */
-import { useRef, useState } from 'react';
-import { Check, ImagePlus, PackagePlus, ScanBarcode } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Barcode, Check, ImagePlus, PackagePlus, ScanBarcode } from 'lucide-react';
 
 import { marketCoreClient } from './core/client';
 import { parseMoneyInput } from './domain';
 import { Field, Modal, SelectField } from './forms';
 import { money, newId } from './format';
 import { categoryLabel, tr } from './i18n';
-import { DOSAGE_FORMS, PHARMA_CATEGORIES, STORAGE, packUnitsOf, parseGs1, qtyLabel, unitPriceFromPack } from './pharmacy';
+import { DOSAGE_FORMS, PHARMA_CATEGORIES, STORAGE, nextInternalBarcode, packUnitsOf, parseGs1, qtyLabel, unitPriceFromPack } from './pharmacy';
 import { ProductVisual } from './ProductVisual';
-import type { Lang, Product, SessionUser } from './types';
+import type { Lang, Product, SessionUser, Shelf } from './types';
 
 /** A new medicine's first lot, received right after it is created. */
 export type OpeningLot = { lotNumber: string; expiresAt: number; packs: number };
@@ -56,6 +56,9 @@ export function MedicineModal({ lang, products, session, product, onClose, onSav
   const [image, setImage] = useState<Product['image']>(product?.image ?? { kind: 'url', url: '' });
   const [sku, setSku] = useState(product?.sku ?? '');
   const [barcode, setBarcode] = useState(product?.barcode ?? '');
+  const [shelf, setShelf] = useState(product?.shelf ?? '');
+  const [shelves, setShelves] = useState<Shelf[]>([]);
+  useEffect(() => { if (marketCoreClient.available()) void marketCoreClient.shelves.list().then(setShelves).catch(() => undefined); }, []);
   const [capture, setCapture] = useState(false);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [lotNumber, setLotNumber] = useState('');
@@ -99,6 +102,7 @@ export function MedicineModal({ lang, products, session, product, onClose, onSav
       taxRate: Number(taxRate) || 0, supplier: supplier.trim(), image, kind: 'product', comment: comment.trim(),
       inn: inn.trim(), strength: strength.trim(), dosageForm, packUnits: Math.max(1, Math.floor(Number(packUnits) || 1)),
       splitAllowed, rxRequired, storage, manufacturer: manufacturer.trim(), country: country.trim(), regNo: regNo.trim(),
+      shelf: shelf.trim(),
     };
     onSave(next, opening);
   };
@@ -141,7 +145,8 @@ export function MedicineModal({ lang, products, session, product, onClose, onSav
             <SelectField label={tr(lang, 'taxLabel')} value={taxRate} onChange={setTaxRate} options={['18', '8', '2', '0']} labels={{ '18': 'ƏDV 18%', '8': 'Sadələşdirilmiş 8%', '2': 'Sadələşdirilmiş 2%', '0': 'ƏDV-dən azad' }} />
             <Field label={tr(lang, 'supplier')} value={supplier} onChange={setSupplier} />
             <Field label={tr(lang, 'sku')} value={sku} onChange={setSku} />
-            <label className="field barcode-field"><span>{tr(lang, 'barcode')} *</span><div className={capture ? 'barcode-capture active' : 'barcode-capture'}><input ref={barcodeRef} data-scanner="allow" value={barcode} onChange={(event) => setBarcode(event.target.value)} onBlur={() => takeScan(barcode)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); takeScan(barcode); setCapture(false); } }} /><button type="button" onClick={() => { setBarcode(''); setCapture(true); window.setTimeout(() => barcodeRef.current?.focus(), 0); }}><ScanBarcode />{capture ? tr(lang, 'scanNow') : tr(lang, 'scanBarcode')}</button></div></label>
+            <label className="field barcode-field"><span>{tr(lang, 'barcode')} *</span><div className={capture ? 'barcode-capture active' : 'barcode-capture'}><input ref={barcodeRef} data-scanner="allow" value={barcode} onChange={(event) => setBarcode(event.target.value)} onBlur={() => takeScan(barcode)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); takeScan(barcode); setCapture(false); } }} /><button type="button" onClick={() => { setBarcode(''); setCapture(true); window.setTimeout(() => barcodeRef.current?.focus(), 0); }}><ScanBarcode />{capture ? tr(lang, 'scanNow') : tr(lang, 'scanBarcode')}</button><button type="button" title={tr(lang, 'generateBarcodeHint')} onClick={() => setBarcode(nextInternalBarcode(new Set(products.map((row) => row.barcode))))}><Barcode />{tr(lang, 'generateBarcode')}</button></div></label>
+            <label className="field shelf-field"><span>{tr(lang, 'shelf')}</span><input list="aptek-shelves" value={shelf} placeholder={tr(lang, 'shelfPlaceholder')} onChange={(event) => setShelf(event.target.value)} /><datalist id="aptek-shelves">{shelves.map((row) => <option key={row.code} value={row.code}>{row.zone}</option>)}</datalist></label>
             <Field label={tr(lang, 'comment')} value={comment} onChange={setComment} wide />
           </div>
           {!product && (

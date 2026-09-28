@@ -47,7 +47,15 @@ It is a fork of `../geyimpos`, which is itself a fork of `../marketpos`.
 - **Sale screen.** The sale screen is a list rather than tiles, searched by
   name, INN, manufacturer or barcode. It has quick filters (OTC, Rx, fridge,
   expiring within 90 days) and the 0-9 pad for barcodes the scanner cannot
-  read.
+  read. Each row shows the medicine's shelf, and typing a shelf code (e.g.
+  `A-1`) lists that shelf.
+- **Shelves.** Migration `012_shelves.sql` adds a `shelves` table and
+  `products.shelf`; the core has `shelf.list/save/delete`, and a shelf that
+  still holds medicines cannot be deleted. The Dərmanlar page has a
+  Dərmanlar | Rəflər switch that shows which medicine sits on which shelf,
+  plus the ones with no shelf yet. Price tags print the shelf.
+- **In-store barcodes.** Goods with no maker's barcode get an EAN-13 in the
+  shop's own 20… range ("Barkod yarat"), printed on the CODE128 price tag.
 - **Look.** It keeps the possistem blue. It differs from the other tills by
   its cross-and-capsule icon, its dosage-form icons, the list layout and its
   sidebar order: Satış, Dərmanlar, Alışlar, Hesabatlar, …

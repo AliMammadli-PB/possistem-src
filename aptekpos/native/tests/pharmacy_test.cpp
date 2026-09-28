@@ -155,3 +155,26 @@ TEST_CASE("a cashier cannot receive a lot", "[pharmacy]") {
   REQUIRE(f.call("product.create", payload)["success"] == true);
   REQUIRE(receive(f, "X", 0, 5, "cashier")["success"] == false);
 }
+
+TEST_CASE("medicines sit on shelves; a shelf with medicines cannot be deleted", "[pharmacy]") {
+  InlineApp f;
+  auto shelf = kManager;
+  shelf["code"] = "A-1";
+  shelf["zone"] = "Ağrıkəsicilər";
+  REQUIRE(f.call("shelf.save", shelf)["success"] == true);
+  REQUIRE(f.call("shelf.save", {{"role", "cashier"}, {"actorId", "u-cashier"}, {"code", "Z-9"}})["success"] == false);
+
+  auto payload = kManager;
+  payload["product"] = medicine();
+  payload["product"]["shelf"] = "A-1";
+  const auto created = f.call("product.create", payload);
+  REQUIRE(created["data"]["shelf"] == "A-1");
+
+  const auto list = f.call("shelf.list", kManager);
+  REQUIRE(list["data"][0]["code"] == "A-1");
+  REQUIRE(list["data"][0]["products"] == 1);
+
+  auto remove = kManager;
+  remove["code"] = "A-1";
+  REQUIRE(f.call("shelf.delete", remove)["success"] == false);
+}

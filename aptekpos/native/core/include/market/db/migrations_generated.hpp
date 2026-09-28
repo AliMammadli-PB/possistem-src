@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <string_view>
 namespace market::db {
-inline constexpr int kSchemaVersion = 11;
+inline constexpr int kSchemaVersion = 12;
 struct EmbeddedMigration { int version; const char* name; const char* checksum; std::string_view sql; };
 inline constexpr EmbeddedMigration kMigrations[] = {
   {1, "001_initial_schema.sql", "16074141", R"market(-- Market POS initial schema. Money is INTEGER qəpik (int64). Never REAL.
@@ -983,8 +983,20 @@ ALTER TABLE products ADD COLUMN reg_no TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_products_inn ON products(inn);
 CREATE INDEX IF NOT EXISTS idx_lots_product_expiry ON product_lots(product_id, expires_at);
 )market"},
+  {12, "012_shelves.sql", "52ac5932", R"market(-- Aptek POS 1.1: shelves. Every medicine can name the shelf it sits on, so a
+-- pharmacist finds a box without searching the room. Additive only.
+CREATE TABLE IF NOT EXISTS shelves (
+  code TEXT PRIMARY KEY,
+  zone TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  sort INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT 0
+);
+ALTER TABLE products ADD COLUMN shelf TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_products_shelf ON products(shelf);
+)market"},
 };
-inline constexpr std::size_t kMigrationCount = 11;
+inline constexpr std::size_t kMigrationCount = 12;
 struct EmbeddedSeed { const char* name; std::string_view sql; };
 inline constexpr EmbeddedSeed kSeeds[] = {
 };

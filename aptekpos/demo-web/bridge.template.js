@@ -8,7 +8,7 @@
  * tenant state live here in memory; desktop-only features answer "not in demo".
  */
 import createCore from './aptek-pos-core.mjs';
-import { demoCatalog } from './seed.js';
+import { demoCatalog, demoShelves } from './seed.js';
 
 // electron/core-payload.cjs, inlined at build time
 const { authorizeCorePayload } = (function () {
@@ -223,6 +223,7 @@ const handlers = {
       const bound = coreInvoke('cash.bindDeviceRegister', authorizeCorePayload({ name: 'Demo kassa', operatorId: user.id, updatedAt: Date.now() }, () => user));
       // A shop's first sign-in finds its stock: the demo pharmacy goes in as the
       // medicine form would create it: each medicine, then its lots.
+      for (const shelf of demoShelves()) coreInvoke('shelf.save', authorizeCorePayload(shelf, () => user));
       for (const { product, lots } of demoCatalog()) {
         coreInvoke('product.create', authorizeCorePayload({ product }, () => user));
         for (const lot of lots) coreInvoke('lot.receive', authorizeCorePayload({ productId: product.id, supplier: product.supplier, ...lot }, () => user));

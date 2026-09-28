@@ -20,7 +20,7 @@ function Label({ product, storeName, lang }: { product: Product; storeName: stri
     <div className="price-tag">
       <small>{storeName}</small>
       <b>{product.name[lang]}{product.strength ? ` ${product.strength}` : ''}</b>
-      <span>{[formInfo(product.dosageForm).labels[lang], product.manufacturer, product.rxRequired ? 'Rx' : ''].filter(Boolean).join(' · ') || product.sku}</span>
+      <span>{[formInfo(product.dosageForm).labels[lang], product.manufacturer, product.rxRequired ? 'Rx' : '', product.shelf ? `${tr(lang, 'shelf')} ${product.shelf}` : ''].filter(Boolean).join(' · ') || product.sku}</span>
       <i dangerouslySetInnerHTML={{ __html: svg }} />
       <code>{product.barcode}</code>
       <strong>{money(packPriceOf(product), lang)}</strong>

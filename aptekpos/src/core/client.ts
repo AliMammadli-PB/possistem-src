@@ -1,6 +1,6 @@
 import type { MethodName } from '../../shared/contracts/protocol.generated';
 import type { PosResult } from '../../shared/contracts/ipc';
-import type { PersistedState, Product, ProductDraft, Register, Sale, StoreSettings } from '../types';
+import type { PersistedState, Product, ProductDraft, Register, Sale, Shelf, StoreSettings } from '../types';
 
 /** `managerPin` is what the override dialog collected; main verifies it. */
 export type CallOptions = { managerPin?: string };
@@ -205,6 +205,11 @@ export const marketCoreClient = {
     // trio duplicated that ledger from outside the sale — and `earn` had no
     // permission check at all, so it was an open points minter.
     config: () => call('loyalty.config'),
+  },
+  shelves: {
+    list: () => call<Shelf[]>('shelf.list', {}),
+    save: (shelf: { code: string; zone?: string; note?: string; sort?: number }, actorId?: string) => call<Shelf>('shelf.save', { ...shelf, actorId }),
+    remove: (code: string, actorId?: string) => call('shelf.delete', { code, actorId }),
   },
   lots: {
     list: (payload: Record<string, unknown> = {}) => call('lot.list', payload),

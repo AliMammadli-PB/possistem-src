@@ -2318,6 +2318,45 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
                           {"status", "not_configured"},
                           {"supported", nlohmann::json::array({"wolt", "bolt", "custom"})}};
   });
+  // Shelves: where each medicine sits. Anyone signed in may read them; changing
+  // them is part of looking after the catalogue (EDIT_PRODUCT).
+  server.on("shelf.list", [&db](const nlohmann::json&) {
+    return db.query(
+        "SELECT s.code, s.zone, s.note, s.sort, (SELECT COUNT(*) FROM products p WHERE p.active = 1 AND p.shelf = s.code) "
+        "AS products FROM shelves s ORDER BY s.sort, s.code");
+  });
+  server.on("shelf.save", [&db](const nlohmann::json& p) {
+    requirePermission(db, p, "EDIT_PRODUCT");
+    std::string code = requireString(p, "code");
+    code.erase(0, code.find_first_not_of(" \t"));
+    code.erase(code.find_last_not_of(" \t") + 1);
+    if (code.empty() || code.size() > 32) throw PosError("E_VALIDATION", "Rəf kodu 1-32 simvol olmalıdır");
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(db.raw(),
+                       "INSERT INTO shelves(code, zone, note, sort, created_at) VALUES (?,?,?,?,?) ON CONFLICT(code) DO "
+                       "UPDATE SET zone=excluded.zone, note=excluded.note, sort=excluded.sort",
+                       -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, code.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, p.value("zone", "").c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, p.value("note", "").c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, p.value("sort", std::int64_t{0}));
+    sqlite3_bind_int64(stmt, 5, nowMs());
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) throw PosError("E_DB", sqlite3_errmsg(db.raw()), true);
+    audit(db, p.value("actorId", "system"), "SHELF_SAVE", code);
+    return db.query("SELECT code, zone, note, sort FROM shelves WHERE code = ?", {code}, {})[0];
+  });
+  server.on("shelf.delete", [&db](const nlohmann::json& p) {
+    requirePermission(db, p, "EDIT_PRODUCT");
+    const auto code = requireString(p, "code");
+    if (db.queryInt("SELECT COUNT(*) FROM products WHERE active = 1 AND shelf = ?", {code}, {}) > 0)
+      throw PosError("E_VALIDATION", "Rəfdə dərman var: əvvəl onları başqa rəfə köçürün");
+    db.execBound("DELETE FROM shelves WHERE code = ?", {code});
+    audit(db, p.value("actorId", "system"), "SHELF_DELETE", code);
+    return nlohmann::json{{"ok", true}};
+  });
+
   server.on("settings.setValue", [&db](const nlohmann::json& p) {
     requirePermission(db, p, "MANAGE_SETTINGS");
     const auto key = requireString(p, "key");

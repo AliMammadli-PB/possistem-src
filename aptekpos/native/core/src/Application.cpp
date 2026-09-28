@@ -103,6 +103,7 @@ nlohmann::json productRowToJson(const nlohmann::json& row, db::Database& db) {
       {"manufacturer", db::columnOr(row, "manufacturer", "")},
       {"country", db::columnOr(row, "country", "")},
       {"regNo", db::columnOr(row, "reg_no", "")},
+      {"shelf", db::columnOr(row, "shelf", "")},
       {"parentProductId", row.contains("parent_product_id") && !row["parent_product_id"].is_null() ? row["parent_product_id"] : nlohmann::json(nullptr)},
       {"name", {{"az", row.at("name_az")}, {"ru", db::columnOr(row, "name_ru", "")}, {"en", db::columnOr(row, "name_en", "")}}},
       {"category", row.at("category")},
@@ -475,7 +476,7 @@ void saveProduct(db::Database& db, const nlohmann::json& product, bool isCreate)
       "INSERT INTO products(id, sku, barcode, name_az, name_ru, name_en, category, unit, price_minor, "
       "cost_minor, min_stock, tax_rate, supplier, accent, image_json, active, created_at, internal_code, color, "
       "size, parent_product_id, inn, strength, dosage_form, pack_units, split_allowed, rx_required, storage, "
-      "manufacturer, country, reg_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+      "manufacturer, country, reg_no, shelf) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
       "ON CONFLICT(id) DO UPDATE SET sku=excluded.sku, barcode=excluded.barcode, name_az=excluded.name_az, "
       "name_ru=excluded.name_ru, name_en=excluded.name_en, category=excluded.category, unit=excluded.unit, "
       "price_minor=excluded.price_minor, cost_minor=excluded.cost_minor, min_stock=excluded.min_stock, "
@@ -484,7 +485,7 @@ void saveProduct(db::Database& db, const nlohmann::json& product, bool isCreate)
       "color=excluded.color, size=excluded.size, parent_product_id=excluded.parent_product_id, inn=excluded.inn, "
       "strength=excluded.strength, dosage_form=excluded.dosage_form, pack_units=excluded.pack_units, "
       "split_allowed=excluded.split_allowed, rx_required=excluded.rx_required, storage=excluded.storage, "
-      "manufacturer=excluded.manufacturer, country=excluded.country, reg_no=excluded.reg_no";
+      "manufacturer=excluded.manufacturer, country=excluded.country, reg_no=excluded.reg_no, shelf=excluded.shelf";
   if (sqlite3_prepare_v2(db.raw(), sql, -1, &stmt, nullptr) != SQLITE_OK) {
     throw PosError("E_DB", sqlite3_errmsg(db.raw()), true);
   }
@@ -524,6 +525,7 @@ void saveProduct(db::Database& db, const nlohmann::json& product, bool isCreate)
   sqlite3_bind_text(stmt, 29, product.value("manufacturer", "").c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 30, product.value("country", "").c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 31, product.value("regNo", "").c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 32, product.value("shelf", "").c_str(), -1, SQLITE_TRANSIENT);
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     const std::string msg = sqlite3_errmsg(db.raw());
     sqlite3_finalize(stmt);
@@ -2055,7 +2057,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
   // carries another till's edits, so it is what makes a price typed on register
   // 1 appear on register 2 without anyone refreshing.
   for (const char* method : {"product.create", "product.update", "product.delete",
-                             "product.importCommit"}) {
+                             "product.importCommit", "shelf.save", "shelf.delete"}) {
     server.markMutating(method, "catalog");
   }
   for (const char* method : {"inventory.adjust", "inventory.transfer", "purchase.create",

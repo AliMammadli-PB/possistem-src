@@ -129,6 +129,9 @@ inline constexpr std::string_view kMethods[] = {
   "platform.priceScopes",
   "platform.eqaimeStatus",
   "platform.aggregatorStatus",
+  "shelf.list",
+  "shelf.save",
+  "shelf.delete",
 };
-inline constexpr std::size_t kMethodCount = 97;
+inline constexpr std::size_t kMethodCount = 100;
 }  // namespace market::protocol

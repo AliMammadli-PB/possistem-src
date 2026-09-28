@@ -2,7 +2,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import {
   Activity, ArrowLeftRight, ArrowRightLeft, FileText, Pill, Tags, BadgeDollarSign, Boxes, Building2, Check,
   ChevronRight, CircleDollarSign, ClipboardList, Cloud, CloudOff, CreditCard, Download,
-  Expand, FileClock, ImagePlus, KeyRound, Languages, LockKeyhole, LogOut, Minus,
+  Expand, FileClock, ImagePlus, KeyRound, Languages, LockKeyhole, LogOut, MapPin, Minus,
   Monitor, PackageCheck, PackagePlus, PackageSearch, Pause, Plus, ReceiptText,
   RefreshCw, RotateCcw, ScanBarcode, Search, Settings, ShieldCheck, ShoppingBag,
   ShoppingBasket, Smartphone, Store, Trash2, TriangleAlert, Truck, UserCog, Users,
@@ -18,6 +18,7 @@ import { marketCoreClient } from './core/client';
 import { ProductVisual } from './ProductVisual';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
 import { InventoryProductGrid, SaleMedicineList } from './SaleProductGrid';
+import { ShelvesPanel } from './Shelves';
 import { expiryState, formInfo, nextLot, packPriceOf, packUnitsOf, parseGs1, qtyLabel, type Lot } from './pharmacy';
 import { LotReceiveModal, MedicineModal, type OpeningLot } from './ProductForm';
 import { PrescriptionModal, PharmacyReports } from './Prescriptions';
@@ -29,7 +30,7 @@ import {
   RegistersOpsPage, ReportsOpsPage, StocktakePage,
 } from './RetailOpsPanels';
 import { useBarcodeScanner } from './useBarcodeScanner';
-import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, PurchaseOrder, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
+import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, PurchaseOrder, Register, Role, Sale, SessionUser, Shelf, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
 
 import { marketBooks, stockLines } from './books';
 import { longDate, money, newId } from './format';
@@ -649,7 +650,7 @@ export default function App() {
           <LockedArea locked={!viewAllowed(view)} onDenied={deny}>
           {view === 'dashboard' && <Dashboard state={state} staff={staff} session={session} lang={lang} onView={safeSetView} />}
           {view === 'sale' && <SalePage state={state} setState={setState} session={session} lang={lang} cart={cart} setCart={setCart} cloudConnected={cloudConnected} notify={setNotice} coreReady={coreReady} onRefresh={refreshFromCore} audit={mutate} exchangeCredit={exchangeCredit} onExchangeDone={() => setExchangeCredit(null)} />}
-          {view === 'inventory' && <InventoryPage state={state} lang={lang} canEdit={session.role === 'manager' || session.role === 'warehouse'} onDenied={deny} onAdd={() => setProductModal({ product: null })} onEdit={(product) => setProductModal({ product })} onLabels={setLabelProducts} onTransfer={() => setTransferModal(true)} onWaste={() => setWasteModal(true)} />}
+          {view === 'inventory' && <InventoryPage state={state} lang={lang} session={session} notify={setNotice} coreReady={coreReady} canEdit={session.role === 'manager' || session.role === 'warehouse'} onDenied={deny} onAdd={() => setProductModal({ product: null })} onEdit={(product) => setProductModal({ product })} onLabels={setLabelProducts} onTransfer={() => setTransferModal(true)} onWaste={() => setWasteModal(true)} />}
           {view === 'warehouses' && <WarehousesPage state={state} lang={lang} onAdd={() => setWarehouseModal(true)} onTransfer={() => setTransferModal(true)} />}
           {view === 'purchases' && <PurchasesPage state={state} lang={lang} onAdd={() => setPurchaseModal(true)} onReceive={receiveOrder} />}
           {view === 'returns' && <ReturnsPage state={state} lang={lang} onRefund={refundSale} onPartial={coreReady ? setReturning : undefined} />}
@@ -1220,6 +1221,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
         || product.sku.toLocaleLowerCase().includes(needle)
         || (product.inn ?? '').toLocaleLowerCase().includes(needle)
         || (product.manufacturer ?? '').toLocaleLowerCase().includes(needle)
+        || (product.shelf ?? '').toLocaleLowerCase() === needle
         || Object.values(product.name).some((name) => name.toLocaleLowerCase().includes(needle));
     }).sort((a, b) => a.name[lang].localeCompare(b.name[lang], 'az'));
   }, [onSale, query, category, quick, lots, lang]);
@@ -1542,9 +1544,25 @@ function PaymentModal({ lang, storeName, totalMinor, onClose, onComplete }: { la
   return <Modal title={tr(lang, 'pay')} subtitle={`${tr(lang, 'total')} · ${money(totalMinor, lang)}`} onClose={onClose} wide><div className="payment-layout"><section><div className="payment-methods"><button className={method === 'cash' ? 'active' : ''} onClick={() => setMethod('cash')}><CircleDollarSign /><b>{tr(lang, 'cash')}</b><small>AZN</small></button><button className={method === 'card' ? 'active' : ''} onClick={() => setMethod('card')}><CreditCard /><b>{tr(lang, 'card')}</b><small>POS terminal</small></button><button className={method === 'mixed' ? 'active' : ''} onClick={() => setMethod('mixed')}><WalletCards /><b>{tr(lang, 'mixed')}</b><small>Nağd + kart</small></button></div>{method === 'cash' && <><label className="money-field">{tr(lang, 'tendered')}<span><input autoFocus value={tendered} onChange={(event) => setTendered(event.target.value)} inputMode="decimal" /> AZN</span></label><div className="quick-cash">{[totalMinor, Math.ceil(totalMinor / 500) * 500, Math.ceil(totalMinor / 1000) * 1000, 5000, 10000].filter((value, index, rows) => rows.indexOf(value) === index).map((value) => <button key={value} onClick={() => setTendered((value / 100).toFixed(2))}>{money(value, lang)}</button>)}</div><NumPad value={tendered} onChange={setTendered} /></>}{method === 'mixed' && <div className="split-fields"><label>{tr(lang, 'cash')}<input value={cashPart} onChange={(event) => setCashPart(event.target.value)} inputMode="decimal" /></label><label>{tr(lang, 'card')}<input value={(cardMinor / 100).toFixed(2)} disabled /></label></div>}{(method === 'card' || method === 'mixed') && <label className="money-field">Terminal ref (manual)<span><input value={terminalRef} onChange={(e) => setTerminalRef(e.target.value)} placeholder="RRN / auth" /></span></label>}<div className="payment-summary"><div><span>{tr(lang, 'total')}</span><b>{money(totalMinor, lang)}</b></div><div><span>{tr(lang, 'tendered')}</span><b>{money(method === 'mixed' ? cashMinor + cardMinor : tenderedMinor, lang)}</b></div><div className="change"><span>{tr(lang, 'change')}</span><strong>{money(method === 'cash' ? change : 0, lang)}</strong></div></div></section><aside className="receipt-preview"><div className="receipt-paper"><p>{(storeName || 'AptekPos').toLocaleUpperCase('az')}</p><small>{new Date().toLocaleString('az-AZ')}</small><hr /><span>YEKUN <b>{money(totalMinor, lang)}</b></span><span>{tr(lang, method).toLocaleUpperCase('az')} <b>{money(method === 'cash' ? tenderedMinor : totalMinor, lang)}</b></span><span>QALIQ <b>{money(method === 'cash' ? change : 0, lang)}</b></span><hr /><small>Alış-verişiniz üçün təşəkkür edirik</small></div></aside></div><button className="modal-primary payment-complete" disabled={!valid} onClick={() => onComplete({ method, amountMinor: totalMinor, tenderedMinor: method === 'cash' ? tenderedMinor : totalMinor, changeMinor: method === 'cash' ? change : 0, cashMinor: method === 'mixed' ? cashMinor : undefined, cardMinor: method === 'mixed' ? cardMinor : method === 'card' ? totalMinor : undefined, terminalRef: terminalRef || undefined })}><Check />{tr(lang, 'completePayment')}<strong>{method === 'cash' ? `${tr(lang, 'change')}: ${money(change, lang)}` : money(totalMinor, lang)}</strong></button></Modal>;
 }
 
-function InventoryPage({ state, lang, canEdit, onDenied, onAdd, onEdit, onTransfer, onWaste, onLabels }: { state: PersistedState; lang: Lang; canEdit: boolean; onDenied: () => void; onAdd: () => void; onEdit: (product: Product) => void; onTransfer: () => void; onWaste: () => void; onLabels: (products: Product[]) => void }) {
+function InventoryPage({ state, lang, session, notify, coreReady, canEdit, onDenied, onAdd, onEdit, onTransfer, onWaste, onLabels }: { state: PersistedState; lang: Lang; session: SessionUser; notify: (text: string) => void; coreReady: boolean; canEdit: boolean; onDenied: () => void; onAdd: () => void; onEdit: (product: Product) => void; onTransfer: () => void; onWaste: () => void; onLabels: (products: Product[]) => void }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
+  const [mode, setMode] = useState<'list' | 'shelves'>('list');
+  const [shelves, setShelves] = useState<Shelf[]>([]);
+  const [lots, setLots] = useState<Map<string, Lot[]>>(new Map());
+  const [shelfTick, setShelfTick] = useState(0);
+  useEffect(() => {
+    if (mode !== 'shelves' || !coreReady || !marketCoreClient.available()) return;
+    let cancelled = false;
+    void Promise.all([marketCoreClient.shelves.list(), marketCoreClient.lots.list({})]).then(([shelfRows, lotRows]) => {
+      if (cancelled) return;
+      const byProduct = new Map<string, Lot[]>();
+      for (const lot of (lotRows as Lot[]) ?? []) byProduct.set(lot.product_id, [...(byProduct.get(lot.product_id) ?? []), lot]);
+      setShelves(shelfRows);
+      setLots(byProduct);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [mode, coreReady, state.products, shelfTick]);
   const categories = useMemo(() => [...new Set(state.products.map((product) => product.category))], [state.products]);
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1561,6 +1579,7 @@ function InventoryPage({ state, lang, canEdit, onDenied, onAdd, onEdit, onTransf
         || (product.internalCode ?? '').toLowerCase().includes(needle)
         || (product.inn ?? '').toLowerCase().includes(needle)
         || (product.manufacturer ?? '').toLowerCase().includes(needle)
+        || (product.shelf ?? '').toLowerCase() === needle
         || product.name[lang].toLowerCase().includes(needle);
     }),
     [state.products, query, lang, category],
@@ -1581,8 +1600,9 @@ function InventoryPage({ state, lang, canEdit, onDenied, onAdd, onEdit, onTransf
       </section>
       <section className="data-card inventory-card-shell">
         <div className="data-title">
-          <div>
-            <h2>{tr(lang, 'inventory')}</h2>
+          <div className="segmented inventory-mode">
+            <button type="button" className={mode === 'list' ? 'active' : ''} onClick={() => setMode('list')}><Boxes />{tr(lang, 'inventory')}</button>
+            <button type="button" className={mode === 'shelves' ? 'active' : ''} onClick={() => setMode('shelves')}><MapPin />{tr(lang, 'shelves')}</button>
           </div>
           <div className="data-actions">
             <label className="table-search">
@@ -1595,7 +1615,8 @@ function InventoryPage({ state, lang, canEdit, onDenied, onAdd, onEdit, onTransf
             <button type="button" className="primary-action" aria-disabled={!canEdit || undefined} onClick={canEdit ? onAdd : onDenied}><PackagePlus />{tr(lang, 'newMedicine')}</button>
           </div>
         </div>
-        <div className="inventory-catalog-layout">
+        {mode === 'shelves' && <ShelvesPanel key={shelves.length ? 'loaded' : 'empty'} lang={lang} products={state.products} shelves={shelves} lots={lots} session={session} canEdit={canEdit} notify={notify} onChanged={() => setShelfTick((n) => n + 1)} onEdit={canEdit ? onEdit : onDenied} />}
+        {mode === 'list' && <div className="inventory-catalog-layout">
           <aside className="catalog-aisles inventory-aisles">
             <h2>{tr(lang, 'catalogAisles')}</h2>
             <CatalogAisleNav
@@ -1609,7 +1630,7 @@ function InventoryPage({ state, lang, canEdit, onDenied, onAdd, onEdit, onTransf
             />
           </aside>
           <InventoryProductGrid products={rows} lang={lang} money={money} canEdit onEdit={canEdit ? onEdit : onDenied} />
-        </div>
+        </div>}
       </section>
     </div>
   );

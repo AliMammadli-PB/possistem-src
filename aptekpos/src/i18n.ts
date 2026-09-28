@@ -113,6 +113,26 @@ Object.assign(en, {
 });
 
 export const dictionaries: Record<Lang, Record<string, string>> = { az, ru, en };
+// Aptek POS: shelves (which medicine sits where) and in-store barcodes.
+Object.assign(az, {
+  shelf: 'Rəf', shelves: 'Rəflər', shelfCode: 'Rəf kodu (məs. A-1)', shelfZone: 'Zona / yer (məs. Vitrin, Soyuducu)', addShelf: 'Rəf əlavə et',
+  shelfSaved: 'Rəf yadda saxlanıldı', shelfDeleted: 'Rəf silindi', deleteShelf: 'Boş rəfi sil', noShelf: 'Rəfsiz', noShelfHint: 'Rəfi yazılmamış dərmanlar',
+  shelfEmpty: 'Bu rəfdə dərman yoxdur. Dərmanı açıb "Rəf" xanasına bu kodu yazın.', shelfPlaceholder: 'A-1',
+  generateBarcode: 'Barkod yarat', generateBarcodeHint: 'Barkodu olmayan mal üçün daxili EAN-13 (20…) yaradılır, etiketdə çap olunur',
+});
+Object.assign(ru, {
+  shelf: 'Полка', shelves: 'Полки', shelfCode: 'Код полки (напр. A-1)', shelfZone: 'Зона (напр. Витрина, Холодильник)', addShelf: 'Добавить полку',
+  shelfSaved: 'Полка сохранена', shelfDeleted: 'Полка удалена', deleteShelf: 'Удалить пустую полку', noShelf: 'Без полки', noShelfHint: 'Лекарства без указанной полки',
+  shelfEmpty: 'На этой полке нет лекарств. Откройте лекарство и укажите этот код в поле «Полка».', shelfPlaceholder: 'A-1',
+  generateBarcode: 'Создать штрихкод', generateBarcodeHint: 'Внутренний EAN-13 (20…) для товара без штрихкода, печатается на этикетке',
+});
+Object.assign(en, {
+  shelf: 'Shelf', shelves: 'Shelves', shelfCode: 'Shelf code (e.g. A-1)', shelfZone: 'Zone (e.g. Display, Fridge)', addShelf: 'Add shelf',
+  shelfSaved: 'Shelf saved', shelfDeleted: 'Shelf deleted', deleteShelf: 'Delete empty shelf', noShelf: 'No shelf', noShelfHint: 'Medicines without a shelf',
+  shelfEmpty: 'No medicines on this shelf. Open a medicine and enter this code in its Shelf field.', shelfPlaceholder: 'A-1',
+  generateBarcode: 'Generate barcode', generateBarcodeHint: 'An in-store EAN-13 (20…) for goods without a barcode, printed on the tag',
+});
+
 export const tr = (lang: Lang, key: string): string => dictionaries[lang][key] ?? az[key] ?? key;
 
 const units: Record<string, Record<Lang, string>> = { əd: { az: 'əd', ru: 'шт.', en: 'ea' }, cüt: { az: 'cüt', ru: 'пара', en: 'pair' }, dəst: { az: 'dəst', ru: 'компл.', en: 'set' }, qutu: { az: 'qutu', ru: 'кор.', en: 'box' }, kq: { az: 'kq', ru: 'кг', en: 'kg' }, pk: { az: 'pk', ru: 'уп.', en: 'pkg' }, litr: { az: 'litr', ru: 'л', en: 'litre' } };

@@ -28,6 +28,17 @@ const MEDICINES = [
   ['Rəqəmsal termometr', '', '', 'device', 'Tibbi cihaz', 1, false, false, 'room', 'Omron', 1590, 950, [[1500, 6]]],
 ];
 
+// Shelves by section, as a pharmacy lays them out: [code, zone, categories on it].
+const SHELF_LAYOUT = [
+  ['A-1', 'Vitrin · ağrıkəsici', ['Ağrıkəsici', 'Uşaq']],
+  ['A-2', 'Vitrin · soyuqdəymə', ['Öskürək', 'Allergiya', 'Göz-qulaq', 'Tənəffüs']],
+  ['B-1', 'Arxa rəf · reseptli', ['Antibiotik', 'Ürək-damar', 'Diabet', 'Mədə-bağırsaq']],
+  ['C-1', 'Zal · vitamin və qulluq', ['Vitamin', 'Dəri', 'Antiseptik', 'Sarğı', 'Tibbi cihaz']],
+  ['S-1', 'Soyuducu 2-8 °C', []],
+];
+export const demoShelves = () => SHELF_LAYOUT.map(([code, zone], sort) => ({ code, zone, sort }));
+const shelfOf = (category, storage) => storage === 'cool' ? 'S-1' : SHELF_LAYOUT.find(([, , cats]) => cats.includes(category))?.[0] ?? '';
+
 function ean13(body12) {
   const sum = [...body12].reduce((acc, digit, index) => acc + Number(digit) * (index % 2 ? 3 : 1), 0);
   return `${body12}${(10 - (sum % 10)) % 10}`;
@@ -44,7 +55,7 @@ export function demoCatalog() {
         name: { az: name, ru: name, en: name }, category, unit: split ? 'ədəd' : 'qutu',
         priceMinor: Math.round(packPrice / per), costMinor: Math.round(packCost / per), minStock: 2 * per, taxRate: 18,
         supplier: manufacturer, accent: '#0e7c86', image: { kind: 'url', url: '' }, active: true, createdAt: now, kind: 'product',
-        inn, strength, dosageForm: form, packUnits, splitAllowed: split, rxRequired: rx, storage, manufacturer, country: '', regNo: '', stock: 0,
+        inn, strength, dosageForm: form, packUnits, splitAllowed: split, rxRequired: rx, storage, manufacturer, country: '', regNo: '', stock: 0, shelf: shelfOf(category, storage),
       },
       lots: lots.map(([days, packs], lot) => ({ lotNumber: `${barcode.slice(-4)}-${lot + 1}`, expiresAt: now + days * DAY, qty: packs * per })),
     };

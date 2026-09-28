@@ -191,6 +191,7 @@ export function SaleMedicineList({ products, lots, lang, money, inCart, onAdd }:
               <span className="med-badges">
                 {product.rxRequired && <b className="badge-rx">{tr(lang, 'rxBadge')}</b>}
                 {product.storage === 'cool' && <b className="badge-cold">2-8 °C</b>}
+                {product.shelf && <b className="badge-shelf">{tr(lang, 'shelf')} {product.shelf}</b>}
               </span>
             </span>
             <span className={`med-expiry is-${state}`}>{lot?.expires_at ? new Date(lot.expires_at).toLocaleDateString('az-AZ') : '—'}{lot ? <small>{lot.lot_number}</small> : null}</span>

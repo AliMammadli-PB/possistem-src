@@ -107,7 +107,13 @@ try {
     if (m.split) await form.getByLabel('Qutu açılıb ədədlə satıla bilər').check();
     await field('Alış qiyməti / qutu · AZN').fill(m.cost);
     await field('Satış qiyməti / qutu · AZN *').fill(m.price);
-    await form.locator('.barcode-field input').fill(m.barcode);
+    if (m.barcode) await form.locator('.barcode-field input').fill(m.barcode);
+    else {
+      // No maker's barcode: the till assigns an in-store EAN-13.
+      await form.getByRole('button', { name: 'Barkod yarat' }).click();
+      await expect(form.locator('.barcode-field input')).toHaveValue(/^20\d{11}$/);
+    }
+    if (m.shelf) await form.locator('.shelf-field input').fill(m.shelf);
     await field('Seriya nömrəsi').fill(m.lot);
     await field('Son istifadə tarixi').fill(iso(m.expiry));
     await field('Say (qutu)').fill(String(m.packs));
@@ -116,17 +122,30 @@ try {
     await expect(form).toBeHidden();
   };
 
-  // 3. Two medicines, each arriving as a lot.
+  // 3. A shelf, then three medicines, each arriving as a lot.
+  await page.locator('.rail nav button[title="Dərmanlar"]').click();
+  await page.locator('.inventory-mode').getByRole('button', { name: 'Rəflər' }).click();
+  await page.getByLabel('Rəf kodu (məs. A-1)', { exact: true }).fill('A-1');
+  await page.getByLabel('Zona / yer (məs. Vitrin, Soyuducu)', { exact: true }).fill('Vitrin');
+  await page.getByRole('button', { name: 'Rəf əlavə et' }).click();
+  await expect(page.locator('.shelf-list')).toContainText('A-1');
+  await shot(page, '02b-shelf');
+  await page.locator('.inventory-mode').getByRole('button', { name: 'Dərmanlar' }).click();
   const now = Date.now();
-  await medicine({ name: 'Parasetamol', inn: 'Paracetamol', strength: '500 mq', form: 'tablet', category: 'Ağrıkəsici', units: 20, split: true, cost: '1.00', price: '3.00', barcode: '4600000000017', lot: 'P-01', expiry: now + 400 * day, packs: 5 });
+  await medicine({ name: 'Parasetamol', inn: 'Paracetamol', strength: '500 mq', form: 'tablet', category: 'Ağrıkəsici', units: 20, split: true, cost: '1.00', price: '3.00', barcode: '4600000000017', shelf: 'A-1', lot: 'P-01', expiry: now + 400 * day, packs: 5 });
   await medicine({ name: 'Amoksisillin', inn: 'Amoxicillin', strength: '500 mq', form: 'capsule', category: 'Antibiotik', rx: true, units: 16, cost: '3.00', price: '6.50', barcode: '4600000000024', lot: 'A-02', expiry: now + 60 * day, packs: 3 });
-  await expect(page.locator('.inventory-card')).toHaveCount(2);
+  await medicine({ name: 'Steril sarğı', inn: '', strength: '', form: 'patch', category: 'Sarğı', units: 1, cost: '0.70', price: '1.50', lot: 'S-03', expiry: now + 900 * day, packs: 10 });
+  await expect(page.locator('.inventory-card')).toHaveCount(3);
   await shot(page, '04-medicines');
 
   // 4. The list shows both; a pack and one tablet of paracetamol.
   await page.locator('.rail nav button[title="Satış"]').click();
-  await expect(page.locator('.med-row:not(.med-head)')).toHaveCount(2);
+  await expect(page.locator('.med-row:not(.med-head)')).toHaveCount(3);
   const para = page.locator('.med-row', { hasText: 'Parasetamol' });
+  await expect(para.locator('.badge-shelf')).toHaveText('Rəf A-1');
+  await page.locator('.search-box input').fill('A-1');
+  await expect(page.locator('.med-row:not(.med-head)')).toHaveCount(1);
+  await page.locator('.search-box input').fill('');
   await expect(para).toContainText('5 qutu');
   await para.getByRole('button', { name: '+ Qutu' }).click();
   await para.getByRole('button', { name: '+ tablet' }).click();
@@ -177,6 +196,16 @@ try {
   await page.locator('.rail nav button[title="Satış"]').click();
   await expect(page.locator('.med-row', { hasText: 'Parasetamol' })).toContainText('5 qutu + 19 tablet');
   await shot(page, '09-after-lot');
+
+  // 10. Shelves: A-1 holds paracetamol, the other two have no shelf yet.
+  await page.locator('.rail nav button[title="Dərmanlar"]').click();
+  await page.locator('.inventory-mode').getByRole('button', { name: 'Rəflər' }).click();
+  await expect(page.locator('.shelf-list button.active')).toContainText('A-1');
+  await expect(page.locator('.shelf-items > button')).toHaveCount(1);
+  await expect(page.locator('.shelf-items')).toContainText('Parasetamol');
+  await shot(page, '10-shelves');
+  await page.locator('.shelf-list button', { hasText: 'Rəfsiz' }).click();
+  await expect(page.locator('.shelf-items > button')).toHaveCount(2);
 
   if (errors.length) throw new Error(`page errors: ${errors.join('\n')}`);
   console.log(`PASS aptek e2e -> ${OUT}`);
