@@ -162,7 +162,7 @@ jobs:
       - run: bash restoranpos/scripts/static-analysis-cpp.sh
 
   demo-wasm:
-    name: live demo (all four cores in WebAssembly)
+    name: live demo (all five cores in WebAssembly)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
