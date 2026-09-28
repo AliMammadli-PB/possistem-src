@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const APPS = {
   marketpos: { core: 'market-pos-core', artifact: 'MarketPos', icon: 'marketpos-app-icon-v2.png' },
   geyimpos: { core: 'geyim-pos-core', artifact: 'GeyimPos', icon: 'geyimpos-app-icon.png' },
+  aptekpos: { core: 'aptek-pos-core', artifact: 'AptekPos', icon: 'aptekpos-app-icon.png' },
 };
 
 export const POS_APP = process.env.POS_APP || 'marketpos';

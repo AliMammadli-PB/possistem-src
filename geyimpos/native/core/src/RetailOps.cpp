@@ -2176,6 +2176,8 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
     return db.query("SELECT * FROM product_lots ORDER BY expires_at");
   });
   server.on("lot.receive", [&db](const nlohmann::json& p) {
+    // A lot adds stock: the same right as receiving a purchase.
+    requirePermission(db, p, "RECEIVE_PURCHASE");
     const std::string id = newId("lot");
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db.raw(),

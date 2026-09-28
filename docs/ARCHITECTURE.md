@@ -16,13 +16,13 @@ bazasına tək sahib olan C++20 nüvə prosesi.
   C++ nüvə (*-core.exe)  ── SQLite (WAL) ── yeganə yazıçı; icazələri ikinci dəfə yoxlayır
 ```
 
-| | Restoran POS (`restoranpos/`) | Market POS (`marketpos/`) | Geyim POS (`geyimpos/`) |
-|---|---|---|---|
-| Main | `index.js` (paketlənmiş, yamaqlanmış) → `out/main/index.js` | `electron/main.cjs` + modullar | Market ilə eyni (fork) |
-| Preload | `out/preload/index.js` → `window.pos` (`pos:*` kanalları) | `electron/preload.cjs` → `window.market` | eyni kanallar (`market:*`) |
-| Renderer | `packaged-renderer/` (paket bundle + yamaqlar) | `src/` (React + Vite) | `src/` (React + Vite, geyim ekranları) |
-| Nüvə | `native/` → `restaurant-pos-core.exe` | `native/` → `market-pos-core.exe` | `native/` → `geyim-pos-core.exe` (+ `011_apparel.sql`) |
-| Lisenziya | `restaurant` | `market` | açar `geyim`; lisenziya market ailəsindəndir (`features.vertical = 'geyim'`), yeniləmə kanalı `possistem.az/geyimpos/updates/` |
+| | Restoran POS (`restoranpos/`) | Market POS (`marketpos/`) | Geyim POS (`geyimpos/`) | Aptek POS (`aptekpos/`) |
+|---|---|---|---|---|
+| Main | `index.js` (paketlənmiş, yamaqlanmış) → `out/main/index.js` | `electron/main.cjs` + modullar | Market ilə eyni (fork) | Geyim ilə eyni (fork) |
+| Preload | `out/preload/index.js` → `window.pos` (`pos:*` kanalları) | `electron/preload.cjs` → `window.market` | eyni kanallar (`market:*`) | eyni kanallar (`market:*`) |
+| Renderer | `packaged-renderer/` (paket bundle + yamaqlar) | `src/` (React + Vite) | `src/` (React + Vite, geyim ekranları) | `src/` (React + Vite, dərman siyahısı, resept, seriya) |
+| Nüvə | `native/` → `restaurant-pos-core.exe` | `native/` → `market-pos-core.exe` | `native/` → `geyim-pos-core.exe` (+ `011_apparel.sql`) | `native/` → `aptek-pos-core.exe` (+ `011_pharmacy.sql`, FEFO) |
+| Lisenziya | `restaurant` | `market` | açar `geyim`; lisenziya market ailəsindəndir (`features.vertical = 'geyim'`), yeniləmə kanalı `possistem.az/geyimpos/updates/` | açar `aptek`; `features.vertical = 'aptek'`, kanal `possistem.az/aptekpos/updates/` |
 
 ## Etibar sərhədləri
 

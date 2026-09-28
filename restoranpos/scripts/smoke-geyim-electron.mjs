@@ -22,9 +22,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.resolve(ROOT, '..', 'geyimpos');
 const OUT = path.resolve(process.argv[2] ?? path.join(APP, 'release', 'smoke'));
 const CORE = path.resolve(process.argv[3] ?? path.join(APP, 'native', 'build-linux', 'geyim-pos-core'));
+fs.mkdirSync(OUT, { recursive: true });
 const USER_DATA = fs.mkdtempSync(path.join(OUT, 'user-data-'));
 const { hashPin } = createRequire(import.meta.url)(path.join(APP, 'electron', 'staff-auth.cjs'));
-fs.mkdirSync(OUT, { recursive: true });
 
 const staffRow = (id, name, role, pin) => {
   const salt = randomBytes(16).toString('hex');

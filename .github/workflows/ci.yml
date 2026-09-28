@@ -28,6 +28,7 @@ jobs:
             restoranpos/package-lock.json
             marketpos/package-lock.json
             geyimpos/package-lock.json
+            aptekpos/package-lock.json
       - name: Install (restaurant + shared tooling)
         working-directory: restoranpos
         run: npm ci --no-audit --no-fund
@@ -37,13 +38,16 @@ jobs:
       - name: Install (Geyim UI)
         working-directory: geyimpos
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install (Aptek UI)
+        working-directory: aptekpos
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Versions agree (package, lock, CMake, Electron)
         working-directory: restoranpos
         run: npm run check:versions
       - name: Vendored C++ dependencies match SHA256SUMS
         working-directory: restoranpos
         run: node scripts/verify-third-party.mjs
-      - name: Typecheck (restaurant, market, Geyim)
+      - name: Typecheck (restaurant, market, Geyim, Aptek)
         working-directory: restoranpos
         run: npm run typecheck
       - name: Lint (Electron main, build and patch scripts)
@@ -63,16 +67,21 @@ jobs:
       - name: Geyim renderer build
         working-directory: restoranpos
         run: npm run geyim:build
+      - name: Aptek renderer build
+        working-directory: restoranpos
+        run: npm run aptek:build
       - name: npm audit (high and above)
         run: |
           (cd restoranpos && npm audit --audit-level=high)
           (cd marketpos && npm audit --audit-level=high)
           (cd geyimpos && npm audit --audit-level=high)
+          (cd aptekpos && npm audit --audit-level=high)
       - name: SBOM
         run: |
           (cd restoranpos && npm sbom --sbom-format cyclonedx > ../sbom-restoranpos.cdx.json)
           (cd marketpos && npm sbom --sbom-format cyclonedx > ../sbom-marketpos.cdx.json)
           (cd geyimpos && npm sbom --sbom-format cyclonedx > ../sbom-geyimpos.cdx.json)
+          (cd aptekpos && npm sbom --sbom-format cyclonedx > ../sbom-aptekpos.cdx.json)
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
@@ -119,6 +128,12 @@ jobs:
           POS_APP=geyimpos node scripts/build-market-core.mjs
           WINE=$(command -v wine || command -v wine64)
           cd ../geyimpos/native/build && "$WINE" ./market_core_tests.exe --reporter compact
+      - name: Aptek core
+        working-directory: restoranpos
+        run: |
+          POS_APP=aptekpos node scripts/build-market-core.mjs
+          WINE=$(command -v wine || command -v wine64)
+          cd ../aptekpos/native/build && "$WINE" ./market_core_tests.exe --reporter compact
 
   cpp-static:
     name: C++ static analysis (clang-tidy)
@@ -132,7 +147,7 @@ jobs:
       - run: bash restoranpos/scripts/static-analysis-cpp.sh
 
   demo-wasm:
-    name: live demo (all three cores in WebAssembly)
+    name: live demo (all four cores in WebAssembly)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -155,6 +170,9 @@ jobs:
           emcmake cmake -S geyimpos/native -B geyimpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build geyimpos/native/build-wasm --target market_core_wasm
           test -s geyimpos/native/build-wasm/geyim-pos-core.wasm
+          emcmake cmake -S aptekpos/native -B aptekpos/native/build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build aptekpos/native/build-wasm --target market_core_wasm
+          test -s aptekpos/native/build-wasm/aptek-pos-core.wasm
       - run: node restoranpos/demo-web/smoke.mjs restoranpos/native/build-wasm marketpos/native/build-wasm
 
   secrets:
