@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { createInitialState, demoStaff, initialProducts } from './data';
+import { BarcodeKeypad } from './BarcodeKeypad';
 import { CatalogAisleNav } from './CatalogAisleNav';
 import { ChangePinScreen } from './ChangePinScreen';
 import { cashChange, canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
@@ -1231,6 +1232,7 @@ function Dashboard({ state, staff, session, lang, onView }: { state: PersistedSt
 
 function SalePage({ state, setState, session, lang, cart, setCart, cloudConnected, notify, coreReady, onRefresh, audit }: { state: PersistedState; setState: React.Dispatch<React.SetStateAction<PersistedState>>; session: SessionUser; lang: Lang; cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; cloudConnected: boolean; notify: (text: string) => void; coreReady: boolean; onRefresh: () => Promise<PersistedState>; audit: (fn: (state: PersistedState) => PersistedState, action?: string, detail?: string) => void }) {
   const [query, setQuery] = useState('');
+  const [keypadOpen, setKeypadOpen] = useState(false);
   const [category, setCategory] = useState('all');
   const [quick, setQuick] = useState<'bread' | 'weighted' | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -1449,7 +1451,8 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
             <Search />
             <input ref={inputRef} data-scanner="allow" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') scan(query); }} placeholder={tr(lang, 'search')} />
           </label>
-          <button className="scan-button" onClick={() => scan(query)}><ScanBarcode /><span>{tr(lang, 'barcode')}</span><small>{tr(lang, 'scanReady')}</small></button>
+          <button className="scan-button" aria-expanded={keypadOpen} aria-haspopup="dialog" onClick={() => setKeypadOpen((open) => !open)}><ScanBarcode /><span>{tr(lang, 'barcode')}</span><small>{tr(lang, 'scanReady')}</small></button>
+          {keypadOpen && <BarcodeKeypad lang={lang} initial={/^\d+$/.test(query.trim()) ? query.trim() : ''} onSubmit={(code) => { scan(code); setQuery(''); }} onClose={() => { setKeypadOpen(false); inputRef.current?.focus(); }} />}
           <button className="new-sale-button" onClick={() => { if (!cart.length || confirm('Cari səbət təmizlənsin?')) { setCart([]); setDiscount('0'); inputRef.current?.focus(); } }}><Plus />{tr(lang, 'newSale')}</button>
         </div>
         <div className="sale-live-row">

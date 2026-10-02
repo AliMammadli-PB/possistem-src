@@ -42,6 +42,10 @@ const en: Record<string, string> = {
 };
 
 
+// The manual barcode keypad under the sale screen's Barkod button.
+Object.assign(az, { manualBarcode: 'Barkodu əllə yazın', close: 'Bağla', addToCart: 'Səbətə at' });
+Object.assign(ru, { manualBarcode: 'Введите штрихкод', close: 'Закрыть', addToCart: 'В корзину' });
+Object.assign(en, { manualBarcode: 'Type the barcode', close: 'Close', addToCart: 'Add to cart' });
 export const dictionaries: Record<Lang, Record<string, string>> = { az, ru, en };
 export const tr = (lang: Lang, key: string): string => dictionaries[lang][key] ?? az[key] ?? key;
 
