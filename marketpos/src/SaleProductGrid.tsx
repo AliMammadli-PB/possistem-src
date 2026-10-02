@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, PackageSearch, TriangleAlert } from 'lucide-react';
+import { Barcode, ChevronLeft, ChevronRight, PackageSearch, TriangleAlert } from 'lucide-react';
 
 import { ProductVisual } from './ProductVisual';
 import { categoryLabel, tr, unitLabel } from './i18n';
@@ -129,6 +129,8 @@ const SaleProductCard = memo(function SaleProductCard({
       onClick={() => onAdd(product)}
     >
       <ProductVisual image={product.image} alt={product.name[lang]} accent={product.accent} defer />
+      {/* A cashier typing a code by hand finds the product by name and reads its barcode under the photo. */}
+      {product.barcode && <span className="card-barcode" title={tr(lang, 'barcode')}><Barcode aria-hidden="true" /><code>{product.barcode}</code></span>}
       <span className="product-copy">
         <small>{product.sku} · {categoryLabel(product.category, lang)}</small>
         <strong>{product.name[lang]}</strong>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(market_pos_core LANGUAGES C CXX VERSION 1.4.12)
+project(market_pos_core LANGUAGES C CXX VERSION 1.4.13)
 
 # The WebAssembly demo build: the core reports refusals as exceptions, and
 # Emscripten turns exception catching off unless asked.
