@@ -1459,6 +1459,11 @@
       "auth": true,
       "perm": "inventory.view",
       "idempotent": true
+    },
+    "lots.extend": {
+      "auth": true,
+      "perm": "inventory.adjust",
+      "idempotent": true
     }
   },
   "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",

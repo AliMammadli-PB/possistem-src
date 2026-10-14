@@ -14911,7 +14911,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.7.28 · a408b15";
+const _PS_BUILD = "1.7.29 · 76f9f6d";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -24261,7 +24261,9 @@ function psStageBadge(p) {
 function psLabeled(label, child) {
   return psH("label", { className: "block text-sm" }, psH("span", { className: "text-xs uppercase tracking-wide text-faint" }, label), child);
 }
+/* POS_EXPIRY_BLOCK_v1 */
 function psDaysBadge(lot) {
+  if (lot.blockedAt) return psBadge("Vaxtı keçib (" + lot.expiresOn + ") — istifadədən çıxarılıb", "danger");
   if (lot.daysLeft === null || lot.daysLeft === undefined) return psH("span", { className: "text-muted" }, "—");
   if (lot.daysLeft < 0) return psBadge("Vaxtı keçib " + (-lot.daysLeft) + " gün", "danger");
   if (lot.daysLeft <= 3) return psBadge(lot.daysLeft === 0 ? "Bu gün bitir" : lot.daysLeft + " gün qalıb", "warn");
@@ -24565,7 +24567,7 @@ function PsExpiryBanner({ warehouseId, onOpen }) {
   }, [warehouseId]);
   if (!info || (!info.expiredLots && !info.expiringLots && !info.pendingLots)) return null;
   return h("button", { type: "button", className: "ps-expiry-banner", onClick: onOpen },
-    info.expiredLots ? h("b", null, info.expiredLots + " partiyanın vaxtı keçib (" + formatMoney(info.expiredValueMinor) + ")") : null,
+    info.expiredLots ? h("b", null, info.expiredLots + " partiyanın vaxtı keçib — istifadədən çıxarılıb, atılmalıdır (" + formatMoney(info.expiredValueMinor) + ")") : null,
     info.expiringLots ? h("span", null, info.expiringLots + " partiya 3 gün içində bitir (" + formatMoney(info.expiringValueMinor) + ")") : null,
     info.pendingLots ? h("span", null, info.pendingLots + " partiya keyfiyyət yoxlamasındadır") : null,
     h("small", null, "Partiyalara bax →"));
@@ -24579,6 +24581,7 @@ function PsStockLots({ warehouseId, onChanged }) {
   const [locations, setLocations] = reactExports.useState([]);
   const [move, setMove] = reactExports.useState(null);
   const [off, setOff] = reactExports.useState(null);
+  const [ext, setExt] = reactExports.useState(null);
   const [query, setQuery] = reactExports.useState("");
   const load = reactExports.useCallback(async () => {
     const [l, loc] = await Promise.all([window.pos.stock.lots({ warehouseId, status, days: 3 }), window.pos.stock.locations(warehouseId)]);
@@ -24591,7 +24594,7 @@ function PsStockLots({ warehouseId, onChanged }) {
   const shown = (rows ?? []).filter((r) => !needle || (r.name + " " + r.lotNo + " " + r.supplierName).toLocaleLowerCase("az").includes(needle));
   return h("div", { className: "space-y-3" },
     h("div", { className: "flex flex-wrap items-center gap-2" },
-      [["active", "Anbarda"], ["expiring", "3 gün içində bitir"], ["expired", "Vaxtı keçib"], ["pending", "Yoxlamada"], ["rejected", "Rədd edilib"], ["all", "Hamısı"]].map(([k, l]) =>
+      [["active", "Anbarda"], ["expiring", "3 gün içində bitir"], ["expired", "Vaxtı keçib (atılmalı)"], ["pending", "Yoxlamada"], ["rejected", "Rədd edilib"], ["all", "Hamısı"]].map(([k, l]) =>
         h("button", { key: k, type: "button", "aria-pressed": status === k, className: "ps-period-chip" + (status === k ? " is-on" : ""), onClick: () => setStatus(k) }, l)),
       h("input", { value: query, placeholder: "Axtar: mal / partiya / təchizatçı", onChange: (e) => setQuery(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" })),
     !rows ? h("p", { className: "text-sm text-muted" }, "Yüklənir…") : jsxRuntimeExports.jsx(OpsTable, {
@@ -24607,7 +24610,8 @@ function PsStockLots({ warehouseId, onChanged }) {
           r.quality === "pending" && hasPermission("suppliers.receive") ? jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void run(window.pos.suppliers.inspectLot(r.id, "accept"), "Qəbul edildi — anbara girdi"), children: "Qəbul et" }) : null,
           r.quality === "pending" && hasPermission("suppliers.receive") ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void run(window.pos.suppliers.inspectLot(r.id, "reject"), "Rədd edildi"), children: "Rədd et" }) : null,
           r.quality === "accepted" && r.qtyMilli > 0 && hasPermission("inventory.transfer") ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setMove({ lot: r, locationId: r.locationId || "", qty: String(r.qtyMilli / 1000) }), children: "Yer dəyiş" }) : null,
-          r.quality === "accepted" && r.qtyMilli > 0 && hasPermission("inventory.adjust") ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => setOff({ lot: r, reason: (r.daysLeft ?? 1) < 0 ? "expired" : "waste", qty: String(r.qtyMilli / 1000), note: "" }), children: "Sil" }) : null)])
+          r.blockedAt && hasPermission("inventory.adjust") ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setExt({ lot: r, date: "" }), children: "Tarixi düzəlt" }) : null,
+          r.quality === "accepted" && r.qtyMilli > 0 && hasPermission("inventory.adjust") ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => setOff({ lot: r, reason: r.blockedAt || (r.daysLeft ?? 1) < 0 ? "expired" : "waste", qty: String(r.qtyMilli / 1000), note: "" }), children: r.blockedAt ? "Atıldı" : "Sil" }) : null)])
     }),
     move ? jsxRuntimeExports.jsx(PsAdminDialog, { title: move.lot.name + " — yer dəyiş", onClose: () => setMove(null), busy, children: h("div", { className: "space-y-3" },
       locations.length ? null : h("p", { className: "text-sm text-muted" }, "Əvvəlcə \"Yerləşmələr\" bölməsində soyuducu, rəf və s. yaradın."),
@@ -24617,13 +24621,19 @@ function PsStockLots({ warehouseId, onChanged }) {
       h("div", { className: "flex gap-2" },
         jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void run(window.pos.stock.relocate({ lotId: move.lot.id, locationId: move.locationId, qtyMilli: Math.round(opsNum(move.qty || "0") * 1000) }), "Köçürüldü").then((ok) => { if (ok) setMove(null); }), children: "Köçür" }),
         jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setMove(null), children: "İmtina" }))) }) : null,
+    ext ? jsxRuntimeExports.jsx(PsAdminDialog, { title: ext.lot.name + " — son istifadə tarixini düzəlt", onClose: () => setExt(null), busy, children: psH("div", { className: "space-y-3" },
+      psH("p", { className: "text-xs text-muted" }, "Tarix səhv yazılıbsa düzəldin: partiya yenidən istifadəyə qayıdır və qalığa əlavə olunur. Həqiqətən vaxtı keçibsə, \"Atıldı\" seçin."),
+      psLabeled("Yeni son istifadə tarixi", psH("input", { type: "date", value: ext.date, className: psField, onChange: (e) => setExt({ ...ext, date: e.target.value }) })),
+      psH("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy || !ext.date, onClick: () => void run(window.pos.stock.extendLot(ext.lot.id, ext.date), "Tarix düzəldildi — partiya istifadəyə qayıtdı").then((ok) => { if (ok) setExt(null); }), children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setExt(null), children: "İmtina" }))) }) : null,
     off ? jsxRuntimeExports.jsx(PsAdminDialog, { title: off.lot.name + " — anbardan sil", onClose: () => setOff(null), busy, children: h("div", { className: "space-y-3" },
       h("div", { className: "flex flex-wrap gap-2" }, [["expired", "Vaxtı keçib"], ["waste", "İsraf / xarab"], ["lost", "İtki"]].map(([k, l]) =>
         h("button", { key: k, type: "button", "aria-pressed": off.reason === k, className: "ps-period-chip" + (off.reason === k ? " is-on" : ""), onClick: () => setOff({ ...off, reason: k }) }, l))),
       h("div", { className: "grid gap-2 sm:grid-cols-2" },
         jsxRuntimeExports.jsx(OpsField, { label: "Miqdar (" + off.lot.unit + ")", value: off.qty, onChange: (v) => setOff({ ...off, qty: v }) }),
         jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: off.note, onChange: (v) => setOff({ ...off, note: v }) })),
-      h("p", { className: "text-xs text-muted" }, "Dəyəri İtkilər hesabatına düşür: " + formatMoney(Math.round(opsNum(off.qty || "0") * (off.lot.unitCostMinor ?? 0)))),
+      off.lot.blockedAt ? h("p", { className: "text-xs text-muted" }, "Vaxtı keçdiyi gün qalıqdan çıxarılıb və itkiyə yazılıb. Bu, partiyanın atıldığını qeyd edir; qalıq yenidən azalmır.") : h("p", { className: "text-xs text-muted" }, "Dəyəri İtkilər hesabatına düşür: " + formatMoney(Math.round(opsNum(off.qty || "0") * (off.lot.unitCostMinor ?? 0)))),
       h("div", { className: "flex gap-2" },
         jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void run(window.pos.stock.writeOff({ lotId: off.lot.id, qtyMilli: Math.round(opsNum(off.qty || "0") * 1000), reason: off.reason, note: off.note.trim() }), "Silindi").then((ok) => { if (ok) setOff(null); }), children: "Sil" }),
         jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setOff(null), children: "İmtina" }))) }) : null);
@@ -24708,7 +24718,7 @@ function PsStockLoss({ warehouseId }) {
         psMetric("İsraf", formatMoney(data.wasteMinor), "dövrdə", data.wasteMinor ? "var(--ps-danger)" : null),
         psMetric("İtki (sayım, düzəliş)", formatMoney(data.lostMinor), "dövrdə", data.lostMinor ? "var(--ps-danger)" : null),
         psMetric("Cəmi itki", formatMoney(data.totalMinor), "dövrdə", data.totalMinor ? "var(--ps-danger)" : null),
-        psMetric("Anbarda vaxtı keçmiş", formatMoney(data.expiredOnHandMinor), data.expiredOnHandLots + " partiya", data.expiredOnHandMinor ? "var(--ps-warn)" : null),
+        psMetric("Atılmalı (vaxtı keçmiş)", formatMoney(data.expiredOnHandMinor), data.expiredOnHandLots + " partiya", data.expiredOnHandMinor ? "var(--ps-warn)" : null),
         psMetric("Minimumdan aşağı", formatMoney(data.belowMinValueMinor), (data.belowMin ?? []).length + " mal (çatışmayan dəyər)", (data.belowMin ?? []).length ? "var(--ps-warn)" : null)),
       jsxRuntimeExports.jsx(OpsTable, { head: ["Tarix", "Növ", "Mal", "Anbar", "Miqdar", "Dəyər", "Səbəb"], empty: "Bu dövrdə itki yoxdur",
         rows: (data.rows ?? []).map((r) => [opsWhen(r.createdAt), label[r.category] || r.category, h("b", null, r.name), r.warehouseName, opsQty(r.qtyMilli) + " " + r.unit,

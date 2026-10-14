@@ -93,7 +93,9 @@ describe('the sidebar', () => {
   it('offers the operations panels to the people whose job they are', () => {
     for (const [label, perm] of [
       ['Anbar', 'inventory.view'],
-      ['Təchizat', 'suppliers.view'],
+      // Təchizat became Alışlar in 1.7.26; Satışlar arrived in 1.7.27.
+      ['Alışlar', 'suppliers.view'],
+      ['Satışlar', 'sales.view'],
       ['Çatdırılma', 'delivery.view'],
     ]) {
       expect(bundle, `${label} link missing or ungated`).toContain(

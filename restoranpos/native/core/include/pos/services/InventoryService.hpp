@@ -58,6 +58,15 @@ public:
     Json transfer(const std::string& ingredientId, const std::string& fromWarehouse,
                   const std::string& toWarehouse, std::int64_t qtyMilli, const std::string& referenceId);
 
+    /**
+     * Takes lots past their expiry date out of usable stock: each one's
+     * quantity is written off the balance ("Vaxtı keçib") and the lot is
+     * marked blocked, so nothing - a sale included - can draw from it again.
+     * Empty ids widen the sweep to every ingredient / store. Returns how many
+     * lots were blocked.
+     */
+    std::int64_t blockExpired(const std::string& ingredientId = "", const std::string& warehouseId = "");
+
     /** Moves (part of) a lot to another place in the same store; splits it if partial. */
     Json relocate(const std::string& lotId, const std::string& locationId, std::int64_t qtyMilli);
 

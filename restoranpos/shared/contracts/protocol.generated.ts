@@ -400,6 +400,7 @@ export const METHODS = [
   'reports.suppliers',
   'reports.stockLoss',
   'inventory.costingMethod',
+  'lots.extend',
 ] as const;
 export type MethodName = (typeof METHODS)[number];
 
@@ -650,6 +651,7 @@ export const METHOD_META: Record<MethodName, MethodMeta> = {
   'reports.suppliers': { auth: true, perm: 'suppliers.view', timeout: 3000, idempotent: false },
   'reports.stockLoss': { auth: true, perm: 'inventory.view', timeout: 3000, idempotent: false },
   'inventory.costingMethod': { auth: true, perm: 'inventory.view', timeout: 3000, idempotent: true },
+  'lots.extend': { auth: true, perm: 'inventory.adjust', timeout: 3000, idempotent: true },
 };
 
 export const EVENTS = [

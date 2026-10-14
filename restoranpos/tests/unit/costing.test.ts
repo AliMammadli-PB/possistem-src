@@ -66,13 +66,15 @@ describe('the costing screen', () => {
     expect(bundle).toContain('window.pos.inventory.recipe');
     expect(bundle).toContain('Resept yaz');
     expect(bundle).toContain('hasPermission("recipes.manage")');
-    expect(bundle).toContain('Məhsul əlavə et');
-    expect(bundle).toContain('Məhsul " + (i + 1)');
-    expect(bundle).toContain('Sətir mayası:');
-    expect(bundle).toContain('Cəm maya');
+    // The chip editor (1.7.21): pick goods from the store, then how much a portion takes.
+    expect(bundle).toContain('function psRecipeEditor(');
+    expect(bundle).toContain('1. Anbardan tərkibi seçin');
+    expect(bundle).toContain('2. Bir porsiyaya nə qədər gedir');
     expect(bundle).toContain('unit: "q"');
-    expect(bundle).toContain('Porsiya üçün vahidi qram seçin');
-    expect(bundle).toContain('Total qazanc:');
+    expect(bundle).toContain('"Maya %"');
     expect(bundle).toContain('totalProfitMinor');
+    // Cost by the chosen method (1.7.28).
+    expect(preload).toContain('call("reports.costing", { since: since ?? 0, method: method ?? "" }');
+    expect(bundle).toContain('window.pos.inventory.costing(since, costMethod)');
   });
 });

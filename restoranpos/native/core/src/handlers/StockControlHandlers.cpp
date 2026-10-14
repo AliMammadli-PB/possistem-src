@@ -256,6 +256,11 @@ void registerStockControl(const ContextPtr& ctx) {
         ctx->requirePermission("inventory.view");
         const auto status = getOr<std::string>(request.payload, "status", "active");
         const auto days = getOr<std::int64_t>(request.payload, "days", 3);
+        {
+            db::Transaction txn(ctx->db());
+            services::InventoryService(*ctx).blockExpired("", getOr<std::string>(request.payload, "warehouseId", ""));
+            txn.commit();
+        }
         auto stmt = ctx->db().prepare(
             "SELECT l.id, l.ingredient_id AS ingredientId, i.name, i.unit, l.warehouse_id AS warehouseId, "
             "       w.name AS warehouseName, l.location_id AS locationId, COALESCE(sl.name, '') AS locationName, "
@@ -263,7 +268,7 @@ void registerStockControl(const ContextPtr& ctx) {
             "       COALESCE(p.number, '') AS purchaseNumber, COALESCE(s.name, '') AS supplierName, "
             "       l.produced_on AS producedOn, l.received_at AS receivedAt, l.expires_on AS expiresOn, "
             "       l.qty_received_milli AS qtyReceivedMilli, l.qty_milli AS qtyMilli, l.unit_cost_minor AS unitCostMinor, "
-            "       l.qty_milli * l.unit_cost_minor / 1000 AS valueMinor, l.quality, "
+            "       l.qty_milli * l.unit_cost_minor / 1000 AS valueMinor, l.quality, l.blocked_at AS blockedAt, "
             "       CASE WHEN l.expires_on = '' THEN NULL "
             "            ELSE CAST(julianday(l.expires_on) - julianday(date('now', 'localtime')) AS INTEGER) END AS daysLeft "
             "FROM stock_lots l JOIN ingredients i ON i.id = l.ingredient_id JOIN warehouses w ON w.id = l.warehouse_id "
@@ -271,12 +276,13 @@ void registerStockControl(const ContextPtr& ctx) {
             "LEFT JOIN purchase_orders p ON p.id = l.purchase_id LEFT JOIN suppliers s ON s.id = p.supplier_id "
             "WHERE (:w = '' OR l.warehouse_id = :w) AND (:i = '' OR l.ingredient_id = :i) AND ("
             "  (:status = 'all') "
-            "  OR (:status = 'active' AND l.quality = 'accepted' AND l.qty_milli > 0) "
+            "  OR (:status = 'active' AND l.quality = 'accepted' AND l.qty_milli > 0 AND l.blocked_at IS NULL) "
             "  OR (:status = 'pending' AND l.quality = 'pending') "
             "  OR (:status = 'rejected' AND l.quality = 'rejected') "
-            "  OR (:status = 'expired' AND l.quality = 'accepted' AND l.qty_milli > 0 AND l.expires_on != '' "
-            "      AND l.expires_on < date('now', 'localtime')) "
-            "  OR (:status = 'expiring' AND l.quality = 'accepted' AND l.qty_milli > 0 AND l.expires_on != '' "
+            // Expired = blocked: out of usable stock, still on the shelf to be thrown away.
+            "  OR (:status = 'expired' AND l.quality = 'accepted' AND l.qty_milli > 0 AND l.blocked_at IS NOT NULL) "
+            "  OR (:status = 'expiring' AND l.quality = 'accepted' AND l.qty_milli > 0 AND l.blocked_at IS NULL "
+            "      AND l.expires_on != '' "
             "      AND l.expires_on >= date('now', 'localtime') "
             "      AND l.expires_on <= date('now', 'localtime', '+' || :days || ' days'))) "
             "ORDER BY (l.expires_on = '') ASC, l.expires_on ASC, i.name, l.received_at LIMIT 3000");
@@ -304,13 +310,30 @@ void registerStockControl(const ContextPtr& ctx) {
         const auto note = getOr<std::string>(request.payload, "note", "");
         require(reason == "expired" || reason == "waste" || reason == "lost", "Səbəb: expired, waste və ya lost");
         db::Transaction txn(ctx->db());
+        services::InventoryService(*ctx).blockExpired();
         auto lot = ctx->db().prepare(
-            "SELECT ingredient_id, warehouse_id, qty_milli FROM stock_lots WHERE id = :id AND quality = 'accepted'");
+            "SELECT ingredient_id, warehouse_id, qty_milli, blocked_at IS NOT NULL, location_id FROM stock_lots "
+            "WHERE id = :id AND quality = 'accepted'");
         lot.bind(":id", lotId);
         require(lot.step(), "Partiya tapılmadı");
         auto qty = getOr<std::int64_t>(request.payload, "qtyMilli", 0);
         if (qty <= 0 || qty > lot.columnInt(2)) qty = lot.columnInt(2);
         require(qty > 0, "Partiyada mal yoxdur");
+        if (lot.columnInt(3) != 0) {
+            // Already off the balance when it expired: now it is physically gone.
+            auto gone = ctx->db().prepare("UPDATE stock_lots SET qty_milli = qty_milli - :q WHERE id = :id");
+            gone.bind(":q", qty).bind(":id", lotId);
+            gone.exec();
+            auto trace = ctx->db().prepare(
+                "INSERT INTO stock_lot_moves (id, lot_id, kind, qty_delta_milli, from_location, actor_user_id, created_at) "
+                "VALUES (:id, :lot, 'expired_discard', :delta, :from, :actor, :now)");
+            trace.bind(":id", crypto::uuid4()).bind(":lot", lotId).bind(":delta", -qty).bind(":from", lot.columnText(4))
+                .bindOptional(":actor", ctx->session().userId).bind(":now", nowMs());
+            trace.exec();
+            ctx->auditRequired("lot.discard", "stock_lot", lotId, Json{{"qtyMilli", qty}});
+            txn.commit();
+            return Json{{"lotId", lotId}, {"qtyMilli", qty}, {"discarded", true}};
+        }
         services::LotSpec spec;
         spec.lotId = lotId;
         const std::string label = reason == "expired" ? "Vaxtı keçib" : reason == "lost" ? "İtki" : "İsraf";
@@ -322,29 +345,65 @@ void registerStockControl(const ContextPtr& ctx) {
         return moved;
     });
 
+    // The expiry date was typed wrong: correct it and the blocked lot is usable again.
+    server.registerHandler(std::string(protocol::method::kLotsExtend), [ctx](const ipc::Request& request) {
+        ctx->requirePermission("inventory.adjust");
+        const auto lotId = getOr<std::string>(request.payload, "lotId", "");
+        const auto expiresOn = getOr<std::string>(request.payload, "expiresOn", "");
+        require(expiresOn.empty() || (expiresOn.size() == 10 && expiresOn[4] == '-' && expiresOn[7] == '-'),
+                "Tarix İİİİ-AA-GG olmalıdır");
+        db::Transaction txn(ctx->db());
+        auto today = ctx->db().prepare("SELECT date('now', 'localtime')");
+        today.step();
+        require(expiresOn.empty() || expiresOn >= today.columnText(0), "Yeni tarix bu gündən əvvəl ola bilməz");
+        auto lot = ctx->db().prepare(
+            "SELECT ingredient_id, warehouse_id, qty_milli, blocked_at IS NOT NULL FROM stock_lots "
+            "WHERE id = :id AND quality = 'accepted'");
+        lot.bind(":id", lotId);
+        require(lot.step(), "Partiya tapılmadı");
+        const std::string ingredient = lot.columnText(0);
+        const std::string warehouse = lot.columnText(1);
+        const std::int64_t qty = lot.columnInt(2);
+        const bool blocked = lot.columnInt(3) != 0;
+        auto date = ctx->db().prepare("UPDATE stock_lots SET expires_on = :d WHERE id = :id");
+        date.bind(":d", expiresOn).bind(":id", lotId);
+        date.exec();
+        if (blocked && qty > 0) {
+            services::LotSpec spec;
+            spec.lotId = lotId;
+            services::InventoryService(*ctx).move(ingredient, warehouse, qty, "adjustment", lotId,
+                                                 "Son istifadə tarixi düzəldildi", spec);
+        }
+        ctx->auditRequired("lot.extend", "stock_lot", lotId, Json{{"expiresOn", expiresOn}, {"restoredMilli", blocked ? qty : 0}});
+        txn.commit();
+        return Json{{"lotId", lotId}, {"expiresOn", expiresOn}, {"restored", blocked}};
+    });
+
     server.registerHandler(std::string(protocol::method::kReportsExpiry), [ctx](const ipc::Request& request) {
         ctx->requirePermission("inventory.view");
         const auto warehouseId = getOr<std::string>(request.payload, "warehouseId", "");
         const auto days = std::max<std::int64_t>(1, getOr<std::int64_t>(request.payload, "days", 3));
+        {
+            db::Transaction txn(ctx->db());
+            services::InventoryService(*ctx).blockExpired("", warehouseId);
+            txn.commit();
+        }
+        // Expired lots are blocked (out of stock) but still to be thrown away.
         auto stmt = ctx->db().prepare(
-            "SELECT COUNT(CASE WHEN expires_on < date('now', 'localtime') THEN 1 END), "
-            "       COALESCE(SUM(CASE WHEN expires_on < date('now', 'localtime') THEN qty_milli * unit_cost_minor / 1000 END), 0), "
-            "       COUNT(CASE WHEN expires_on >= date('now', 'localtime') "
+            "SELECT COUNT(CASE WHEN blocked_at IS NOT NULL THEN 1 END), "
+            "       COALESCE(SUM(CASE WHEN blocked_at IS NOT NULL THEN qty_milli * unit_cost_minor / 1000 END), 0), "
+            "       COUNT(CASE WHEN blocked_at IS NULL AND expires_on != '' AND expires_on >= date('now', 'localtime') "
             "                   AND expires_on <= date('now', 'localtime', '+' || :days || ' days') THEN 1 END), "
-            "       COALESCE(SUM(CASE WHEN expires_on >= date('now', 'localtime') "
+            "       COALESCE(SUM(CASE WHEN blocked_at IS NULL AND expires_on != '' AND expires_on >= date('now', 'localtime') "
             "                   AND expires_on <= date('now', 'localtime', '+' || :days || ' days') "
             "                   THEN qty_milli * unit_cost_minor / 1000 END), 0), "
-            "       (SELECT COUNT(*) FROM stock_lots WHERE quality = 'pending' AND (:w = '' OR warehouse_id = :w)), "
-            "       (SELECT COUNT(DISTINCT lm.lot_id) FROM stock_lot_moves lm JOIN stock_lots x ON x.id = lm.lot_id "
-            "          WHERE lm.kind = 'expired_use' AND (:w = '' OR x.warehouse_id = :w) "
-            "          AND lm.created_at >= :since) "
-            "FROM stock_lots WHERE quality = 'accepted' AND qty_milli > 0 AND expires_on != '' "
-            "  AND (:w = '' OR warehouse_id = :w)");
-        stmt.bind(":w", warehouseId).bind(":days", days).bind(":since", nowMs() - 30LL * 86400000);
+            "       (SELECT COUNT(*) FROM stock_lots WHERE quality = 'pending' AND (:w = '' OR warehouse_id = :w)) "
+            "FROM stock_lots WHERE quality = 'accepted' AND qty_milli > 0 AND (:w = '' OR warehouse_id = :w)");
+        stmt.bind(":w", warehouseId).bind(":days", days);
         stmt.step();
         return Json{{"expiredLots", stmt.columnInt(0)}, {"expiredValueMinor", stmt.columnInt(1)},
                     {"expiringLots", stmt.columnInt(2)}, {"expiringValueMinor", stmt.columnInt(3)},
-                    {"pendingLots", stmt.columnInt(4)}, {"expiredUsedLots30d", stmt.columnInt(5)}, {"days", days}};
+                    {"pendingLots", stmt.columnInt(4)}, {"days", days}};
     });
 
     // --------------------------------------------------------------- costing
@@ -430,6 +489,11 @@ void registerStockControl(const ContextPtr& ctx) {
         const auto warehouseId = getOr<std::string>(request.payload, "warehouseId", "");
         const auto method = methodFrom(*ctx, request.payload);
         const auto unit = services::InventoryService::unitCostSql(method, ":w");
+        {
+            db::Transaction txn(ctx->db());
+            services::InventoryService(*ctx).blockExpired("", warehouseId);
+            txn.commit();
+        }
         // What left the store without being sold: priced at the lots it came
         // from, and at the current cost where no lot was behind it.
         auto stmt = ctx->db().prepare(
@@ -440,8 +504,10 @@ void registerStockControl(const ContextPtr& ctx) {
             "       COALESCE((SELECT SUM(-lm.qty_delta_milli) FROM stock_lot_moves lm WHERE lm.movement_id = m.id), 0) AS lotQty, "
             "       " + unit + " AS unitCostMinor "
             "FROM stock_movements m JOIN ingredients i ON i.id = m.ingredient_id JOIN warehouses w ON w.id = m.warehouse_id "
-            "WHERE m.created_at >= :from AND m.created_at < :to AND m.qty_delta_milli < 0 AND (:w = '' OR m.warehouse_id = :w) "
-            "  AND (m.kind IN ('waste','stocktake') OR (m.kind = 'adjustment' AND m.reference_id = '')) "
+            "WHERE m.created_at >= :from AND m.created_at < :to AND (:w = '' OR m.warehouse_id = :w) "
+            "  AND ((m.qty_delta_milli < 0 AND (m.kind IN ('waste','stocktake') OR (m.kind = 'adjustment' AND m.reference_id = ''))) "
+            // A wrong expiry date corrected gives the blocked goods back.
+            "       OR (m.qty_delta_milli > 0 AND m.kind = 'adjustment' AND m.reason = 'Son istifadə tarixi düzəldildi')) "
             "ORDER BY m.created_at DESC LIMIT 3000");
         stmt.bind(":from", from).bind(":to", to).bind(":w", warehouseId);
         Json rows = Json::array();
@@ -454,7 +520,8 @@ void registerStockControl(const ContextPtr& ctx) {
                                 (qty - lotQty) * row.value("unitCostMinor", Money{0}) / 1000;
             const auto kind = row.value("kind", std::string{});
             const auto reason = row.value("reason", std::string{});
-            const std::string category = kind == "waste" ? (reason.rfind("Vaxtı keçib", 0) == 0 ? "expired" : "waste") : "lost";
+            const std::string category = kind == "waste" ? (reason.rfind("Vaxtı keçib", 0) == 0 ? "expired" : "waste")
+                                       : reason == "Son istifadə tarixi düzəldildi" ? "expired" : "lost";
             (category == "expired" ? expired : category == "waste" ? waste : lost) += value;
             row["valueMinor"] = value;
             row["category"] = category;
@@ -477,8 +544,7 @@ void registerStockControl(const ContextPtr& ctx) {
         }
         auto stale = ctx->db().prepare(
             "SELECT COALESCE(SUM(qty_milli * unit_cost_minor / 1000), 0), COUNT(*) FROM stock_lots "
-            "WHERE quality = 'accepted' AND qty_milli > 0 AND expires_on != '' AND expires_on < date('now', 'localtime') "
-            "AND (:w = '' OR warehouse_id = :w)");
+            "WHERE quality = 'accepted' AND qty_milli > 0 AND blocked_at IS NOT NULL AND (:w = '' OR warehouse_id = :w)");
         stale.bind(":w", warehouseId);
         stale.step();
         return Json{{"method", method}, {"expiredMinor", expired}, {"wasteMinor", waste}, {"lostMinor", lost},

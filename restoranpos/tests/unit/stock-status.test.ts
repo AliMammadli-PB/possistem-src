@@ -29,8 +29,9 @@ describe('stock status', () => {
   it('calls an empty shelf empty, whatever the minimum says', () => {
     expect(stateOf({ qtyMilli: 0, minQtyMilli: 5000 })).toBe('out');
     expect(stateOf({ qtyMilli: 0, minQtyMilli: 0 })).toBe('out');
-    // A negative level is a bug elsewhere, but it is still nothing on the shelf.
-    expect(stateOf({ qtyMilli: -200, minQtyMilli: 5000 })).toBe('out');
+    // Below zero (sold before it was booked in, or expired stock taken out) is
+    // its own state since 1.7.22, so the "Mənfi" filter and banner can find it.
+    expect(stateOf({ qtyMilli: -200, minQtyMilli: 5000 })).toBe('neg');
   });
 
   it('flags below the minimum, where ordering cannot wait', () => {
@@ -64,9 +65,10 @@ describe('the stock screen', () => {
   });
 
   it('draws nothing the core cannot answer yet', () => {
-    // Category, purchase units, average cost, batches and optimal levels have
-    // no schema behind them; drawing them would be a control that lies.
-    for (const absent of ['Kateqoriya', 'Alış vahidi', 'Orta alış', 'Partiya', 'Optimal']) {
+    // Category and purchase units have no schema behind them; drawing them
+    // would be a control that lies. (Lots, average cost and order levels do
+    // since 1.7.28 and live in their own views.)
+    for (const absent of ['Kateqoriya', 'Alış vahidi']) {
       expect(bundle, `${absent} is drawn without a backend`).not.toContain(`children: "${absent}"`);
     }
   });

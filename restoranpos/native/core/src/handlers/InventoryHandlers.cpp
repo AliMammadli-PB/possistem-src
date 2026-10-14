@@ -240,7 +240,14 @@ void registerInventory(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kInventoryLevels), [ctx](const ipc::Request& request) {
             ctx->requirePermission("inventory.view");
-            return services::InventoryService(*ctx).levels(warehouseFrom(*ctx, request.payload));
+            const auto warehouseId = warehouseFrom(*ctx, request.payload);
+            {
+                // A lot that expired overnight is out of usable stock before anyone reads it.
+                db::Transaction txn(ctx->db());
+                services::InventoryService(*ctx).blockExpired("", warehouseId);
+                txn.commit();
+            }
+            return services::InventoryService(*ctx).levels(warehouseId);
         });
 
     server.registerHandler(

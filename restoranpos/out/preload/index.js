@@ -153,6 +153,7 @@ const api = {
     lots: (params) => call("lots.list", params ?? {}, { timeoutMs: 15000 }),
     relocate: (input) => call("lots.relocate", input),
     writeOff: (input) => call("lots.writeOff", input),
+    extendLot: (lotId, expiresOn) => call("lots.extend", { lotId, expiresOn }),
     expiry: (warehouseId, days) => call("reports.expiry", { warehouseId: warehouseId ?? "", days: days ?? 3 }),
     supplierReport: (params) => call("reports.suppliers", params ?? {}, { timeoutMs: 15000 }),
     lossReport: (params) => call("reports.stockLoss", params ?? {}, { timeoutMs: 15000 }),

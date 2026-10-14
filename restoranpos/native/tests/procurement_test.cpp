@@ -58,7 +58,7 @@ public:
     std::int64_t lotSum(const std::string& ingredientId, const std::string& warehouse) {
         auto row = fixture_.db().prepare(
             "SELECT COALESCE(SUM(qty_milli), 0) FROM stock_lots WHERE ingredient_id = :i AND warehouse_id = :w "
-            "AND quality = 'accepted'");
+            "AND quality = 'accepted' AND blocked_at IS NULL");
         row.bind(":i", ingredientId).bind(":w", warehouse);
         row.step();
         return row.columnInt(0);
@@ -255,15 +255,20 @@ TEST_CASE("lots go first-expiring-first-out and keep their dates when moved", "[
         pos::Json{{"itemId", item}, {"qtyMilli", 5000}, {"lotNo", "SOON"}, {"expiresOn", "2099-01-05"}},
         pos::Json{{"itemId", item}, {"qtyMilli", 2000}, {"lotNo", "OLD"}, {"expiresOn", "2000-01-01"}}})}});
     const auto store = f.store();
-    REQUIRE(f.lotSum(milk, store) == 12000);
+    // Arrived already past its date: owed to the supplier, never usable.
+    REQUIRE(f.stock(milk) == 10000);
+    REQUIRE(f.lotSum(milk, store) == 10000);
 
-    // Good stock before expired stock, the nearest date first.
+    // The nearest good date first.
     f.call("inventory.waste", pos::Json{{"ingredientId", milk}, {"qtyMilli", 3000}, {"reason", "töküldü"}});
     std::map<std::string, std::int64_t> left;
     for (const auto& lot : f.lots(milk)) left[lot.at("lotNo").get<std::string>()] = lot.at("qtyMilli").get<std::int64_t>();
     REQUIRE(left["SOON"] == 2000);
     REQUIRE(left["LATE"] == 5000);
-    REQUIRE(left["OLD"] == 2000);
+    REQUIRE(left.count("OLD") == 0);
+    const auto expired = f.lots(milk, "expired");
+    REQUIRE(expired.size() == 1);
+    REQUIRE(expired[0].at("qtyMilli") == 2000);  // still on the shelf, to be thrown away
     REQUIRE(f.lotSum(milk, store) == f.stock(milk));
 
     const auto expiry = f.call("reports.expiry", pos::Json{{"days", 3}});
@@ -278,7 +283,7 @@ TEST_CASE("lots go first-expiring-first-out and keep their dates when moved", "[
     int inFridge = 0;
     for (const auto& lot : f.lots(milk)) if (lot.at("locationName") == "Soyuducu 1") inFridge += 1;
     REQUIRE(inFridge == 1);
-    REQUIRE(f.stock(milk) == 9000);
+    REQUIRE(f.stock(milk) == 7000);
 
     // To another branch: the dates go with the goods.
     const auto two = f.secondStore();
@@ -290,14 +295,40 @@ TEST_CASE("lots go first-expiring-first-out and keep their dates when moved", "[
     REQUIRE(soonArrived);
     REQUIRE(f.lotSum(milk, two) == 2000);
 
-    // The expired lot is written off from that very lot and shows as such.
-    std::string oldId;
-    for (const auto& lot : f.lots(milk, "expired")) oldId = lot.at("id").get<std::string>();
-    f.call("lots.writeOff", pos::Json{{"lotId", oldId}, {"reason", "expired"}});
+    // Throwing the expired lot away does not touch the balance again.
+    f.call("lots.writeOff", pos::Json{{"lotId", expired[0].at("id")}, {"reason", "expired"}});
+    REQUIRE(f.stock(milk) == 5000);
     const auto loss = f.call("reports.stockLoss", pos::Json::object());
     REQUIRE(loss.at("expiredMinor") == 200);
     REQUIRE(loss.at("wasteMinor") == 300);
     REQUIRE(f.call("reports.expiry", pos::Json::object()).at("expiredLots") == 0);
+}
+
+TEST_CASE("expired stock is never used, even when good stock runs out", "[lots]") {
+    ProcFixture f;
+    const auto sup = f.supplier("Ət MMC");
+    const auto meat = f.ingredient("Qiymə");
+    const auto po = f.order(sup, pos::Json::array({line(meat, 3000, 1000)}));
+    const auto item = f.itemOf(po, meat);
+    f.call("purchases.receive", pos::Json{{"purchaseId", po}, {"lines", pos::Json::array({
+        pos::Json{{"itemId", item}, {"qtyMilli", 1000}, {"lotNo", "GOOD"}, {"expiresOn", "2099-01-01"}},
+        pos::Json{{"itemId", item}, {"qtyMilli", 2000}, {"lotNo", "BAD"}, {"expiresOn", "2000-01-01"}}})}});
+    REQUIRE(f.stock(meat) == 1000);
+
+    // 1.5 kg needed, 1 kg good: the balance goes below zero, the expired lot stays untouched.
+    f.call("inventory.waste", pos::Json{{"ingredientId", meat}, {"qtyMilli", 1500}, {"reason", "istifadə"}});
+    REQUIRE(f.stock(meat) == -500);
+    const auto bad = f.lots(meat, "expired");
+    REQUIRE(bad.size() == 1);
+    REQUIRE(bad[0].at("qtyMilli") == 2000);
+    REQUIRE(f.lots(meat).size() == 0);
+
+    // The date was typed wrong: corrected, the lot is usable again (covering the shortfall first).
+    f.call("lots.extend", pos::Json{{"lotId", bad[0].at("id")}, {"expiresOn", "2099-02-01"}});
+    REQUIRE(f.stock(meat) == 1500);
+    REQUIRE(f.lots(meat, "expired").empty());
+    REQUIRE(f.lots(meat).at(0).at("qtyMilli") == 1500);
+    REQUIRE_THROWS_AS(f.call("lots.extend", pos::Json{{"lotId", bad[0].at("id")}, {"expiresOn", "2001-01-01"}}), pos::PosError);
 }
 
 TEST_CASE("goods arriving into a shortfall cover it before opening a lot", "[lots]") {

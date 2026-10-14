@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 49;
+inline constexpr int kSchemaVersion = 50;
 
 namespace detail {
 
@@ -3812,6 +3812,27 @@ VALUES ('inventory.costingMethod', 'average', 'string', CAST(strftime('%s', 'now
     return sql;
 }
 
+inline const std::string& migrationSql49() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(566);
+        s += R"MIGSQL(-- Expired lots leave usable stock (1.7.29).
+--
+-- Until now first-expiring-first-out only put expired lots last, so a store
+-- short of good stock still used them. From now on a lot past its date is
+-- blocked the moment anything touches its ingredient (or a stock screen is
+-- opened): its quantity is written off the balance as "Vaxtı keçib" and it
+-- can no longer be used. The lot keeps its quantity so the staff know what to
+-- throw away; correcting a wrong expiry date brings it back.
+
+ALTER TABLE stock_lots ADD COLUMN blocked_at INTEGER;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4366,7 +4387,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 49> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 50> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4416,6 +4437,7 @@ inline constexpr std::array<EmbeddedScript, 49> kMigrations{{
     {47, "047_replenishment.sql", "f078a81c", &detail::migrationSql46},
     {48, "048_lots_locations.sql", "8dd3e3e4", &detail::migrationSql47},
     {49, "049_costing_method.sql", "138cb388", &detail::migrationSql48},
+    {50, "050_expired_lots_blocked.sql", "a86ca4b5", &detail::migrationSql49},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

@@ -102,8 +102,8 @@ std::map<std::string, std::pair<Money, Money>> computeLanded(Context& ctx, const
         const bool byQty = costs.columnText(1) == "qty" || valueSum <= 0;
         for (const auto& item : items) {
             const auto share = byQty ? (qtySum > 0 ? static_cast<double>(item.qty) / static_cast<double>(qtySum) : 0.0)
-                                     : static_cast<double>(item.qty * effectivePrice(item, confirmed) / 1000) /
-                                           static_cast<double>(valueSum);
+                                     : static_cast<double>(item.qty) * static_cast<double>(effectivePrice(item, confirmed)) /
+                                           1000.0 / static_cast<double>(valueSum);
             extra[item.id] += static_cast<Money>(static_cast<double>(amount) * share + 0.5);
         }
     }

@@ -85,8 +85,8 @@ Json InventoryService::move(const std::string& ingredientId, const std::string& 
             std::string lotId = lot.lotId;
             if (!lotId.empty()) {
                 auto adopt = ctx_.db().prepare(
-                    "UPDATE stock_lots SET quality = 'accepted', qty_milli = :qty, warehouse_id = :warehouse "
-                    "WHERE id = :id");
+                    "UPDATE stock_lots SET quality = 'accepted', qty_milli = :qty, warehouse_id = :warehouse, "
+                    "  blocked_at = NULL WHERE id = :id");
                 adopt.bind(":qty", intoLot).bind(":warehouse", warehouseId).bind(":id", lotId);
                 adopt.exec();
             } else {
@@ -107,18 +107,23 @@ Json InventoryService::move(const std::string& ingredientId, const std::string& 
             }
             lotMove(lotId, intoLot, std::string(kind), lot.locationId);
             lots.push_back(Json{{"lotId", lotId}, {"qtyMilli", intoLot}});
+            // Goods that arrive already past their date never become usable.
+            blockExpired(ingredientId, warehouseId);
         }
     } else {
         // First expiring first out: lots still good before expired ones, the
         // nearest date first, undated last; a return to the supplier takes its
         // own invoice's lots first, a write-off the lot it names.
+        // Expired lots are blocked first, so they are never drawn from: when
+        // good stock runs short the balance goes below zero instead.
+        blockExpired(ingredientId, warehouseId);
         std::int64_t need = -qtyDeltaMilli;
         auto pick = ctx_.db().prepare(
-            "SELECT id, qty_milli, location_id, (expires_on != '' AND expires_on < date('now', 'localtime')) "
-            "FROM stock_lots WHERE ingredient_id = :ingredient AND warehouse_id = :warehouse "
-            "  AND quality = 'accepted' AND qty_milli > 0 "
+            "SELECT id, qty_milli, location_id FROM stock_lots "
+            "WHERE ingredient_id = :ingredient AND warehouse_id = :warehouse "
+            "  AND quality = 'accepted' AND qty_milli > 0 AND blocked_at IS NULL "
+            "  AND (expires_on = '' OR expires_on >= date('now', 'localtime')) "
             "ORDER BY (id = :lot) DESC, (:prefer != '' AND purchase_id = :prefer) DESC, "
-            "  (expires_on != '' AND expires_on < date('now', 'localtime')) ASC, "
             "  (expires_on = '') ASC, expires_on ASC, received_at ASC, created_at ASC");
         pick.bind(":ingredient", ingredientId).bind(":warehouse", warehouseId)
             .bind(":lot", lot.lotId).bind(":prefer", lot.preferPurchaseId);
@@ -126,20 +131,18 @@ Json InventoryService::move(const std::string& ingredientId, const std::string& 
             std::string id;
             std::int64_t qty;
             std::string location;
-            bool expired;
         };
         std::vector<Take> takes;
         while (need > 0 && pick.step()) {
             const std::int64_t take = std::min<std::int64_t>(need, pick.columnInt(1));
-            takes.push_back({pick.columnText(0), take, pick.columnText(2), pick.columnInt(3) != 0});
+            takes.push_back({pick.columnText(0), take, pick.columnText(2)});
             need -= take;
         }
         for (const auto& t : takes) {
             auto use = ctx_.db().prepare("UPDATE stock_lots SET qty_milli = qty_milli - :qty WHERE id = :id");
             use.bind(":qty", t.qty).bind(":id", t.id);
             use.exec();
-            // An expired lot that had to be used is kept visible as such.
-            lotMove(t.id, -t.qty, t.expired && kind == "sale" ? "expired_use" : std::string(kind), t.location);
+            lotMove(t.id, -t.qty, std::string(kind), t.location);
             lots.push_back(Json{{"lotId", t.id}, {"qtyMilli", t.qty}});
         }
     }
@@ -184,6 +187,52 @@ Json InventoryService::transfer(const std::string& ingredientId, const std::stri
     return Json{{"out", out}, {"in", in}};
 }
 
+std::int64_t InventoryService::blockExpired(const std::string& ingredientId, const std::string& warehouseId) {
+    auto due = ctx_.db().prepare(
+        "SELECT id, ingredient_id, warehouse_id, qty_milli, location_id FROM stock_lots "
+        "WHERE quality = 'accepted' AND qty_milli > 0 AND blocked_at IS NULL "
+        "  AND expires_on != '' AND expires_on < date('now', 'localtime') "
+        "  AND (:ingredient = '' OR ingredient_id = :ingredient) AND (:warehouse = '' OR warehouse_id = :warehouse)");
+    due.bind(":ingredient", ingredientId).bind(":warehouse", warehouseId);
+    struct Lot {
+        std::string id;
+        std::string ingredient;
+        std::string warehouse;
+        std::int64_t qty;
+        std::string location;
+    };
+    std::vector<Lot> lots;
+    while (due.step()) lots.push_back({due.columnText(0), due.columnText(1), due.columnText(2), due.columnInt(3), due.columnText(4)});
+    const auto now = nowMs();
+    for (const auto& lot : lots) {
+        // Written here rather than through move(): the lot is named, and the
+        // write-off must not go looking for other lots to draw from.
+        const std::string movementId = crypto::uuid4();
+        auto movement = ctx_.db().prepare(
+            "INSERT INTO stock_movements (id, ingredient_id, warehouse_id, kind, qty_delta_milli, reference_id, reason, "
+            "  actor_user_id, created_at) VALUES (:id, :i, :w, 'waste', :delta, :lot, :reason, :actor, :now)");
+        movement.bind(":id", movementId).bind(":i", lot.ingredient).bind(":w", lot.warehouse).bind(":delta", -lot.qty)
+            .bind(":lot", lot.id).bind(":reason", std::string("Vaxtı keçib — istifadədən çıxarıldı"))
+            .bindOptional(":actor", ctx_.session().userId).bind(":now", now);
+        movement.exec();
+        auto level = ctx_.db().prepare(
+            "INSERT INTO stock_levels (ingredient_id, warehouse_id, qty_milli, updated_at) VALUES (:i, :w, :delta, :now) "
+            "ON CONFLICT(ingredient_id, warehouse_id) DO UPDATE SET qty_milli = qty_milli + :delta, updated_at = :now");
+        level.bind(":i", lot.ingredient).bind(":w", lot.warehouse).bind(":delta", -lot.qty).bind(":now", now);
+        level.exec();
+        auto trace = ctx_.db().prepare(
+            "INSERT INTO stock_lot_moves (id, lot_id, movement_id, kind, qty_delta_milli, from_location, actor_user_id, "
+            "  created_at) VALUES (:id, :lot, :movement, 'expired_block', :delta, :from, :actor, :now)");
+        trace.bind(":id", crypto::uuid4()).bind(":lot", lot.id).bind(":movement", movementId).bind(":delta", -lot.qty)
+            .bind(":from", lot.location).bindOptional(":actor", ctx_.session().userId).bind(":now", now);
+        trace.exec();
+        auto block = ctx_.db().prepare("UPDATE stock_lots SET blocked_at = :now WHERE id = :id");
+        block.bind(":now", now).bind(":id", lot.id);
+        block.exec();
+    }
+    return static_cast<std::int64_t>(lots.size());
+}
+
 Json InventoryService::relocate(const std::string& lotId, const std::string& locationId, std::int64_t qtyMilli) {
     auto lot = ctx_.db().prepare(
         "SELECT warehouse_id, location_id, qty_milli FROM stock_lots WHERE id = :id AND quality != 'rejected'");
@@ -209,9 +258,10 @@ Json InventoryService::relocate(const std::string& lotId, const std::string& loc
         target = "lot-" + crypto::uuid4().substr(0, 12);
         auto split = ctx_.db().prepare(
             "INSERT INTO stock_lots (id, ingredient_id, warehouse_id, location_id, lot_no, purchase_id, purchase_item_id, "
-            "  produced_on, received_at, expires_on, qty_received_milli, qty_milli, unit_cost_minor, quality, created_at) "
+            "  produced_on, received_at, expires_on, qty_received_milli, qty_milli, unit_cost_minor, quality, created_at, "
+            "  blocked_at) "
             "SELECT :new, ingredient_id, warehouse_id, :to, lot_no, purchase_id, purchase_item_id, produced_on, "
-            "  received_at, expires_on, :qty, :qty, unit_cost_minor, quality, :now FROM stock_lots WHERE id = :id");
+            "  received_at, expires_on, :qty, :qty, unit_cost_minor, quality, :now, blocked_at FROM stock_lots WHERE id = :id");
         split.bind(":new", target).bind(":to", locationId).bind(":qty", qty).bind(":now", now).bind(":id", lotId);
         split.exec();
         auto less = ctx_.db().prepare("UPDATE stock_lots SET qty_milli = qty_milli - :qty WHERE id = :id");
@@ -241,7 +291,7 @@ std::string InventoryService::unitCostSql(const std::string& method, const std::
     if (method == "last") return "i.cost_minor";
     if (method == "fifo") {
         return "COALESCE((SELECT fl.unit_cost_minor FROM stock_lots fl WHERE fl.ingredient_id = i.id "
-               "AND fl.quality = 'accepted' AND fl.qty_milli > 0" +
+               "AND fl.quality = 'accepted' AND fl.qty_milli > 0 AND fl.blocked_at IS NULL" +
                (warehouseParam.empty() ? std::string{} : " AND (" + warehouseParam + " = '' OR fl.warehouse_id = " + warehouseParam + ")") +
                " ORDER BY fl.received_at, fl.created_at LIMIT 1), i.cost_minor)";
     }
@@ -355,10 +405,10 @@ Json InventoryService::levels(const std::string& warehouseId) {
         "         ELSE i.sale_price_minor END AS salePriceMinor, "
         "       COALESCE(s.qty_milli, 0) AS qtyMilli, i.avg_cost_minor AS avgCostMinor, "
         "       (SELECT COUNT(*) FROM stock_lots l WHERE l.ingredient_id = i.id AND l.warehouse_id = :warehouse "
-        "          AND l.quality = 'accepted' AND l.qty_milli > 0) AS lotCount, "
+        "          AND l.quality = 'accepted' AND l.qty_milli > 0 AND l.blocked_at IS NULL) AS lotCount, "
         "       COALESCE((SELECT MIN(l.expires_on) FROM stock_lots l WHERE l.ingredient_id = i.id "
         "          AND l.warehouse_id = :warehouse AND l.quality = 'accepted' AND l.qty_milli > 0 "
-        "          AND l.expires_on != ''), '') AS nextExpiry, "
+        "          AND l.blocked_at IS NULL AND l.expires_on != ''), '') AS nextExpiry, "
         "       COALESCE(r.min_qty_milli, i.min_qty_milli) AS ruleMinQtyMilli, "
         "       COALESCE(r.target_qty_milli, 0) AS targetQtyMilli, COALESCE(r.reorder_qty_milli, 0) AS reorderQtyMilli "
         "FROM ingredients i "
@@ -377,7 +427,7 @@ Json InventoryService::valuation(const std::string& warehouseId, const std::stri
     auto stmt = ctx_.db().prepare(method == "fifo"
         ? "SELECT COALESCE(SUM(l.qty_milli * l.unit_cost_minor / 1000), 0), COUNT(DISTINCT l.ingredient_id) "
           "FROM stock_lots l JOIN ingredients i ON i.id = l.ingredient_id "
-          "WHERE i.active = 1 AND l.quality = 'accepted' AND l.qty_milli > 0 "
+          "WHERE i.active = 1 AND l.quality = 'accepted' AND l.qty_milli > 0 AND l.blocked_at IS NULL "
           "  AND (:warehouse = '' OR l.warehouse_id = :warehouse)"
         : "SELECT COALESCE(SUM(s.qty_milli * " + unitCostSql(method) + " / 1000), 0) AS totalMinor, COUNT(*) AS lines "
           "FROM stock_levels s JOIN ingredients i ON i.id = s.ingredient_id "

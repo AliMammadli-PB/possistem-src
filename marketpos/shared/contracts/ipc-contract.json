@@ -101,6 +101,9 @@
     "market:printer:report": {
       "auth": "session"
     },
+    "market:printer:station": {
+      "auth": "session"
+    },
     "market:printer:setTarget": {
       "auth": "roles:manager"
     },
