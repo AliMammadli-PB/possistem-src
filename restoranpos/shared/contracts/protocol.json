@@ -1354,6 +1354,111 @@
       "auth": true,
       "perm": "purchases.delete",
       "idempotent": true
+    },
+    "purchases.confirm": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "purchases.inspect": {
+      "auth": true,
+      "perm": "suppliers.receive",
+      "idempotent": true
+    },
+    "purchases.invoice": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "purchases.addCost": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "purchases.removeCost": {
+      "auth": true,
+      "perm": "purchases.edit",
+      "idempotent": true
+    },
+    "replenish.suggestions": {
+      "auth": true,
+      "perm": "inventory.view",
+      "idempotent": false
+    },
+    "replenish.run": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "replenish.createDraft": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "stockRules.list": {
+      "auth": true,
+      "perm": "inventory.view",
+      "idempotent": false
+    },
+    "stockRules.save": {
+      "auth": true,
+      "perm": "inventory.manage",
+      "idempotent": true
+    },
+    "supplierItems.list": {
+      "auth": true,
+      "perm": "suppliers.view",
+      "idempotent": false
+    },
+    "supplierItems.save": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "locations.list": {
+      "auth": true,
+      "perm": "inventory.view",
+      "idempotent": false
+    },
+    "locations.save": {
+      "auth": true,
+      "perm": "inventory.manage",
+      "idempotent": true
+    },
+    "lots.list": {
+      "auth": true,
+      "perm": "inventory.view",
+      "idempotent": false
+    },
+    "lots.relocate": {
+      "auth": true,
+      "perm": "inventory.transfer",
+      "idempotent": true
+    },
+    "lots.writeOff": {
+      "auth": true,
+      "perm": "inventory.adjust",
+      "idempotent": true
+    },
+    "reports.expiry": {
+      "auth": true,
+      "perm": "inventory.view",
+      "idempotent": false
+    },
+    "reports.suppliers": {
+      "auth": true,
+      "perm": "suppliers.view",
+      "idempotent": false
+    },
+    "reports.stockLoss": {
+      "auth": true,
+      "perm": "inventory.view",
+      "idempotent": false
+    },
+    "inventory.costingMethod": {
+      "auth": true,
+      "perm": "inventory.view",
+      "idempotent": true
     }
   },
   "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",

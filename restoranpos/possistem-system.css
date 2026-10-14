@@ -2273,6 +2273,16 @@ button.ps-period-chip[aria-pressed].is-on, .ps-ops-panel button.ps-period-chip[a
 .ps-qty-stepper { display: inline-flex; align-items: center; gap: 0.5rem; }
 .ps-qty-stepper button { width: 2.2rem; height: 2.2rem; border-radius: 0.6rem; border: 1px solid var(--ps-line, #e2e8f0); font-weight: 700; }
 @media (max-width: 720px) { .ps-sale-edit-row { grid-template-columns: 1fr 1fr; } .ps-sale-edit-row > .ps-recipe-name { grid-column: 1 / -1; } }
+/* POS_PROCUREMENT_v1 */
+.ps-badge-ok { background: #e7f5ee; color: var(--ps-ok, #15803d); }
+.ps-receive-row { padding: 0.6rem 0.7rem; border: 1px solid var(--ps-line, #e2e8f0); border-radius: 0.8rem; }
+.ps-receive-head { margin-bottom: 0.4rem; }
+.ps-receive-head small { color: #64748b; }
+.ps-receive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.5rem; }
+.ps-cell-input { width: 100%; min-width: 5rem; padding: 0.35rem 0.5rem; border: 1px solid var(--ps-line, #e2e8f0); border-radius: 0.5rem; background: var(--ps-elevated, #fff); }
+.ps-expiry-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; width: 100%; text-align: left; padding: 0.6rem 0.9rem; border-radius: 0.8rem; background: #fff4e0; color: #92400e; border: 1px solid #f5d29a; }
+.ps-expiry-banner b { color: var(--ps-danger, #dc2626); }
+.ps-expiry-banner small { margin-left: auto; font-weight: 600; }
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

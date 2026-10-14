@@ -3,22 +3,28 @@
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
 #include "pos/protocol_generated.hpp"
+#include "pos/services/ReplenishService.hpp"
+
+#include <algorithm>
+#include <vector>
 
 namespace pos::services {
 
 Json InventoryService::move(const std::string& ingredientId, const std::string& warehouseId,
                             std::int64_t qtyDeltaMilli, std::string_view kind,
-                            const std::string& referenceId, std::string_view reason) {
+                            const std::string& referenceId, std::string_view reason,
+                            const LotSpec& lot) {
     if (qtyDeltaMilli == 0) {
         throw PosError(std::string(protocol::err::kValidation), "Miqdar sıfır ola bilməz");
     }
 
     auto ingredient = ctx_.db().prepare(
-        "SELECT name, unit FROM ingredients WHERE id = :id AND active = 1");
+        "SELECT name, unit, cost_minor FROM ingredients WHERE id = :id AND active = 1");
     ingredient.bind(":id", ingredientId);
     if (!ingredient.step()) {
         throw PosError(std::string(protocol::err::kNotFound), "İnqrediyent tapılmadı");
     }
+    const Money ingredientCost = ingredient.columnInt(2);
 
     auto warehouse = ctx_.db().prepare(
         "SELECT name FROM warehouses WHERE id = :id AND active = 1");
@@ -29,6 +35,7 @@ Json InventoryService::move(const std::string& ingredientId, const std::string& 
 
     const auto now = nowMs();
     const std::string movementId = crypto::uuid4();
+    const std::int64_t before = levelOf(ingredientId, warehouseId);
 
     auto insert = ctx_.db().prepare(
         "INSERT INTO stock_movements (id, ingredient_id, warehouse_id, kind, qty_delta_milli, "
@@ -45,7 +52,6 @@ Json InventoryService::move(const std::string& ingredientId, const std::string& 
         .bind(":now", now);
     insert.exec();
 
-    // The projection follows the ledger, never the other way round.
     auto upsert = ctx_.db().prepare(
         "INSERT INTO stock_levels (ingredient_id, warehouse_id, qty_milli, updated_at) "
         "VALUES (:ingredient, :warehouse, :delta, :now) "
@@ -57,12 +63,209 @@ Json InventoryService::move(const std::string& ingredientId, const std::string& 
         .bind(":now", now);
     upsert.exec();
 
+    const auto lotMove = [&](const std::string& lotId, std::int64_t delta, const std::string& moveKind,
+                             const std::string& location) {
+        auto row = ctx_.db().prepare(
+            "INSERT INTO stock_lot_moves (id, lot_id, movement_id, kind, qty_delta_milli, from_location, "
+            "                             to_location, actor_user_id, created_at) "
+            "VALUES (:id, :lot, :movement, :kind, :delta, :from, :to, :actor, :now)");
+        row.bind(":id", crypto::uuid4()).bind(":lot", lotId).bind(":movement", movementId)
+            .bind(":kind", moveKind).bind(":delta", delta)
+            .bind(":from", delta < 0 ? location : std::string{}).bind(":to", delta > 0 ? location : std::string{})
+            .bindOptional(":actor", ctx_.session().userId).bind(":now", now);
+        row.exec();
+    };
+
+    Json lots = Json::array();
+    if (qtyDeltaMilli > 0) {
+        // Stock that was below zero (sold before it was booked in) is covered
+        // first; only what is left over sits in a lot.
+        const std::int64_t intoLot = qtyDeltaMilli - std::min<std::int64_t>(qtyDeltaMilli, std::max<std::int64_t>(0, -before));
+        if (intoLot > 0) {
+            std::string lotId = lot.lotId;
+            if (!lotId.empty()) {
+                auto adopt = ctx_.db().prepare(
+                    "UPDATE stock_lots SET quality = 'accepted', qty_milli = :qty, warehouse_id = :warehouse "
+                    "WHERE id = :id");
+                adopt.bind(":qty", intoLot).bind(":warehouse", warehouseId).bind(":id", lotId);
+                adopt.exec();
+            } else {
+                lotId = "lot-" + crypto::uuid4().substr(0, 12);
+                auto open = ctx_.db().prepare(
+                    "INSERT INTO stock_lots (id, ingredient_id, warehouse_id, location_id, lot_no, purchase_id, "
+                    "  purchase_item_id, produced_on, received_at, expires_on, qty_received_milli, qty_milli, "
+                    "  unit_cost_minor, quality, created_at) "
+                    "VALUES (:id, :ingredient, :warehouse, :location, :lotNo, :purchase, :item, :produced, :received, "
+                    "  :expires, :qty, :qty, :cost, 'accepted', :now)");
+                open.bind(":id", lotId).bind(":ingredient", ingredientId).bind(":warehouse", warehouseId)
+                    .bind(":location", lot.locationId).bind(":lotNo", lot.lotNo).bind(":purchase", lot.purchaseId)
+                    .bind(":item", lot.purchaseItemId).bind(":produced", lot.producedOn)
+                    .bind(":received", lot.receivedAt > 0 ? lot.receivedAt : now).bind(":expires", lot.expiresOn)
+                    .bind(":qty", intoLot).bind(":cost", lot.unitCost >= 0 ? lot.unitCost : ingredientCost)
+                    .bind(":now", now);
+                open.exec();
+            }
+            lotMove(lotId, intoLot, std::string(kind), lot.locationId);
+            lots.push_back(Json{{"lotId", lotId}, {"qtyMilli", intoLot}});
+        }
+    } else {
+        // First expiring first out: lots still good before expired ones, the
+        // nearest date first, undated last; a return to the supplier takes its
+        // own invoice's lots first, a write-off the lot it names.
+        std::int64_t need = -qtyDeltaMilli;
+        auto pick = ctx_.db().prepare(
+            "SELECT id, qty_milli, location_id, (expires_on != '' AND expires_on < date('now', 'localtime')) "
+            "FROM stock_lots WHERE ingredient_id = :ingredient AND warehouse_id = :warehouse "
+            "  AND quality = 'accepted' AND qty_milli > 0 "
+            "ORDER BY (id = :lot) DESC, (:prefer != '' AND purchase_id = :prefer) DESC, "
+            "  (expires_on != '' AND expires_on < date('now', 'localtime')) ASC, "
+            "  (expires_on = '') ASC, expires_on ASC, received_at ASC, created_at ASC");
+        pick.bind(":ingredient", ingredientId).bind(":warehouse", warehouseId)
+            .bind(":lot", lot.lotId).bind(":prefer", lot.preferPurchaseId);
+        struct Take {
+            std::string id;
+            std::int64_t qty;
+            std::string location;
+            bool expired;
+        };
+        std::vector<Take> takes;
+        while (need > 0 && pick.step()) {
+            const std::int64_t take = std::min<std::int64_t>(need, pick.columnInt(1));
+            takes.push_back({pick.columnText(0), take, pick.columnText(2), pick.columnInt(3) != 0});
+            need -= take;
+        }
+        for (const auto& t : takes) {
+            auto use = ctx_.db().prepare("UPDATE stock_lots SET qty_milli = qty_milli - :qty WHERE id = :id");
+            use.bind(":qty", t.qty).bind(":id", t.id);
+            use.exec();
+            // An expired lot that had to be used is kept visible as such.
+            lotMove(t.id, -t.qty, t.expired && kind == "sale" ? "expired_use" : std::string(kind), t.location);
+            lots.push_back(Json{{"lotId", t.id}, {"qtyMilli", t.qty}});
+        }
+    }
+
+    if (qtyDeltaMilli < 0) ReplenishService(ctx_).check(ingredientId, warehouseId);
+
     return Json{{"id", movementId},
                 {"ingredientId", ingredientId},
                 {"warehouseId", warehouseId},
                 {"kind", std::string(kind)},
                 {"qtyDeltaMilli", qtyDeltaMilli},
-                {"qtyMilli", levelOf(ingredientId, warehouseId)}};
+                {"qtyMilli", levelOf(ingredientId, warehouseId)},
+                {"lots", lots}};
+}
+
+Json InventoryService::transfer(const std::string& ingredientId, const std::string& fromWarehouse,
+                                const std::string& toWarehouse, std::int64_t qtyMilli,
+                                const std::string& referenceId) {
+    auto out = move(ingredientId, fromWarehouse, -qtyMilli, "transfer_out", referenceId, "transfer");
+    Json in = Json::array();
+    std::int64_t moved = 0;
+    for (const auto& piece : out["lots"]) {
+        auto src = ctx_.db().prepare(
+            "SELECT lot_no, produced_on, expires_on, unit_cost_minor, purchase_id, purchase_item_id, received_at "
+            "FROM stock_lots WHERE id = :id");
+        src.bind(":id", piece.value("lotId", std::string{}));
+        if (!src.step()) continue;
+        LotSpec spec;
+        spec.lotNo = src.columnText(0);
+        spec.producedOn = src.columnText(1);
+        spec.expiresOn = src.columnText(2);
+        spec.unitCost = src.columnInt(3);
+        spec.purchaseId = src.columnText(4);
+        spec.purchaseItemId = src.columnText(5);
+        spec.receivedAt = src.columnInt(6);
+        const auto qty = piece.value("qtyMilli", std::int64_t{0});
+        in.push_back(move(ingredientId, toWarehouse, qty, "transfer_in", referenceId, "transfer", spec));
+        moved += qty;
+    }
+    // Whatever was not in a lot (the store was short) arrives untracked.
+    if (moved < qtyMilli) in.push_back(move(ingredientId, toWarehouse, qtyMilli - moved, "transfer_in", referenceId, "transfer"));
+    return Json{{"out", out}, {"in", in}};
+}
+
+Json InventoryService::relocate(const std::string& lotId, const std::string& locationId, std::int64_t qtyMilli) {
+    auto lot = ctx_.db().prepare(
+        "SELECT warehouse_id, location_id, qty_milli FROM stock_lots WHERE id = :id AND quality != 'rejected'");
+    lot.bind(":id", lotId);
+    if (!lot.step()) throw PosError(std::string(protocol::err::kNotFound), "Partiya tapılmadı");
+    const std::string warehouseId = lot.columnText(0);
+    const std::string from = lot.columnText(1);
+    const std::int64_t have = lot.columnInt(2);
+    if (!locationId.empty()) {
+        auto place = ctx_.db().prepare("SELECT 1 FROM stock_locations WHERE id = :id AND warehouse_id = :warehouse");
+        place.bind(":id", locationId).bind(":warehouse", warehouseId);
+        if (!place.step()) throw PosError(std::string(protocol::err::kValidation), "Yerləşmə bu anbara aid deyil");
+    }
+    const std::int64_t qty = qtyMilli <= 0 || qtyMilli > have ? have : qtyMilli;
+    if (qty <= 0) throw PosError(std::string(protocol::err::kValidation), "Partiyada mal yoxdur");
+    std::string target = lotId;
+    const auto now = nowMs();
+    if (qty == have) {
+        auto upd = ctx_.db().prepare("UPDATE stock_lots SET location_id = :to WHERE id = :id");
+        upd.bind(":to", locationId).bind(":id", lotId);
+        upd.exec();
+    } else {
+        target = "lot-" + crypto::uuid4().substr(0, 12);
+        auto split = ctx_.db().prepare(
+            "INSERT INTO stock_lots (id, ingredient_id, warehouse_id, location_id, lot_no, purchase_id, purchase_item_id, "
+            "  produced_on, received_at, expires_on, qty_received_milli, qty_milli, unit_cost_minor, quality, created_at) "
+            "SELECT :new, ingredient_id, warehouse_id, :to, lot_no, purchase_id, purchase_item_id, produced_on, "
+            "  received_at, expires_on, :qty, :qty, unit_cost_minor, quality, :now FROM stock_lots WHERE id = :id");
+        split.bind(":new", target).bind(":to", locationId).bind(":qty", qty).bind(":now", now).bind(":id", lotId);
+        split.exec();
+        auto less = ctx_.db().prepare("UPDATE stock_lots SET qty_milli = qty_milli - :qty WHERE id = :id");
+        less.bind(":qty", qty).bind(":id", lotId);
+        less.exec();
+    }
+    for (const auto& [id, delta] : {std::pair<std::string, std::int64_t>{lotId, -qty}, {target, qty}}) {
+        if (qty == have && delta < 0) continue;  // a whole lot moved: one row says it
+        auto row = ctx_.db().prepare(
+            "INSERT INTO stock_lot_moves (id, lot_id, kind, qty_delta_milli, from_location, to_location, "
+            "                             actor_user_id, created_at) "
+            "VALUES (:id, :lot, 'relocate', :delta, :from, :to, :actor, :now)");
+        row.bind(":id", crypto::uuid4()).bind(":lot", id).bind(":delta", qty == have ? std::int64_t{0} : delta)
+            .bind(":from", from).bind(":to", locationId).bindOptional(":actor", ctx_.session().userId).bind(":now", now);
+        row.exec();
+    }
+    return Json{{"lotId", target}, {"qtyMilli", qty}, {"locationId", locationId}};
+}
+
+std::string InventoryService::costingMethod() {
+    auto row = ctx_.db().prepare("SELECT value FROM app_settings WHERE key = 'inventory.costingMethod'");
+    const std::string method = row.step() ? row.columnText(0) : std::string{"average"};
+    return method == "fifo" || method == "last" ? method : std::string{"average"};
+}
+
+std::string InventoryService::unitCostSql(const std::string& method, const std::string& warehouseParam) {
+    if (method == "last") return "i.cost_minor";
+    if (method == "fifo") {
+        return "COALESCE((SELECT fl.unit_cost_minor FROM stock_lots fl WHERE fl.ingredient_id = i.id "
+               "AND fl.quality = 'accepted' AND fl.qty_milli > 0" +
+               (warehouseParam.empty() ? std::string{} : " AND (" + warehouseParam + " = '' OR fl.warehouse_id = " + warehouseParam + ")") +
+               " ORDER BY fl.received_at, fl.created_at LIMIT 1), i.cost_minor)";
+    }
+    return "(CASE WHEN i.avg_cost_minor > 0 THEN i.avg_cost_minor ELSE i.cost_minor END)";
+}
+
+void InventoryService::recordReceiptCost(const std::string& ingredientId, std::int64_t qtyMilli, Money unitCost) {
+    if (qtyMilli <= 0 || unitCost < 0) return;
+    // Stock on hand before these goods: everything except what just came in.
+    auto held = ctx_.db().prepare(
+        "SELECT COALESCE(SUM(qty_milli), 0), (SELECT avg_cost_minor FROM ingredients WHERE id = :id) "
+        "FROM stock_levels WHERE ingredient_id = :id");
+    held.bind(":id", ingredientId);
+    held.step();
+    const std::int64_t before = std::max<std::int64_t>(0, held.columnInt(0) - qtyMilli);
+    const Money avg = held.columnInt(1);
+    const Money next = before + qtyMilli > 0
+        ? (before * avg + qtyMilli * unitCost + (before + qtyMilli) / 2) / (before + qtyMilli)
+        : unitCost;
+    auto upd = ctx_.db().prepare(
+        "UPDATE ingredients SET avg_cost_minor = :avg, cost_minor = CASE WHEN :cost > 0 THEN :cost ELSE cost_minor END, "
+        "updated_at = :now WHERE id = :id");
+    upd.bind(":avg", before > 0 && avg > 0 ? next : unitCost).bind(":cost", unitCost).bind(":now", nowMs()).bind(":id", ingredientId);
+    upd.exec();
 }
 
 std::int64_t InventoryService::levelOf(const std::string& ingredientId,
@@ -150,25 +353,39 @@ Json InventoryService::levels(const std::string& warehouseId) {
         "       CASE WHEN i.sku LIKE 'MENU-%' THEN COALESCE((SELECT m.price_minor FROM menu_items m "
         "         WHERE m.id = substr(i.sku, 6)), i.sale_price_minor) "
         "         ELSE i.sale_price_minor END AS salePriceMinor, "
-        "       COALESCE(s.qty_milli, 0) AS qtyMilli "
+        "       COALESCE(s.qty_milli, 0) AS qtyMilli, i.avg_cost_minor AS avgCostMinor, "
+        "       (SELECT COUNT(*) FROM stock_lots l WHERE l.ingredient_id = i.id AND l.warehouse_id = :warehouse "
+        "          AND l.quality = 'accepted' AND l.qty_milli > 0) AS lotCount, "
+        "       COALESCE((SELECT MIN(l.expires_on) FROM stock_lots l WHERE l.ingredient_id = i.id "
+        "          AND l.warehouse_id = :warehouse AND l.quality = 'accepted' AND l.qty_milli > 0 "
+        "          AND l.expires_on != ''), '') AS nextExpiry, "
+        "       COALESCE(r.min_qty_milli, i.min_qty_milli) AS ruleMinQtyMilli, "
+        "       COALESCE(r.target_qty_milli, 0) AS targetQtyMilli, COALESCE(r.reorder_qty_milli, 0) AS reorderQtyMilli "
         "FROM ingredients i "
         "LEFT JOIN stock_levels s ON s.ingredient_id = i.id AND s.warehouse_id = :warehouse "
+        "LEFT JOIN stock_rules r ON r.ingredient_id = i.id AND r.warehouse_id = :warehouse "
         "WHERE i.active = 1 ORDER BY i.name");
     stmt.bind(":warehouse", warehouseId);
     return Json{{"warehouseId", warehouseId}, {"levels", stmt.rows()}};
 }
 
-Json InventoryService::valuation(const std::string& warehouseId) {
-    // Cost is per whole unit and quantities are thousandths, so the division is
-    // explicit rather than hidden in a multiplication that silently inflates.
-    auto stmt = ctx_.db().prepare(
-        "SELECT COALESCE(SUM(s.qty_milli * i.cost_minor / 1000), 0) AS totalMinor, "
-        "       COUNT(*) AS lines "
-        "FROM stock_levels s JOIN ingredients i ON i.id = s.ingredient_id "
-        "WHERE i.active = 1 AND (:warehouse = '' OR s.warehouse_id = :warehouse)");
+Json InventoryService::valuation(const std::string& warehouseId, const std::string& methodAsked) {
+    const std::string method = methodAsked == "average" || methodAsked == "fifo" || methodAsked == "last"
+                                   ? methodAsked : costingMethod();
+    // FIFO values what is on the shelves lot by lot; the other two price the
+    // balance at one unit cost.
+    auto stmt = ctx_.db().prepare(method == "fifo"
+        ? "SELECT COALESCE(SUM(l.qty_milli * l.unit_cost_minor / 1000), 0), COUNT(DISTINCT l.ingredient_id) "
+          "FROM stock_lots l JOIN ingredients i ON i.id = l.ingredient_id "
+          "WHERE i.active = 1 AND l.quality = 'accepted' AND l.qty_milli > 0 "
+          "  AND (:warehouse = '' OR l.warehouse_id = :warehouse)"
+        : "SELECT COALESCE(SUM(s.qty_milli * " + unitCostSql(method) + " / 1000), 0) AS totalMinor, COUNT(*) AS lines "
+          "FROM stock_levels s JOIN ingredients i ON i.id = s.ingredient_id "
+          "WHERE i.active = 1 AND (:warehouse = '' OR s.warehouse_id = :warehouse)");
     stmt.bind(":warehouse", warehouseId);
     stmt.step();
     return Json{{"warehouseId", warehouseId},
+                {"method", method},
                 {"totalMinor", stmt.columnInt(0)},
                 {"lines", stmt.columnInt(1)}};
 }

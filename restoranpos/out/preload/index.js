@@ -103,8 +103,8 @@ const api = {
     levels: (warehouseId) => call("inventory.levels", { warehouseId: warehouseId ?? "" }),
     lowStock: () => call("inventory.lowStock"),
     /** Kalkulyasiya: every dish costed from its recipe at today's prices. */
-    costing: (since) => call("reports.costing", { since: since ?? 0 }, { timeoutMs: 15000 }),
-    valuation: (warehouseId) => call("inventory.valuation", { warehouseId: warehouseId ?? "" }),
+    costing: (since, method) => call("reports.costing", { since: since ?? 0, method: method ?? "" }, { timeoutMs: 15000 }),
+    valuation: (warehouseId, method) => call("inventory.valuation", { warehouseId: warehouseId ?? "", method: method ?? "" }),
     movements: (params) => call("inventory.movements", params ?? {}),
     adjust: (input) => call("inventory.adjust", input),
     waste: (input) => call("inventory.waste", input),
@@ -130,8 +130,33 @@ const api = {
     returnGoods: (input, options) => call("purchases.return", input, options),
     updatePurchase: (input, options) => call("purchases.update", input, options),
     deletePurchase: (purchaseId) => call("purchases.delete", { purchaseId }),
+    confirmPurchase: (purchaseId) => call("purchases.confirm", { purchaseId }),
+    receiveLines: (input, options) => call("purchases.receive", input, { timeoutMs: 30000, ...(options ?? {}) }),
+    inspectLot: (lotId, decision) => call("purchases.inspect", { lotId, decision }, { timeoutMs: 30000 }),
+    invoice: (input) => call("purchases.invoice", input, { timeoutMs: 30000 }),
+    addCost: (input, options) => call("purchases.addCost", input, { timeoutMs: 30000, ...(options ?? {}) }),
+    removeCost: (costId) => call("purchases.removeCost", { costId }, { timeoutMs: 30000 }),
     deleteReturn: (returnId) => call("purchases.deleteReturn", { returnId }),
     returns: (supplierId) => call("purchases.returns", { supplierId: supplierId ?? "" })
+  },
+
+  stock: {
+    suggestions: (warehouseId) => call("replenish.suggestions", { warehouseId: warehouseId ?? "" }, { timeoutMs: 15000 }),
+    runReplenish: (warehouseId) => call("replenish.run", { warehouseId: warehouseId ?? "" }, { timeoutMs: 30000 }),
+    createDraft: (input) => call("replenish.createDraft", input),
+    rules: (warehouseId) => call("stockRules.list", { warehouseId: warehouseId ?? "" }),
+    saveRule: (input) => call("stockRules.save", input),
+    supplierItems: (params) => call("supplierItems.list", params ?? {}),
+    saveSupplierItem: (input) => call("supplierItems.save", input),
+    locations: (warehouseId) => call("locations.list", { warehouseId: warehouseId ?? "" }),
+    saveLocation: (input) => call("locations.save", input),
+    lots: (params) => call("lots.list", params ?? {}, { timeoutMs: 15000 }),
+    relocate: (input) => call("lots.relocate", input),
+    writeOff: (input) => call("lots.writeOff", input),
+    expiry: (warehouseId, days) => call("reports.expiry", { warehouseId: warehouseId ?? "", days: days ?? 3 }),
+    supplierReport: (params) => call("reports.suppliers", params ?? {}, { timeoutMs: 15000 }),
+    lossReport: (params) => call("reports.stockLoss", params ?? {}, { timeoutMs: 15000 }),
+    costingMethod: (method) => call("inventory.costingMethod", { method: method ?? "" })
   },
 
   sales: {

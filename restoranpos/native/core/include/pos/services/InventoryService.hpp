@@ -19,14 +19,59 @@ namespace pos::services {
  * Quantities are thousandths of the base unit, for the same reason money is
  * stored in minor units: 0.333 kg three times must be exactly 0.999 kg.
  */
+/**
+ * What a movement knows about the lot it creates or draws from.
+ *
+ * Goods coming in open a lot carrying these; goods going out are taken from
+ * lots first-expiring-first-out unless `lotId` names the one to use.
+ */
+struct LotSpec {
+    std::string lotNo;
+    std::string producedOn;      // YYYY-MM-DD or ""
+    std::string expiresOn;       // YYYY-MM-DD or ""
+    std::string locationId;
+    std::string purchaseId;
+    std::string purchaseItemId;
+    std::string lotId;           // in: adopt this (pending) lot; out: draw from it first
+    std::string preferPurchaseId;  // out: this invoice's lots first (returns)
+    Money unitCost = -1;         // in: landed cost; -1 = the ingredient's cost
+    std::int64_t receivedAt = 0;  // in: keep the source lot's date on a transfer
+};
+
 class InventoryService {
 public:
     explicit InventoryService(handlers::Context& ctx) : ctx_(ctx) {}
 
-    /** Applies a delta and records why. Negative takes stock out. */
+    /**
+     * Applies a delta and records why. Negative takes stock out.
+     *
+     * Also keeps the lot breakdown (stock_lots) beneath the balance and, after
+     * stock goes out, lets replenishment check whether to draft a purchase.
+     * The result carries "lots": [{lotId, qtyMilli}] for what went out.
+     */
     Json move(const std::string& ingredientId, const std::string& warehouseId,
               std::int64_t qtyDeltaMilli, std::string_view kind,
-              const std::string& referenceId = "", std::string_view reason = "");
+              const std::string& referenceId = "", std::string_view reason = "",
+              const LotSpec& lot = LotSpec{});
+
+    /** Between stores, keeping each lot's dates, number and cost. */
+    Json transfer(const std::string& ingredientId, const std::string& fromWarehouse,
+                  const std::string& toWarehouse, std::int64_t qtyMilli, const std::string& referenceId);
+
+    /** Moves (part of) a lot to another place in the same store; splits it if partial. */
+    Json relocate(const std::string& lotId, const std::string& locationId, std::int64_t qtyMilli);
+
+    /** average | fifo | last, from app_settings (default average). */
+    std::string costingMethod();
+
+    /**
+     * SQL for one unit's cost of ingredient alias `i` under `method`. With a
+     * non-empty warehouse placeholder the FIFO lot is looked up in that store.
+     */
+    static std::string unitCostSql(const std::string& method, const std::string& warehouseParam = "");
+
+    /** Perpetual weighted average and last landed price after goods came in. */
+    void recordReceiptCost(const std::string& ingredientId, std::int64_t qtyMilli, Money unitCost);
 
     /** Current balance of one ingredient in one place. */
     std::int64_t levelOf(const std::string& ingredientId, const std::string& warehouseId);
@@ -59,7 +104,7 @@ public:
     Json levels(const std::string& warehouseId);
 
     /** Stock valued at each ingredient's cost. */
-    Json valuation(const std::string& warehouseId);
+    Json valuation(const std::string& warehouseId, const std::string& method = "");
 
 private:
     handlers::Context& ctx_;

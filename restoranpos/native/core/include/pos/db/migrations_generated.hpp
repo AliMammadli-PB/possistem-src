@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 45;
+inline constexpr int kSchemaVersion = 49;
 
 namespace detail {
 
@@ -3565,6 +3565,253 @@ CREATE INDEX IF NOT EXISTS idx_orders_closed_at ON orders(closed_at);
     return sql;
 }
 
+inline const std::string& migrationSql45() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(4248);
+        s += R"MIGSQL(-- Partial receiving, supplier invoice matching and landed costs (1.7.28).
+--
+-- purchase_orders.status carries a CHECK without 'partially_received', and the
+-- table cannot be rebuilt: supplier_ledger and purchase_returns point at it
+-- without ON DELETE CASCADE, so a DROP under foreign_keys=ON would fail or
+-- lose rows. The full lifecycle therefore lives in a new `stage` column
+-- (draft | ordered | partially_received | received | cancelled); `status`
+-- stays as the legacy projection ('ordered' while partly received).
+--
+-- Only ADD COLUMN, CREATE TABLE and backfills: nothing is deleted.
+
+ALTER TABLE purchase_orders ADD COLUMN stage TEXT NOT NULL DEFAULT 'ordered';
+ALTER TABLE purchase_orders ADD COLUMN ordered_at INTEGER;
+ALTER TABLE purchase_orders ADD COLUMN expected_at INTEGER;
+ALTER TABLE purchase_orders ADD COLUMN supplier_invoice_no TEXT NOT NULL DEFAULT '';
+ALTER TABLE purchase_orders ADD COLUMN supplier_invoice_date TEXT NOT NULL DEFAULT '';
+ALTER TABLE purchase_orders ADD COLUMN invoice_confirmed_at INTEGER;
+-- What has been put on the supplier's account for this invoice so far; every
+-- change to it is one supplier_ledger row for the difference.
+ALTER TABLE purchase_orders ADD COLUMN charged_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE purchase_orders ADD COLUMN auto_draft INTEGER NOT NULL DEFAULT 0;
+
+UPDATE purchase_orders SET stage = status, ordered_at = created_at;
+UPDATE purchase_orders SET charged_minor = total_minor WHERE status = 'received';
+
+ALTER TABLE purchase_order_items ADD COLUMN received_milli INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE purchase_order_items ADD COLUMN pending_milli INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE purchase_order_items ADD COLUMN rejected_milli INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE purchase_order_items ADD COLUMN invoice_qty_milli INTEGER;
+ALTER TABLE purchase_order_items ADD COLUMN invoice_unit_cost_minor INTEGER;
+ALTER TABLE purchase_order_items ADD COLUMN landed_unit_cost_minor INTEGER NOT NULL DEFAULT 0;
+
+UPDATE purchase_order_items SET received_milli = qty_milli, landed_unit_cost_minor = unit_cost_minor
+WHERE purchase_id IN (SELECT id FROM purchase_orders WHERE status = 'received');
+UPDATE purchase_order_items SET landed_unit_cost_minor = unit_cost_minor WHERE landed_unit_cost_minor = 0;
+
+-- One row per delivery: an invoice can arrive in several.
+CREATE TABLE IF NOT EXISTS purchase_receipts (
+    id            TEXT PRIMARY KEY,
+    purchase_id   TEXT NOT NULL REFERENCES purchase_orders(id),
+    number        TEXT NOT NULL,
+    warehouse_id  TEXT NOT NULL REFERENCES warehouses(id),
+    note          TEXT NOT NULL DEFAULT '',
+    actor_user_id TEXT REFERENCES users(id),
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_receipts ON purchase_receipts(purchase_id, created_at);
+
+CREATE TABLE IF NOT EXISTS purchase_receipt_lines (
+    id             TEXT PRIMARY KEY,
+    receipt_id     TEXT NOT NULL REFERENCES purchase_receipts(id) ON DELETE CASCADE,
+    item_id        TEXT NOT NULL,
+    ingredient_id  TEXT NOT NULL REFERENCES ingredients(id),
+    qty_milli      INTEGER NOT NULL DEFAULT 0,
+    rejected_milli INTEGER NOT NULL DEFAULT 0,
+    quality        TEXT NOT NULL DEFAULT 'accepted' CHECK (quality IN ('accepted','pending','rejected')),
+    lot_id         TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_receipt_lines ON purchase_receipt_lines(receipt_id);
+
+-- Delivery, transport and the like, spread over the goods' cost.
+CREATE TABLE IF NOT EXISTS purchase_costs (
+    id           TEXT PRIMARY KEY,
+    purchase_id  TEXT NOT NULL REFERENCES purchase_orders(id),
+    kind         TEXT NOT NULL DEFAULT 'delivery' CHECK (kind IN ('delivery','transport','customs','other')),
+    amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
+    -- 1: the supplier bills it (onto their debt); 0: paid to someone else.
+    to_supplier  INTEGER NOT NULL DEFAULT 1 CHECK (to_supplier IN (0,1)),
+    account_id   TEXT NOT NULL DEFAULT '',
+    allocation   TEXT NOT NULL DEFAULT 'value' CHECK (allocation IN ('value','qty')),
+    note         TEXT NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_costs ON purchase_costs(purchase_id);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql46() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(2946);
+        s += R"MIGSQL(-- Automatic replenishment and supplier prices (1.7.28).
+--
+--   stock_rules            - per ingredient and store: below `min` a draft
+--                            purchase is suggested up to `target`, at least
+--                            `reorder`. Without a rule the main store keeps
+--                            using ingredients.min_qty_milli as before.
+--   supplier_items         - what each supplier charges for an ingredient and
+--                            on what terms (lead time, minimum, pack size).
+--   supplier_price_history - every price paid, for comparison and reports.
+
+CREATE TABLE IF NOT EXISTS stock_rules (
+    ingredient_id     TEXT NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+    warehouse_id      TEXT NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    min_qty_milli     INTEGER NOT NULL DEFAULT 0 CHECK (min_qty_milli >= 0),
+    target_qty_milli  INTEGER NOT NULL DEFAULT 0 CHECK (target_qty_milli >= 0),
+    reorder_qty_milli INTEGER NOT NULL DEFAULT 0 CHECK (reorder_qty_milli >= 0),
+    updated_at        INTEGER NOT NULL,
+    PRIMARY KEY (ingredient_id, warehouse_id)
+);
+
+CREATE TABLE IF NOT EXISTS supplier_items (
+    supplier_id      TEXT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+    ingredient_id    TEXT NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+    last_price_minor INTEGER NOT NULL DEFAULT 0,
+    lead_days        INTEGER NOT NULL DEFAULT 0,
+    min_order_milli  INTEGER NOT NULL DEFAULT 0,
+    pack_milli       INTEGER NOT NULL DEFAULT 0,
+    supplier_sku     TEXT NOT NULL DEFAULT '',
+    preferred        INTEGER NOT NULL DEFAULT 0 CHECK (preferred IN (0,1)),
+    updated_at       INTEGER NOT NULL,
+    PRIMARY KEY (supplier_id, ingredient_id)
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_items_ingredient ON supplier_items(ingredient_id);
+
+CREATE TABLE IF NOT EXISTS supplier_price_history (
+    id            TEXT PRIMARY KEY,
+    supplier_id   TEXT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+    ingredient_id TEXT NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+    price_minor   INTEGER NOT NULL,
+    purchase_id   TEXT NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_price_history ON supplier_price_history(ingredient_id, created_at);
+
+-- What was already bought keeps counting.
+INSERT INTO supplier_price_history (id, supplier_id, ingredient_id, price_minor, purchase_id, created_at)
+SELECT 'sph-' || lower(hex(randomblob(8))), p.supplier_id, l.ingredient_id, l.unit_cost_minor, p.id,
+       COALESCE(p.received_at, p.created_at)
+FROM purchase_order_items l JOIN purchase_orders p ON p.id = l.purchase_id
+WHERE p.status = 'received' AND l.unit_cost_minor > 0;
+
+INSERT OR REPLACE INTO supplier_items (supplier_id, ingredient_id, last_price_minor, updated_at)
+SELECT supplier_id, ingredient_id, price_minor, created_at FROM supplier_price_history ORDER BY created_at;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql47() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(3376);
+        s += R"MIGSQL(-- Lots, expiry dates and places in the store (1.7.28).
+--
+-- stock_levels stays the balance every screen reads; stock_lots is the
+-- breakdown beneath it, kept by InventoryService::move: goods coming in open a
+-- lot, goods going out are taken from lots first-expiring-first-out. Every lot
+-- touched is written to stock_lot_moves with the movement that touched it, so
+-- a dish sold can be traced to the lot of meat it used.
+--
+-- Lots in quality 'pending' (quarantine) are not in the balance yet; a
+-- 'rejected' lot never is.
+
+CREATE TABLE IF NOT EXISTS stock_locations (
+    id           TEXT PRIMARY KEY,
+    warehouse_id TEXT NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    name         TEXT NOT NULL,
+    kind         TEXT NOT NULL DEFAULT 'shelf' CHECK (kind IN ('fridge','freezer','shelf','zone','dry')),
+    active       INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stock_locations ON stock_locations(warehouse_id);
+
+CREATE TABLE IF NOT EXISTS stock_lots (
+    id                 TEXT PRIMARY KEY,
+    ingredient_id      TEXT NOT NULL REFERENCES ingredients(id),
+    warehouse_id       TEXT NOT NULL REFERENCES warehouses(id),
+    location_id        TEXT NOT NULL DEFAULT '',
+    lot_no             TEXT NOT NULL DEFAULT '',
+    purchase_id        TEXT NOT NULL DEFAULT '',
+    purchase_item_id   TEXT NOT NULL DEFAULT '',
+    produced_on        TEXT NOT NULL DEFAULT '',
+    received_at        INTEGER NOT NULL,
+    -- 'YYYY-MM-DD', '' when the goods do not expire.
+    expires_on         TEXT NOT NULL DEFAULT '',
+    qty_received_milli INTEGER NOT NULL DEFAULT 0,
+    qty_milli          INTEGER NOT NULL DEFAULT 0 CHECK (qty_milli >= 0),
+    unit_cost_minor    INTEGER NOT NULL DEFAULT 0,
+    quality            TEXT NOT NULL DEFAULT 'accepted' CHECK (quality IN ('accepted','pending','rejected')),
+    created_at         INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stock_lots_pick ON stock_lots(ingredient_id, warehouse_id, quality, qty_milli);
+CREATE INDEX IF NOT EXISTS idx_stock_lots_purchase ON stock_lots(purchase_id);
+
+CREATE TABLE IF NOT EXISTS stock_lot_moves (
+    id              TEXT PRIMARY KEY,
+    lot_id          TEXT NOT NULL REFERENCES stock_lots(id),
+    movement_id     TEXT NOT NULL DEFAULT '',
+    kind            TEXT NOT NULL,
+    qty_delta_milli INTEGER NOT NULL,
+    from_location   TEXT NOT NULL DEFAULT '',
+    to_location     TEXT NOT NULL DEFAULT '',
+    actor_user_id   TEXT REFERENCES users(id),
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stock_lot_moves_lot ON stock_lot_moves(lot_id);
+CREATE INDEX IF NOT EXISTS idx_stock_lot_moves_movement ON stock_lot_moves(movement_id);
+
+-- Stock already on the shelves becomes one opening lot per ingredient and store,
+-- so the lots add up to the balance from the first day.
+INSERT INTO stock_lots (id, ingredient_id, warehouse_id, lot_no, received_at, qty_received_milli,
+                        qty_milli, unit_cost_minor, quality, created_at)
+SELECT 'lot-' || lower(hex(randomblob(8))), s.ingredient_id, s.warehouse_id, 'İLKİN', s.updated_at,
+       s.qty_milli, s.qty_milli, i.cost_minor, 'accepted', s.updated_at
+FROM stock_levels s JOIN ingredients i ON i.id = s.ingredient_id
+WHERE s.qty_milli > 0;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql48() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(652);
+        s += R"MIGSQL(-- Weighted average cost next to the last price paid (1.7.28).
+--
+-- ingredients.cost_minor stays "last price paid, landed"; avg_cost_minor is
+-- the perpetual weighted average kept on every receipt. Which one recipes and
+-- reports use is the setting inventory.costingMethod: average | fifo | last.
+
+ALTER TABLE ingredients ADD COLUMN avg_cost_minor INTEGER NOT NULL DEFAULT 0 CHECK (avg_cost_minor >= 0);
+UPDATE ingredients SET avg_cost_minor = cost_minor;
+
+INSERT OR IGNORE INTO app_settings (key, value, value_type, updated_at)
+VALUES ('inventory.costingMethod', 'average', 'string', CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4119,7 +4366,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 45> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 49> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4165,6 +4412,10 @@ inline constexpr std::array<EmbeddedScript, 45> kMigrations{{
     {43, "043_purchase_returns.sql", "384f5852", &detail::migrationSql42},
     {44, "044_object_warehouse.sql", "bf81d56b", &detail::migrationSql43},
     {45, "045_sales_objects.sql", "f264ceae", &detail::migrationSql44},
+    {46, "046_purchase_receiving.sql", "b5b5024e", &detail::migrationSql45},
+    {47, "047_replenishment.sql", "f078a81c", &detail::migrationSql46},
+    {48, "048_lots_locations.sql", "8dd3e3e4", &detail::migrationSql47},
+    {49, "049_costing_method.sql", "138cb388", &detail::migrationSql48},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

@@ -42,6 +42,12 @@ void registerGuests(const ContextPtr& ctx);
 /** Kassalar: tills, treasury, bank, branches, transfers (CashAccountHandlers.cpp). */
 void registerCashAccounts(const ContextPtr& ctx);
 void registerSales(const ContextPtr& ctx);
+/** Alışlar (purchase orders, receiving, returns); registered by registerInventory. */
+void registerPurchases(const ContextPtr& ctx);
+/** Replenishment, lots, locations and stock reports; registered by registerInventory. */
+void registerStockControl(const ContextPtr& ctx);
+/** Recomputes a purchase's stage, supplier charge and what is still due. */
+void refreshPurchase(Context& ctx, const std::string& purchaseId);
 /** Deliveries, couriers, the staff rota and attendance. */
 void registerDelivery(const ContextPtr& ctx);
 /** Reports as CSV, which is what a spreadsheet opens. */

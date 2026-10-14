@@ -169,3 +169,19 @@ TEST_CASE("a sale at a branch's till takes stock from that branch's store", "[st
     REQUIRE(f.level(meat, "wh-may") == -150);
     REQUIRE(f.level(meat, main) == 0);
 }
+
+TEST_CASE("a paid dish draws its ingredients from the store's lots", "[stock][lots]") {
+    StockFixture f;
+    const auto store = f.store();
+    const auto [orderId, meat] = f.burgerOrder(2);
+    pos::services::InventoryService(f.fixture().ctx()).move(meat, store, 1000, "receipt", "", "test");
+    f.call("payments.createCash", pos::Json{{"orderId", orderId}, {"amountMinor", 1400}, {"tenderedMinor", 1400}});
+    auto lot = f.fixture().db().prepare(
+        "SELECT l.qty_milli, (SELECT COUNT(*) FROM stock_lot_moves m JOIN stock_movements s ON s.id = m.movement_id "
+        "  WHERE m.lot_id = l.id AND s.kind = 'sale' AND s.reference_id = :order) FROM stock_lots l "
+        "WHERE l.ingredient_id = :meat AND l.warehouse_id = :store");
+    lot.bind(":meat", meat).bind(":store", store).bind(":order", orderId);
+    REQUIRE(lot.step());
+    REQUIRE(lot.columnInt(0) == 700);
+    REQUIRE(lot.columnInt(1) == 1);
+}

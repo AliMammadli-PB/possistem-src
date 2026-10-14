@@ -390,6 +390,27 @@ inline constexpr std::string_view kSalesUpdate = "sales.update";
 inline constexpr std::string_view kSalesDelete = "sales.delete";
 inline constexpr std::string_view kPurchasesDelete = "purchases.delete";
 inline constexpr std::string_view kPurchasesDeleteReturn = "purchases.deleteReturn";
+inline constexpr std::string_view kPurchasesConfirm = "purchases.confirm";
+inline constexpr std::string_view kPurchasesInspect = "purchases.inspect";
+inline constexpr std::string_view kPurchasesInvoice = "purchases.invoice";
+inline constexpr std::string_view kPurchasesAddCost = "purchases.addCost";
+inline constexpr std::string_view kPurchasesRemoveCost = "purchases.removeCost";
+inline constexpr std::string_view kReplenishSuggestions = "replenish.suggestions";
+inline constexpr std::string_view kReplenishRun = "replenish.run";
+inline constexpr std::string_view kReplenishCreateDraft = "replenish.createDraft";
+inline constexpr std::string_view kStockRulesList = "stockRules.list";
+inline constexpr std::string_view kStockRulesSave = "stockRules.save";
+inline constexpr std::string_view kSupplierItemsList = "supplierItems.list";
+inline constexpr std::string_view kSupplierItemsSave = "supplierItems.save";
+inline constexpr std::string_view kLocationsList = "locations.list";
+inline constexpr std::string_view kLocationsSave = "locations.save";
+inline constexpr std::string_view kLotsList = "lots.list";
+inline constexpr std::string_view kLotsRelocate = "lots.relocate";
+inline constexpr std::string_view kLotsWriteOff = "lots.writeOff";
+inline constexpr std::string_view kReportsExpiry = "reports.expiry";
+inline constexpr std::string_view kReportsSuppliers = "reports.suppliers";
+inline constexpr std::string_view kReportsStockLoss = "reports.stockLoss";
+inline constexpr std::string_view kInventoryCostingMethod = "inventory.costingMethod";
 }  // namespace method
 
 namespace event {
