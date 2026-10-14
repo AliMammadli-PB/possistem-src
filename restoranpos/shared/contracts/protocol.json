@@ -1268,6 +1268,92 @@
     },
     "sync.outbox": {
       "auth": true
+    },
+    "orders.setPartner": {
+      "auth": true,
+      "perm": "customers.view",
+      "idempotent": true
+    },
+    "salary.list": {
+      "auth": true,
+      "perm": "salary.manage"
+    },
+    "salary.pay": {
+      "auth": true,
+      "perm": "salary.manage",
+      "idempotent": true
+    },
+    "cashAccounts.list": {
+      "auth": true,
+      "perm": "cash.manage"
+    },
+    "cashAccounts.save": {
+      "auth": true,
+      "perm": "cash.accounts",
+      "idempotent": true
+    },
+    "cashAccounts.deactivate": {
+      "auth": true,
+      "perm": "cash.accounts",
+      "idempotent": true
+    },
+    "cashAccounts.moves": {
+      "auth": true,
+      "perm": "cash.manage"
+    },
+    "cashAccounts.transfer": {
+      "auth": true,
+      "perm": "cash.accounts",
+      "idempotent": true
+    },
+    "cashObjects.save": {
+      "auth": true,
+      "perm": "cash.accounts",
+      "idempotent": true
+    },
+    "purchases.return": {
+      "auth": true,
+      "perm": "suppliers.manage",
+      "idempotent": true
+    },
+    "purchases.returns": {
+      "auth": true,
+      "perm": "suppliers.view"
+    },
+    "purchases.update": {
+      "auth": true,
+      "perm": "purchases.edit",
+      "idempotent": true
+    },
+    "sales.list": {
+      "auth": true,
+      "perm": "sales.view",
+      "idempotent": false
+    },
+    "sales.get": {
+      "auth": true,
+      "perm": "sales.view",
+      "idempotent": false
+    },
+    "sales.update": {
+      "auth": true,
+      "perm": "sales.edit",
+      "idempotent": true
+    },
+    "sales.delete": {
+      "auth": true,
+      "perm": "sales.delete",
+      "idempotent": true
+    },
+    "purchases.delete": {
+      "auth": true,
+      "perm": "purchases.delete",
+      "idempotent": true
+    },
+    "purchases.deleteReturn": {
+      "auth": true,
+      "perm": "purchases.delete",
+      "idempotent": true
     }
   },
   "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",
@@ -1418,6 +1504,14 @@
       "administrator"
     ],
     "users.manage": [
+      "manager",
+      "administrator"
+    ],
+    "salary.manage": [
+      "manager",
+      "administrator"
+    ],
+    "cash.accounts": [
       "manager",
       "administrator"
     ]

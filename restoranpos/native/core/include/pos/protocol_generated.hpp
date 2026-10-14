@@ -372,6 +372,24 @@ inline constexpr std::string_view kBackupRestore = "backup.restore";
 inline constexpr std::string_view kSystemResetOperational = "system.resetOperational";
 inline constexpr std::string_view kSyncStatus = "sync.status";
 inline constexpr std::string_view kSyncOutbox = "sync.outbox";
+inline constexpr std::string_view kOrdersSetPartner = "orders.setPartner";
+inline constexpr std::string_view kSalaryList = "salary.list";
+inline constexpr std::string_view kSalaryPay = "salary.pay";
+inline constexpr std::string_view kCashAccountsList = "cashAccounts.list";
+inline constexpr std::string_view kCashAccountsSave = "cashAccounts.save";
+inline constexpr std::string_view kCashAccountsDeactivate = "cashAccounts.deactivate";
+inline constexpr std::string_view kCashAccountsMoves = "cashAccounts.moves";
+inline constexpr std::string_view kCashAccountsTransfer = "cashAccounts.transfer";
+inline constexpr std::string_view kCashObjectsSave = "cashObjects.save";
+inline constexpr std::string_view kPurchasesReturn = "purchases.return";
+inline constexpr std::string_view kPurchasesReturns = "purchases.returns";
+inline constexpr std::string_view kPurchasesUpdate = "purchases.update";
+inline constexpr std::string_view kSalesList = "sales.list";
+inline constexpr std::string_view kSalesGet = "sales.get";
+inline constexpr std::string_view kSalesUpdate = "sales.update";
+inline constexpr std::string_view kSalesDelete = "sales.delete";
+inline constexpr std::string_view kPurchasesDelete = "purchases.delete";
+inline constexpr std::string_view kPurchasesDeleteReturn = "purchases.deleteReturn";
 }  // namespace method
 
 namespace event {

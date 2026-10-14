@@ -1,5 +1,6 @@
 #include <vector>
 
+#include "pos/printing/KitchenStations.hpp"
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
 #include "pos/Logging.hpp"
@@ -769,6 +770,13 @@ void registerOrders(const ContextPtr& ctx) {
 
                 const auto now = nowMs();
 
+                // Extra kitchen printers (Settings -> Printer): dishes of the
+                // categories assigned to one print on its own ticket.
+                const auto stations =
+                    printing::parseKitchenStations(ctx->setting("kitchen.stations", "[]"));
+                std::vector<std::pair<const printing::KitchenStation*, std::vector<std::string>>> stationLines;
+                bool mainKitchenLines = false;
+
                 for (const auto& line : lines) {
                     auto markSent = ctx->db().prepare(
                         "UPDATE order_items SET status = 'sent', sent_at = :now, updated_at = :now "
@@ -777,13 +785,26 @@ void registerOrders(const ContextPtr& ctx) {
                     markSent.exec();
 
                     auto station = ctx->db().prepare(
-                        "SELECT station, prep_minutes FROM menu_items WHERE id = :productId");
+                        "SELECT station, prep_minutes, category_id FROM menu_items WHERE id = :productId");
                     station.bind(":productId", line.productId);
                     std::string stationName = "kitchen";
                     std::int64_t prepMinutes = 15;
+                    std::string categoryId;
                     if (station.step()) {
                         stationName = station.columnText(0);
                         prepMinutes = station.columnInt(1);
+                        categoryId = station.columnText(2);
+                    }
+                    if (const auto* extra = printing::stationFor(stations, line.productId, categoryId)) {
+                        auto group = std::find_if(stationLines.begin(), stationLines.end(),
+                                                  [&](const auto& entry) { return entry.first == extra; });
+                        if (group == stationLines.end()) {
+                            stationLines.push_back({extra, {}});
+                            group = std::prev(stationLines.end());
+                        }
+                        group->second.push_back(line.id);
+                    } else {
+                        mainKitchenLines = true;
                     }
 
                     auto job = ctx->db().prepare(
@@ -810,18 +831,34 @@ void registerOrders(const ContextPtr& ctx) {
                 // The kitchen ticket is queued inside the same transaction, so a
                 // printer outage can never lose an order that the guest was told
                 // had been sent.
-                auto printJob = ctx->db().prepare(
-                    "INSERT INTO print_jobs (id, order_id, kind, target_printer, status, "
-                    "        next_attempt_at, created_at, updated_at) "
-                    "VALUES (:id, :orderId, 'kitchen_ticket', :printer, 'queued', :now, :now, :now)");
-                printJob.bind(":id", crypto::uuid4())
-                    .bind(":orderId", orderId)
-                    // `auto` rather than `virtual`: an unconfigured kitchen used
-                    // to spool the ticket to a text file and report success, so
-                    // the kitchen simply never got the order.
-                    .bind(":printer", ctx->setting("printer.kitchen", "auto"))
-                    .bind(":now", now);
-                printJob.exec();
+                if (mainKitchenLines) {
+                    auto printJob = ctx->db().prepare(
+                        "INSERT INTO print_jobs (id, order_id, kind, target_printer, status, "
+                        "        next_attempt_at, created_at, updated_at) "
+                        "VALUES (:id, :orderId, 'kitchen_ticket', :printer, 'queued', :now, :now, :now)");
+                    printJob.bind(":id", crypto::uuid4())
+                        .bind(":orderId", orderId)
+                        // `auto` rather than `virtual`: an unconfigured kitchen used
+                        // to spool the ticket to a text file and report success, so
+                        // the kitchen simply never got the order.
+                        .bind(":printer", ctx->setting("printer.kitchen", "auto"))
+                        .bind(":now", now);
+                    printJob.exec();
+                }
+                // One ticket per extra printer, carrying only this round's dishes for it.
+                for (const auto& [extra, itemIds] : stationLines) {
+                    auto stationJob = ctx->db().prepare(
+                        "INSERT INTO print_jobs (id, order_id, kind, target_printer, status, payload, "
+                        "        next_attempt_at, created_at, updated_at) "
+                        "VALUES (:id, :orderId, 'kitchen_ticket', :printer, 'queued', :payload, :now, :now, :now)");
+                    stationJob.bind(":id", crypto::uuid4())
+                        .bind(":orderId", orderId)
+                        .bind(":printer", extra->printer)
+                        .bind(":payload", Json{{"station", extra->id}, {"stationName", extra->name},
+                                               {"itemIds", itemIds}}.dump())
+                        .bind(":now", now);
+                    stationJob.exec();
+                }
 
                 orders.recalculate(orderId);
                 orders.refreshTableStatus(tableId);
@@ -836,6 +873,11 @@ void registerOrders(const ContextPtr& ctx) {
 
                 txn.commit();
             }
+
+            // The kitchen tickets were only queued: print them now, after the
+            // commit, as payments do. Nothing drained the queue here, so the
+            // kitchen got its paper only when the next bill was paid.
+            drainPrintQueue(*ctx);
 
             // Only after the commit is durable do the other screens hear about it.
             ctx->server().emitEvent(protocol::event::kKdsUpdated, Json{{"orderIds", {orderId}}});
@@ -892,8 +934,45 @@ void registerOrders(const ContextPtr& ctx) {
                 const auto totals = orders.recalculate(orderId);
                 Json refreshed = orders.load(orderId, false);
                 const Money paid = refreshed.value("paidMinor", 0);
+                Money account = refreshed["accountMinor"].is_number() ? refreshed["accountMinor"].get<Money>() : 0;
 
-                if (paid < totals.total) {
+                // "Borcuna yaz": what the guest did not pay goes on the partner's
+                // tab (customer_ledger), and the bill closes as settled.
+                if (getOr<bool>(request.payload, "toAccount", false)) {
+                    ctx->requirePermission("customers.credit");
+                    const std::string customerId = refreshed["customerId"].is_string()
+                        ? refreshed["customerId"].get<std::string>() : std::string{};
+                    require(!customerId.empty(), "Əvvəlcə sifarişə partnyor seçin");
+                    const Money remainder = totals.total - paid - account;
+                    if (remainder > 0) {
+                        const auto stamp = nowMs();
+                        auto onAccount = ctx->db().prepare(
+                            "UPDATE orders SET account_minor = account_minor + :amount, updated_at = :now "
+                            "WHERE id = :orderId");
+                        onAccount.bind(":amount", remainder).bind(":now", stamp).bind(":orderId", orderId);
+                        onAccount.exec();
+                        auto charge = ctx->db().prepare(
+                            "INSERT INTO customer_ledger (id, customer_id, order_id, amount_minor, kind, "
+                            "                             note, actor_user_id, created_at) "
+                            "VALUES (:id, :customer, :order, :amount, 'charge', :note, :actor, :now)");
+                        charge.bind(":id", crypto::uuid4()).bind(":customer", customerId)
+                            .bind(":order", orderId).bind(":amount", remainder)
+                            .bind(":note", "Sifariş " + refreshed.value("orderNumber", std::string{}))
+                            .bindOptional(":actor", ctx->session().userId).bind(":now", stamp);
+                        charge.exec();
+                        auto debt = ctx->db().prepare(
+                            "UPDATE customers SET debt_minor = (SELECT COALESCE(SUM(CASE WHEN kind = 'payment' "
+                            "  THEN -amount_minor ELSE amount_minor END), 0) FROM customer_ledger "
+                            "  WHERE customer_id = :id), updated_at = :now WHERE id = :id");
+                        debt.bind(":id", customerId).bind(":now", stamp);
+                        debt.exec();
+                        account += remainder;
+                        ctx->audit("order.toAccount", "order", orderId,
+                                   Json{{"customerId", customerId}, {"amountMinor", remainder}});
+                    }
+                }
+
+                if (paid + account < totals.total) {
                     throw PosError(std::string(protocol::err::kInsufficientPayment),
                                    "Outstanding balance remains on this order");
                 }
@@ -905,9 +984,9 @@ void registerOrders(const ContextPtr& ctx) {
 
                 const auto now = nowMs();
                 auto update = ctx->db().prepare(
-                    "UPDATE orders SET status = 'closed', closed_at = :now, updated_at = :now "
-                    "WHERE id = :orderId");
-                update.bind(":now", now).bind(":orderId", orderId);
+                    "UPDATE orders SET status = 'closed', closed_at = :now, updated_at = :now, "
+                    "       closed_by = :by WHERE id = :orderId");
+                update.bind(":now", now).bind(":orderId", orderId).bindOptional(":by", ctx->session().userId);
                 update.exec();
 
                 // Settling the bill is when its dishes actually leave the store.
@@ -948,6 +1027,33 @@ void registerOrders(const ContextPtr& ctx) {
                 ctx->server().emitEvent(protocol::event::kTablesUpdated,
                                         Json{{"tableIds", {tableId}}});
             }
+            return result;
+        });
+
+    // The partner (employee or guest) an order belongs to; "" clears it.
+    server.registerHandler(
+        std::string(protocol::method::kOrdersSetPartner), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("customers.view");
+            const auto orderId = getOr<std::string>(request.payload, "orderId", "");
+            const auto customerId = getOr<std::string>(request.payload, "customerId", "");
+            require(!orderId.empty(), "orderId is required");
+            services::OrderService orders(*ctx);
+            db::Transaction txn(ctx->db());
+            Json order = orders.load(orderId, false);
+            require(order.value("status", "") != "closed" && order.value("status", "") != "voided",
+                    "Bağlı sifarişin partnyoru dəyişdirilə bilməz");
+            if (!customerId.empty()) {
+                auto found = ctx->db().prepare("SELECT 1 FROM customers WHERE id = :id AND active = 1");
+                found.bind(":id", customerId);
+                require(found.step(), "Partnyor tapılmadı");
+            }
+            auto update = ctx->db().prepare(
+                "UPDATE orders SET customer_id = :customer, updated_at = :now WHERE id = :orderId");
+            update.bindOptional(":customer", customerId).bind(":now", nowMs()).bind(":orderId", orderId);
+            update.exec();
+            ctx->audit("order.partner", "order", orderId, Json{{"customerId", customerId}});
+            Json result = orders.load(orderId, false);
+            txn.commit();
             return result;
         });
 

@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include "catch_amalgamated.hpp"
 
 #include <atomic>
@@ -393,6 +394,31 @@ TEST_CASE("seeding is not repeated once the marker is written", "[database][seed
 
     REQUIRE_FALSE(migrator.seedIfEmpty({}));
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_categories") == 0);
+}
+
+TEST_CASE("a new install starts with an empty menu", "[database][seed]") {
+    // What a customer gets: no demo catalogue unless POS_SEED_DEMO_MENU asks
+    // for it (the test runner does, so put it back afterwards).
+#ifdef _WIN32
+    _putenv_s("POS_SEED_DEMO_MENU", "");
+#else
+    unsetenv("POS_SEED_DEMO_MENU");
+#endif
+    MigrationTestDatabase fixture;
+    auto& database = fixture.database();
+    pos::db::Migrator migrator(database);
+    REQUIRE(migrator.migrate({}) == static_cast<int>(pos::db::kMigrations.size()));
+    REQUIRE(migrator.seedIfEmpty({}));
+#ifdef _WIN32
+    _putenv_s("POS_SEED_DEMO_MENU", "1");
+#else
+    setenv("POS_SEED_DEMO_MENU", "1", 1);
+#endif
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_categories") == 0);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_items") == 0);
+    // Reference data still arrives, and the marker keeps it from re-seeding.
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM app_settings WHERE key = 'seed.referenceAt'") == 1);
+    REQUIRE_FALSE(migrator.seedIfEmpty({}));
 }
 
 TEST_CASE("a database seeded before the marker existed is not re-seeded",

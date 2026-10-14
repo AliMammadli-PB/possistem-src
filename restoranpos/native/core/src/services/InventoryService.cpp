@@ -112,6 +112,18 @@ Json InventoryService::consumeOnClose(const std::string& orderId) {
     done.bind(":order", orderId);
     if (done.step()) return Json{{"movements", Json::array()}, {"orderId", orderId}};
 
+    // The branch whose till took the money sells out of its own store room;
+    // anything else out of the main one, as before.
+    auto branch = ctx_.db().prepare(
+        "SELECT o.warehouse_id FROM payments p "
+        "JOIN cash_accounts a ON a.terminal_id = p.terminal_id AND a.kind = 'till' AND a.active = 1 "
+        "JOIN cash_objects o ON o.id = a.object_id "
+        "JOIN warehouses w ON w.id = o.warehouse_id AND w.active = 1 "
+        "WHERE p.order_id = :order AND p.terminal_id != '' "
+        "ORDER BY p.created_at DESC LIMIT 1");
+    branch.bind(":order", orderId);
+    if (branch.step() && !branch.columnText(0).empty()) return consumeForOrder(orderId, branch.columnText(0));
+
     auto store = ctx_.db().prepare(
         "SELECT id FROM warehouses WHERE active = 1 ORDER BY sort_order, id LIMIT 1");
     if (!store.step()) return Json{{"movements", Json::array()}, {"orderId", orderId}};
@@ -134,7 +146,10 @@ Json InventoryService::lowStock() {
 Json InventoryService::levels(const std::string& warehouseId) {
     auto stmt = ctx_.db().prepare(
         "SELECT i.id, i.sku, i.name, i.unit, i.cost_minor AS costMinor, "
-        "       i.min_qty_milli AS minQtyMilli, "
+        "       i.min_qty_milli AS minQtyMilli, i.barcode, "
+        "       CASE WHEN i.sku LIKE 'MENU-%' THEN COALESCE((SELECT m.price_minor FROM menu_items m "
+        "         WHERE m.id = substr(i.sku, 6)), i.sale_price_minor) "
+        "         ELSE i.sale_price_minor END AS salePriceMinor, "
         "       COALESCE(s.qty_milli, 0) AS qtyMilli "
         "FROM ingredients i "
         "LEFT JOIN stock_levels s ON s.ingredient_id = i.id AND s.warehouse_id = :warehouse "

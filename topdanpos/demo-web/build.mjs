@@ -15,12 +15,13 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brandBridge, brandText } from '../../brands/offline/brand.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const OUT = path.resolve(process.argv[2] ?? path.join(HERE, 'dist'));
 const WASM = path.resolve(process.argv[3] ?? path.join(ROOT, 'native', 'build-wasm'));
-const DIST = path.join(ROOT, 'dist');
+const DIST = path.join(ROOT, process.env.VITE_BRAND === 'offline' ? 'dist-offline' : 'dist');
 
 /**
  * Writes `content` under a content-addressed name. Cloudflare gives .js files
@@ -48,8 +49,8 @@ const loader = fs.readFileSync(path.join(WASM, 'topdan-pos-core.mjs'), 'utf8');
 if (!loader.includes('"topdan-pos-core.wasm"')) throw new Error('core loader: wasm file name not found');
 const core = publish(demo, 'topdan-pos-core.mjs', loader.replaceAll('"topdan-pos-core.wasm"', `"${wasm}"`));
 
-const seed = publish(demo, 'seed.js', fs.readFileSync(path.join(HERE, 'seed.js'), 'utf8'));
-const template = fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8');
+const seed = publish(demo, 'seed.js', brandText(fs.readFileSync(path.join(HERE, 'seed.js'), 'utf8')));
+const template = brandBridge(fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8'));
 for (const slot of ['/*PRELOAD*/', '/*CORE_PAYLOAD*/', "'./topdan-pos-core.mjs'", "'./seed.js'"]) {
   if (!template.includes(slot)) throw new Error(`bridge template lost its ${slot} slot`);
 }

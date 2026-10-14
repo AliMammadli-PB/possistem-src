@@ -9,6 +9,7 @@
 #include "pos/Crypto.hpp"
 #include "pos/Logging.hpp"
 #include "pos/Error.hpp"
+#include "pos/printing/KitchenStations.hpp"
 #include "pos/printing/ReceiptFormatter.hpp"
 #include "pos/services/OrderService.hpp"
 #include "pos/services/ReportService.hpp"
@@ -432,9 +433,32 @@ RenderedReceipt ReceiptBuilder::customerReceipt(const std::string& orderId,
     return receipt;
 }
 
-RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId) {
+RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const Json& options) {
     services::OrderService orders(ctx_);
     Json order = orders.load(orderId);
+
+    const std::string stationName = options.is_object() ? options.value("stationName", "") : "";
+    const bool forStation = options.is_object() && !options.value("station", "").empty();
+    std::vector<std::string> stationItems;
+    if (forStation && options.contains("itemIds") && options["itemIds"].is_array()) {
+        for (const auto& id : options["itemIds"]) {
+            if (id.is_string()) stationItems.push_back(id);
+        }
+    }
+    const auto stations = parseKitchenStations(ctx_.setting("kitchen.stations", "[]"));
+    // True when this line belongs on this ticket.
+    const auto onTicket = [&](const Json& item) {
+        const std::string itemId = item.value("id", "");
+        if (forStation) {
+            return std::find(stationItems.begin(), stationItems.end(), itemId) != stationItems.end();
+        }
+        if (stations.empty()) return true;
+        const std::string productId = item.value("productId", "");
+        auto category = ctx_.db().prepare("SELECT category_id FROM menu_items WHERE id = :productId");
+        category.bind(":productId", productId);
+        const std::string categoryId = category.step() ? category.columnText(0) : std::string();
+        return stationFor(stations, productId, categoryId) == nullptr;
+    };
 
     const auto config = settings();
     const int width = config.charsPerLine;
@@ -443,7 +467,10 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId) {
     receipt.number = "K-" + crypto::shortCode(6);
 
     std::ostringstream out;
-    out << layout::centerColumn("*** MƏTBƏX ***", width) << "\n";
+    out << layout::centerColumn(forStation && !stationName.empty() ? "*** " + stationName + " ***"
+                                                                  : std::string("*** MƏTBƏX ***"),
+                                width)
+        << "\n";
     out << layout::renderSeparator('=', width) << "\n";
     out << layout::renderKeyValue(
                "Masa: " + getOr<std::string>(order, "tableLabel", "-"),
@@ -459,6 +486,7 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId) {
         const auto status = getOr<std::string>(item, "status", "");
         // Only lines that have actually been sent belong on the pass.
         if (status == "voided" || status == "draft" || status == "held") continue;
+        if (!onTicket(item)) continue;
 
         out << "\n";
         for (const auto& line :
@@ -488,6 +516,7 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId) {
     receipt.text = out.str();
     receipt.data = Json{{"kind", "kitchen_ticket"},
                         {"number", receipt.number},
+                        {"station", stationName},
                         {"charsPerLine", width},
                         {"order", order}};
     return receipt;
@@ -833,12 +862,14 @@ RenderedReceipt ReceiptBuilder::periodReport(Timestamp from, Timestamp to) {
 
     Money cash = 0;
     Money card = 0;
+    Money account = 0;  // closed onto a partner's tab: sold, no money moved
     Money other = 0;
     for (const auto& row : sales["byMethod"]) {
         const auto method = getOr<std::string>(row, "method", "");
         const Money total = getOr<Money>(row, "totalMinor", 0);
         if (method == "cash") cash += total;
         else if (method == "card") card += total;
+        else if (method == "account") account += total;
         else other += total;
     }
 
@@ -864,6 +895,7 @@ RenderedReceipt ReceiptBuilder::periodReport(Timestamp from, Timestamp to) {
     lines.push_back({layout::renderSeparator('-', width)});
     lines.push_back({layout::renderKeyValue("Nağd", money(cash), width)});
     lines.push_back({layout::renderKeyValue("Kart", money(card), width)});
+    if (account > 0) lines.push_back({layout::renderKeyValue("Nisyə (borc)", money(account), width)});
     if (other > 0) lines.push_back({layout::renderKeyValue("Digər", money(other), width)});
     lines.push_back({layout::renderSeparator('-', width)});
     lines.push_back({layout::renderKeyValue("Ümumi satış", money(gross), width)});
@@ -924,6 +956,7 @@ RenderedReceipt ReceiptBuilder::xzReport(const Json& canonical, const std::strin
 
     Money cash = 0;
     Money card = 0;
+    Money account = 0;
     Money other = 0;
     if (canonical.contains("sales") && canonical["sales"].contains("byMethod") &&
         canonical["sales"]["byMethod"].is_array()) {
@@ -932,6 +965,7 @@ RenderedReceipt ReceiptBuilder::xzReport(const Json& canonical, const std::strin
             const Money total = getOr<Money>(row, "totalMinor", 0);
             if (method == "cash") cash += total;
             else if (method == "card") card += total;
+            else if (method == "account") account += total;
             else other += total;
         }
     }
@@ -967,6 +1001,9 @@ RenderedReceipt ReceiptBuilder::xzReport(const Json& canonical, const std::strin
     lines.push_back({layout::renderSeparator('-', width)});
     lines.push_back({layout::renderKeyValue("Nağd", money(cash), width)});
     lines.push_back({layout::renderKeyValue("Kart", money(card), width)});
+    if (account > 0) {
+        lines.push_back({layout::renderKeyValue("Nisyə (borc)", money(account), width)});
+    }
     if (other > 0) {
         lines.push_back({layout::renderKeyValue("Digər", money(other), width)});
     }

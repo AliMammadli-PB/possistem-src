@@ -73,6 +73,11 @@ public:
     std::string setting(std::string_view key, const std::string& fallback = "");
     std::int64_t settingInt(std::string_view key, std::int64_t fallback = 0);
     std::string terminalId();
+    /** The PC this call came from (envelope terminal), else this core's own terminal.id. */
+    std::string saleTerminalId();
+    std::string saleTerminalName();
+    /** Records the calling PC in pos_terminals (at most once a minute per PC). */
+    void touchTerminal();
 
     /** Reloads permissions for the primary role plus all secondary user_roles. */
     void loadPermissions(Session& session, const std::string& roleId);

@@ -71,6 +71,10 @@ Json StdioServer::callHandler(const Request& request) {
 }
 
 Json StdioServer::invoke(const Handler& handler, const Request& request) {
+    // Single worker thread: the terminal of this one call, visible to the
+    // services it reaches (PaymentService credits the sales point's kassa).
+    currentTerminalId_ = request.terminalId;
+    currentTerminalName_ = request.terminalName;
     if (!request.scoped || !scope_) return handler(request);
     // The worker is the only thread running handlers, so swapping the session
     // for exactly one call cannot leak into another. The guard restores it
@@ -213,6 +217,10 @@ void StdioServer::handleLine(const std::string& line) {
     if (envelope.contains("actor") && envelope["actor"].is_object()) {
         request.scoped = true;
         request.actorUserId = getOr<std::string>(envelope["actor"], "userId", "");
+    }
+    if (envelope.contains("terminal") && envelope["terminal"].is_object()) {
+        request.terminalId = getOr<std::string>(envelope["terminal"], "id", "").substr(0, 80);
+        request.terminalName = getOr<std::string>(envelope["terminal"], "name", "").substr(0, 120);
     }
 
     if (envelope.contains("payload") && envelope["payload"].is_object()) {

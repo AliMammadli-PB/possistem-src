@@ -87,6 +87,30 @@ function buildReceiptEscPos(receipt, opts = {}) {
   return Buffer.concat(chunks);
 }
 
+/**
+ * Preparation ticket for an extra kitchen printer ("Kababçı", "Bufet"): what to
+ * make for this sale, no prices. `ticket` = { stationName, receiptNo, createdAt,
+ * items: [{ name, qty, unit }] }.
+ */
+function buildStationTicketEscPos(ticket, opts = {}) {
+  const width = opts.widthMm === 58 ? 32 : 42;
+  const chunks = [escPosInit(), escPosAlign(1)];
+  chunks.push(escPosLine(`*** ${String(ticket.stationName || 'MƏTBƏX').toUpperCase()} ***`, width));
+  chunks.push(escPosAlign(0));
+  chunks.push(escPosLine('='.repeat(width), width));
+  chunks.push(escPosLine(`Qəbz: ${ticket.receiptNo || '-'}`, width));
+  chunks.push(escPosLine(`Tarix: ${new Date(ticket.createdAt || Date.now()).toLocaleString()}`, width));
+  chunks.push(escPosLine('='.repeat(width), width));
+  for (const item of ticket.items || []) {
+    const qty = Number(item.qty) || 0;
+    chunks.push(escPosLine(`${Number.isInteger(qty) ? qty : qty.toFixed(3)} ${item.unit || 'x'}  ${item.name || ''}`, width));
+  }
+  chunks.push(escPosLine('='.repeat(width), width));
+  chunks.push(escPosLine('\n', width));
+  if (opts.cut !== false) chunks.push(escPosCut());
+  return Buffer.concat(chunks);
+}
+
 function buildTestPage(opts = {}) {
   const width = opts.widthMm === 58 ? 32 : 42;
   return Buffer.concat([
@@ -316,6 +340,7 @@ function createPrinterProvider(outPath, target) {
 
 module.exports = {
   buildReceiptEscPos,
+  buildStationTicketEscPos,
   buildTestPage,
   buildXzReportEscPos,
   escPosDrawerPulse,

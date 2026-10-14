@@ -14631,10 +14631,8 @@ function homeRouteForRole(session) {
     if (can("order.view") || can("order.create") || can("tables.status")) return "/tables";
     if (can("kds.operate") || can("kds.view")) return "/kds";
     if (can("inventory.view")) return "/operations?tab=stock";
-    if (can("suppliers.view")) return "/operations?tab=suppliers";
+    if (can("suppliers.view")) return "/operations?tab=purchases";
     if (can("delivery.view")) return "/operations?tab=delivery";
-    if (can("customers.view")) return "/operations?tab=guests";
-    if (can("schedule.view")) return "/operations?tab=roster";
     if (can("reports.view")) return "/admin";
   }
 
@@ -14913,7 +14911,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.7.10 · 78c9ce9";
+const _PS_BUILD = "1.7.27 · 1ca0e8a";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15195,12 +15193,11 @@ function AppShell() {
   // Only for people whose job this is. An admin gets the same panels from
   // İdarə, which has a door for each; showing both would be one list twice.
   const opsLinks = canAdmin ? [] : [
+    { to: "/operations?tab=sales", label: "Satışlar", icon: CircleDollarSign, show: hasPermission("sales.view") },
     { to: "/operations?tab=stock", label: "Anbar", icon: PackageOpen, show: hasPermission("inventory.view") },
-    { to: "/operations?tab=suppliers", label: "Təchizat", icon: Store, show: hasPermission("suppliers.view") },
-    { to: "/operations?tab=vendors", label: "Təchizatçılar", icon: Store, show: hasPermission("suppliers.view") },
-    { to: "/operations?tab=guests", label: "Müştərilər", icon: Users, show: hasPermission("customers.view") },
+    { to: "/operations?tab=purchases", label: "Alışlar", icon: Store, show: hasPermission("suppliers.view") },
+    { to: "/operations?tab=vendors", label: "Partnyorlar", icon: Users, show: hasPermission("suppliers.view") || hasPermission("customers.view") },
     { to: "/operations?tab=delivery", label: "Çatdırılma", icon: Move, show: hasPermission("delivery.view") },
-    { to: "/operations?tab=roster", label: "İş qrafiki", icon: ClipboardList, show: hasPermission("schedule.view") }
   ];
   const serviceLinks = [
     {
@@ -15668,6 +15665,7 @@ function AdminCashPage() {
   const [amountRaw, setAmountRaw] = reactExports.useState("");
   const [reason, setReason] = reactExports.useState("");
   const [note, setNote] = reactExports.useState("");
+  const [accountId, setAccountId] = reactExports.useState(void 0);
   const refresh = reactExports.useCallback(async () => {
     const dayRes = await window.pos.businessDay.current();
     if (!dayRes.success) {
@@ -15715,7 +15713,8 @@ function AdminCashPage() {
         amountMinor,
         reason: reason.trim(),
         note: note.trim() || void 0,
-        businessDayId: businessDayId ?? void 0
+        businessDayId: businessDayId ?? void 0,
+        accountId: accountId || ""
       },
       { idempotencyKey: newIdempotencyKey() }
     );
@@ -15820,7 +15819,8 @@ function AdminCashPage() {
                 className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50"
               }
             )
-          ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: jsxRuntimeExports.jsx(PsAccountSelect, { value: accountId, onChange: setAccountId }) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
@@ -16214,7 +16214,18 @@ const generalFallback = categories.get("cat-mezze") ?? categories.values().next(
 function resolveCategoryVisual(categoryId, customImage) {
   return customImage || categories.get(categoryId) || generalFallback;
 }
+/* POS_CATALOG_SIMPLE_v1 */
+function psBuiltinVisual(value) {
+  if (typeof value !== "string" || !value.startsWith("builtin:")) return null;
+  const key = value.slice(8);
+  return products.get(key) || categories.get(key) || "";
+}
+function psBuiltinVisualKeys() {
+  return [...products.keys(), ...categories.keys()];
+}
 function resolveProductVisual(productId, categoryId, customImage) {
+  const builtin = psBuiltinVisual(customImage);
+  if (builtin !== null) customImage = builtin;
   return customImage || products.get(productId) || (categoryId ? categories.get(categoryId) : void 0) || generalFallback;
 }
 Object.freeze({
@@ -16406,6 +16417,14 @@ function AdminCatalogPage() {
   const [modGroupId, setModGroupId] = reactExports.useState("");
   const [productGroupIds, setProductGroupIds] = reactExports.useState([]);
   const [editorOpen, setEditorOpen] = reactExports.useState(false);
+  const [printerStation, setPrinterStation] = reactExports.useState("");
+  const [kitchenPrinters, setKitchenPrinters] = reactExports.useState([]);
+  reactExports.useEffect(() => {
+    void window.pos.settings.getAll().then((all) => {
+      if (!all.success) return;
+      try { const v = JSON.parse(all.data.settings["kitchen.stations"] || "[]"); setKitchenPrinters(Array.isArray(v) ? v : []); } catch { setKitchenPrinters([]); }
+    });
+  }, [editorOpen]);
   const [showLocales, setShowLocales] = reactExports.useState(false);
   const [categoryEditMode, setCategoryEditMode] = reactExports.useState(false);
   const [productQuery, setProductQuery] = reactExports.useState("");
@@ -16509,6 +16528,7 @@ function AdminCatalogPage() {
       setDescriptionAz(row.descriptionAz || "");
       setImageUrl(row.image || "");
       setStation(row.station || "kitchen");
+      setPrinterStation((psExtraKitchenPrinters(kitchenPrinters).find((p) => (p.itemIds || []).includes(row.id)) || {}).id || "");
       setCourse(row.course || "main");
       setPublished(row.active === true || row.active === 1);
       setProductGroupIds((row.modifierGroups ?? []).map((g) => g.id));
@@ -16526,6 +16546,7 @@ function AdminCatalogPage() {
     setPriceRaw("");
     setImageUrl("");
     setStation("kitchen");
+    setPrinterStation("");
     setCourse("main");
     setPublished(false);
     setProductSortOrder(Math.max(0, ...products2.map((product) => product.sortOrder ?? 0)) + 1);
@@ -16735,6 +16756,7 @@ function AdminCatalogPage() {
       categoryId,
       image: imageUrl,
       station,
+      printerStationId: printerStation,
       course,
       active: published,
       sortOrder: productSortOrder || Math.max(0, ...products2.map((product) => product.sortOrder ?? 0)) + 1
@@ -16749,6 +16771,16 @@ function AdminCatalogPage() {
       return;
     }
     const productId = editId || (typeof res.data === "object" && res.data && "id" in res.data ? String(res.data.id) : "");
+    /* POS_RECIPE_V2 */
+    if (!editId && productId) {
+      // It shows up in Anbar straight away and is taken out 1:1 when sold,
+      // until a real recipe is written for it in Kalkulyasiya.
+      try {
+        const ing = await window.pos.inventory.saveIngredient({ name: nameAz.trim(), unit: "ədəd", costMinor: 0, minQtyMilli: 0, sku: "MENU-" + productId });
+        const ingId = ing.success ? (ing.data?.id || ing.data?.ingredient?.id) : null;
+        if (ingId) await window.pos.inventory.saveRecipe(productId, [{ ingredientId: ingId, qtyMilli: 1000 }]);
+      } catch {}
+    }
     if (productId) {
       const link = await window.pos.catalogAdmin.setProductModifierGroups(
         productId,
@@ -16767,6 +16799,12 @@ function AdminCatalogPage() {
     setEditId(null);
     await loadProducts(categoryId);
   };
+  const [showGallery, setShowGallery] = reactExports.useState(false);
+  reactExports.useEffect(() => { if (!editorOpen) setShowGallery(false); }, [editorOpen]);
+  reactExports.useEffect(() => {
+    if (editId) setPrinterStation((psExtraKitchenPrinters(kitchenPrinters).find((p) => (p.itemIds || []).includes(editId)) || {}).id || "");
+  }, [kitchenPrinters, editId]);
+  const mainKitchenName = (kitchenPrinters.find((p) => psPrinterKind(p) === "kitchen" && psIsMainKitchen(p)) || {}).name || "";
   const pickProductImage = async () => {
     const res = await window.pos.catalogAdmin.pickImage();
     if (!res.success) {
@@ -16774,6 +16812,34 @@ function AdminCatalogPage() {
       return;
     }
     if (res.data?.url) setImageUrl(res.data.url);
+  };
+  /* POS_CATALOG_BULK_v1 */
+  const [bulkIds, setBulkIds] = reactExports.useState([]);
+  reactExports.useEffect(() => { setBulkIds([]); }, [categoryId]);
+  const toggleBulk = (id) => setBulkIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const removeSelected = async () => {
+    const ids = bulkIds.filter((id) => products2.some((p) => p.id === id));
+    if (!ids.length) return;
+    if (!await confirm(psAdminText(ids.length + " məhsul silinsin?", ids.length + " ürün silinsin mi?", "Delete " + ids.length + " products?"), { danger: true })) return;
+    setSaving(true);
+    let failed = 0;
+    for (const id of ids) {
+      const res = await window.pos.catalogAdmin.archiveProduct(id);
+      if (!res.success) failed += 1;
+    }
+    setSaving(false);
+    setBulkIds([]);
+    if (editId && ids.includes(editId)) {
+      setEditorOpen(false);
+      setEditId(null);
+    }
+    toast(
+      failed
+        ? psAdminText((ids.length - failed) + " silindi, " + failed + " silinmədi", (ids.length - failed) + " silindi, " + failed + " silinemedi", (ids.length - failed) + " deleted, " + failed + " failed")
+        : psAdminText(ids.length + " məhsul silindi", ids.length + " ürün silindi", ids.length + " products deleted"),
+      failed ? "danger" : "success"
+    );
+    await loadProducts(categoryId);
   };
   const removeProduct = async (id) => {
     if (!await confirm(t.catalog.confirmDeleteProduct, { danger: true })) return;
@@ -16907,6 +16973,14 @@ function AdminCatalogPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: productQuery, onChange: (e) => setProductQuery(e.target.value), placeholder: t.catalog.search, className: "ps-catalog-search" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-new-btn", onClick: () => { setShowLocales(false); startCreate(); }, children: "+ " + t.catalog.newProduct })
         ] }),
+        visibleProducts.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-bulk", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "ps-catalog-bulk-all", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", checked: visibleProducts.every((p) => bulkIds.includes(p.id)), onChange: (e) => setBulkIds(e.target.checked ? visibleProducts.map((p) => p.id) : []) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: psAdminText("Hamısını seç", "Tümünü seç", "Select all") })
+          ] }),
+          bulkIds.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ps-catalog-bulk-count", children: bulkIds.length + psAdminText(" seçildi", " seçildi", " selected") }) : null,
+          bulkIds.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-bulk-delete", disabled: saving, onClick: () => void removeSelected(), children: psAdminText("Seçilənləri sil", "Seçilenleri sil", "Delete selected") }) : null
+        ] }) : null,
         visibleProducts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-catalog-empty", children: t.catalog.empty }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-thead", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}),
@@ -16923,11 +16997,10 @@ function AdminCatalogPage() {
           const live = product.active === true || product.active === 1;
           const pill = sold ? t.catalog.soldOut : live ? t.catalog.available : t.catalog.draft;
           const pillClass = sold ? "ps-pill is-danger" : live ? "ps-pill" : "ps-pill is-warn";
-          return /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "ps-catalog-row" + (dragId === product.id ? " is-drag" : ""), draggable: !productQuery.trim(), onDragStart: (e) => { setDragId(product.id); e.dataTransfer.setData("text/plain", product.id); e.dataTransfer.effectAllowed = "move"; }, onDragOver: (e) => { e.preventDefault(); }, onDrop: (e) => { e.preventDefault(); void dropProduct(e.dataTransfer.getData("text/plain"), product.id); }, style: { position: "relative" }, children: [
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "ps-catalog-row" + (dragId === product.id ? " is-drag" : "") + (bulkIds.includes(product.id) ? " is-picked" : ""), draggable: !productQuery.trim(), onDragStart: (e) => { setDragId(product.id); e.dataTransfer.setData("text/plain", product.id); e.dataTransfer.effectAllowed = "move"; }, onDragOver: (e) => { e.preventDefault(); }, onDrop: (e) => { e.preventDefault(); void dropProduct(e.dataTransfer.getData("text/plain"), product.id); }, style: { position: "relative" }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-ord", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "ps-catalog-check", checked: bulkIds.includes(product.id), onChange: () => toggleBulk(product.id), onClick: (e) => e.stopPropagation(), "aria-label": psAdminText("Seç", "Seç", "Select") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ps-catalog-drag", "aria-hidden": "true", children: "⋮⋮" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-shift", disabled: saving || products2.findIndex((row) => row.id === product.id) === 0, onClick: (e) => { e.stopPropagation(); void moveProduct(product.id, -1); }, "aria-label": t.catalog.moveUp, children: "↑" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-shift", disabled: saving || products2.findIndex((row) => row.id === product.id) === products2.length - 1, onClick: (e) => { e.stopPropagation(); void moveProduct(product.id, 1); }, "aria-label": t.catalog.moveDown, children: "↓" })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveProductVisual(product.id, product.categoryId, product.image), alt: "", className: hiddenImage ? "opacity-25 grayscale" : "" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-row-copy", onClick: () => { setShowLocales(false); void startEdit(product); }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: localizedName(product, lang) }) }),
@@ -16978,7 +17051,8 @@ function AdminCatalogPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-28 shrink-0", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "aspect-square overflow-hidden rounded-xl border border-hairline bg-elevated", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveProductVisual(editId ?? "", categoryId, imageUrl), alt: "", className: "h-full w-full object-cover" }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void pickProductImage(), className: "touch-target mt-2 w-full rounded-xl border border-hairline px-2 py-2 text-xs", children: "Şəkil seç" })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => setShowGallery((v) => !v), className: "touch-target mt-2 w-full rounded-xl border border-hairline px-2 py-2 text-xs" + (showGallery ? " ps-gallery-on" : ""), children: "Kataloqdan" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void pickProductImage(), className: "touch-target mt-1 w-full rounded-xl border border-hairline px-2 py-2 text-xs", children: "Kompüterdən" })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 space-y-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
@@ -16991,9 +17065,17 @@ function AdminCatalogPage() {
               ] })
             ] })
           ] }),
+          showGallery ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-gallery", role: "listbox", "aria-label": "Şəkil kataloqu", children: psBuiltinVisualKeys().map((key) => /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", role: "option", "aria-selected": imageUrl === "builtin:" + key, className: "ps-gallery-item" + (imageUrl === "builtin:" + key ? " is-on" : ""), onClick: () => { setImageUrl("builtin:" + key); setShowGallery(false); }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: psBuiltinVisual("builtin:" + key), alt: "", loading: "lazy" }) }, key)) }) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-3 rounded-xl border border-hairline px-3 py-2 text-sm", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", checked: published, onChange: (e) => setPublished(e.target.checked), className: "h-4 w-4" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Menyuda yayımla" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: "Hansı printerdən çıxsın" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("select", { value: printerStation, onChange: (e) => setPrinterStation(e.target.value), className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: mainKitchenName ? mainKitchenName + " (əsas mətbəx)" : "Mətbəx (əsas)" }),
+              ...psExtraKitchenPrinters(kitchenPrinters).map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p.id, children: p.name }, p.id))
+            ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowLocales((v) => !v), className: "touch-target text-left text-sm text-muted", children: t.catalog.moreLocales }),
           showLocales ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid gap-2", children: [
@@ -17415,6 +17497,16 @@ function AdminReportsPage() {
 const _PS_PERM_GROUP_AZ = {"audit":"Audit","backup":"Yedəkləmə","businessDay":"İş günü","cash":"Kassa","catalog":"Menyu və kataloq","customers":"Müştərilər","delivery":"Çatdırılma","discount":"Endirimlər","gifts":"Hədiyyələr","inventory":"Anbar və stok","kds":"Mətbəx ekranı","license":"Lisenziya","order":"Sifarişlər","payment":"Ödəniş və kassa","printer":"Printer","receipt":"Çek","recipes":"Reseptlər","reports":"Hesabatlar","reservations":"Rezervasiyalar","roles":"Rollar və səlahiyyətlər","schedule":"İş qrafiki","settings":"Tənzimləmələr","shift":"Növbə","suppliers":"Təchizatçılar və alış","tables":"Masalar","users":"İstifadəçilər"};
 const _PS_PERM_AZ = {"audit.view":["Audit jurnalına baxmaq","Kimin nə etdiyinin tarixçəsi"],"backup.manage":["Yedəkləmə və bərpa","Yerli ehtiyat nüsxə yaratmaq və geri qaytarmaq"],"businessDay.manage":["İş gününü açıb-bağlamaq","Gün açılışı, bağlanışı və Z hesabatı"],"cash.manage":["Kassa əməliyyatları","Kassaya mədaxil/məxaric və çekmecə"],"catalog.import":["Kataloqu idxal/ixrac etmək","Menyunu CSV ilə yükləmək və çıxarmaq"],"catalog.manage":["Menyunu idarə etmək","Kateqoriya, məhsul və qiymət dəyişmək"],"customers.credit":["Müştəri borcu","Borc yazmaq və borc ödənişi qəbul etmək"],"customers.loyalty":["Bonus balları","Bal qazandırmaq və xərcləmək"],"customers.manage":["Müştəri yaratmaq və redaktə etmək","Müştəri kartlarını idarə etmək"],"customers.view":["Müştərilərə baxmaq","Müştəri, borc və bal məlumatı"],"delivery.assign":["Kuryer təyin etmək","Sifarişi kuryerə vermək və statusu irəlilətmək"],"delivery.manage":["Çatdırılmanı idarə etmək","Çatdırılma yaratmaq və kuryerləri idarə etmək"],"delivery.view":["Çatdırılmaya baxmaq","Çatdırılma sifarişləri və kuryer hesabatları"],"discount.manage":["Endirim qaydaları","Endirim qaydalarını təyin etmək"],"gifts.manage":["Hədiyyə kampaniyaları","Kampaniyaları qurmaq və dəyişmək"],"gifts.override":["Hədiyyəni təsdiqləmək","Yoxlamadan keçirmə icazəsi vermək"],"inventory.adjust":["Stok düzəlişi və silinmə","Qalığı düzəltmək, itki və zay yazmaq"],"inventory.count":["İnventarizasiya","Sayım aparmaq və yekunlaşdırmaq"],"inventory.manage":["Anbar və xammal kartları","Anbar və xammal yaratmaq, redaktə etmək"],"inventory.transfer":["Anbarlararası transfer","Malı bir anbardan digərinə köçürmək"],"inventory.view":["Stok qalığına baxmaq","Qalıqlar və mal hərəkətləri"],"kds.operate":["Mətbəx ekranını idarə etmək","Sifariş statuslarını dəyişmək"],"kds.view":["Mətbəx ekranına baxmaq","Hazırlanan sifarişləri görmək"],"license.manage":["Lisenziya","Aktivləşdirmə və lisenziya statusu"],"order.closeOther":["Başqasının sifarişini bağlamaq","Öz sifarişi olmayanı da bağlamaq"],"order.create":["Sifariş yaratmaq","Yeni sifariş açmaq və məhsul əlavə etmək"],"order.discount":["Sifarişə endirim tətbiq etmək","Hesaba faiz və ya məbləğlə endirim"],"order.priceOverride":["Qiyməti əl ilə dəyişmək","Sifarişdə məhsulun qiymətini dəyişmək"],"order.transfer":["Sifarişi köçürmək","Hesabı başqa masaya köçürmək"],"order.view":["Sifarişlərə baxmaq","Sifarişlər və onların tarixçəsi"],"order.void":["Sifarişi ləğv etmək","Sifarişi və ya içindəki məhsulu ləğv etmək"],"payment.reconcile":["Kassa uzlaşdırması","Gün sonu kassanı uzlaşdırmaq"],"payment.refund":["Geri qaytarma","Ödənişi müştəriyə qaytarmaq"],"payment.split":["Hesabı bölmək","Hesabı bir neçə ödənişə bölmək"],"payment.take":["Ödəniş qəbul etmək","Nağd, kart və digər ödəniş növləri"],"payment.view":["Ödənişlərə baxmaq","Hesabda alınmış ödənişləri görmək"],"printer.manage":["Printer ayarları","Printeri qurmaq, çapı təkrarlamaq və ləğv etmək"],"receipt.print":["Çek çap etmək","Çek çapı və təkrar çap"],"recipes.manage":["Reseptlər","Məhsulun nədən hazırlandığını təyin etmək"],"reports.export":["Hesabatı ixrac etmək","Excel və ya PDF-ə çıxarmaq"],"reports.view":["Hesabatlara baxmaq","Satış və əməliyyat hesabatları"],"reports.x":["X hesabatı","Gün ərzində aralıq hesabat almaq"],"reports.z":["Z hesabatı","Gün sonu hesabatı almaq"],"reservations.manage":["Rezervasiyanı idarə etmək","Rezerv yaratmaq, köçürmək, ləğv etmək"],"reservations.view":["Rezervasiyalara baxmaq","Masa rezervlərini görmək"],"roles.manage":["Rol və səlahiyyətlər","Rol yaratmaq və səlahiyyət vermək"],"schedule.clock":["Gəliş-gediş qeydi","İşə giriş və çıxış vurmaq"],"schedule.manage":["Qrafiki idarə etmək","Növbə planlamaq və dəyişmək"],"schedule.view":["Qrafikə baxmaq","Növbələr və davamiyyət"],"settings.manage":["Tənzimləmələr","Sistem və restoran ayarları"],"shift.manage":["Növbəni idarə etmək","Növbə açmaq və bağlamaq"],"suppliers.manage":["Təchizatçı və alış sifarişi","Təchizatçı yaratmaq, alış sifarişini redaktə etmək"],"suppliers.pay":["Təchizatçıya ödəniş","Alış fakturasını ödəmək"],"suppliers.receive":["Mal qəbulu","Gələn malı anbara qəbul etmək"],"suppliers.view":["Təchizatçılara baxmaq","Təchizatçılar və alışlar"],"tables.layout":["Masa sxemi","Zal planını redaktə etmək"],"tables.status":["Masa statusu","Masanın vəziyyətini dəyişmək"],"users.manage":["İşçiləri idarə etmək","İşçi yaratmaq və deaktiv etmək"]};
 /** Falls back to what the core sent, so a new key shows up rather than vanishing. */
+Object.assign(_PS_PERM_GROUP_AZ, { sales: "Satışlar", purchases: "Alışlar", salary: "Maaşlar" });
+Object.assign(_PS_PERM_AZ, {
+  "sales.view": ["Satışlara baxmaq", "Satış qaimələri, qaytarmalar və satış hesabatı"],
+  "sales.edit": ["Satışa düzəliş", "Bağlanmış satışda miqdar, qiymət, endirim, ofisiant, partnyor"],
+  "sales.delete": ["Satışı silmək", "Bağlanmış satışı silmək — pul, borc və anbar geri qayıdır"],
+  "purchases.edit": ["Alışa düzəliş", "Alış qaiməsinə və alışdan qaytarmaya düzəliş"],
+  "purchases.delete": ["Alışı silmək", "Alış qaiməsini və alışdan qaytarmanı silmək"],
+  "salary.manage": ["Maaşlar", "Maaş təyin etmək, avans və maaş vermək"],
+  "cash.accounts": ["Kassalar", "Kassa və obyekt yaratmaq, kassalar arası transfer"]
+});
 function _psPermGroupAz(group) {
   return _PS_PERM_GROUP_AZ[group] || group;
 }
@@ -17442,7 +17534,8 @@ function RolePermissionsPanel() {
       setDenied(true);
       return;
     }
-    setCatalogue(cat.data.groups ?? {});
+    setCatalogue(Object.fromEntries(Object.entries(cat.data.groups ?? {}).filter(([g]) => g !== "reservations" && g !== "schedule")
+      .map(([g, list]) => [g, (list ?? []).filter((p) => p.key !== "customers.loyalty")])));
     setRoles(list.data.roles ?? []);
   }, []);
 
@@ -19030,6 +19123,7 @@ function Row$3({
   ] });
 }
 function methodLabel(method, t) {
+  if (method === "account") return "Nisyə (partnyor borcu)";
   if (method === "cash") return t.payment.cash;
   if (method === "card") return t.payment.card;
   return method;
@@ -20801,6 +20895,7 @@ function OrderPage() {
   const [categoryPage, setCategoryPage] = reactExports.useState(0);
   const [productPage, setProductPage] = reactExports.useState(0);
   const [cartPage, setCartPage] = reactExports.useState(0);
+  const [partnerOpen, setPartnerOpen] = reactExports.useState(false);
   const loadOrder = reactExports.useCallback(async (orderId) => {
     try {
       const data = unwrap(await window.pos.orders.get(orderId));
@@ -21265,10 +21360,13 @@ function OrderPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between text-cream", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t.order.remaining }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: remaining })
-          ] })
+          ] }),
+          psH("button", { type: "button", className: "ps-partner-btn" + (order.customerId ? " is-on" : ""), onClick: () => setPartnerOpen(true) },
+            order.customerId ? ((order.partnerKind === "employee" ? "İşçi: " : "Partnyor: ") + (order.partnerName || "")) : "Partnyor seç")
         ] })
       ] })
     ] }),
+    partnerOpen && order ? jsxRuntimeExports.jsx(PsPartnerPicker, { order, onClose: () => setPartnerOpen(false), onPicked: () => { setPartnerOpen(false); void refreshOrder(); } }) : null,
     pending && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "glass-raised max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl p-6", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-display text-xl text-cream", children: localizedName(pending.product, lang) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-muted", children: t.order.modifiers }),
@@ -21719,6 +21817,16 @@ function PaymentPage() {
     clearOrder(closed.id);
     if (closed.tableId) clearTable(closed.tableId);
   };
+  const closeToAccount = async () => {
+    if (!order || busy) return;
+    setBusy(true);
+    const res = await window.pos.orders.closeToAccount(order.id, { idempotencyKey: newIdempotencyKey() });
+    setBusy(false);
+    if (!res.success) { toast(res.error.message, "danger"); return; }
+    releaseOrderDraft(order);
+    toast((order.partnerName || "Partnyor") + " borcuna yazıldı", "success");
+    navigate("/tables");
+  };
   const closeOrder = async () => {
     if (!order || busy || !canClose) return;
     setBusy(true);
@@ -22061,7 +22169,13 @@ function PaymentPage() {
               className: "touch-target mt-2 rounded-xl border border-success/40 bg-success/10 px-4 py-3 text-sm text-success disabled:opacity-40",
               children: t.payment.closeOrder
             }
-          )
+          ),
+          order && order.status !== "closed" && remaining > 0 && order.customerId ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+            type: "button", disabled: busy, onClick: () => void closeToAccount(),
+            className: "touch-target mt-2 rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm font-semibold text-danger disabled:opacity-40",
+            children: "Qalanı " + formatMoney(remaining) + " — " + (order.partnerName || "partnyor") + " borcuna yaz və bağla"
+          }) : null,
+          order && order.status !== "closed" && remaining > 0 && !order.customerId ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-faint", children: "Nisyə üçün sifariş ekranında sağ altda partnyor seçin." }) : null
         ] }),
         tipMinor > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 text-xs text-faint", children: [
           t.payment.tip,
@@ -23036,6 +23150,7 @@ function useOpsAction(reload) {
 
 // ----------------------------------------------------------------- inventory
 function OpsStock() {
+  const [confirmAsk, confirmDialog] = useConfirm();
   const [levels, setLevels] = reactExports.useState([]);
   const [warehouses, setWarehouses] = reactExports.useState([]);
   const [warehouseId, setWarehouseId] = reactExports.useState("");
@@ -23096,6 +23211,7 @@ function OpsStock() {
   const stateOf = (row) => {
     const qty = Number(row.qtyMilli) || 0;
     const min = Number(row.minQtyMilli) || 0;
+    if (qty < 0) return { key: "neg", label: "Mənfi", color: "var(--ps-danger)", tint: "#fdecea" };
     if (qty <= 0) return { key: "out", label: "Bitib", color: "var(--ps-danger)", tint: "#fdecea" };
     if (min <= 0) return { key: "ok", label: "Normal", color: "var(--ps-ok)", tint: "#e7f5ee" };
     if (qty < min) return { key: "low", label: "Minimumdan aşağı", color: "var(--ps-warn)", tint: "#fdeee3" };
@@ -23112,6 +23228,8 @@ function OpsStock() {
   });
 
   const belowMin = levels.filter((r) => stateOf(r).key === "low").length;
+  const totals = psStockTotals(levels);
+  const negCount = levels.filter((r) => stateOf(r).key === "neg").length;
   const outOf = levels.filter((r) => stateOf(r).key === "out").length;
 
   const card = (label, value, sub, tone) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -23147,12 +23265,13 @@ function OpsStock() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
 
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-stock-metrics", children: [
-      card("Ümumi stok dəyəri", formatMoney(worth), warehouses.length > 1 ? "Seçilmiş anbar" : "Bütün anbar", null),
-      card(psAdminText("Məhsul sayı", "Ürün sayısı", "Products"), String(levels.length), "Aktiv inqrediyent", null),
-      card("Minimumdan aşağı", String(belowMin), belowMin ? "Sifariş vaxtıdır" : outOf ? psAdminText("Stoku bitən məhsullar var", "Stoku tükenen ürünler var", "Some products are out of stock") : "Hamısı qaydasındadır", belowMin ? "var(--ps-warn)" : null),
-      card("Stoku bitən", String(outOf), outOf ? "Menyuda təsir edir" : "Bitən yoxdur", outOf ? "var(--ps-danger)" : null),
-      card(psAdminText("Təxmini itki", "Tahmini fire", "Estimated waste"), formatMoney(wasteMinor), psAdminText("30 gün · son 500 hərəkət · cari maya", "30 gün · son 500 hareket · güncel maliyet", "30 days · latest 500 movements · current cost"), null)
+      card("Ümumi qalıq", totals.text, String(levels.length) + " məhsul", null),
+      card("Alış dəyəri", formatMoney(totals.buy), "Qalıq × alış qiyməti", null),
+      card("Satış dəyəri", formatMoney(totals.sell), "Qalıq × satış qiyməti", null),
+      card("Gözlənilən qazanc", formatMoney(totals.profit), "Satış − alış", totals.profit < 0 ? "var(--ps-danger)" : "var(--ps-ok)"),
+      card("Bitən / mənfi", String(outOf + negCount), outOf + negCount ? "Giriş edin" : "Hamısı var", outOf + negCount ? "var(--ps-danger)" : null)
     ] }),
+    psNegativeBanner(levels),
 
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [
       warehouses.length > 1 ? /* @__PURE__ */ jsxRuntimeExports.jsx("select", {
@@ -23169,19 +23288,18 @@ function OpsStock() {
         "aria-label": "Məhsul axtar",
         className: "min-h-11 min-w-[220px] flex-1 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream"
       }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { onClick: () => setDrawer({ name: "", unit: "kg", cost: "", minQty: "" }), children: "+ Yeni məhsul" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { onClick: () => setDrawer({ name: "", unit: "kg", cost: "", sale: "", barcode: "" }), children: "+ Yeni məhsul" })
     ] }),
 
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
       chip("all", "Hamısı", levels.length),
+      chip("neg", "Mənfi", negCount),
       chip("out", "Bitib", outOf),
-      chip("low", "Minimumdan aşağı", belowMin),
-      chip("near", "Minimuma yaxın", levels.filter((r) => stateOf(r).key === "near").length),
       chip("ok", "Normal", levels.filter((r) => stateOf(r).key === "ok").length)
     ] }),
 
     /* @__PURE__ */ jsxRuntimeExports.jsx(OpsTable, {
-      head: ["Məhsul", "Cari stok", "Minimum", "Maya", "Stok dəyəri", "Status", ""],
+      head: ["Məhsul", "Cari stok", "Satış", "Maya", "Stok dəyəri", "Status", ""],
       empty: needle || status !== "all" ? "Bu axtarışa uyğun məhsul yoxdur" : "Hələ məhsul əlavə olunmayıb",
       rows: shown.map((row) => {
         const st = stateOf(row);
@@ -23189,10 +23307,10 @@ function OpsStock() {
         return [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block font-medium text-cream", children: row.name }),
-            row.sku ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-[11px] text-faint", children: row.sku }) : null
+            (row.barcode || row.sku) ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-[11px] text-faint", children: row.barcode || row.sku }) : null
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: st.color, fontWeight: 600 }, children: [opsQty(row.qtyMilli), " ", row.unit] }),
-          opsQty(row.minQtyMilli),
+          formatMoney(row.salePriceMinor ?? 0),
           formatMoney(row.costMinor ?? 0),
           formatMoney(value),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
@@ -23200,47 +23318,20 @@ function OpsStock() {
             children: st.label
           }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex gap-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setDrawer({ id: row.id, name: row.name, unit: row.unit, cost: ((row.costMinor ?? 0) / 100).toFixed(2), sale: ((row.salePriceMinor ?? 0) / 100).toFixed(2), barcode: row.barcode || "", minQtyMilli: row.minQtyMilli || 0 }), children: "Redaktə" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setEdit({ mode: "adjust", row, value: "", reason: "" }), children: "Düzəliş" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => setEdit({ mode: "waste", row, value: "", reason: "" }), children: "Zay" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => setEdit({ mode: "waste", row, value: "", reason: "" }), children: "Zay" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: async () => {
+              if (!(await confirmAsk('"' + row.name + '" anbardan silinsin? Keçmiş hərəkətlər qalır. Reseptlərdə varsa, oradan da çıxarın.', { danger: true }))) return;
+              void run(window.pos.inventory.deactivateIngredient(row.id), "Silindi");
+            }, children: "Sil" })
           ] })
         ];
       })
     }),
 
-    drawer && /* @__PURE__ */ jsxRuntimeExports.jsxs(PsAdminDialog, { title: psAdminText("Yeni məhsul", "Yeni ürün", "New product"), onClose: () => setDrawer(null), busy, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-cream", children: "Yeni məhsul" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid gap-2 sm:grid-cols-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, { label: "Ad", value: drawer.name, onChange: (v) => setDrawer({ ...drawer, name: v }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs uppercase tracking-wide text-faint", children: "Vahid" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("select", {
-            value: drawer.unit,
-            onChange: (e) => setDrawer({ ...drawer, unit: e.target.value }),
-            className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream",
-            children: ["kg", "q", "l", "ədəd", "qab"].map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u, children: ({ kg: "kg", q: "qram", l: "l", "ədəd": "ədəd", qab: "qab" }[u] || u) }, u))
-          })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, { label: "Maya (₼)", value: drawer.cost, onChange: (v) => setDrawer({ ...drawer, cost: v }), placeholder: "0.00" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, { label: "Minimum", value: drawer.minQty, onChange: (v) => setDrawer({ ...drawer, minQty: v }), placeholder: "0" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, {
-          disabled: busy,
-          onClick: () => {
-            if (!drawer.name.trim()) { toast("Ad tələb olunur", "danger"); return; }
-            if (!psStockInputValid(drawer.cost, {empty: true}) || !psStockInputValid(drawer.minQty, {empty: true})) { toast(psAdminText("Maya və minimum düzgün, mənfi olmayan rəqəm olmalıdır", "Maliyet ve minimum geçerli, negatif olmayan sayılar olmalı", "Cost and minimum must be valid non-negative numbers"), "danger"); return; }
-            void run(window.pos.inventory.saveIngredient({
-              name: drawer.name.trim(),
-              unit: drawer.unit,
-              costMinor: opsMinor(drawer.cost),
-              minQtyMilli: opsMilli(drawer.minQty)
-            }), "Məhsul əlavə olundu").then((ok) => { if (ok) setDrawer(null); });
-          },
-          children: "Yadda saxla"
-        }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setDrawer(null), children: "İmtina" })
-      ] })
-    ] }),
+    /* POS_STOCK_RECIPE_v1 */ /* dialog replaced by POS_PARTNERS_v1 */
+    drawer && psStockItemDialog({ drawer, setDrawer, busy, run, levels }),
 
     edit && /* @__PURE__ */ jsxRuntimeExports.jsxs(PsAdminDialog, { title: edit.row.name, onClose: () => setEdit(null), busy, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm font-semibold text-cream", children: [edit.row.name, " — ", edit.mode === "waste" ? "zay / silinmə" : "stok düzəlişi"] }),
@@ -23268,7 +23359,8 @@ function OpsStock() {
         }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setEdit(null), children: "Bağla" })
       ] })
-    ] })
+    ] }),
+    confirmDialog
   ] });
 }
 function OpsSupplyStatus({ status }) {
@@ -23302,6 +23394,173 @@ async function opsPrintWarehouseSlip(purchaseId) {
   return true;
 }
 
+/* POS_RECIPE_V2 */
+function psH(tag, props, ...children) {
+  const { key, ...rest } = props || {};
+  const kids = children.flat().filter((c) => c !== null && c !== undefined && c !== false);
+  return kids.length > 1 ? jsxRuntimeExports.jsxs(tag, { ...rest, children: kids }, key) : jsxRuntimeExports.jsx(tag, { ...rest, children: kids[0] }, key);
+}
+/** The units a recipe row can use for an Anbar item of this stock unit. */
+/* POS_PARTNERS_v1 */
+/** An in-store EAN-13 (prefix 2) no other item has. */
+function psMakeBarcode(taken) {
+  for (let i = 0; i < 50; i++) {
+    const body = "2" + String(Date.now() % 1e8).padStart(8, "0") + String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+    let sum = 0;
+    for (let k = 0; k < 12; k++) sum += Number(body[k]) * (k % 2 ? 3 : 1);
+    const code = body + ((10 - (sum % 10)) % 10);
+    if (!taken.has(code)) return code;
+  }
+  return "";
+}
+/** Stock on hand by unit, and what it cost and sells for. */
+function psStockTotals(levels) {
+  const byUnit = new Map();
+  let buy = 0, sell = 0, profit = 0;
+  for (const r of levels) {
+    const q = Number(r.qtyMilli) || 0;
+    if (q <= 0) continue;
+    byUnit.set(r.unit, (byUnit.get(r.unit) || 0) + q);
+    const cost = Math.round(q * (Number(r.costMinor) || 0) / 1000);
+    buy += cost;
+    const sale = Number(r.salePriceMinor) || 0;
+    if (sale > 0) { const v = Math.round(q * sale / 1000); sell += v; profit += v - cost; }
+  }
+  const text = [...byUnit].map(([u, q]) => opsQty(q) + " " + u).join(" · ") || "0";
+  return { buy, sell, profit, text };
+}
+/** Start of today / this week (Monday) / this month, never before the last reset. */
+function psPeriodStart(period, resetAt) {
+  const now = new Date();
+  let start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (period === "week") start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7)).getTime();
+  if (period === "month") start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  if (period === "reset") start = 0;
+  return Math.max(start, Number(resetAt) || 0);
+}
+function psStockItemDialog({ drawer, setDrawer, busy, run, levels }) {
+  const h = psH;
+  const set = (patch) => setDrawer({ ...drawer, ...patch });
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
+  const save = () => {
+    if (!drawer.name.trim()) { toast("Malın adını yazın", "danger"); return; }
+    if (!psStockInputValid(drawer.cost, { empty: true }) || !psStockInputValid(drawer.sale, { empty: true })) { toast("Alış və satış qiyməti düzgün rəqəm olmalıdır", "danger"); return; }
+    const taken = new Set(levels.filter((r) => r.id !== drawer.id).map((r) => String(r.barcode || "")).filter(Boolean));
+    let barcode = String(drawer.barcode || "").trim();
+    if (barcode && taken.has(barcode)) { toast("Bu barkod artıq başqa məhsuldadır", "danger"); return; }
+    if (!barcode) barcode = psMakeBarcode(taken);
+    void run(window.pos.inventory.saveIngredient({
+      ...(drawer.id ? { id: drawer.id } : {}),
+      name: drawer.name.trim(), unit: drawer.unit, barcode,
+      costMinor: opsMinor(drawer.cost), salePriceMinor: opsMinor(drawer.sale),
+      minQtyMilli: drawer.minQtyMilli || 0
+    }), drawer.id ? "Saxlanıldı" : "Məhsul əlavə olundu").then((ok) => { if (ok) setDrawer(null); });
+  };
+  return jsxRuntimeExports.jsx(PsAdminDialog, { title: drawer.id ? "Məhsulu redaktə et" : "Yeni məhsul", onClose: () => setDrawer(null), busy, children: h("div", { className: "space-y-3" },
+    h("div", { className: "grid gap-2 sm:grid-cols-2" },
+      jsxRuntimeExports.jsx(OpsField, { label: "Malın adı", value: drawer.name, onChange: (v) => set({ name: v }), placeholder: "məs. Pomidor" }),
+      h("label", { className: "block text-sm" },
+        h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Barkod"),
+        h("input", { value: drawer.barcode || "", autoFocus: !drawer.id, inputMode: "numeric", className: field,
+          placeholder: "Skanerlə oxudun · boş qalsa avtomatik",
+          onChange: (e) => set({ barcode: e.target.value.replace(/\s+/g, "") }),
+          onKeyDown: (e) => { if (e.key === "Enter") e.preventDefault(); } })),
+      h("label", { className: "block text-sm" },
+        h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Vahid"),
+        h("select", { value: drawer.unit, className: field, onChange: (e) => set({ unit: e.target.value }) },
+          [["kg", "kq"], ["l", "litr"], ["ədəd", "ədəd"], ["qab", "qab"]].map(([u, l]) => h("option", { key: u, value: u }, l)))),
+      jsxRuntimeExports.jsx(OpsField, { label: "Alış qiyməti (maya, ₼)", value: drawer.cost, onChange: (v) => set({ cost: v }), placeholder: "0.00" }),
+      jsxRuntimeExports.jsx(OpsField, { label: "Satış qiyməti (₼)", value: drawer.sale, onChange: (v) => set({ sale: v }), placeholder: "0.00" })),
+    h("p", { className: "text-xs text-muted" }, "Miqdar Təchizat (alış) və ya Düzəliş ilə daxil edilir. Barkod boş qalsa, proqram özü verir."),
+    h("div", { className: "flex gap-2" },
+      jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: save, children: "Yadda saxla" }),
+      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setDrawer(null), children: "İmtina" })))
+  });
+}
+function psNegativeBanner(items) {
+  const neg = items.filter((i) => (Number(i.qtyMilli) || 0) < 0);
+  if (!neg.length) return null;
+  return psH("div", { className: "ps-neg-banner" },
+    psH("b", null, "Mənfi qalıq: "),
+    neg.map((i) => i.name + " " + opsQty(i.qtyMilli) + " " + i.unit).join(" · "),
+    psH("span", null, " — satılan yeməklərin tərkibi anbarda çatmır, giriş edin."));
+}
+function psRecipeUnits(stockUnit) {
+  if (stockUnit === "kg") return ["q", "kg"];
+  if (stockUnit === "l") return ["ml", "l"];
+  return [stockUnit || "ədəd"];
+}
+function psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }) {
+  const h = psH;
+  const label = (u) => (u === "ml" ? "ml" : unitLabel(u));
+  const cost = editorCost();
+  const margin = editor.priceMinor - cost;
+  const pct = editor.priceMinor > 0 ? (cost * 100 / editor.priceMinor).toFixed(1) + "%" : "—";
+  const stock = ingredients.filter((i) => i.id !== editor.selfId);
+  const needle = pickQuery.trim().toLowerCase();
+  const shown = needle ? stock.filter((i) => String(i.name || "").toLowerCase().includes(needle)) : stock;
+  const picked = new Set(editor.lines.filter((l) => l.mode === "pick").map((l) => l.ingredientId));
+  const toggle = (ing) => {
+    if (picked.has(ing.id)) {
+      setEditor((prev) => prev ? { ...prev, lines: prev.lines.filter((l) => !(l.mode === "pick" && l.ingredientId === ing.id)) } : prev);
+      return;
+    }
+    const unit = psRecipeUnits(ing.unit)[0];
+    const costMinor = Number(ing.costMinor) || 0;
+    setEditor((prev) => prev ? { ...prev, lines: [...prev.lines, { mode: "pick", ingredientId: ing.id, name: ing.name, stockUnit: ing.unit, unit, qty: "", unitCost: (costMinor / 100).toFixed(2), unitCostMinor: costMinor }] } : prev);
+  };
+  const removeAt = (i) => setEditor((prev) => prev ? { ...prev, lines: prev.lines.filter((_, j) => j !== i) } : prev);
+  const priceLabel = (u) => (u === "q" || u === "kg" ? "1 kg qiyməti" : u === "ml" || u === "l" ? "1 litr qiyməti" : "1 " + label(u) + " qiyməti");
+  const stockUnitOf = (line) => line.stockUnit || (ingredients.find((i) => i.id === line.ingredientId) || {}).unit || (line.unit === "q" ? "kg" : line.unit === "ml" ? "l" : line.unit);
+  const fact = (k, v, tone) => h("div", { className: "ps-recipe-fact" }, h("span", null, k), h("b", tone ? { style: { color: tone } } : null, v));
+
+  return jsxRuntimeExports.jsx(PsAdminDialog, { title: "Resept — " + editor.name, busy, onClose: () => setEditor(null), children: h("div", { className: "ps-recipe" },
+    h("div", { className: "ps-recipe-facts" },
+      fact("Satış", formatMoney(editor.priceMinor)),
+      fact("Maya", formatMoney(cost)),
+      fact("Qazanc", formatMoney(margin), margin < 0 ? "var(--ps-danger)" : "var(--ps-ok)"),
+      fact("Maya %", pct)),
+    editor.selfId && !editor.lines.length
+      ? h("p", { className: "ps-recipe-note" }, "İndi bu məhsul anbarda hazır məhsul kimi izlənir: hər satışda anbardan 1 ədəd çıxır (kola, su kimi). Tərkib seçsəniz, satışda tərkibi anbardan çıxacaq.")
+      : null,
+
+    h("h3", { className: "ps-recipe-step" }, "1. Anbardan tərkibi seçin"),
+    stock.length > 8 ? h("input", { type: "search", className: "ps-recipe-search", placeholder: "Axtar: pomidor, yumurta…", value: pickQuery, onChange: (e) => setPickQuery(e.target.value) }) : null,
+    stock.length
+      ? h("div", { className: "ps-recipe-chips" }, shown.map((ing) => h("button", {
+          key: ing.id, type: "button", "aria-pressed": picked.has(ing.id),
+          className: "ps-recipe-chip" + (picked.has(ing.id) ? " is-on" : ""),
+          onClick: () => toggle(ing)
+        }, (picked.has(ing.id) ? "✓ " : "+ ") + ing.name, h("small", null, label(ing.unit)))))
+      : h("p", { className: "ps-recipe-note" }, "Anbarda hələ məhsul yoxdur. Anbar bölməsində əlavə edin və ya aşağıda yenisini yazın."),
+
+    h("h3", { className: "ps-recipe-step" }, "2. Bir porsiyaya nə qədər gedir"),
+    editor.lines.length
+      ? h("div", { className: "ps-recipe-rows" }, editor.lines.map((line, i) => {
+          const units = line.mode === "pick" ? psRecipeUnits(stockUnitOf(line)) : ["q", "kg", "ml", "l", "ədəd"];
+          return h("div", { key: (line.ingredientId || "new") + i, className: "ps-recipe-row" },
+            line.mode === "pick"
+              ? h("span", { className: "ps-recipe-name" }, line.name)
+              : h("input", { className: "ps-recipe-name-input", placeholder: "Ad (məs. Pomidor)", value: line.name, onChange: (e) => setLine(i, { name: e.target.value }) }),
+            h("span", { className: "ps-recipe-qty" },
+              h("input", { inputMode: "decimal", placeholder: line.unit === "q" || line.unit === "ml" ? "150" : "1", value: line.qty, onChange: (e) => setLine(i, { qty: e.target.value }), "aria-label": "Miqdar" }),
+              units.length > 1
+                ? h("select", { value: line.unit, onChange: (e) => setLine(i, { unit: e.target.value }), "aria-label": "Vahid" }, units.map((u) => h("option", { key: u, value: u }, label(u))))
+                : h("em", null, label(units[0]))),
+            h("label", { className: "ps-recipe-price" }, h("span", null, priceLabel(line.unit)),
+              h("input", { inputMode: "decimal", placeholder: "0.00", value: line.unitCost, onChange: (e) => setLine(i, { unitCost: e.target.value }) })),
+            h("b", { className: "ps-recipe-cost" }, formatMoney(lineCostMinor(line))),
+            h("button", { type: "button", className: "ps-recipe-remove", "aria-label": "Sil", onClick: () => removeAt(i) }, "×"));
+        }))
+      : h("p", { className: "ps-recipe-note" }, "Yuxarıdan tərkibi seçin."),
+    h("button", { type: "button", className: "ps-recipe-add", onClick: () => setEditor((prev) => prev ? { ...prev, lines: [...prev.lines, { mode: "new", ingredientId: "", name: "", unit: "q", qty: "", unitCost: "", unitCostMinor: 0 }] } : prev) }, "+ Anbarda olmayan məhsul"),
+
+    h("div", { className: "ps-recipe-actions" },
+      jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void saveRecipe(), children: "Saxla" }),
+      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setEditor(null), children: "Bağla" })))
+  });
+}
+
 function OpsCosting() {
   const hasPermission = useAuthStore((st) => st.hasPermission);
   const canEdit = hasPermission("recipes.manage");
@@ -23313,10 +23572,18 @@ function OpsCosting() {
   const [filter, setFilter] = reactExports.useState("all");
   const [sort, setSort] = reactExports.useState("worst");
   const [editor, setEditor] = reactExports.useState(null);
+  const [pickQuery, setPickQuery] = reactExports.useState("");
+  const [period, setPeriod] = reactExports.useState("day");
+  const [resetAt, setResetAt] = reactExports.useState(0);
+  const [confirmAsk, confirmDialog] = useConfirm();
+  reactExports.useEffect(() => {
+    void window.pos.settings.getAll().then((r) => { if (r.success) setResetAt(Number(r.data.settings["costing.resetAt"]) || 0); });
+  }, []);
+  const since = psPeriodStart(period, resetAt);
 
   const reload = reactExports.useCallback(async () => {
     const [costRes, ingRes] = await Promise.all([
-      window.pos.inventory.costing(),
+      window.pos.inventory.costing(since),
       window.pos.inventory.ingredients()
     ]);
     if (costRes.success) {
@@ -23324,7 +23591,7 @@ function OpsCosting() {
       setSummary(costRes.data.summary ?? null);
     }
     if (ingRes.success) setIngredients(ingRes.data.ingredients ?? []);
-  }, []);
+  }, [since]);
 
   reactExports.useEffect(() => { void reload(); }, [reload]);
   const [busy, run] = useOpsAction(reload);
@@ -23338,7 +23605,7 @@ function OpsCosting() {
     const n = opsNum(line.qty);
     if (!(n > 0)) return 0;
     // Grams: 150 q = 0.150 kg = 150 milli of a kg-priced ingredient.
-    if (line.unit === "q") return Math.round(n);
+    if (line.unit === "q" || line.unit === "ml") return Math.round(n);
     return Math.round(n * 1000);
   };
 
@@ -23377,8 +23644,13 @@ function OpsCosting() {
       toast(res.error.message, "danger");
       return;
     }
-    const byId = new Map(ingredients.map((i) => [i.id, i]));
-    const lines = (res.data.lines ?? []).map((line) => {
+    const fresh = await window.pos.inventory.ingredients();
+    const ingList = fresh.success ? (fresh.data.ingredients ?? []) : ingredients;
+    if (fresh.success) setIngredients(ingList);
+    const selfItem = ingList.find((i) => i.sku === "MENU-" + row.id);
+    const byId = new Map(ingList.map((i) => [i.id, i]));
+    setPickQuery("");
+    const lines = (res.data.lines ?? []).filter((line) => !selfItem || line.ingredientId !== selfItem.id).map((line) => {
       const ing = byId.get(line.ingredientId);
       const stockUnit = ing?.unit ?? "kg";
       // kg stock is edited in grams so "150" means 150 q, not 150 kg.
@@ -23397,7 +23669,8 @@ function OpsCosting() {
       id: row.id,
       name: row.name,
       priceMinor: row.priceMinor ?? 0,
-      lines: lines.length ? lines : [blankLine()]
+      selfId: selfItem ? selfItem.id : "",
+      lines
     });
   };
 
@@ -23436,6 +23709,8 @@ function OpsCosting() {
     })
     .slice()
     .sort((a, b) => {
+      const draftFirst = Number(b.active === false) - Number(a.active === false);
+      if (draftFirst) return draftFirst;
       if (sort === "worst") return (b.foodCostBp ?? 0) - (a.foodCostBp ?? 0);
       if (sort === "margin") return (a.marginMinor ?? 0) - (b.marginMinor ?? 0);
       return String(a.name ?? "").localeCompare(String(b.name ?? ""), "az");
@@ -23472,6 +23747,10 @@ function OpsCosting() {
     const prepared = [];
     for (const line of editor.lines) {
       const qtyMilli = lineQtyMilli(line);
+      if (line.mode === "pick" && line.ingredientId && qtyMilli <= 0) {
+        toast("Miqdarı yazın: " + (line.name || "məhsul"), "danger");
+        return;
+      }
       const unitCostMinor = Number(line.unitCostMinor) || opsMinor(line.unitCost);
       if (line.mode === "new") {
         if (!line.name.trim()) continue;
@@ -23483,7 +23762,7 @@ function OpsCosting() {
           toast(psAdminText("Anbara məhsul əlavə etmək üçün icazə yoxdur", "Depoya ürün eklemek için yetki yok", "No permission to create stock items"), "danger");
           return;
         }
-        const persistUnit = line.unit === "q" ? "kg" : (line.unit || "kg");
+        const persistUnit = line.unit === "q" ? "kg" : line.unit === "ml" ? "l" : (line.unit || "kg");
         const created = await window.pos.inventory.saveIngredient({
           name: line.name.trim(),
           unit: persistUnit,
@@ -23522,9 +23801,13 @@ function OpsCosting() {
         prepared.push({ ingredientId: line.ingredientId, qtyMilli });
       }
     }
-    void run(window.pos.inventory.saveRecipe(editor.id, prepared), prepared.length ? "Resept saxlanıldı" : "Resept silindi")
+    const keepSelf = !prepared.length && editor.selfId;
+    if (keepSelf) prepared.push({ ingredientId: editor.selfId, qtyMilli: 1000 });
+    const dropSelf = !keepSelf && editor.selfId;
+    void run(window.pos.inventory.saveRecipe(editor.id, prepared), keepSelf ? "Saxlanıldı" : prepared.length ? "Resept saxlanıldı" : "Resept silindi")
       .then((ok) => {
         if (ok) {
+          if (dropSelf) void window.pos.inventory.deactivateIngredient(editor.selfId).then(() => reload());
           setEditor(null);
           // Keep POS cart maya in sync if order screen already loaded costs.
           void (async () => {
@@ -23567,6 +23850,19 @@ function OpsCosting() {
       /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void run(Promise.resolve({ success: true })), children: "Yenilə" })
     ] }),
 
+    psNegativeBanner(ingredients),
+    psH("div", { className: "ps-period-bar" },
+      psH("span", null, "Dövr:"),
+      [["day", "Bu gün"], ["week", "Bu həftə"], ["month", "Bu ay"], ["reset", "Sıfırlanandan bəri"]].map(([k, l]) =>
+        psH("button", { key: k, type: "button", "aria-pressed": period === k, className: "ps-period-chip" + (period === k ? " is-on" : ""), onClick: () => setPeriod(k) }, l)),
+      psH("button", { type: "button", className: "ps-period-reset", onClick: async () => {
+        if (!(await confirmAsk("Satış sayları sıfırlansın? Reseptlər və anbar dəyişmir.", { danger: true }))) return;
+        const now = Date.now();
+        const r = await window.pos.settings.set("costing.resetAt", String(now));
+        if (!r.success) { toast(r.error.message, "danger"); return; }
+        setResetAt(now); setPeriod("reset"); toast("Sıfırlandı", "success");
+      } }, "Sıfırla"),
+      psH("small", null, "Satılan, gəlir və qazanc seçilən dövr üçündür")),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2 text-xs text-muted", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Sıralama:" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setSort("worst"), className: sort === "worst" ? "text-gold" : "hover:text-cream", children: "Maya faizi" }),
@@ -23585,7 +23881,7 @@ function OpsCosting() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: st.color }, children: st.label }),
           row.hasRecipe
             ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "mt-0.5 block text-cream", children: [
-                "Total qazanc: ",
+                "Dövr qazancı: ",
                 /* @__PURE__ */ jsxRuntimeExports.jsx("b", { style: { color: (Number(totalProfit) || 0) < 0 ? "var(--ps-danger)" : null }, children: formatMoney(Number(totalProfit) || 0) }),
                 soldQty > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted", children: " · " + soldQty + " ədəd" }) : null
               ] })
@@ -23594,7 +23890,7 @@ function OpsCosting() {
               : null)
         ] });
         return [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium text-cream", children: row.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-medium text-cream", children: [row.name, row.active === false ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", style: { background: "#fdf4e3", color: "#a16207" }, children: "Qaralama" }) : null] }),
           row.category ?? "—",
           row.hasRecipe ? formatMoney(row.costMinor ?? 0) : "—",
           formatMoney(row.priceMinor ?? 0),
@@ -23614,134 +23910,8 @@ function OpsCosting() {
       })
     }),
 
-    editor && /* @__PURE__ */ jsxRuntimeExports.jsxs(PsAdminDialog, {
-      title: "Resept — " + editor.name,
-      busy,
-      onClose: () => setEditor(null),
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 text-sm text-muted", children: "Bir porsiya üçün tərkib. İstədiyiniz qədər məhsul əlavə edin (et, kahi, pomidor, sos…). Hər sətirdə maya ayrı, altda cəm." }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 grid gap-2 sm:grid-cols-3 rounded-xl border border-hairline bg-elevated/60 p-3 text-sm text-cream", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] uppercase tracking-wide text-faint", children: "Satış" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-bold", children: formatMoney(editor.priceMinor) })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] uppercase tracking-wide text-faint", children: "Maya" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-bold", children: formatMoney(editorCost()) })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] uppercase tracking-wide text-faint", children: "Qazanc" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-bold", style: { color: editor.priceMinor - editorCost() < 0 ? "var(--ps-danger)" : null }, children: formatMoney(editor.priceMinor - editorCost()) })
-          ] })
-        ] }),
-        editor.lines.map((line, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 rounded-xl border border-hairline bg-elevated/40 p-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex flex-wrap items-center gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold text-gold", children: "Məhsul " + (i + 1) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
-              type: "button",
-              className: "rounded-lg border px-2 py-1 text-xs " + (line.mode === "pick" ? "border-gold/50 text-gold" : "border-hairline text-muted"),
-              onClick: () => setLine(i, { mode: "pick" }),
-              children: "Anbardan seç"
-            }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
-              type: "button",
-              className: "rounded-lg border px-2 py-1 text-xs " + (line.mode === "new" ? "border-gold/50 text-gold" : "border-hairline text-muted"),
-              onClick: () => setLine(i, { mode: "new", ingredientId: "", unit: "q" }),
-              children: "Yeni məhsul"
-            }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-auto text-xs font-semibold text-cream", children: "Sətir mayası: " + formatMoney(lineCostMinor(line)) })
-          ] }),
-          line.mode === "pick"
-            ? /* @__PURE__ */ jsxRuntimeExports.jsx("select", {
-                value: line.ingredientId,
-                onChange: (e) => setLine(i, { ingredientId: e.target.value }),
-                className: "mb-2 min-h-11 w-full rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream",
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Məhsul seç…" }),
-                  ...ingredients.map((ing) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", {
-                    value: ing.id,
-                    children: ing.name + " (" + unitLabel(ing.unit) + ") · " + formatMoney(ing.costMinor ?? 0) + " / vahid"
-                  }, ing.id))
-                ]
-              })
-            : /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, {
-                label: "Ad",
-                value: line.name,
-                onChange: (v) => setLine(i, { name: v }),
-                placeholder: "məs. Et, kahi, pomidor, sos"
-              }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 grid gap-2 sm:grid-cols-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs uppercase tracking-wide text-faint", children: "Vahid" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("select", {
-                value: line.unit,
-                onChange: (e) => setLine(i, { unit: e.target.value }),
-                className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream",
-                children: units.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u, children: unitLabel(u) }, u))
-              })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, {
-              label: line.unit === "q" ? "Miqdar (qram)" : line.unit === "kg" ? "Miqdar (kg)" : "Miqdar",
-              value: line.qty,
-              onChange: (v) => setLine(i, { qty: v }),
-              placeholder: line.unit === "q" ? "150" : "0.15"
-            }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, {
-              label: line.unit === "q" ? "1 kg qiyməti (₼)" : "1 vahidin qiyməti (₼)",
-              value: line.unitCost,
-              onChange: (v) => setLine(i, { unitCost: v }),
-              placeholder: "50.00"
-            })
-          ] }),
-          line.unit === "kg" && opsNum(line.qty) >= 1
-            ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-cream", children: "Bu " + opsNum(line.qty) + " kq deməkdir. Porsiya üçün vahidi qram seçin (məs. 150)." })
-            : null,
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2", children:
-            /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, {
-              tone: "danger",
-              disabled: busy || editor.lines.length <= 1,
-              onClick: () => setEditor((prev) => prev ? { ...prev, lines: prev.lines.filter((_, j) => j !== i) } : prev),
-              children: "Sil"
-            })
-          })
-        ] }, i)),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-3", children:
-          /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, {
-            tone: "quiet",
-            disabled: busy,
-            onClick: () => setEditor((prev) => prev ? { ...prev, lines: [...prev.lines, blankLine()] } : prev),
-            children: "+ Məhsul əlavə et"
-          })
-        }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 grid gap-2 sm:grid-cols-3 rounded-xl border border-gold/30 bg-gold/10 p-3 text-sm text-cream", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] uppercase tracking-wide text-faint", children: "Cəm maya" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xl font-bold text-gold", children: formatMoney(editorCost()) })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] uppercase tracking-wide text-faint", children: "Satış" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xl font-bold", children: formatMoney(editor.priceMinor) })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] uppercase tracking-wide text-faint", children: "Qazanc" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xl font-bold", style: { color: editor.priceMinor - editorCost() < 0 ? "var(--ps-danger)" : "var(--ps-ok)" }, children: formatMoney(editor.priceMinor - editorCost()) })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex flex-wrap gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void saveRecipe(), children: "Saxla" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, {
-            tone: "danger",
-            disabled: busy,
-            onClick: () => {
-              void run(window.pos.inventory.saveRecipe(editor.id, []), "Resept silindi")
-                .then((ok) => { if (ok) setEditor(null); });
-            },
-            children: "Resepti sil"
-          }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setEditor(null), children: "Bağla" })
-        ] })
-      ]
-    })
+    editor && psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }),
+    confirmDialog
   ] });
 }
 
@@ -23998,9 +24168,10 @@ function OpsVendors() {
       /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm font-semibold text-cream", children: [pay.supplier.name, " — ödəniş"] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted", children: ["Cari borc: ", formatMoney(pay.supplier.dueMinor ?? 0)] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: pay.value, onChange: (v) => setPay({ ...pay, value: v }) }),
+      jsxRuntimeExports.jsx(PsAccountSelect, { value: pay.accountId, onChange: (v) => setPay((p) => (p ? { ...p, accountId: v } : p)), label: "Hansı kassadan ödənilir" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { disabled: busy,
-          onClick: () => { if (!psStockInputValid(pay.value) || opsMinor(pay.value) <= 0) { toast(psAdminText("Düzgün müsbət məbləğ daxil edin", "Geçerli pozitif tutar girin", "Enter a valid positive amount"), "danger"); return; } void run(window.pos.suppliers.pay({ supplierId: pay.supplier.id, amountMinor: opsMinor(pay.value) }), "Ödəniş qeyd olundu").then((ok) => { if (ok) setPay(null); }); },
+          onClick: () => { if (!psStockInputValid(pay.value) || opsMinor(pay.value) <= 0) { toast(psAdminText("Düzgün müsbət məbləğ daxil edin", "Geçerli pozitif tutar girin", "Enter a valid positive amount"), "danger"); return; } void run(window.pos.suppliers.pay({ supplierId: pay.supplier.id, amountMinor: opsMinor(pay.value), accountId: pay.accountId || "" }), "Ödəniş qeyd olundu").then((ok) => { if (ok) setPay(null); }); },
           children: "Təsdiq et" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setPay(null), children: "Bağla" })
       ] })
@@ -24024,6 +24195,1164 @@ function OpsVendors() {
     ] })
   ] });
 }
+/* POS_KASSA_v1 */
+let _psAccountsCache = null;
+const PS_KASSA_KINDS = { till: "Kassa", treasury: "Xəzinə", bank: "Bank" };
+function psToday() {
+  const d = new Date();
+  const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return [from, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()];
+}
+function usePsAccounts() {
+  const [data, setData] = reactExports.useState(_psAccountsCache);
+  reactExports.useEffect(() => {
+    let alive = true;
+    const [from, to] = psToday();
+    void window.pos.cashAccounts.list(from, to).then((r) => { if (alive && r.success) { _psAccountsCache = r.data; setData(r.data); } });
+    return () => { alive = false; };
+  }, []);
+  return data;
+}
+/** Picks the kassa / treasury / bank a payment goes in or out of; this PC's till by default. */
+function PsAccountSelect({ value, onChange, label }) {
+  const data = usePsAccounts();
+  reactExports.useEffect(() => {
+    if (!data || value !== undefined) return;
+    const mine = data.accounts.find((a) => a.kind === "till" && a.terminalId === data.currentTerminalId);
+    onChange(mine ? mine.id : "");
+  }, [data]);
+  return psH("label", { className: "block text-sm" },
+    psH("span", { className: "text-xs uppercase tracking-wide text-faint" }, label || "Kassa / xəzinə"),
+    psH("select", { value: value || "", onChange: (e) => onChange(e.target.value), className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream" },
+      psH("option", { value: "" }, "— Kassa seçilməyib —"),
+      (data?.accounts ?? []).map((a) => psH("option", { key: a.id, value: a.id },
+        a.name + " · " + PS_KASSA_KINDS[a.kind] + (a.objectName ? " · " + a.objectName : "") + " — " + formatMoney(a.balanceMinor ?? 0)))));
+}
+
+/* POS_OBJECTS_v1 */
+/* POS_PURCHASES_v1 */
+/* POS_PURCHASES_v2 */
+function OpsPurchases() {
+  const h = psH;
+  const [data, setData] = reactExports.useState(null);
+  const [view, setView] = reactExports.useState("invoices");
+  const [supplierFilter, setSupplierFilter] = reactExports.useState("");
+  const [objectFilter, setObjectFilter] = reactExports.useState("");
+  const [confirmAsk, confirmDialog] = useConfirm();
+  const [invoice, setInvoice] = reactExports.useState(null);
+  const [ret, setRet] = reactExports.useState(null);
+  const [pay, setPay] = reactExports.useState(null);
+  const [detail, setDetail] = reactExports.useState(null);
+  const [ledger, setLedger] = reactExports.useState(null);
+  const hasPermission = useAuthStore((st) => st.hasPermission);
+  const canManage = hasPermission("suppliers.manage");
+  const reload = reactExports.useCallback(async () => {
+    const [sup, pur, rets, ings] = await Promise.all([window.pos.suppliers.list(), window.pos.suppliers.purchases(), window.pos.suppliers.returns(""), window.pos.inventory.ingredients()]);
+    const failed = [sup, pur, rets, ings].find((r) => !r.success);
+    if (failed) { toast(failed.error.message, "danger"); return; }
+    // Branches and their stores; without cash.manage there are none to pick and the main store is used.
+    const [from, to] = psToday();
+    const acc = await window.pos.cashAccounts.list(from, to).catch(() => null);
+    const objects = acc?.success ? (acc.data.objects ?? []).filter((o) => o.warehouseId) : [];
+    const mine = acc?.success ? (acc.data.accounts ?? []).find((a) => a.kind === "till" && a.terminalId === acc.data.currentTerminalId) : null;
+    const home = objects.find((o) => mine && o.id === mine.objectId);
+    setData({ suppliers: sup.data.suppliers ?? [], purchases: pur.data.purchases ?? [], returns: rets.data.returns ?? [], ingredients: ings.data.ingredients ?? [], objects, homeWarehouse: home ? home.warehouseId : "" });
+  }, []);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  if (!data) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
+
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
+  const ingById = new Map(data.ingredients.map((i) => [i.id, i]));
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+  const purchases = data.purchases.filter((p) => (!supplierFilter || p.supplierId === supplierFilter) && (!objectFilter || p.warehouseId === objectFilter));
+  const returns = data.returns.filter((r) => (!supplierFilter || r.supplierId === supplierFilter) && (!objectFilter || r.warehouseId === objectFilter));
+  const suppliers = data.suppliers.filter((x) => !supplierFilter || x.id === supplierFilter);
+  const totalDue = suppliers.reduce((t, x) => t + (Number(x.dueMinor) || 0), 0);
+  const monthBought = purchases.filter((p) => p.status === "received" && (psOpsTimestamp(p.receivedAt || p.createdAt) || 0) >= monthStart).reduce((t, p) => t + (Number(p.totalMinor) || 0), 0);
+  const monthReturned = returns.filter((r) => (psOpsTimestamp(r.createdAt) || 0) >= monthStart).reduce((t, r) => t + (Number(r.totalMinor) || 0), 0);
+  const qtyMilli = (v) => Math.round(opsNum(v) * 1000);
+  const lineTotal = (l) => Math.round(qtyMilli(l.qty) * opsMinor(l.price || "0") / 1000);
+  const metric = (label, value, sub, tone) => h("div", { key: label, className: "ps-stock-metric" },
+    h("p", { className: "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint" }, label),
+    h("p", { className: "mt-2 text-2xl font-bold tracking-tight text-cream", style: tone ? { color: tone } : null }, value),
+    h("p", { className: "mt-1 text-[11px] text-muted" }, sub));
+  const blankLine = () => ({ ingredientId: "", qty: "", price: "" });
+  const setLine = (form, setForm, i, patch) => setForm({ ...form, lines: form.lines.map((l, j) => {
+    if (j !== i) return l;
+    const next = { ...l, ...patch };
+    if (patch.ingredientId && !l.price) { const ing = ingById.get(patch.ingredientId); if (ing) next.price = ((Number(ing.costMinor) || 0) / 100).toFixed(2); }
+    return next;
+  }) });
+  const lineRows = (form, setForm, withMax) => h("div", { className: "ps-recipe-rows" }, form.lines.map((l, i) => {
+    const ing = ingById.get(l.ingredientId);
+    return h("div", { key: i, className: "ps-purchase-row" },
+      l.isNew ? h("div", { className: "ps-purchase-new" },
+          h("input", { value: l.name, placeholder: "Yeni malın adı", className: field, onChange: (e) => setLine(form, setForm, i, { name: e.target.value }) }),
+          h("select", { value: l.unit, className: field, onChange: (e) => setLine(form, setForm, i, { unit: e.target.value }) },
+            [["kg", "kq"], ["l", "litr"], ["ədəd", "ədəd"], ["qab", "qab"]].map(([u, t]) => h("option", { key: u, value: u }, t))))
+      : withMax && l.fixed
+        ? h("span", { className: "ps-recipe-name" }, l.name, h("small", null, " · ən çox " + opsQty(l.maxMilli) + " " + (l.unit || "")))
+        : h("select", { value: l.ingredientId, className: field, onChange: (e) => setLine(form, setForm, i, { ingredientId: e.target.value }) },
+            h("option", { value: "" }, "Anbar məhsulu seçin…"),
+            data.ingredients.map((x) => h("option", { key: x.id, value: x.id }, x.name + " (" + x.unit + ")"))),
+      h("label", { className: "ps-recipe-price" }, h("span", null, "Miqdar" + (ing || l.unit ? " (" + (ing ? ing.unit : l.unit) + ")" : "")),
+        h("input", { inputMode: "decimal", value: l.qty, placeholder: "0", onChange: (e) => setLine(form, setForm, i, { qty: e.target.value }) })),
+      h("label", { className: "ps-recipe-price" }, h("span", null, "Qiymət (₼)"),
+        h("input", { inputMode: "decimal", value: l.price, placeholder: "0.00", onChange: (e) => setLine(form, setForm, i, { price: e.target.value }) })),
+      h("b", { className: "ps-recipe-cost" }, formatMoney(lineTotal(l))),
+      h("button", { type: "button", className: "ps-recipe-remove", "aria-label": "Sil", onClick: () => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) }) }, "×"));
+  }));
+  const supplierSelect = (form, setForm, allowNew) => h("div", { className: "grid gap-2 sm:grid-cols-2" },
+    h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Təchizatçı"),
+      h("select", { value: form.supplierId, disabled: Boolean(form.purchaseId), className: field, onChange: (e) => setForm({ ...form, supplierId: e.target.value }) },
+        h("option", { value: "" }, allowNew ? "— Yeni təchizatçı —" : "Seçin…"),
+        data.suppliers.map((x) => h("option", { key: x.id, value: x.id }, x.name + ((x.dueMinor ?? 0) > 0 ? " · borc " + formatMoney(x.dueMinor) : ""))))),
+    allowNew && !form.supplierId ? jsxRuntimeExports.jsx(OpsField, { label: "Yeni təchizatçının adı", value: form.newSupplier, onChange: (v) => setForm({ ...form, newSupplier: v }), placeholder: "məs. Bazar MMC" }) : null);
+
+  const objectSelect = (form, setForm, locked) => data.objects.length ? h("label", { className: "block text-sm" },
+    h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Obyekt (hansı anbar)"),
+    h("select", { value: form.warehouseId || "", disabled: locked, className: field, onChange: (e) => setForm({ ...form, warehouseId: e.target.value }) },
+      h("option", { value: "" }, "Əsas anbar"),
+      data.objects.map((o) => h("option", { key: o.id, value: o.warehouseId }, o.name)))) : null;
+  const usable = (l) => (l.ingredientId || (l.isNew && l.name.trim())) && qtyMilli(l.qty) > 0;
+  // New goods are created first; the form keeps their ids so a failed save does not create them twice.
+  const resolveLines = async (form) => {
+    const taken = new Set(data.ingredients.map((x) => String(x.barcode || "")).filter(Boolean));
+    for (const l of form.lines) {
+      if (l.ingredientId || !l.isNew || !usable(l)) continue;
+      const barcode = psMakeBarcode(taken);
+      taken.add(barcode);
+      const r = await window.pos.inventory.saveIngredient({ name: l.name.trim(), unit: l.unit || "kg", barcode, costMinor: opsMinor(l.price || "0"), minQtyMilli: 0 });
+      if (!r.success) throw new Error(r.error?.message || "Mal yaradılmadı");
+      l.ingredientId = r.data.id;
+    }
+    return form.lines.filter((l) => l.ingredientId && qtyMilli(l.qty) > 0)
+      .map((l) => ({ ingredientId: l.ingredientId, qtyMilli: qtyMilli(l.qty), unitCostMinor: opsMinor(l.price || "0") }));
+  };
+  const openEdit = async (p) => {
+    const r = await window.pos.suppliers.purchase(p.id);
+    if (!r.success) { toast(r.error.message, "danger"); return; }
+    setInvoice({ editId: p.id, number: p.number, supplierId: r.data.supplierId, newSupplier: "", warehouseId: r.data.warehouseId || "", paid: "", accountId: undefined, note: r.data.note || "",
+      lines: (r.data.lines ?? []).map((l) => ({ ingredientId: l.ingredientId, qty: String((Number(l.qtyMilli) || 0) / 1000), price: ((Number(l.unitCostMinor) || 0) / 100).toFixed(2) })) });
+  };
+
+  const saveInvoice = () => {
+    if (!invoice.supplierId && !invoice.newSupplier.trim()) { toast("Təchizatçını seçin və ya adını yazın", "danger"); return; }
+    if (!invoice.lines.some(usable)) { toast("Ən azı bir mal və miqdar yazın", "danger"); return; }
+    const total = invoice.lines.reduce((t, l) => t + lineTotal(l), 0);
+    const paid = !invoice.editId && invoice.paid ? opsMinor(invoice.paid) : 0;
+    if (paid < 0 || paid > total) { toast("Ödənilən məbləğ cəmdən çox ola bilməz", "danger"); return; }
+    void run((async () => {
+      if (!invoice.supplierId) {
+        const created = await window.pos.suppliers.save({ name: invoice.newSupplier.trim() });
+        if (!created.success) return created;
+        invoice.supplierId = created.data.id;
+      }
+      const supplierId = invoice.supplierId;
+      const lines = await resolveLines(invoice);
+      const head = { supplierId, warehouseId: invoice.warehouseId || "", lines, note: invoice.note.trim() };
+      if (invoice.editId) return window.pos.suppliers.updatePurchase({ ...head, purchaseId: invoice.editId }, { idempotencyKey: newIdempotencyKey() });
+      const saved = await window.pos.suppliers.savePurchase({ ...head, idempotencyKey: newIdempotencyKey() });
+      if (!saved.success) return saved;
+      const received = await window.pos.suppliers.receive(saved.data.id);
+      if (!received.success) return received;
+      if (paid > 0) return window.pos.suppliers.pay({ supplierId, amountMinor: paid, purchaseId: saved.data.id, accountId: invoice.accountId || "", note: "Alış qaiməsi" });
+      return received;
+    })(), invoice.editId ? "Qaimə düzəldildi" : "Alış qaiməsi qəbul edildi").then((ok) => { if (ok) setInvoice(null); });
+  };
+
+  const openReturnFrom = async (p) => {
+    const r = await window.pos.suppliers.purchase(p.id);
+    if (!r.success) { toast(r.error.message, "danger"); return; }
+    const lines = (r.data.lines ?? []).map((l) => ({ ingredientId: l.ingredientId, name: l.name, unit: l.unit, fixed: true,
+      maxMilli: Math.max(0, (Number(l.qtyMilli) || 0) - (Number(l.returnedMilli) || 0)), qty: "", price: ((Number(l.unitCostMinor) || 0) / 100).toFixed(2) }))
+      .filter((l) => l.maxMilli > 0);
+    if (!lines.length) { toast("Bu qaimədən qaytarılacaq mal qalmayıb", "danger"); return; }
+    setRet({ supplierId: r.data.supplierId, purchaseId: p.id, purchaseNumber: p.number, warehouseId: r.data.warehouseId || "", lines, note: "" });
+  };
+  const canFix = hasPermission("purchases.edit");
+  const canRemove = hasPermission("purchases.delete");
+  const removePurchase = async (p) => {
+    if (!(await confirmAsk("Qaimə " + p.number + " silinsin? Mallar anbardan çıxır, məbləğ təchizatçının borcundan silinir.", { danger: true }))) return;
+    void run(window.pos.suppliers.deletePurchase(p.id), "Qaimə silindi");
+  };
+  const removeReturn = async (r) => {
+    if (!(await confirmAsk("Qaytarma " + r.number + " silinsin? Mallar anbara qayıdır, məbləğ yenə borca yazılır.", { danger: true }))) return;
+    void run(window.pos.suppliers.deleteReturn(r.id), "Qaytarma silindi");
+  };
+  const openReturnEdit = async (r) => {
+    const mine = new Map((r.lines ?? []).map((l) => [l.ingredientId, Number(l.qtyMilli) || 0]));
+    if (r.purchaseId) {
+      const res = await window.pos.suppliers.purchase(r.purchaseId);
+      if (!res.success) { toast(res.error.message, "danger"); return; }
+      const lines = (res.data.lines ?? []).map((l) => ({ ingredientId: l.ingredientId, name: l.name, unit: l.unit, fixed: true,
+        maxMilli: Math.max(0, (Number(l.qtyMilli) || 0) - (Number(l.returnedMilli) || 0) + (mine.get(l.ingredientId) || 0)),
+        qty: mine.has(l.ingredientId) ? String(mine.get(l.ingredientId) / 1000) : "", price: ((Number(l.unitCostMinor) || 0) / 100).toFixed(2) })).filter((l) => l.maxMilli > 0);
+      setRet({ replaceReturnId: r.id, number: r.number, supplierId: r.supplierId, purchaseId: r.purchaseId, purchaseNumber: r.purchaseNumber, warehouseId: r.warehouseId || "", lines, note: r.note || "" });
+    } else {
+      setRet({ replaceReturnId: r.id, number: r.number, supplierId: r.supplierId, purchaseId: "", warehouseId: r.warehouseId || "", note: r.note || "",
+        lines: (r.lines ?? []).map((l) => ({ ingredientId: l.ingredientId, qty: String((Number(l.qtyMilli) || 0) / 1000), price: ((Number(l.unitCostMinor) || 0) / 100).toFixed(2) })) });
+    }
+  };
+  const saveReturn = () => {
+    const lines = ret.lines.filter((l) => l.ingredientId && qtyMilli(l.qty) > 0)
+      .map((l) => ({ ingredientId: l.ingredientId, qtyMilli: qtyMilli(l.qty), unitCostMinor: opsMinor(l.price || "0") }));
+    if (!ret.supplierId) { toast("Təchizatçını seçin", "danger"); return; }
+    if (!lines.length) { toast("Qaytarılan malı və miqdarı yazın", "danger"); return; }
+    const over = ret.lines.find((l) => l.fixed && qtyMilli(l.qty) > l.maxMilli);
+    if (over) { toast(over.name + ": ən çox " + opsQty(over.maxMilli) + " qaytarmaq olar", "danger"); return; }
+    void run(window.pos.suppliers.returnGoods({ supplierId: ret.supplierId, purchaseId: ret.purchaseId || "", warehouseId: ret.warehouseId || "", replaceReturnId: ret.replaceReturnId || "", lines, note: ret.note.trim() },
+      { idempotencyKey: newIdempotencyKey() }), "Qaytarıldı — məbləğ borcdan silindi").then((ok) => { if (ok) setRet(null); });
+  };
+  const savePay = () => {
+    if (!psStockInputValid(pay.value) || opsMinor(pay.value) <= 0) { toast("Məbləği yazın", "danger"); return; }
+    if (opsMinor(pay.value) > (pay.supplier.dueMinor ?? 0)) { toast("Ödəniş borcdan çox ola bilməz", "danger"); return; }
+    void run(window.pos.suppliers.pay({ supplierId: pay.supplier.id, amountMinor: opsMinor(pay.value), accountId: pay.accountId || "", note: pay.note.trim() }),
+      "Ödəniş qeyd olundu").then((ok) => { if (ok) setPay(null); });
+  };
+  const openDetail = async (p) => {
+    const r = await window.pos.suppliers.purchase(p.id);
+    if (r.success) setDetail(r.data); else toast(r.error.message, "danger");
+  };
+  const openLedger = async (x) => {
+    const r = await window.pos.suppliers.ledger(x.id);
+    if (r.success) setLedger({ supplier: x, rows: r.data.entries ?? [] }); else toast(r.error.message, "danger");
+  };
+  const ledgerKind = (e) => e.kind === "payment" ? "Ödəniş" : (e.amountMinor ?? 0) < 0 ? "Qaytarma (borcdan silindi)" : "Alış (borc)";
+  const invoiceTotal = invoice ? invoice.lines.reduce((t, l) => t + lineTotal(l), 0) : 0;
+  const returnTotal = ret ? ret.lines.reduce((t, l) => t + lineTotal(l), 0) : 0;
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "ps-stock-metrics" },
+      metric("Təchizatçılara borc", formatMoney(totalDue), suppliers.filter((x) => (x.dueMinor ?? 0) > 0).length + " təchizatçı", totalDue > 0 ? "var(--ps-danger)" : null),
+      metric("Bu ay alış", formatMoney(monthBought), purchases.filter((p) => (psOpsTimestamp(p.createdAt) || 0) >= monthStart).length + " qaimə"),
+      metric("Bu ay qaytarma", formatMoney(monthReturned), returns.filter((r) => (psOpsTimestamp(r.createdAt) || 0) >= monthStart).length + " qaytarma")),
+
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["invoices", "Alış qaimələri"], ["returns", "Qaytarmalar"]].map(([k, l]) =>
+        h("button", { key: k, type: "button", "aria-pressed": view === k, className: "ps-period-chip" + (view === k ? " is-on" : ""), onClick: () => setView(k) }, l)),
+      h("select", { value: supplierFilter, onChange: (e) => setSupplierFilter(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" },
+        h("option", { value: "" }, "Bütün təchizatçılar"), data.suppliers.map((x) => h("option", { key: x.id, value: x.id }, x.name))),
+      data.objects.length ? h("select", { value: objectFilter, onChange: (e) => setObjectFilter(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" },
+        h("option", { value: "" }, "Bütün obyektlər"), data.objects.map((o) => h("option", { key: o.id, value: o.warehouseId }, o.name))) : null,
+      h("span", { className: "ml-auto" }),
+      canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setRet({ supplierId: supplierFilter, purchaseId: "", warehouseId: objectFilter || data.homeWarehouse, lines: [blankLine()], note: "" }), children: "Geri qaytarma" }) : null,
+      canManage ? jsxRuntimeExports.jsx(OpsButton, { onClick: () => setInvoice({ supplierId: supplierFilter, newSupplier: "", warehouseId: objectFilter || data.homeWarehouse, lines: [blankLine()], paid: "", accountId: undefined, note: "" }), children: "+ Yeni alış qaiməsi" }) : null),
+
+    view === "invoices" ? jsxRuntimeExports.jsx(OpsTable, {
+      head: ["Qaimə", "Tarix", "Təchizatçı", "Obyekt", "Cəm", "Qalan borc", "Vəziyyət", ""],
+      empty: "Hələ alış qaiməsi yoxdur",
+      rows: purchases.map((p) => [
+        h("b", null, p.number), opsWhen(p.receivedAt || p.createdAt), p.supplierName, p.objectName || p.warehouseName || "—", formatMoney(p.totalMinor ?? 0),
+        h("span", { style: (p.dueMinor ?? 0) > 0 ? { color: "var(--ps-danger)", fontWeight: 600 } : null }, formatMoney(p.dueMinor ?? 0)),
+        p.status === "received" ? "Qəbul edilib" : p.status === "cancelled" ? "Ləğv edilib" : "Gözləyir",
+        h("span", { className: "flex flex-wrap gap-1" },
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => void openDetail(p), children: "Bax" }),
+          p.status !== "received" && p.status !== "cancelled" && canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void run(window.pos.suppliers.receive(p.id), "Qəbul edildi"), children: "Qəbul et" }) : null,
+          p.status === "received" && canFix ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void openEdit(p), children: "Düzəliş et" }) : null,
+          p.status !== "cancelled" && canRemove ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void removePurchase(p), children: "Sil" }) : null,
+          p.status === "received" && canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void openReturnFrom(p), children: "Qaytar" }) : null)
+      ])
+    }) : null,
+
+    view === "returns" ? jsxRuntimeExports.jsx(OpsTable, {
+      head: ["Qaytarma", "Tarix", "Təchizatçı", "Obyekt", "Qaimə", "Mallar", "Borcdan silindi", ""],
+      empty: "Hələ qaytarma yoxdur",
+      rows: returns.map((r) => [h("b", null, r.number), opsWhen(r.createdAt), r.supplierName, r.objectName || "—", r.purchaseNumber || "—",
+        (r.lines ?? []).map((l) => l.name + " " + opsQty(l.qtyMilli) + " " + l.unit).join(", "),
+        h("b", { style: { color: "var(--ps-ok)" } }, formatMoney(r.totalMinor ?? 0)),
+        h("span", { className: "flex flex-wrap gap-1" },
+          canFix ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void openReturnEdit(r), children: "Düzəliş" }) : null,
+          canRemove ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void removeReturn(r), children: "Sil" }) : null)])
+    }) : null,
+
+    detail ? h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
+      h("div", { className: "flex items-center justify-between gap-3" },
+        h("p", { className: "text-sm font-semibold text-cream" }, detail.number + " — " + detail.supplierName + " · " + formatMoney(detail.totalMinor ?? 0)),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setDetail(null), children: "Bağla" })),
+      jsxRuntimeExports.jsx(OpsTable, { head: ["Mal", "Alınıb", "Qaytarılıb", "Qiymət", "Cəm"], empty: "Sətir yoxdur",
+        rows: (detail.lines ?? []).map((l) => [l.name, opsQty(l.qtyMilli) + " " + l.unit, (Number(l.returnedMilli) || 0) > 0 ? opsQty(l.returnedMilli) + " " + l.unit : "—",
+          formatMoney(l.unitCostMinor ?? 0), formatMoney(l.lineTotalMinor ?? 0)]) })) : null,
+
+    ledger ? h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
+      h("div", { className: "flex items-center justify-between gap-3" },
+        h("p", { className: "text-sm font-semibold text-cream" }, ledger.supplier.name + " — hesab · borc " + formatMoney(ledger.supplier.dueMinor ?? 0)),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setLedger(null), children: "Bağla" })),
+      jsxRuntimeExports.jsx(OpsTable, { head: ["Tarix", "Növ", "Məbləğ", "Qeyd"], empty: "Hərəkət yoxdur",
+        rows: ledger.rows.map((e) => [opsWhen(e.createdAt), ledgerKind(e),
+          h("b", { style: { color: e.kind === "charge" && (e.amountMinor ?? 0) > 0 ? "var(--ps-danger)" : "var(--ps-ok)" } }, formatMoney(Math.abs(e.amountMinor ?? 0))),
+          e.note || "—"]) })) : null,
+
+    invoice ? jsxRuntimeExports.jsx(PsAdminDialog, { title: invoice.editId ? "Qaimə " + invoice.number + " — düzəliş" : "Yeni alış qaiməsi", onClose: () => setInvoice(null), busy, children: h("div", { className: "space-y-3" },
+      supplierSelect(invoice, setInvoice, true),
+      objectSelect(invoice, setInvoice, false),
+      h("h3", { className: "ps-recipe-step" }, "Mallar"),
+      lineRows(invoice, setInvoice, false),
+      h("div", { className: "flex flex-wrap gap-2" },
+        h("button", { type: "button", className: "ps-recipe-add", onClick: () => setInvoice({ ...invoice, lines: [...invoice.lines, blankLine()] }) }, "+ Sətir"),
+        h("button", { type: "button", className: "ps-recipe-add", onClick: () => setInvoice({ ...invoice, lines: [...invoice.lines, { ingredientId: "", isNew: true, name: "", unit: "kg", qty: "", price: "" }] }) }, "+ Yeni mal")),
+      h("div", { className: "ps-purchase-total" }, h("span", null, "Qaimənin cəmi"), h("b", null, formatMoney(invoiceTotal))),
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        invoice.editId ? null : jsxRuntimeExports.jsx(OpsField, { label: "İndi ödənilən (₼) — boş qalsa hamısı borca", value: invoice.paid, onChange: (v) => setInvoice({ ...invoice, paid: v }), placeholder: "0.00" }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: invoice.note, onChange: (v) => setInvoice({ ...invoice, note: v }), placeholder: "məs. qaimə №123" })),
+      invoice.paid && opsMinor(invoice.paid) > 0 ? jsxRuntimeExports.jsx(PsAccountSelect, { value: invoice.accountId, onChange: (v) => setInvoice((p) => (p ? { ...p, accountId: v } : p)), label: "Hansı kassadan ödənilir" }) : null,
+      h("p", { className: "text-xs text-muted" }, invoice.editId
+        ? "Yadda saxlayanda anbar qalığı və təchizatçının borcu yeni miqdar və qiymətə görə düzəlir."
+        : "Təsdiq edəndə mallar anbara girir, " + formatMoney(Math.max(0, invoiceTotal - (invoice.paid ? opsMinor(invoice.paid) : 0))) + " təchizatçının borcuna yazılır."),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: saveInvoice, children: invoice.editId ? "Yadda saxla" : "Təsdiq et" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setInvoice(null), children: "İmtina" }))) }) : null,
+
+    ret ? jsxRuntimeExports.jsx(PsAdminDialog, { title: ret.replaceReturnId ? "Qaytarma " + ret.number + " — düzəliş" : ret.purchaseId ? "Qaytarma — qaimə " + ret.purchaseNumber : "Geri qaytarma", onClose: () => setRet(null), busy, children: h("div", { className: "space-y-3" },
+      supplierSelect(ret, setRet, false),
+      objectSelect(ret, setRet, Boolean(ret.purchaseId)),
+      lineRows(ret, setRet, true),
+      !ret.purchaseId ? h("button", { type: "button", className: "ps-recipe-add", onClick: () => setRet({ ...ret, lines: [...ret.lines, blankLine()] }) }, "+ Sətir") : null,
+      h("div", { className: "ps-purchase-total" }, h("span", null, "Borcdan silinəcək"), h("b", null, formatMoney(returnTotal))),
+      jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: ret.note, onChange: (v) => setRet({ ...ret, note: v }), placeholder: "məs. xarab gəldi" }),
+      h("p", { className: "text-xs text-muted" }, "Mallar anbardan çıxır, məbləğ təchizatçının borcundan silinir."),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: saveReturn, children: "Qaytar" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setRet(null), children: "İmtina" }))) }) : null,
+
+    pay ? jsxRuntimeExports.jsx(PsAdminDialog, { title: pay.supplier.name + " — ödəniş", onClose: () => setPay(null), busy, children: h("div", { className: "space-y-3" },
+      h("p", { className: "text-xs text-muted" }, "Cari borc: " + formatMoney(pay.supplier.dueMinor ?? 0) + ". Bir hissəsini ödəsəniz, qalanı borc olaraq qalır."),
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: pay.value, onChange: (v) => setPay({ ...pay, value: v }), placeholder: "0.00" }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: pay.note, onChange: (v) => setPay({ ...pay, note: v }) })),
+      jsxRuntimeExports.jsx(PsAccountSelect, { value: pay.accountId, onChange: (v) => setPay((p) => (p ? { ...p, accountId: v } : p)), label: "Hansı kassadan ödənilir" }),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: savePay, children: "Ödə" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setPay(null), children: "İmtina" }))) }) : null,
+    confirmDialog);
+}
+
+function OpsObjects() {
+  const h = psH;
+  const [data, setData] = reactExports.useState(null);
+  const [form, setForm] = reactExports.useState(null);
+  const hasPermission = useAuthStore((st) => st.hasPermission);
+  const canManage = hasPermission("cash.accounts");
+  const reload = reactExports.useCallback(async () => {
+    const [from, to] = psToday();
+    const r = await window.pos.cashAccounts.list(from, to);
+    if (r.success) { _psAccountsCache = r.data; setData(r.data); } else toast(r.error.message, "danger");
+  }, []);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  if (!data) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
+
+  const groups = [...data.objects.map((o) => ({ id: o.id, name: o.name, accounts: data.accounts.filter((a) => a.objectId === o.id) })),
+    { id: "", name: "Obyektsiz", accounts: data.accounts.filter((a) => !a.objectId) }].filter((g) => g.id || g.accounts.length);
+  const total = (list, key) => list.reduce((t, a) => t + (Number(a[key]) || 0), 0);
+  const tills = (list) => list.filter((a) => a.kind === "till");
+  const save = () => {
+    if (!form.name.trim()) { toast("Obyektin adını yazın", "danger"); return; }
+    void run(window.pos.cashAccounts.saveObject({ ...(form.id ? { id: form.id } : {}), name: form.name.trim() }),
+      form.id ? "Saxlanıldı" : "Obyekt yaradıldı").then((ok) => { if (ok) setForm(null); });
+  };
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      h("p", { className: "text-sm text-muted" }, data.objects.length + " obyekt · kassaları Kassalar bölməsində obyektə bağlayın"),
+      h("span", { className: "ml-auto" }),
+      canManage ? jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ name: "" }), children: "+ Yeni obyekt" }) : null),
+
+    groups.length ? h("div", { className: "ps-kassa-grid" }, groups.map((g) =>
+      h("article", { key: g.id || "none", className: "ps-kassa-card ps-object-card" },
+        h("div", { className: "ps-kassa-head" },
+          h("b", null, g.name),
+          h("span", { className: "ps-kassa-kind" }, g.accounts.length + " kassa")),
+        h("p", { className: "ps-kassa-balance" }, formatMoney(total(g.accounts, "balanceMinor"))),
+        h("p", { className: "ps-kassa-today" }, "Bu gün: nağd " + formatMoney(total(tills(g.accounts), "todayCashMinor")) + " · kart " + formatMoney(total(tills(g.accounts), "todayCardMinor"))),
+        h("p", { className: "ps-kassa-meta" }, g.accounts.length ? g.accounts.map((a) => a.name + " (" + PS_KASSA_KINDS[a.kind] + ")").join(" · ") : "Hələ kassa bağlanmayıb"),
+        canManage && g.id ? h("div", { className: "flex flex-wrap gap-1" },
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setForm({ id: g.id, name: g.name }), children: "Adını dəyiş" })) : null)))
+      : h("p", { className: "ps-recipe-note" }, "Hələ obyekt yoxdur. \"+ Yeni obyekt\" ilə filial yaradın (məs. Filial 1, Nərimanov)."),
+
+    form ? jsxRuntimeExports.jsx(PsAdminDialog, { title: form.id ? "Obyektin adını dəyiş" : "Yeni obyekt", onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
+      jsxRuntimeExports.jsx(OpsField, { label: "Obyektin adı", value: form.name, onChange: (v) => setForm({ ...form, name: v }), placeholder: "məs. Filial 2, Nərimanov" }),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: save, children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setForm(null), children: "İmtina" }))) }) : null);
+}
+
+function OpsKassalar() {
+  const h = psH;
+  const [data, setData] = reactExports.useState(null);
+  const [objectId, setObjectId] = reactExports.useState("all");
+  const [form, setForm] = reactExports.useState(null);
+  const [objForm, setObjForm] = reactExports.useState(null);
+  const [transfer, setTransfer] = reactExports.useState(null);
+  const [moves, setMoves] = reactExports.useState(null);
+  const [confirmAsk, confirmDialog] = useConfirm();
+  const hasPermission = useAuthStore((st) => st.hasPermission);
+  const canManage = hasPermission("cash.accounts");
+  const reload = reactExports.useCallback(async () => {
+    const [from, to] = psToday();
+    const r = await window.pos.cashAccounts.list(from, to);
+    if (r.success) { _psAccountsCache = r.data; setData(r.data); } else toast(r.error.message, "danger");
+  }, []);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  if (!data) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
+
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
+  const accounts = data.accounts.filter((a) => objectId === "all" || (objectId === "none" ? !a.objectId : a.objectId === objectId));
+  const sum = (k) => accounts.reduce((t, a) => t + (Number(a[k]) || 0), 0);
+  const termName = (id) => { const t = data.terminals.find((x) => x.id === id); return t ? t.name + (t.current && t.name !== "Bu kompüter" ? " (bu kompüter)" : "") : id; };
+  const openMoves = async (a) => {
+    const r = await window.pos.cashAccounts.moves(a.id);
+    if (r.success) setMoves({ account: a, rows: r.data.moves ?? [] }); else toast(r.error.message, "danger");
+  };
+  const MOVE = { opening: "İlkin qalıq", transfer: "Transfer", salary: "Maaş", debt_in: "Borc alındı", supplier: "Təchizatçıya ödəniş", expense: "Xərc", cash_in: "Mədaxil", cash_out: "Məxaric", float_adjust: "Düzəliş", adjust: "Düzəliş" };
+
+  const saveKassa = () => {
+    if (!form.name.trim()) { toast("Kassanın adını yazın", "danger"); return; }
+    if (!form.id && !psStockInputValid(form.opening || "0", { empty: true })) { toast("İlkin qalığı düzgün yazın", "danger"); return; }
+    void run(window.pos.cashAccounts.save({
+      ...(form.id ? { id: form.id } : { openingMinor: opsMinor(form.opening || "0") }),
+      name: form.name.trim(), kind: form.kind, objectId: form.objectId || "", terminalId: form.kind === "till" ? form.terminalId || "" : ""
+    }, { idempotencyKey: newIdempotencyKey() }), form.id ? "Saxlanıldı" : "Kassa yaradıldı").then((ok) => { if (ok) setForm(null); });
+  };
+  const saveTransfer = () => {
+    if (!transfer.fromId || !transfer.toId || transfer.fromId === transfer.toId) { toast("İki fərqli kassa seçin", "danger"); return; }
+    if (!psStockInputValid(transfer.value) || opsMinor(transfer.value) <= 0) { toast("Məbləği yazın", "danger"); return; }
+    void run(window.pos.cashAccounts.transfer({ fromId: transfer.fromId, toId: transfer.toId, amountMinor: opsMinor(transfer.value), note: transfer.note.trim() },
+      { idempotencyKey: newIdempotencyKey() }), "Transfer edildi").then((ok) => { if (ok) setTransfer(null); });
+  };
+  const remove = async (a) => {
+    if (!(await confirmAsk('"' + a.name + '" bağlansın? Kassada pul qalmamalıdır.', { danger: true }))) return;
+    void run(window.pos.cashAccounts.deactivate(a.id), "Bağlandı");
+  };
+  const option = (a) => h("option", { key: a.id, value: a.id }, a.name + " · " + PS_KASSA_KINDS[a.kind] + " — " + formatMoney(a.balanceMinor ?? 0));
+  const metric = (label, value, sub, tone) => h("div", { key: label, className: "ps-stock-metric" },
+    h("p", { className: "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint" }, label),
+    h("p", { className: "mt-2 text-2xl font-bold tracking-tight text-cream", style: tone ? { color: tone } : null }, value),
+    h("p", { className: "mt-1 text-[11px] text-muted" }, sub));
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "ps-stock-metrics" },
+      metric("Ümumi balans", formatMoney(sum("balanceMinor")), accounts.length + " kassa"),
+      metric("Bu gün nağd", formatMoney(sum("todayCashMinor")), "Kassalara düşən"),
+      metric("Bu gün kart", formatMoney(accounts.filter((a) => a.kind === "till").reduce((t, a) => t + (Number(a.todayCardMinor) || 0), 0)), "Satış nöqtələri üzrə"),
+      metric("Bu gün cəmi satış", formatMoney(accounts.filter((a) => a.kind === "till").reduce((t, a) => t + (Number(a.todayCashMinor) || 0) + (Number(a.todayCardMinor) || 0), 0)), "Nağd + kart", "var(--ps-ok)")),
+
+    (data.unassigned ?? []).length ? h("div", { className: "ps-neg-banner" },
+      h("b", null, "Kassaya bağlı olmayan satış nöqtəsi: "),
+      data.unassigned.map((u) => (u.name || u.terminalId) + " — bu gün nağd " + formatMoney(u.cashMinor) + ", kart " + formatMoney(u.cardMinor)).join(" · "),
+      h("span", null, ". Kassa yaradıb bu nöqtəyə bağlayın.")) : null,
+
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["all", "Hamısı"], ...data.objects.map((o) => [o.id, o.name]), ...(data.objects.length ? [["none", "Obyektsiz"]] : [])].map(([k, l]) =>
+        h("button", { key: k, type: "button", "aria-pressed": objectId === k, className: "ps-period-chip" + (objectId === k ? " is-on" : ""), onClick: () => setObjectId(k) }, l)),
+      canManage ? h("button", { type: "button", className: "ps-link-btn", onClick: () => setObjForm({ name: "" }) }, "+ Obyekt") : null,
+      h("span", { className: "ml-auto" }),
+      canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setTransfer({ fromId: "", toId: "", value: "", note: "" }), children: "Kassalar arası transfer" }) : null,
+      canManage ? jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ name: "", kind: "till", objectId: objectId !== "all" && objectId !== "none" ? objectId : "", terminalId: data.accounts.some((a) => a.terminalId === data.currentTerminalId) ? "" : data.currentTerminalId, opening: "" }), children: "+ Yeni kassa" }) : null),
+
+    accounts.length ? h("div", { className: "ps-kassa-grid" }, accounts.map((a) =>
+      h("article", { key: a.id, className: "ps-kassa-card ps-kassa-" + a.kind },
+        h("div", { className: "ps-kassa-head" },
+          h("b", null, a.name),
+          h("span", { className: "ps-kassa-kind" }, PS_KASSA_KINDS[a.kind])),
+        h("p", { className: "ps-kassa-meta" },
+          [a.objectName ? "Obyekt: " + a.objectName : "", a.kind === "till" ? (a.terminalId ? "Satış nöqtəsi: " + termName(a.terminalId) : "Satış nöqtəsi bağlanmayıb") : ""].filter(Boolean).join(" · ") || "—"),
+        h("p", { className: "ps-kassa-balance" }, formatMoney(a.balanceMinor ?? 0)),
+        a.kind === "till" ? h("p", { className: "ps-kassa-today" }, "Bu gün: nağd " + formatMoney(a.todayCashMinor ?? 0) + " · kart " + formatMoney(a.todayCardMinor ?? 0))
+          : a.kind === "bank" ? h("p", { className: "ps-kassa-today" }, "Bu gün kart: " + formatMoney(a.todayCardMinor ?? 0)) : null,
+        h("div", { className: "flex flex-wrap gap-1" },
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => void openMoves(a), children: "Hərəkətlər" }),
+          canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setForm({ id: a.id, name: a.name, kind: a.kind, objectId: a.objectId || "", terminalId: a.terminalId || "" }), children: "Redaktə" }) : null,
+          canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void remove(a), children: "Bağla" }) : null))))
+      : h("p", { className: "ps-recipe-note" }, "Hələ kassa yoxdur. \"+ Yeni kassa\" ilə satış nöqtəsinin kassasını, xəzinəni və bankı yaradın."),
+
+    moves ? h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
+      h("div", { className: "flex items-center justify-between gap-3" },
+        h("p", { className: "text-sm font-semibold text-cream" }, moves.account.name + " — hərəkətlər (satışlardan başqa)"),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setMoves(null), children: "Bağla" })),
+      jsxRuntimeExports.jsx(OpsTable, { head: ["Tarix", "Növ", "Məbləğ", "Qeyd", "Kim"], empty: "Hərəkət yoxdur",
+        rows: moves.rows.map((e) => [opsWhen(e.createdAt), MOVE[e.kind] || e.kind,
+          h("b", { style: { color: (e.amountMinor ?? 0) < 0 ? "var(--ps-danger)" : "var(--ps-ok)" } }, ((e.amountMinor ?? 0) < 0 ? "−" : "+") + formatMoney(Math.abs(e.amountMinor ?? 0))),
+          e.note || "—", e.actorName || "—"]) })) : null,
+
+    form ? jsxRuntimeExports.jsx(PsAdminDialog, { title: form.id ? "Kassanı redaktə et" : "Yeni kassa", onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Ad", value: form.name, onChange: (v) => setForm({ ...form, name: v }), placeholder: "məs. Kassa 1, Xəzinə" }),
+        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Növ"),
+          h("select", { value: form.kind, disabled: Boolean(form.id), className: field, onChange: (e) => setForm({ ...form, kind: e.target.value }) },
+            Object.entries(PS_KASSA_KINDS).map(([k, l]) => h("option", { key: k, value: k }, l)))),
+        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Obyekt (filial)"),
+          h("select", { value: form.objectId, className: field, onChange: (e) => setForm({ ...form, objectId: e.target.value }) },
+            h("option", { value: "" }, "— Obyektsiz —"), data.objects.map((o) => h("option", { key: o.id, value: o.id }, o.name)))),
+        form.kind === "till" ? h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Satış nöqtəsi (kompüter)"),
+          h("select", { value: form.terminalId, className: field, onChange: (e) => setForm({ ...form, terminalId: e.target.value }) },
+            h("option", { value: "" }, "— Bağlanmayıb —"),
+            data.terminals.map((t) => h("option", { key: t.id, value: t.id }, t.name + (t.current && t.name !== "Bu kompüter" ? " (bu kompüter)" : ""))))) : null,
+        !form.id ? jsxRuntimeExports.jsx(OpsField, { label: "İlkin qalıq (₼)", value: form.opening, onChange: (v) => setForm({ ...form, opening: v }), placeholder: "0.00" }) : null),
+      h("p", { className: "text-xs text-muted" }, form.kind === "till"
+        ? "Bağlandığı kompüterdə alınan nağd pul bu kassaya düşür. Digər kompüter siyahıda yoxdursa, o kompüterdə bir satış edin — avtomatik görünəcək."
+        : form.kind === "bank" ? "Kartla alınan pul banka düşür (obyekt seçilibsə, yalnız o obyektin kassalarından)." : "Xəzinəyə pul transferlə gəlir və çıxır."),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: saveKassa, children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setForm(null), children: "İmtina" }))) }) : null,
+
+    objForm ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Yeni obyekt (filial)", onClose: () => setObjForm(null), busy, children: h("div", { className: "space-y-3" },
+      jsxRuntimeExports.jsx(OpsField, { label: "Obyektin adı", value: objForm.name, onChange: (v) => setObjForm({ name: v }), placeholder: "məs. Filial 2, Nərimanov" }),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => { if (!objForm.name.trim()) { toast("Adı yazın", "danger"); return; } void run(window.pos.cashAccounts.saveObject({ name: objForm.name.trim() }), "Obyekt yaradıldı").then((ok) => { if (ok) setObjForm(null); }); }, children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setObjForm(null), children: "İmtina" }))) }) : null,
+
+    transfer ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Kassalar arası transfer", onClose: () => setTransfer(null), busy, children: h("div", { className: "space-y-3" },
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Haradan"),
+          h("select", { value: transfer.fromId, className: field, onChange: (e) => setTransfer({ ...transfer, fromId: e.target.value }) }, h("option", { value: "" }, "Seçin…"), data.accounts.map(option))),
+        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Haraya"),
+          h("select", { value: transfer.toId, className: field, onChange: (e) => setTransfer({ ...transfer, toId: e.target.value }) }, h("option", { value: "" }, "Seçin…"), data.accounts.filter((a) => a.id !== transfer.fromId).map(option))),
+        jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: transfer.value, onChange: (v) => setTransfer({ ...transfer, value: v }), placeholder: "0.00" }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: transfer.note, onChange: (v) => setTransfer({ ...transfer, note: v }), placeholder: "məs. axşam inkassasiya" })),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: saveTransfer, children: "Transfer et" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setTransfer(null), children: "İmtina" }))) }) : null,
+    confirmDialog);
+}
+
+const PS_PARTNER_TYPES = { supplier: "Təchizatçı", employee: "İşçi", customer: "Müştəri" };
+/* POS_SALES_v1 */
+function psDayRange(kind, fromStr, toStr) {
+  const d = new Date();
+  const today = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  if (kind === "yesterday") return [today - 86400000, today];
+  if (kind === "custom") {
+    const f = fromStr ? new Date(fromStr + "T00:00").getTime() : today;
+    const t = toStr ? new Date(toStr + "T00:00").getTime() + 86400000 : f + 86400000;
+    return [f, Math.max(t, f + 1)];
+  }
+  return [psPeriodStart(kind, 0), today + 86400000];
+}
+function psPayLabel(s) {
+  return [(s.cashMinor ?? 0) > 0 ? "Nağd " + formatMoney(s.cashMinor) : "", (s.cardMinor ?? 0) > 0 ? "Kart " + formatMoney(s.cardMinor) : "",
+    (s.accountMinor ?? 0) > 0 ? "Borc " + formatMoney(s.accountMinor) : ""].filter(Boolean).join(" · ") || "—";
+}
+function psBadge(text, tone) {
+  return psH("span", { className: "ps-badge ps-badge-" + (tone || "muted") }, text);
+}
+function psMetric(label, value, sub, tone) {
+  return psH("div", { key: label, className: "ps-stock-metric" },
+    psH("p", { className: "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint" }, label),
+    psH("p", { className: "mt-2 text-2xl font-bold tracking-tight text-cream", style: tone ? { color: tone } : null }, value),
+    psH("p", { className: "mt-1 text-[11px] text-muted" }, sub));
+}
+function psObjectFilter(objects, value, onChange, all) {
+  if (!objects.length) return null;
+  return psH("select", { value, onChange: (e) => onChange(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" },
+    psH("option", { value: "" }, all || "Bütün obyektlər"), objects.map((o) => psH("option", { key: o.id, value: o.id }, o.name)));
+}
+const PS_REFUND_REASONS = ["Müştəri imtina etdi", "Səhv sifariş", "Keyfiyyət problemi", "Gecikmə", "Digər"];
+
+function OpsSales() {
+  const h = psH;
+  const hasPermission = useAuthStore((st) => st.hasPermission);
+  const canEdit = hasPermission("sales.edit");
+  const canDelete = hasPermission("sales.delete");
+  const canRefund = hasPermission("payment.refund");
+  const accData = usePsAccounts();
+  const objects = accData?.objects ?? [];
+  const tills = (accData?.accounts ?? []).filter((a) => a.kind === "till");
+  const [period, setPeriod] = reactExports.useState("day");
+  const [range, setRange] = reactExports.useState({ from: "", to: "" });
+  const [view, setView] = reactExports.useState("sales");
+  const [objectId, setObjectId] = reactExports.useState("");
+  const [accountId, setAccountId] = reactExports.useState("");
+  const [waiterId, setWaiterId] = reactExports.useState("");
+  const [query, setQuery] = reactExports.useState("");
+  const [showDeleted, setShowDeleted] = reactExports.useState(false);
+  const [data, setData] = reactExports.useState(null);
+  const [detail, setDetail] = reactExports.useState(null);
+  const [edit, setEdit] = reactExports.useState(null);
+  const [ret, setRet] = reactExports.useState(null);
+  const [del, setDel] = reactExports.useState(null);
+  const [partners, setPartners] = reactExports.useState([]);
+  const reload = reactExports.useCallback(async () => {
+    const [from, to] = psDayRange(period, range.from, range.to);
+    const r = await window.pos.sales.list(from, to);
+    if (r.success) setData(r.data); else toast(r.error.message, "danger");
+  }, [period, range.from, range.to]);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  if (!data) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
+
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
+  const needle = query.trim().toLocaleLowerCase("az");
+  const match = (s) => (!objectId || s.objectId === objectId) && (!accountId || s.accountId === accountId) && (!waiterId || s.waiterId === waiterId)
+    && (!needle || [s.number, s.customerName, s.tableName, s.waiterName].some((v) => String(v || "").toLocaleLowerCase("az").includes(needle)));
+  const all = (data.sales ?? []).filter(match);
+  const live = all.filter((s) => !s.deletedAt);
+  const rows = showDeleted ? all : live;
+  const refunds = (data.refunds ?? []).filter((r) => !objectId || r.objectId === objectId);
+  const sum = (list, key) => list.reduce((t, x) => t + (Number(x[key]) || 0), 0);
+  const total = sum(live, "totalMinor");
+  const refundTotal = sum(refunds, "amountMinor");
+  const waiters = [...new Map((data.sales ?? []).map((s) => [s.waiterId, s.waiterName || "—"])).entries()];
+  const group = (key, label) => {
+    const map = new Map();
+    for (const s of live) {
+      const k = s[key] || "—";
+      const row = map.get(k) || { name: label(s), count: 0, total: 0, discount: 0 };
+      row.count += 1; row.total += Number(s.totalMinor) || 0; row.discount += Number(s.discountMinor) || 0;
+      map.set(k, row);
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  };
+
+  const load = async (s) => {
+    const r = await window.pos.sales.get(s.id);
+    if (!r.success) { toast(r.error.message, "danger"); return null; }
+    return r.data;
+  };
+  const openDetail = async (s) => { const d = await load(s); if (d) setDetail(d); };
+  const openEdit = async (s) => {
+    const d = await load(s);
+    if (!d) return;
+    if (hasPermission("customers.view") && !partners.length) {
+      const p = await window.pos.guests.list("");
+      if (p.success) setPartners((p.data.customers ?? []).slice().sort((a, b) => a.name.localeCompare(b.name, "az")));
+    }
+    setEdit({ sale: d, waiterId: d.waiterId, customerId: d.customerId || "", note: d.note || "", discount: ((Number(d.discountMinor) || 0) / 100).toFixed(2),
+      lines: (d.items ?? []).filter((i) => i.status !== "voided").map((i) => ({ id: i.id, name: i.name, qty: String(i.quantity), price: ((Number(i.unitPriceMinor) || 0) / 100).toFixed(2),
+        perUnitMod: Math.round((Number(i.modifierTotalMinor) || 0) / Math.max(1, Number(i.quantity) || 1)), origQty: Number(i.quantity), origPrice: Number(i.unitPriceMinor) })) });
+  };
+  const editTotal = edit ? Math.max(0, edit.lines.reduce((t, l) => t + Math.max(0, Math.round(opsNum(l.qty))) * (opsMinor(l.price || "0") + l.perUnitMod), 0) - opsMinor(edit.discount || "0")) : 0;
+  const saveEdit = () => {
+    const d = edit.sale;
+    const input = { orderId: d.id };
+    if (edit.waiterId !== d.waiterId) input.waiterId = edit.waiterId;
+    if ((edit.customerId || "") !== (d.customerId || "")) input.customerId = edit.customerId;
+    if (edit.note !== (d.note || "")) input.note = edit.note;
+    if (!psStockInputValid(edit.discount || "0", { empty: true })) { toast("Endirimi düzgün yazın", "danger"); return; }
+    if (opsMinor(edit.discount || "0") !== (Number(d.discountMinor) || 0)) input.discountMinor = opsMinor(edit.discount || "0");
+    const lines = [];
+    for (const l of edit.lines) {
+      const qty = Math.round(opsNum(l.qty));
+      if (!psStockInputValid(l.price || "0", { empty: true }) || !Number.isFinite(qty) || qty < 0) { toast(l.name + ": miqdar və qiymət düzgün olmalıdır", "danger"); return; }
+      if (qty !== l.origQty || opsMinor(l.price || "0") !== l.origPrice) lines.push({ id: l.id, quantity: qty, unitPriceMinor: opsMinor(l.price || "0") });
+    }
+    if (lines.length) input.lines = lines;
+    if (Object.keys(input).length === 1) { setEdit(null); return; }
+    void run(window.pos.sales.update(input, { idempotencyKey: newIdempotencyKey() }), "Satış düzəldildi").then((ok) => { if (ok) setEdit(null); });
+  };
+
+  const openReturn = async (s) => {
+    const d = await load(s);
+    if (!d) return;
+    const pays = (d.payments ?? []).filter((p) => p.status === "approved").sort((a, b) => (b.amountMinor ?? 0) - (a.amountMinor ?? 0));
+    if (!pays.length) { toast("Bu satışda geri qaytarılacaq ödəniş yoxdur — lazımdırsa düzəliş edin", "danger"); return; }
+    const lines = (d.items ?? []).filter((i) => i.status !== "voided").map((i) => ({ id: i.id, name: i.name, max: Math.max(0, (Number(i.quantity) || 0) - (Number(i.refundedQty) || 0)),
+      unit: Math.round((Number(i.lineTotalMinor) || 0) / Math.max(1, Number(i.quantity) || 1)), qty: 0 })).filter((l) => l.max > 0);
+    setRet({ sale: d, pays, paymentId: pays[0].id, lines, amount: "", reason: PS_REFUND_REASONS[0], custom: "", key: newIdempotencyKey() });
+  };
+  const retTotal = ret ? ret.lines.reduce((t, l) => t + l.qty * l.unit, 0) : 0;
+  const saveReturn = () => {
+    const items = ret.lines.filter((l) => l.qty > 0).map((l) => ({ orderItemId: l.id, quantity: l.qty }));
+    const amount = items.length ? retTotal : opsMinor(ret.amount || "0");
+    if (amount <= 0) { toast("Qaytarılan məhsulu və ya məbləği seçin", "danger"); return; }
+    const reason = ret.reason === "Digər" ? ret.custom.trim() : ret.reason;
+    if (!reason) { toast("Səbəbi yazın", "danger"); return; }
+    void run(window.pos.payments.refund({ paymentId: ret.paymentId, amountMinor: amount, reason, ...(items.length ? { items } : {}) }, { idempotencyKey: ret.key }),
+      "Qaytarıldı").then((ok) => { if (ok) setRet(null); });
+  };
+  const saveDelete = () => {
+    if (!del.reason.trim()) { toast("Silinmə səbəbini yazın", "danger"); return; }
+    void run(window.pos.sales.remove({ orderId: del.sale.id, reason: del.reason.trim() }), "Satış silindi").then((ok) => { if (ok) setDel(null); });
+  };
+
+  const chip = (k, l, value, set) => h("button", { key: k, type: "button", "aria-pressed": value === k, className: "ps-period-chip" + (value === k ? " is-on" : ""), onClick: () => set(k) }, l);
+  const select = (value, onChange, first, options) => h("select", { value, onChange: (e) => onChange(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" },
+    h("option", { value: "" }, first), options.map(([v, l]) => h("option", { key: v, value: v }, l)));
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["day", "Bu gün"], ["yesterday", "Dünən"], ["week", "Bu həftə"], ["month", "Bu ay"], ["custom", "Tarix seç"]].map(([k, l]) => chip(k, l, period, setPeriod)),
+      period === "custom" ? h("span", { className: "flex items-center gap-1 text-sm text-muted" },
+        h("input", { type: "date", value: range.from, onChange: (e) => setRange({ ...range, from: e.target.value }), className: "rounded-xl border border-hairline bg-elevated px-2 py-1.5 text-cream" }), "—",
+        h("input", { type: "date", value: range.to, onChange: (e) => setRange({ ...range, to: e.target.value }), className: "rounded-xl border border-hairline bg-elevated px-2 py-1.5 text-cream" })) : null,
+      h("span", { className: "ml-auto" }),
+      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void reload(), children: "Yenilə" })),
+
+    h("div", { className: "ps-stock-metrics" },
+      psMetric("Satış", formatMoney(total), live.length + " qaimə"),
+      psMetric("Nağd", formatMoney(sum(live, "cashMinor")), "kassaya"),
+      psMetric("Kart", formatMoney(sum(live, "cardMinor")), "banka"),
+      psMetric("Borca (partnyor)", formatMoney(sum(live, "accountMinor")), live.filter((s) => (s.accountMinor ?? 0) > 0).length + " satış"),
+      psMetric("Endirim", formatMoney(sum(live, "discountMinor")), live.filter((s) => (s.discountMinor ?? 0) > 0).length + " satış"),
+      psMetric("Qaytarma", formatMoney(refundTotal), refunds.length + " qaytarma", refundTotal > 0 ? "var(--ps-danger)" : null),
+      psMetric("Orta çek", formatMoney(live.length ? Math.round(total / live.length) : 0), sum(live, "guestCount") + " qonaq"),
+      psMetric("Xalis", formatMoney(total - refundTotal), "satış − qaytarma", "var(--ps-ok)")),
+
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["sales", "Satış qaimələri"], ["returns", "Qaytarmalar"], ["report", "Hesabat"]].map(([k, l]) => chip(k, l, view, setView)),
+      psObjectFilter(objects, objectId, (v) => { setObjectId(v); setAccountId(""); }),
+      tills.length ? select(accountId, setAccountId, "Bütün kassalar", tills.filter((a) => !objectId || a.objectId === objectId).map((a) => [a.id, a.name + (a.objectName ? " · " + a.objectName : "")])) : null,
+      select(waiterId, setWaiterId, "Bütün ofisiantlar", waiters),
+      h("input", { value: query, placeholder: "Axtar: № / masa / partnyor", onChange: (e) => setQuery(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" }),
+      view === "sales" ? h("label", { className: "flex items-center gap-1 text-sm text-muted" },
+        h("input", { type: "checkbox", checked: showDeleted, onChange: (e) => setShowDeleted(e.target.checked) }), "Silinənlər də") : null),
+
+    view === "sales" ? jsxRuntimeExports.jsx(OpsTable, {
+      head: ["Qaimə", "Vaxt", "Obyekt / kassa", "Masa", "Ofisiant", "Bağlayan", "Cəm", "Endirim", "Ödəniş", "Partnyor", ""],
+      empty: "Bu dövrdə satış yoxdur",
+      rows: rows.map((s) => [
+        h("span", { className: "flex flex-wrap items-center gap-1" }, h("b", null, "#" + s.number), s.deletedAt ? psBadge("Silinib", "danger") : null, (s.refundedMinor ?? 0) > 0 ? psBadge("Qaytarma " + formatMoney(s.refundedMinor), "warn") : null),
+        opsWhen(s.closedAt),
+        [s.objectName, s.accountName].filter(Boolean).join(" · ") || "—",
+        s.tableName || "—",
+        s.waiterName || "—",
+        s.closedByName || "—",
+        h("b", { style: s.deletedAt ? { textDecoration: "line-through" } : null }, formatMoney(s.totalMinor ?? 0)),
+        (s.discountMinor ?? 0) > 0 ? h("span", { title: [s.discountByName, s.discountReason].filter(Boolean).join(" · ") }, formatMoney(s.discountMinor) + (s.discountByName ? " · " + s.discountByName : "")) : "—",
+        psPayLabel(s),
+        s.customerName || "—",
+        h("span", { className: "flex flex-wrap gap-1" },
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => void openDetail(s), children: "Bax" }),
+          !s.deletedAt && canRefund && ((s.cashMinor ?? 0) + (s.cardMinor ?? 0)) > (s.refundedMinor ?? 0) ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void openReturn(s), children: "Qaytar" }) : null,
+          !s.deletedAt && canEdit ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void openEdit(s), children: "Düzəliş" }) : null,
+          !s.deletedAt && canDelete ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => setDel({ sale: s, reason: "" }), children: "Sil" }) : null)
+      ])
+    }) : null,
+
+    view === "returns" ? jsxRuntimeExports.jsx(OpsTable, {
+      head: ["Vaxt", "Satış", "Obyekt", "Mallar", "Məbləğ", "Üsul", "Səbəb", "Kim qaytardı"],
+      empty: "Bu dövrdə qaytarma yoxdur",
+      rows: refunds.map((r) => [opsWhen(r.createdAt), "#" + r.number, r.objectName || "—", r.items || "Məbləğlə", h("b", { style: { color: "var(--ps-danger)" } }, formatMoney(r.amountMinor ?? 0)),
+        r.method === "card" ? "Kart" : r.method === "cash" ? "Nağd" : r.method, r.reason || "—", r.userName || "—"])
+    }) : null,
+
+    view === "report" ? h("div", { className: "grid gap-4 lg:grid-cols-2" },
+      h("section", { className: "space-y-2" }, h("h3", { className: "ps-recipe-step" }, "Ofisiantlar üzrə"),
+        jsxRuntimeExports.jsx(OpsTable, { head: ["Ofisiant", "Satış", "Cəm", "Orta çek", "Endirim"], empty: "Satış yoxdur",
+          rows: group("waiterId", (s) => s.waiterName || "—").map((g) => [g.name, String(g.count), h("b", null, formatMoney(g.total)), formatMoney(Math.round(g.total / g.count)), formatMoney(g.discount)]) })),
+      h("section", { className: "space-y-2" }, h("h3", { className: "ps-recipe-step" }, "Obyektlər və kassalar üzrə"),
+        jsxRuntimeExports.jsx(OpsTable, { head: ["Obyekt / kassa", "Satış", "Cəm", "Orta çek"], empty: "Satış yoxdur",
+          rows: group("accountId", (s) => [s.objectName, s.accountName].filter(Boolean).join(" · ") || "Kassaya bağlanmayıb").map((g) => [g.name, String(g.count), h("b", null, formatMoney(g.total)), formatMoney(Math.round(g.total / g.count))]) })),
+      h("section", { className: "space-y-2" }, h("h3", { className: "ps-recipe-step" }, "Bağlayanlar üzrə (kassir)"),
+        jsxRuntimeExports.jsx(OpsTable, { head: ["Kim bağlayıb", "Satış", "Cəm"], empty: "Satış yoxdur",
+          rows: group("closedById", (s) => s.closedByName || "—").map((g) => [g.name, String(g.count), h("b", null, formatMoney(g.total))]) })),
+      h("section", { className: "space-y-2" }, h("h3", { className: "ps-recipe-step" }, "Ən çox satılan" + (objectId || accountId || waiterId ? " (bütün obyektlər)" : "")),
+        jsxRuntimeExports.jsx(OpsTable, { head: ["Məhsul", "Say", "Məbləğ"], empty: "Satış yoxdur",
+          rows: (data.top ?? []).map((t) => [t.name, String(t.quantity), h("b", null, formatMoney(t.totalMinor ?? 0))]) }))) : null,
+
+    detail ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Satış #" + detail.number, onClose: () => setDetail(null), busy, children: h("div", { className: "space-y-3" },
+      h("div", { className: "ps-sale-facts" },
+        [["Açılıb", opsWhen(detail.openedAt)], ["Bağlanıb", opsWhen(detail.closedAt)], ["Obyekt", detail.objectName || "—"], ["Kassa", detail.accountName || "—"], ["Masa", detail.tableName || "—"],
+         ["Qonaq", String(detail.guestCount ?? "—")], ["Ofisiant", detail.waiterName || "—"], ["Hesabı bağlayan", detail.closedByName || "—"], ["Partnyor", detail.customerName || "—"],
+         ["Endirim", (detail.discountMinor ?? 0) > 0 ? formatMoney(detail.discountMinor) + (detail.discountByName ? " · " + detail.discountByName : "") + (detail.discountReason ? " · " + detail.discountReason : "") : "—"],
+         ["Ödəniş", psPayLabel(detail)], ["Qeyd", detail.note || "—"]].concat(detail.deletedAt ? [["Silinib", opsWhen(detail.deletedAt) + " · " + (detail.deleteReason || "")]] : [])
+          .map(([k, v]) => h("div", { key: k }, h("span", null, k), h("b", null, v)))),
+      jsxRuntimeExports.jsx(OpsTable, { head: ["Məhsul", "Miqdar", "Qiymət", "Cəm", "Qaytarılıb"], empty: "Məhsul yoxdur",
+        rows: (detail.items ?? []).map((i) => [h("span", { style: i.status === "voided" ? { textDecoration: "line-through", opacity: 0.6 } : null }, i.name + (i.note ? " (" + i.note + ")" : "")),
+          String(i.quantity), formatMoney(i.unitPriceMinor ?? 0), formatMoney(i.lineTotalMinor ?? 0), (i.refundedQty ?? 0) > 0 ? String(i.refundedQty) : "—"]) }),
+      h("div", { className: "ps-purchase-total" }, h("span", null, "Cəm"), h("b", null, formatMoney(detail.totalMinor ?? 0))),
+      (detail.payments ?? []).length ? jsxRuntimeExports.jsx(OpsTable, { head: ["Ödəniş", "Üsul", "Məbləğ", "Kim"], empty: "",
+        rows: detail.payments.map((p) => [opsWhen(p.createdAt), (p.method === "cash" ? "Nağd" : p.method === "card" ? "Kart" : p.method === "mixed" ? "Qarışıq" : p.method) + (p.status === "canceled" ? " (ləğv)" : ""), formatMoney(p.amountMinor ?? 0), p.userName || "—"]) }) : null,
+      (detail.refunds ?? []).length ? jsxRuntimeExports.jsx(OpsTable, { head: ["Qaytarma", "Məbləğ", "Səbəb", "Kim"], empty: "",
+        rows: detail.refunds.map((r) => [opsWhen(r.createdAt), formatMoney(r.amountMinor ?? 0), r.reason || "—", r.userName || "—"]) }) : null) }) : null,
+
+    edit ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Satış #" + edit.sale.number + " — düzəliş", onClose: () => setEdit(null), busy, children: h("div", { className: "space-y-3" },
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Ofisiant (qulluq edən)"),
+          h("select", { value: edit.waiterId, className: field, onChange: (e) => setEdit({ ...edit, waiterId: e.target.value }) },
+            (edit.sale.waiters ?? []).map((w) => h("option", { key: w.id, value: w.id }, w.name)))),
+        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Partnyor"),
+          h("select", { value: edit.customerId, className: field, onChange: (e) => setEdit({ ...edit, customerId: e.target.value }) },
+            h("option", { value: "" }, "— Partnyorsuz —"),
+            (partners.some((p) => p.id === edit.sale.customerId) || !edit.sale.customerId ? [] : [{ id: edit.sale.customerId, name: edit.sale.customerName }]).concat(partners)
+              .map((p) => h("option", { key: p.id, value: p.id }, p.name + (p.kind === "employee" ? " (işçi)" : "")))))),
+      h("div", { className: "ps-recipe-rows" }, edit.lines.map((l, i) => h("div", { key: l.id, className: "ps-sale-edit-row" },
+        h("span", { className: "ps-recipe-name" }, l.name),
+        h("label", { className: "ps-recipe-price" }, h("span", null, "Miqdar"),
+          h("input", { inputMode: "numeric", value: l.qty, onChange: (e) => setEdit({ ...edit, lines: edit.lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)) }) })),
+        h("label", { className: "ps-recipe-price" }, h("span", null, "Qiymət (₼)"),
+          h("input", { inputMode: "decimal", value: l.price, onChange: (e) => setEdit({ ...edit, lines: edit.lines.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)) }) })),
+        h("button", { type: "button", className: "ps-recipe-remove", "aria-label": "Sil", title: "Bu məhsulu satışdan çıxar", onClick: () => setEdit({ ...edit, lines: edit.lines.map((x, j) => (j === i ? { ...x, qty: "0" } : x)) }) }, "×")))),
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Endirim (₼)", value: edit.discount, onChange: (v) => setEdit({ ...edit, discount: v }), placeholder: "0.00" }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: edit.note, onChange: (v) => setEdit({ ...edit, note: v }) })),
+      h("div", { className: "ps-purchase-total" }, h("span", null, "Yeni cəm (təxmini)"), h("b", null, formatMoney(editTotal))),
+      h("p", { className: "text-xs text-muted" }, "Fərq partnyorun borcuna (satış borca idisə) və ya ödənişə yazılır; anbar da yeni miqdara görə düzəlir. Miqdarı 0 yazsanız məhsul satışdan çıxır."),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: saveEdit, children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setEdit(null), children: "İmtina" }))) }) : null,
+
+    ret ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Satış #" + ret.sale.number + " — geri qaytarma", onClose: () => setRet(null), busy, children: h("div", { className: "space-y-3" },
+      ret.pays.length > 1 ? h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Hansı ödənişdən"),
+        h("select", { value: ret.paymentId, className: field, onChange: (e) => setRet({ ...ret, paymentId: e.target.value }) },
+          ret.pays.map((p) => h("option", { key: p.id, value: p.id }, (p.method === "card" ? "Kart" : p.method === "cash" ? "Nağd" : "Qarışıq") + " · " + formatMoney(p.amountMinor ?? 0))))) : null,
+      ret.lines.length ? h("div", { className: "ps-recipe-rows" }, ret.lines.map((l, i) => h("div", { key: l.id, className: "ps-sale-return-row" },
+        h("span", { className: "ps-recipe-name" }, l.name, h("small", null, " · ən çox " + l.max)),
+        h("span", { className: "ps-qty-stepper" },
+          h("button", { type: "button", onClick: () => setRet({ ...ret, lines: ret.lines.map((x, j) => (j === i ? { ...x, qty: Math.max(0, x.qty - 1) } : x)) }) }, "−"),
+          h("b", null, String(l.qty)),
+          h("button", { type: "button", onClick: () => setRet({ ...ret, lines: ret.lines.map((x, j) => (j === i ? { ...x, qty: Math.min(x.max, x.qty + 1) } : x)) }) }, "+")),
+        h("b", { className: "ps-recipe-cost" }, formatMoney(l.qty * l.unit))))) : null,
+      !ret.lines.some((l) => l.qty > 0) ? jsxRuntimeExports.jsx(OpsField, { label: "Və ya məbləğlə (₼)", value: ret.amount, onChange: (v) => setRet({ ...ret, amount: v }), placeholder: "0.00" }) : null,
+      h("div", { className: "flex flex-wrap gap-2" }, PS_REFUND_REASONS.map((k) => chip(k, k, ret.reason, (v) => setRet({ ...ret, reason: v })))),
+      ret.reason === "Digər" ? jsxRuntimeExports.jsx(OpsField, { label: "Səbəb", value: ret.custom, onChange: (v) => setRet({ ...ret, custom: v }) }) : null,
+      h("div", { className: "ps-purchase-total" }, h("span", null, "Müştəriyə qaytarılır"), h("b", null, formatMoney(ret.lines.some((l) => l.qty > 0) ? retTotal : opsMinor(ret.amount || "0")))),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: saveReturn, children: "Qaytar" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setRet(null), children: "İmtina" }))) }) : null,
+
+    del ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Satış #" + del.sale.number + " silinsin?", onClose: () => setDel(null), busy, children: h("div", { className: "space-y-3" },
+      h("p", { className: "text-sm text-muted" }, formatMoney(del.sale.totalMinor ?? 0) + " — ödəniş kassadan çıxır, partnyor borcu silinir, məhsullar anbara qayıdır. Qaimə \"Silinənlər\"də qalır."),
+      jsxRuntimeExports.jsx(OpsField, { label: "Səbəb", value: del.reason, onChange: (v) => setDel({ ...del, reason: v }), placeholder: "məs. səhv vurulub, test satışı" }),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: saveDelete, children: "Sil" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setDel(null), children: "İmtina" }))) }) : null);
+}
+
+function OpsPartners() {
+  const h = psH;
+  const hasPermission = useAuthStore((st) => st.hasPermission);
+  const canPeople = hasPermission("customers.view");
+  const canSuppliers = hasPermission("suppliers.view");
+  const accData = usePsAccounts();
+  const objects = accData?.objects ?? [];
+  const objectName = (id) => (objects.find((o) => o.id === id) || {}).name || "";
+  const [type, setType] = reactExports.useState("all");
+  const [objectId, setObjectId] = reactExports.useState("");
+  const [query, setQuery] = reactExports.useState("");
+  const [people, setPeople] = reactExports.useState([]);
+  const [suppliers, setSuppliers] = reactExports.useState([]);
+  const [form, setForm] = reactExports.useState(null);
+  const [ask, setAsk] = reactExports.useState(null);
+  const [pay, setPay] = reactExports.useState(null);
+  const [ledger, setLedger] = reactExports.useState(null);
+  const [confirmAsk, confirmDialog] = useConfirm();
+  const reload = reactExports.useCallback(async () => {
+    const [p, s] = await Promise.all([canPeople ? window.pos.guests.list("") : null, canSuppliers ? window.pos.suppliers.list() : null]);
+    if (p?.success) setPeople(p.data.customers ?? []);
+    if (s?.success) setSuppliers(s.data.suppliers ?? []);
+  }, [canPeople, canSuppliers]);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
+
+  const rows = [
+    ...people.map((p) => ({ key: "c" + p.id, src: "person", type: p.kind === "employee" ? "employee" : "customer", id: p.id, name: p.name, phone: p.phone || "", objectId: p.objectId || "", salaryMinor: p.salaryMinor ?? 0, owesUs: p.debtMinor ?? 0, weOwe: 0, raw: p })),
+    ...suppliers.map((x) => ({ key: "s" + x.id, src: "supplier", type: "supplier", id: x.id, name: x.name, phone: x.phone || "", contact: x.contact || "", objectId: "", salaryMinor: 0, owesUs: 0, weOwe: x.dueMinor ?? 0, raw: x }))
+  ].sort((a, b) => a.name.localeCompare(b.name, "az"));
+  const needle = query.trim().toLocaleLowerCase("az");
+  const inScope = rows.filter((r) => (!objectId || r.objectId === objectId) && (!needle || (r.name + " " + r.phone).toLocaleLowerCase("az").includes(needle)));
+  const shown = inScope.filter((r) => type === "all" || r.type === type);
+  const count = (t) => inScope.filter((r) => t === "all" || r.type === t).length;
+  const sum = (key) => shown.reduce((t, r) => t + (Number(r[key]) || 0), 0);
+
+  const save = async () => {
+    if (!form.name.trim()) { toast("Ad tələb olunur", "danger"); return; }
+    if (form.type === "supplier") {
+      const ok = await run(window.pos.suppliers.save({ ...(form.id ? { id: form.id } : {}), name: form.name.trim(), phone: form.phone.trim(), contact: (form.contact || "").trim() }), form.id ? "Saxlanıldı" : "Partnyor əlavə olundu");
+      if (ok) setForm(null);
+      return;
+    }
+    if (form.type === "employee" && !psStockInputValid(form.salary || "0", { empty: true })) { toast("Maaşı düzgün yazın", "danger"); return; }
+    const ok = await run(window.pos.guests.save({
+      ...(form.id ? { id: form.id } : {}), name: form.name.trim(), phone: form.phone.trim(),
+      kind: form.type, salaryMinor: form.type === "employee" ? opsMinor(form.salary || "0") : 0, objectId: form.objectId || ""
+    }), form.id ? "Saxlanıldı" : "Partnyor əlavə olundu");
+    if (ok) setForm(null);
+  };
+  const openLedger = async (r) => {
+    const res = r.src === "supplier" ? await window.pos.suppliers.ledger(r.id) : await window.pos.guests.ledger(r.id);
+    setLedger({ row: r, rows: res.success ? (res.data.entries ?? res.data.ledger ?? []) : [] });
+  };
+  const remove = async (r) => {
+    if (!(await confirmAsk('"' + r.name + '" partnyorlardan silinsin? Keçmiş hesab qalır.', { danger: true }))) return;
+    if (r.src === "supplier") void run(window.pos.suppliers.save({ id: r.id, name: r.name, phone: r.phone, contact: r.contact || "", active: false }), "Silindi");
+    else void run(window.pos.guests.deactivate(r.id), "Silindi");
+  };
+  const edit = (r) => setForm({ id: r.id, type: r.type, name: r.name, phone: r.phone, contact: r.contact || "", salary: ((r.salaryMinor ?? 0) / 100).toFixed(2), objectId: r.objectId });
+  const kindLabel = (r, e) => e.kind === "payment" ? "Ödəniş" : e.kind === "adjustment" ? "Düzəliş" : (e.amountMinor ?? 0) < 0 ? (r.src === "supplier" ? "Qaytarma / silinmə" : "Qaytarma / azalma") : r.src === "supplier" ? "Alış (borc)" : "Borc";
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "ps-stock-metrics" },
+      psMetric("Partnyor", String(shown.length), type === "all" ? "hamısı" : PS_PARTNER_TYPES[type]),
+      psMetric("Bizə borclu", formatMoney(sum("owesUs")), shown.filter((r) => r.owesUs > 0).length + " partnyor", sum("owesUs") > 0 ? "var(--ps-danger)" : null),
+      psMetric("Təchizatçılara borcumuz", formatMoney(sum("weOwe")), shown.filter((r) => r.weOwe > 0).length + " təchizatçı", sum("weOwe") > 0 ? "var(--ps-danger)" : null),
+      psMetric("Aylıq maaş fondu", formatMoney(sum("salaryMinor")), shown.filter((r) => r.type === "employee").length + " işçi")),
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["all", "Hamısı"], ["supplier", "Təchizatçı"], ["employee", "İşçi"], ["customer", "Müştəri"]].map(([k, l]) =>
+        h("button", { key: k, type: "button", "aria-pressed": type === k, className: "ps-period-chip" + (type === k ? " is-on" : ""), onClick: () => setType(k) }, l + " (" + count(k) + ")")),
+      psObjectFilter(objects, objectId, setObjectId),
+      h("input", { value: query, placeholder: "Axtar: ad / telefon", onChange: (e) => setQuery(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" }),
+      h("span", { className: "ml-auto" }),
+      jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ type: type === "all" ? "customer" : type, name: "", phone: "", contact: "", salary: "", objectId }), children: "+ Yeni partnyor" })),
+
+    jsxRuntimeExports.jsx(OpsTable, {
+      head: ["Partnyor", "Tip", "Obyekt", "Telefon", "Aylıq maaş", "Borc", ""],
+      empty: "Bu seçimdə partnyor yoxdur",
+      rows: shown.map((r) => [
+        h("span", { className: "font-medium text-cream" }, r.name, r.contact ? h("small", { className: "ml-1 text-muted" }, "· " + r.contact) : null),
+        PS_PARTNER_TYPES[r.type],
+        objectName(r.objectId) || "—",
+        r.phone || "—",
+        r.type === "employee" ? formatMoney(r.salaryMinor) : "—",
+        r.weOwe > 0 ? h("span", { style: { color: "var(--ps-danger)", fontWeight: 600 } }, "Borcumuz " + formatMoney(r.weOwe))
+          : r.owesUs > 0 ? h("span", { style: { color: "var(--ps-danger)", fontWeight: 600 } }, "Bizə borc " + formatMoney(r.owesUs))
+          : r.weOwe < 0 ? h("span", { style: { color: "var(--ps-ok)" } }, "Avans " + formatMoney(-r.weOwe)) : formatMoney(0),
+        h("span", { className: "flex flex-wrap gap-1" },
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void openLedger(r), children: "Hesab" }),
+          r.owesUs > 0 && hasPermission("customers.credit") ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setAsk({ person: r.raw, value: "" }), children: "Borcu al" }) : null,
+          r.weOwe > 0 && hasPermission("suppliers.pay") ? jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => setPay({ row: r, value: "", note: "" }), children: "Ödə" }) : null,
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => edit(r), children: "Redaktə" }),
+          jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void remove(r), children: "Sil" }))
+      ])
+    }),
+
+    ledger ? h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
+      h("div", { className: "flex items-center justify-between gap-3" },
+        h("p", { className: "text-sm font-semibold text-cream" }, ledger.row.name + " — hesab · " + (ledger.row.src === "supplier" ? "borcumuz " + formatMoney(ledger.row.weOwe) : "borc " + formatMoney(ledger.row.owesUs))),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setLedger(null), children: "Bağla" })),
+      jsxRuntimeExports.jsx(OpsTable, { head: ["Tarix", "Növ", "Məbləğ", "Qeyd"], empty: "Hərəkət yoxdur",
+        rows: ledger.rows.map((e) => [opsWhen(e.createdAt), kindLabel(ledger.row, e),
+          h("span", { style: { color: e.kind === "charge" && (e.amountMinor ?? 0) > 0 ? "var(--ps-danger)" : "var(--ps-ok)", fontWeight: 600 } }, formatMoney(Math.abs(e.amountMinor ?? 0))),
+          [e.orderNumber ? "#" + e.orderNumber : "", e.note || ""].filter(Boolean).join(" · ") || "—"]) })) : null,
+
+    form ? jsxRuntimeExports.jsx(PsAdminDialog, { title: form.id ? "Partnyoru redaktə et" : "Yeni partnyor", onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
+      h("label", { className: "block text-sm" },
+        h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Partnyorun tipi"),
+        h("select", { value: form.type, disabled: Boolean(form.id), className: field, onChange: (e) => setForm({ ...form, type: e.target.value }) },
+          Object.entries(PS_PARTNER_TYPES).filter(([k]) => (k === "supplier" ? canSuppliers : canPeople)).map(([k, l]) => h("option", { key: k, value: k }, l)))),
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Ad", value: form.name, onChange: (v) => setForm({ ...form, name: v }) }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Telefon", value: form.phone, onChange: (v) => setForm({ ...form, phone: v }) }),
+        form.type === "employee" ? jsxRuntimeExports.jsx(OpsField, { label: "Aylıq maaş (₼)", value: form.salary, onChange: (v) => setForm({ ...form, salary: v }), placeholder: "0.00" }) : null,
+        form.type === "supplier" ? jsxRuntimeExports.jsx(OpsField, { label: "Əlaqədar şəxs", value: form.contact, onChange: (v) => setForm({ ...form, contact: v }) }) : null,
+        form.type !== "supplier" && objects.length ? h("label", { className: "block text-sm" },
+          h("span", { className: "text-xs uppercase tracking-wide text-faint" }, form.type === "employee" ? "Hansı obyektdə işləyir" : "Obyekt"),
+          h("select", { value: form.objectId || "", className: field, onChange: (e) => setForm({ ...form, objectId: e.target.value }) },
+            h("option", { value: "" }, "— Seçilməyib —"), objects.map((o) => h("option", { key: o.id, value: o.id }, o.name)))) : null),
+      form.type === "employee" ? h("p", { className: "text-xs text-muted" }, "İşçinin (və ailəsinin) yeməkləri sifarişdə onun adına borc yazılır və Maaşlar bölməsində maaşından çıxılır.") : null,
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void save(), children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setForm(null), children: "İmtina" }))) }) : null,
+
+    ask ? jsxRuntimeExports.jsx(PsAdminDialog, { title: ask.person.name + " — borcu al", onClose: () => setAsk(null), busy, children: h("div", { className: "space-y-3" },
+      h("p", { className: "text-xs text-muted" }, "Cari borc: " + formatMoney(ask.person.debtMinor ?? 0)),
+      jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: ask.value, onChange: (v) => setAsk({ ...ask, value: v }) }),
+      jsxRuntimeExports.jsx(PsAccountSelect, { value: ask.accountId, onChange: (v) => setAsk((p) => (p ? { ...p, accountId: v } : p)), label: "Pul hansı kassaya girir" }),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => {
+          if (!psStockInputValid(ask.value) || opsMinor(ask.value) <= 0) { toast("Düzgün məbləğ yazın", "danger"); return; }
+          void run(window.pos.guests.payDebt({ customerId: ask.person.id, amountMinor: opsMinor(ask.value), accountId: ask.accountId || "" }), "Ödəniş qəbul edildi").then((ok) => { if (ok) setAsk(null); });
+        }, children: "Təsdiq et" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setAsk(null), children: "Bağla" }))) }) : null,
+
+    pay ? jsxRuntimeExports.jsx(PsAdminDialog, { title: pay.row.name + " — ödəniş", onClose: () => setPay(null), busy, children: h("div", { className: "space-y-3" },
+      h("p", { className: "text-xs text-muted" }, "Borcumuz: " + formatMoney(pay.row.weOwe) + ". Bir hissəsini ödəsəniz, qalanı borc olaraq qalır."),
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: pay.value, onChange: (v) => setPay({ ...pay, value: v }), placeholder: "0.00" }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: pay.note, onChange: (v) => setPay({ ...pay, note: v }) })),
+      jsxRuntimeExports.jsx(PsAccountSelect, { value: pay.accountId, onChange: (v) => setPay((p) => (p ? { ...p, accountId: v } : p)), label: "Hansı kassadan ödənilir" }),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => {
+          if (!psStockInputValid(pay.value) || opsMinor(pay.value) <= 0) { toast("Məbləği yazın", "danger"); return; }
+          if (opsMinor(pay.value) > pay.row.weOwe) { toast("Ödəniş borcdan çox ola bilməz", "danger"); return; }
+          void run(window.pos.suppliers.pay({ supplierId: pay.row.id, amountMinor: opsMinor(pay.value), accountId: pay.accountId || "", note: pay.note.trim() }), "Ödəniş qeyd olundu").then((ok) => { if (ok) setPay(null); });
+        }, children: "Ödə" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setPay(null), children: "İmtina" }))) }) : null,
+    confirmDialog);
+}
+
+function psMonthBounds(month) {
+  const [y, m] = month.split("-").map(Number);
+  return { from: new Date(y, m - 1, 1).getTime(), to: new Date(y, m, 1).getTime() };
+}
+function OpsSalary() {
+  const h = psH;
+  const [month, setMonth] = reactExports.useState(() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); });
+  const [rows, setRows] = reactExports.useState([]);
+  const [ask, setAsk] = reactExports.useState(null);
+  const [open, setOpen] = reactExports.useState(null);
+  const salaryAcc = usePsAccounts();
+  const salaryObjects = salaryAcc?.objects ?? [];
+  const [salaryObject, setSalaryObject] = reactExports.useState("");
+  const reload = reactExports.useCallback(async () => {
+    const r = await window.pos.salary.list({ month, ...psMonthBounds(month) });
+    if (r.success) setRows(r.data.employees ?? []); else toast(r.error.message, "danger");
+  }, [month]);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  const kindLabel = { advance: "Avans", full: "Tam ödəniş", note: "Qeyd" };
+
+  const pay = () => {
+    const amount = ask.kind === "note" ? 0 : opsMinor(ask.value);
+    if (ask.kind !== "note" && (!psStockInputValid(ask.value) || amount <= 0)) { toast("Məbləği yazın", "danger"); return; }
+    if (ask.kind === "note" && !ask.note.trim()) { toast("Qeydi yazın", "danger"); return; }
+    void run(window.pos.salary.pay({ customerId: ask.row.id, month, kind: ask.kind, amountMinor: amount, note: ask.note.trim(), accountId: ask.kind !== "note" ? ask.accountId || "" : "" },
+      { idempotencyKey: newIdempotencyKey() }), "Saxlanıldı").then((ok) => { if (ok) setAsk(null); });
+  };
+  const saveSalary = (row) => {
+    if (!psStockInputValid(ask.value) ) { toast("Maaşı düzgün yazın", "danger"); return; }
+    void run(window.pos.guests.save({ id: row.id, name: row.name, phone: row.phone || "", kind: "employee", salaryMinor: opsMinor(ask.value) }), "Maaş yeniləndi").then((ok) => { if (ok) setAsk(null); });
+  };
+  const shownRows = rows.filter((r) => !salaryObject || r.objectId === salaryObject);
+  const sum = (key) => shownRows.reduce((t, r) => t + (Number(r[key]) || 0), 0);
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "ps-stock-metrics" },
+      ...[["Maaş fondu", sum("salaryMinor")], ["Ödənilib", sum("paidMinor")], ["Yeməklər (tutulma)", sum("mealsMinor")], ["Qalıq ödəniləcək", sum("remainingMinor")]].map(([l, v]) =>
+        h("div", { key: l, className: "ps-stock-metric" },
+          h("p", { className: "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint" }, l),
+          h("p", { className: "mt-2 text-2xl font-bold tracking-tight text-cream" }, formatMoney(v)),
+          h("p", { className: "mt-1 text-[11px] text-muted" }, month)))),
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      h("label", { className: "text-sm text-muted" }, "Ay: ",
+        h("input", { type: "month", value: month, onChange: (e) => e.target.value && setMonth(e.target.value), className: "ml-1 rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream" })),
+      psObjectFilter(salaryObjects, salaryObject, setSalaryObject),
+      h("small", { className: "text-muted" }, "Yeni ay başlayanda hər işçinin qarşısında yenə tam maaş görünür.")),
+    jsxRuntimeExports.jsx(OpsTable, {
+      head: ["İşçi", "Obyekt", "Aylıq maaş", "Ödənilib", "Yeməklər", "Qalıq", ""],
+      empty: "İşçi yoxdur — Partnyorlar bölməsində İşçi tipli partnyor yaradın",
+      rows: shownRows.map((r) => [
+        h("span", { className: "font-medium text-cream" }, r.name, r.settled ? h("span", { className: "ml-2 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", style: { background: "#e7f5ee", color: "var(--ps-ok)" } }, "Ödənilib") : null),
+        (salaryObjects.find((o) => o.id === r.objectId) || {}).name || "—",
+        h("button", { type: "button", className: "ps-link-btn", onClick: () => setAsk({ row: r, kind: "salary", value: ((r.salaryMinor ?? 0) / 100).toFixed(2) }) }, formatMoney(r.salaryMinor ?? 0)),
+        formatMoney(r.paidMinor ?? 0),
+        formatMoney(r.mealsMinor ?? 0),
+        h("b", { style: { color: (r.remainingMinor ?? 0) > 0 ? "var(--ps-danger)" : "var(--ps-ok)" } }, formatMoney(r.remainingMinor ?? 0)),
+        h("span", { className: "flex flex-wrap gap-1" },
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy || r.settled, onClick: () => setAsk({ row: r, kind: "advance", value: "", note: "", fromCash: true }), children: "Avans" }),
+          jsxRuntimeExports.jsx(OpsButton, { disabled: busy || r.settled, onClick: () => setAsk({ row: r, kind: "full", value: ((r.remainingMinor ?? 0) / 100).toFixed(2), note: "", fromCash: true }), children: "Tam ödəniş" }),
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setAsk({ row: r, kind: "note", value: "", note: "", fromCash: false }), children: "Qeyd" }),
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setOpen(open === r.id ? null : r.id), children: "Tarixçə" }))
+      ])
+    }),
+    open ? (() => {
+      const r = rows.find((x) => x.id === open);
+      if (!r) return null;
+      return h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
+        h("p", { className: "text-sm font-semibold text-cream" }, r.name + " — " + month),
+        jsxRuntimeExports.jsx(OpsTable, { head: ["Tarix", "Növ", "Məbləğ", "Qeyd"], empty: "Bu ay hərəkət yoxdur",
+          rows: (r.history ?? []).map((e) => [opsWhen(e.createdAt), kindLabel[e.kind] || e.kind, e.kind === "note" ? "—" : formatMoney(e.amountMinor ?? 0), e.note || "—"]) }));
+    })() : null,
+    ask ? jsxRuntimeExports.jsx(PsAdminDialog, {
+      title: ask.row.name + " — " + (ask.kind === "salary" ? "aylıq maaş" : kindLabel[ask.kind]), onClose: () => setAsk(null), busy,
+      children: h("div", { className: "space-y-3" },
+        ask.kind === "salary"
+          ? jsxRuntimeExports.jsx(OpsField, { label: "Aylıq maaş (₼)", value: ask.value, onChange: (v) => setAsk({ ...ask, value: v }) })
+          : h("div", { className: "space-y-2" },
+              ask.kind === "full" ? h("p", { className: "text-xs text-muted" }, "Maaş " + formatMoney(ask.row.salaryMinor ?? 0) + " − ödənilib " + formatMoney(ask.row.paidMinor ?? 0) + " − yeməklər " + formatMoney(ask.row.mealsMinor ?? 0) + ". Yemək borcu maaşdan tutulmuş sayılır.") : null,
+              ask.kind !== "note" ? jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: ask.value, onChange: (v) => setAsk({ ...ask, value: v }) }) : null,
+              jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: ask.note, onChange: (v) => setAsk({ ...ask, note: v }) }),
+              ask.kind !== "note" ? jsxRuntimeExports.jsx(PsAccountSelect, { value: ask.accountId, onChange: (v) => setAsk((p) => (p ? { ...p, accountId: v } : p)), label: "Hansı kassadan / xəzinədən ödənilir" }) : null),
+        h("div", { className: "flex gap-2" },
+          jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => (ask.kind === "salary" ? saveSalary(ask.row) : pay()), children: "Təsdiq et" }),
+          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setAsk(null), children: "Bağla" })))
+    }) : null);
+}
+
+const PS_EXPENSE_KINDS = ["Bazarlıq", "Kommunal", "Maaş", "Nəqliyyat", "Təmir", "Digər"];
+function OpsExpenses() {
+  const h = psH;
+  const [rows, setRows] = reactExports.useState([]);
+  const [period, setPeriod] = reactExports.useState("month");
+  const [form, setForm] = reactExports.useState(null);
+  const expenseAcc = usePsAccounts();
+  const expenseObjects = expenseAcc?.objects ?? [];
+  const [expenseObject, setExpenseObject] = reactExports.useState("");
+  const reload = reactExports.useCallback(async () => {
+    const r = await window.pos.cash.list("");
+    if (r.success) setRows((r.data.movements ?? []).filter((m) => m.kind === "expense"));
+  }, []);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  const since = psPeriodStart(period, 0);
+  const shown = rows.filter((m) => (Number(m.createdAt) || 0) >= since && (!expenseObject || m.objectId === expenseObject));
+  const total = shown.reduce((t, m) => t + (Number(m.amountMinor) || 0), 0);
+  const byKind = new Map();
+  for (const m of shown) byKind.set(m.reason || "Digər", (byKind.get(m.reason || "Digər") || 0) + (Number(m.amountMinor) || 0));
+
+  const save = () => {
+    if (!psStockInputValid(form.value) || opsMinor(form.value) <= 0) { toast("Məbləği yazın", "danger"); return; }
+    const reason = form.kind === "Digər" && form.custom.trim() ? form.custom.trim() : form.kind;
+    void run(window.pos.cash.movement({ kind: "expense", amountMinor: opsMinor(form.value), reason, note: form.note.trim(), accountId: form.accountId || "" }, { idempotencyKey: newIdempotencyKey() }), "Xərc yazıldı")
+      .then((ok) => { if (ok) setForm(null); });
+  };
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "ps-stock-metrics" },
+      h("div", { className: "ps-stock-metric" },
+        h("p", { className: "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint" }, "Cəmi xərc"),
+        h("p", { className: "mt-2 text-2xl font-bold tracking-tight", style: { color: "var(--ps-danger)" } }, formatMoney(total)),
+        h("p", { className: "mt-1 text-[11px] text-muted" }, shown.length + " xərc")),
+      ...[...byKind].map(([k, v]) => h("div", { key: k, className: "ps-stock-metric" },
+        h("p", { className: "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint" }, k),
+        h("p", { className: "mt-2 text-2xl font-bold tracking-tight text-cream" }, formatMoney(v)),
+        h("p", { className: "mt-1 text-[11px] text-muted" }, "Kateqoriya")))),
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["day", "Bu gün"], ["week", "Bu həftə"], ["month", "Bu ay"]].map(([k, l]) =>
+        h("button", { key: k, type: "button", "aria-pressed": period === k, className: "ps-period-chip" + (period === k ? " is-on" : ""), onClick: () => setPeriod(k) }, l)),
+      psObjectFilter(expenseObjects, expenseObject, setExpenseObject),
+      h("span", { className: "ml-auto" }),
+      jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ kind: "Bazarlıq", custom: "", value: "", note: "" }), children: "+ Xərc" })),
+    jsxRuntimeExports.jsx(OpsTable, {
+      head: ["Tarix", "Kateqoriya", "Kassa / obyekt", "Məbləğ", "Qeyd"],
+      empty: "Bu dövrdə xərc yoxdur",
+      rows: shown.map((m) => [opsWhen(m.createdAt), m.reason || "—", [m.accountName, m.objectName].filter(Boolean).join(" · ") || "—", h("b", { style: { color: "var(--ps-danger)" } }, formatMoney(m.amountMinor ?? 0)), m.note || "—"])
+    }),
+    form ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Yeni xərc", onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
+      h("div", { className: "flex flex-wrap gap-2" }, PS_EXPENSE_KINDS.map((k) =>
+        h("button", { key: k, type: "button", "aria-pressed": form.kind === k, className: "ps-period-chip" + (form.kind === k ? " is-on" : ""), onClick: () => setForm({ ...form, kind: k }) }, k))),
+      form.kind === "Digər" ? jsxRuntimeExports.jsx(OpsField, { label: "Nə üçün", value: form.custom, onChange: (v) => setForm({ ...form, custom: v }), placeholder: "məs. Marketdən çörək" }) : null,
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: form.value, onChange: (v) => setForm({ ...form, value: v }), placeholder: "0.00" }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: form.note, onChange: (v) => setForm({ ...form, note: v }), placeholder: "məs. kassir Elvin aldı" })),
+      jsxRuntimeExports.jsx(PsAccountSelect, { value: form.accountId, onChange: (v) => setForm((p) => (p ? { ...p, accountId: v } : p)), label: "Hansı kassadan / xəzinədən" }),
+      h("p", { className: "text-xs text-muted" }, "Pul seçilən kassadan çıxır və X hesabatda görünür."),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: save, children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setForm(null), children: "İmtina" }))) }) : null);
+}
+
+function PsPartnerPicker({ order, onClose, onPicked }) {
+  const h = psH;
+  const [tab, setTab] = reactExports.useState(order.partnerKind === "customer" ? "customer" : "employee");
+  const [q, setQ] = reactExports.useState("");
+  const [people, setPeople] = reactExports.useState(null);
+  const [busy, setBusy] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    void window.pos.guests.list("").then((r) => setPeople(r.success ? (r.data.customers ?? []) : []));
+  }, []);
+  const needle = q.trim().toLowerCase();
+  const shown = (people ?? []).filter((p) => (tab === "employee" ? p.kind === "employee" : p.kind !== "employee")
+    && (!needle || (p.name + " " + (p.phone || "")).toLowerCase().includes(needle)));
+  const pick = async (id) => {
+    setBusy(true);
+    const r = await window.pos.orders.setPartner(order.id, id);
+    setBusy(false);
+    if (!r.success) { toast(r.error.message, "danger"); return; }
+    onPicked();
+  };
+  return jsxRuntimeExports.jsx(Modal, {
+    title: "Partnyor seçin", subtitle: "Ödənilməyən hissə seçdiyiniz şəxsin borcuna yazılacaq.", wide: true, onDismiss: busy ? void 0 : onClose,
+    footer: [
+      order.customerId ? jsxRuntimeExports.jsx("button", { type: "button", disabled: busy, onClick: () => void pick(""), className: "touch-target rounded-xl border border-danger/40 px-4 py-3 text-sm text-danger", children: "Partnyoru götür" }, "clear") : null,
+      jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "touch-target rounded-xl border border-hairline px-4 py-3 text-sm text-muted", children: "Bağla" }, "close")
+    ],
+    children: h("div", { className: "space-y-3" },
+      h("div", { className: "flex gap-2" },
+        [["employee", "İşçi"], ["customer", "Müştəri"]].map(([k, l]) =>
+          h("button", { key: k, type: "button", "aria-pressed": tab === k, className: "ps-period-chip" + (tab === k ? " is-on" : ""), onClick: () => setTab(k) }, l))),
+      h("input", { type: "search", value: q, onChange: (e) => setQ(e.target.value), placeholder: "Ad və ya telefon", className: "w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream" }),
+      people === null ? h("p", { className: "text-sm text-muted" }, "Yüklənir…")
+        : shown.length ? h("div", { className: "ps-partner-list" }, shown.map((p) =>
+            h("button", { key: p.id, type: "button", disabled: busy, className: "ps-partner-row" + (order.customerId === p.id ? " is-on" : ""), onClick: () => void pick(p.id) },
+              h("b", null, p.name), h("span", null, p.phone || ""), (p.debtMinor ?? 0) > 0 ? h("em", null, "Borc " + formatMoney(p.debtMinor)) : null)))
+        : h("p", { className: "text-sm text-muted" }, tab === "employee" ? "İşçi yoxdur — Əməliyyatlar → Partnyorlar bölməsində yaradın." : "Müştəri yoxdur — Partnyorlar bölməsində yaradın."))
+  });
+}
+
 function OpsGuests() {
   const [guests, setGuests] = reactExports.useState([]);
   const [search, setSearch] = reactExports.useState("");
@@ -24032,7 +25361,7 @@ function OpsGuests() {
 
   const reload = reactExports.useCallback(async () => {
     const res = await window.pos.guests.list(search);
-    if (res.success) setGuests(res.data.customers ?? []);
+    if (res.success) setGuests((res.data.customers ?? []).filter((g) => g.kind !== "employee"));
   }, [search]);
   reactExports.useEffect(() => { void reload(); }, [reload]);
   const [busy, run] = useOpsAction(reload);
@@ -24404,14 +25733,16 @@ function OperationsPage() {
   useAuthStore((s) => s.session);
   const[, _psAccessTick]=reactExports.useState(0);reactExports.useEffect(()=>{const fn=()=>_psAccessTick(n=>n+1);window.addEventListener("ps:access",fn);return()=>window.removeEventListener("ps:access",fn);},[]);
   const _psTabs = [
+    { id: "sales", label: "Satışlar", show: hasPermission("sales.view") && _psArea("/operations?tab=sales"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsSales, {}) },
     { id: "stock", label: "Anbar", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsStock, {}) },
-    { id: "suppliers", label: "Təchizat", show: hasPermission("suppliers.view") && _psArea("/operations?tab=suppliers"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsSuppliers, {}) },
+    { id: "purchases", label: "Alışlar", show: hasPermission("suppliers.view") && _psArea("/operations?tab=suppliers"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsPurchases, {}) },
     { id: "costing", label: "Kalkulyasiya", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsCosting, {}) },
-    { id: "vendors", label: "Təchizatçılar", show: hasPermission("suppliers.view") && _psArea("/operations?tab=vendors"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsVendors, {}) },
-    { id: "guests", label: "Müştərilər", show: hasPermission("customers.view"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsGuests, {}) },
-    { id: "reservations", label: "Rezervasiya", show: hasPermission("reservations.view"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsReservations, {}) },
+    { id: "vendors", label: "Partnyorlar", show: (hasPermission("suppliers.view") || hasPermission("customers.view")) && _psArea("/operations?tab=vendors"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsPartners, {}) },
+    { id: "objects", label: "Obyektlər", show: hasPermission("cash.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsObjects, {}) },
+    { id: "kassa", label: "Kassalar", show: hasPermission("cash.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsKassalar, {}) },
+    { id: "salary", label: "Maaşlar", show: hasPermission("salary.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsSalary, {}) },
+    { id: "expenses", label: "Xərclər", show: hasPermission("cash.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsExpenses, {}) },
     { id: "delivery", label: "Çatdırılma", show: hasPermission("delivery.view"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsDelivery, {}) },
-    { id: "roster", label: "İş qrafiki", show: hasPermission("schedule.view"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsRoster, {}) },
     { id: "export", label: "İxrac", show: hasPermission("reports.export"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsExport, {}) }
   ];
   const tabs = _psTabs.filter((tab) => tab.show);
@@ -24489,7 +25820,7 @@ function PsAdminFrame({ children }) {
   const { t } = useI18n();
   const { pathname, search } = useLocation();
   const pages = { "/settings": t.nav.settings, "/admin/catalog": t.nav.catalog, "/admin/staff": t.nav.staff, "/admin/tables": t.nav.adminTables, "/admin/reports": t.nav.reports, "/admin/cash": t.nav.cash, "/admin/backup": psAdminText("Ehtiyat n\xFCsx\u0259", "Yedekleme", "Backup"), "/admin/gifts": t.nav.gifts, "/dashboard": t.nav.dashboard, "/reconcile": t.nav.reconcile, "/audit": t.nav.audit, "/diagnostics": t.nav.diagnostics, "/settings/license": t.nav.license, "/support": t.nav.support };
-  const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["T\u0259chizat\xE7\u0131lar", "Tedarik\xE7iler", "Suppliers"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
+  const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["Partnyorlar", "Partnerler", "Partners"], sales: ["Satışlar", "Satışlar", "Sales"], purchases: ["Alışlar", "Alımlar", "Purchases"], objects: ["Obyektlər", "Şubeler", "Branches"], kassa: ["Kassalar", "Kasalar", "Tills"], salary: ["Maaşlar", "Maaşlar", "Salaries"], expenses: ["Xərclər", "Giderler", "Expenses"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
   const title = pathname === "/operations" ? psAdminText(...ops[new URLSearchParams(search).get("tab")] || ops.stock) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
   return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, children));
@@ -24498,10 +25829,10 @@ function PsAdminHub({ links }) {
   const [query, setQuery] = reactExports.useState("");
   const [activeTone, setActiveTone] = reactExports.useState("blue");
   const groups = [
-    { title: psAdminText("G\xFCnd\u0259lik idar\u0259etm\u0259", "G\xFCnl\xFCk y\xF6netim", "Daily management"), hint: psAdminText("Menyu, hey\u0259t v\u0259 g\xFCnd\u0259lik i\u015Fl\u0259r", "Men\xFC, ekip ve g\xFCnl\xFCk i\u015Fler", "Menu, team and daily work"), tone: "blue", paths: ["/dashboard", "/admin/catalog", "/admin/staff", "/operations?tab=roster", "/admin/tables", "/admin/gifts"] },
-    { title: psAdminText("Anbar v\u0259 t\u0259chizat", "Stok ve tedarik", "Inventory & purchasing"), hint: psAdminText("M\u0259hsullar, al\u0131\u015Flar v\u0259 t\u0259r\u0259fda\u015Flar", "\xDCr\xFCnler, al\u0131mlar ve i\u015F ortaklar\u0131", "Products, purchases and partners"), tone: "green", paths: ["/operations?tab=stock", "/operations?tab=suppliers", "/operations?tab=vendors"] },
-    { title: psAdminText("M\xFC\u015Ft\u0259ri xidm\u0259tl\u0259ri", "M\xFC\u015Fteri hizmetleri", "Guest services"), hint: psAdminText("Qonaqlar\u0131n h\u0259r m\u0259rh\u0259l\u0259d\u0259 yan\u0131nda", "Misafirleriniz i\xE7in her ad\u0131mda", "Everything for your guests"), tone: "purple", paths: ["/operations?tab=guests", "/operations?tab=reservations", "/operations?tab=delivery"] },
-    { title: psAdminText("Maliyy\u0259 v\u0259 hesabat", "Finans ve raporlar", "Finance & reporting"), hint: psAdminText("G\u0259lirl\u0259r, \xF6d\u0259ni\u015Fl\u0259r v\u0259 n\u0259zar\u0259t", "Gelir, \xF6demeler ve denetim", "Revenue, payments and oversight"), tone: "amber", paths: ["/admin/cash", "/admin/reports", "/reconcile", "/audit"] },
+    { title: psAdminText("G\xFCnd\u0259lik idar\u0259etm\u0259", "G\xFCnl\xFCk y\xF6netim", "Daily management"), hint: psAdminText("Menyu, hey\u0259t v\u0259 g\xFCnd\u0259lik i\u015Fl\u0259r", "Men\xFC, ekip ve g\xFCnl\xFCk i\u015Fler", "Menu, team and daily work"), tone: "blue", paths: ["/dashboard", "/admin/catalog", "/admin/staff", "/admin/tables", "/admin/gifts"] },
+    { title: psAdminText("Anbar v\u0259 t\u0259chizat", "Stok ve tedarik", "Inventory & purchasing"), hint: psAdminText("M\u0259hsullar, al\u0131\u015Flar v\u0259 t\u0259r\u0259fda\u015Flar", "\xDCr\xFCnler, al\u0131mlar ve i\u015F ortaklar\u0131", "Products, purchases and partners"), tone: "green", paths: ["/operations?tab=stock", "/operations?tab=purchases", "/operations?tab=vendors"] },
+    { title: psAdminText("M\xFC\u015Ft\u0259ri xidm\u0259tl\u0259ri", "M\xFC\u015Fteri hizmetleri", "Guest services"), hint: psAdminText("Qonaqlar\u0131n h\u0259r m\u0259rh\u0259l\u0259d\u0259 yan\u0131nda", "Misafirleriniz i\xE7in her ad\u0131mda", "Everything for your guests"), tone: "purple", paths: ["/operations?tab=delivery"] },
+    { title: psAdminText("Maliyy\u0259 v\u0259 hesabat", "Finans ve raporlar", "Finance & reporting"), hint: psAdminText("G\u0259lirl\u0259r, \xF6d\u0259ni\u015Fl\u0259r v\u0259 n\u0259zar\u0259t", "Gelir, \xF6demeler ve denetim", "Revenue, payments and oversight"), tone: "amber", paths: ["/operations?tab=sales", "/admin/cash", "/admin/reports", "/reconcile", "/audit"] },
     { title: psAdminText("Sistem", "Sistem", "System"), hint: psAdminText("Cihaz, t\u0259hl\xFCk\u0259sizlik v\u0259 sazlamalar", "Cihaz, g\xFCvenlik ve ayarlar", "Device, security and preferences"), tone: "slate", paths: ["/settings", "/admin/backup", "/settings/license", "/diagnostics"] }
   ];
   const descriptions = {
@@ -24510,13 +25841,11 @@ function PsAdminHub({ links }) {
     "/admin/staff": ["Hey\u0259t v\u0259 giri\u015F s\u0259lahiyy\u0259tl\u0259ri", "Ekip ve eri\u015Fim izinleri", "Team and access permissions"],
     "/admin/tables": ["Zallar v\u0259 masa d\xFCz\xFCl\xFC\u015F\xFC", "Salonlar ve masa d\xFCzeni", "Rooms and table layout"],
     "/admin/gifts": ["Kampaniyalar v\u0259 h\u0259diyy\u0259l\u0259r", "Kampanyalar ve hediyeler", "Campaigns and gifts"],
-    "/operations?tab=roster": ["N\xF6vb\u0259l\u0259r v\u0259 davamiyy\u0259t", "Vardiyalar ve devam takibi", "Shifts and attendance"],
     "/operations?tab=stock": ["Stok qal\u0131\u011F\u0131 v\u0259 m\u0259hsul h\u0259r\u0259k\u0259tl\u0259ri", "Stok durumu ve \xFCr\xFCn hareketleri", "Stock levels and adjustments"],
-    "/operations?tab=suppliers": ["Sifari\u015Fl\u0259r v\u0259 mal q\u0259bulu", "Sipari\u015Fler ve mal kabul\xFC", "Purchase orders and receiving"],
-    "/operations?tab=vendors": ["T\u0259chizat\xE7\u0131 \u0259laq\u0259l\u0259ri v\u0259 hesablar", "Tedarik\xE7i bilgileri ve hesaplar\u0131", "Supplier contacts and accounts"],
-    "/operations?tab=guests": ["M\xFC\u015Ft\u0259ri bazas\u0131 v\u0259 balanslar", "M\xFC\u015Fteri listesi ve bakiyeler", "Customer records and balances"],
-    "/operations?tab=reservations": ["Qonaqlar v\u0259 masa rezervl\u0259ri", "Misafirler ve masa rezervleri", "Guests and table bookings"],
+    "/operations?tab=purchases": ["Alış qaimələri, qaytarma, obyekt anbarları", "Alım faturaları ve iadeler", "Purchase invoices and returns"],
+    "/operations?tab=vendors": ["Təchizatçı, işçi, müştəri — borc və ödəniş", "Tedarikçi, çalışan, müşteri", "Suppliers, staff, customers"],
     "/operations?tab=delivery": ["\xC7atd\u0131r\u0131lmalar v\u0259 kuryerl\u0259r", "Teslimatlar ve kuryeler", "Deliveries and couriers"],
+    "/operations?tab=sales": ["Satış qaimələri, qaytarma, hesabat", "Satışlar ve iadeler", "Sales and returns"],
     "/admin/cash": ["Kassa m\u0259daxili v\u0259 m\u0259xarici", "Kasa giri\u015F ve \xE7\u0131k\u0131\u015Flar\u0131", "Cash in and cash out"],
     "/admin/reports": ["Sat\u0131\u015F v\u0259 i\u015F g\xFCn\xFC hesabatlar\u0131", "Sat\u0131\u015F ve i\u015F g\xFCn\xFC raporlar\u0131", "Sales and business day reports"],
     "/reconcile": ["\xD6d\u0259ni\u015Fl\u0259rin yoxlan\u0131lmas\u0131", "\xD6deme kontrol\xFC", "Payment reconciliation"],
@@ -24561,7 +25890,13 @@ function psOpsSubtitle(id) {
     stock: ["Stok qal\u0131\u011F\u0131n\u0131 izl\u0259yin, m\u0259hsul \u0259lav\u0259 edin v\u0259 h\u0259r\u0259k\u0259tl\u0259ri idar\u0259 edin.", "Stoklar\u0131 takip edin, \xFCr\xFCn ekleyin ve hareketleri y\xF6netin.", "Track stock, add products and manage adjustments."],
     costing: ["Yem\u0259yin t\u0259rkibini yaz\u0131n \u2014 maya v\u0259 qazanc avtomatik hesablan\u0131r.", "Yeme\u011Fin i\xE7eri\u011Fini yaz\u0131n \u2014 maliyet otomatik hesaplan\u0131r.", "Write what is in the dish \u2014 cost is calculated automatically."],
     suppliers: ["Al\u0131\u015F sifari\u015Fl\u0259rini haz\u0131rlay\u0131n v\u0259 g\u0259l\u0259n mallar\u0131 q\u0259bul edin.", "Sat\u0131n alma sipari\u015Flerini haz\u0131rlay\u0131n ve \xFCr\xFCnleri teslim al\u0131n.", "Prepare purchase orders and receive incoming goods."],
-    vendors: ["T\u0259chizat\xE7\u0131lar\u0131 v\u0259 hesabla\u015Fmalar\u0131 bir yerd\u0259 izl\u0259yin.", "Tedarik\xE7ileri ve hesaplar\u0131n\u0131 tek yerden takip edin.", "Keep supplier details and accounts together."],
+    vendors: ["Təchizatçılar, işçilər və müştərilər — borcları bir yerdə.", "Tedarikçiler, çalışanlar ve müşteriler — borçlar tek yerde.", "Suppliers, staff and guests — their tabs in one place."],
+    sales: ["Satış qaimələri — obyekt, kassa, ofisiant, endirim, borc; qaytarma və hesabat.", "Satış faturaları ve iadeler.", "Sales invoices, returns and report."],
+    purchases: ["Alış qaimələri və qaytarma, obyektə görə. Borc — Partnyorlarda.", "Alım faturaları, iadeler ve tedarikçi borçları.", "Purchase invoices, returns and supplier debt."],
+    objects: ["Filiallar — hər birinin kassaları, balansı və bugünkü satışı.", "Şubeler ve kasaları.", "Branches and their tills."],
+    kassa: ["Kassalar, xəzinə və bank — balans, gündəlik satış və transferlər.", "Kasalar, hazine ve banka.", "Tills, treasury and bank."],
+    salary: ["İşçilərin aylıq maaşı, avans və yeməklərin tutulması.", "Çalışan maaşları, avanslar ve kesintiler.", "Monthly salaries, advances and deductions."],
+    expenses: ["Kassadan çıxan xərclər — bazarlıq, kommunal və s.", "Kasadan çıkan giderler.", "Money paid out of the till."],
     guests: ["M\xFC\u015Ft\u0259ri m\u0259lumatlar\u0131, borclar v\u0259 loyall\u0131q balanslar\u0131.", "M\xFC\u015Fteri bilgileri, bor\xE7lar ve sadakat bakiyeleri.", "Customer details, credit and loyalty balances."],
     reservations: ["Qonaqlar\u0131n g\u0259li\u015Fini planlay\u0131n v\u0259 rezervl\u0259ri izl\u0259yin.", "Misafir geli\u015Flerini planlay\u0131n ve rezervasyonlar\u0131 takip edin.", "Plan guest arrivals and manage bookings."],
     delivery: ["Sifari\u015Fl\u0259rin \xE7atd\u0131r\u0131lmas\u0131n\u0131 v\u0259 kuryerl\u0259ri izl\u0259yin.", "Teslimatlar\u0131 ve kuryeleri takip edin.", "Follow deliveries and manage couriers."],
@@ -24616,12 +25951,10 @@ function AdminHubPage() {
     { to: "/admin/reports", label: t.nav.reports, icon: FileChartColumnIncreasing, show: hasPermission("reports.view") },
     { to: "/admin/backup", label: t.nav.backup, icon: HardDrive, show: hasPermission("backup.manage") },
     { to: "/operations?tab=stock", label: "Anbar", icon: PackageOpen, show: hasPermission("inventory.view") },
-    { to: "/operations?tab=suppliers", label: "Təchizat", icon: Store, show: hasPermission("suppliers.view") },
-    { to: "/operations?tab=vendors", label: "Təchizatçılar", icon: Store, show: hasPermission("suppliers.view") },
-    { to: "/operations?tab=guests", label: "Müştərilər", icon: Users, show: hasPermission("customers.view") },
-    { to: "/operations?tab=reservations", label: "Rezervasiya", icon: Table2, show: hasPermission("reservations.view") },
+    { to: "/operations?tab=purchases", label: "Alışlar", icon: Store, show: hasPermission("suppliers.view") },
+    { to: "/operations?tab=vendors", label: "Partnyorlar", icon: Users, show: hasPermission("suppliers.view") || hasPermission("customers.view") },
     { to: "/operations?tab=delivery", label: "Çatdırılma", icon: Move, show: hasPermission("delivery.view") },
-    { to: "/operations?tab=roster", label: "İş qrafiki", icon: ClipboardList, show: hasPermission("schedule.view") },
+    { to: "/operations?tab=sales", label: "Satışlar", icon: CircleDollarSign, show: hasPermission("sales.view") },
     { to: "/admin/cash", label: t.nav.cash, icon: CircleDollarSign, show: hasPermission("cash.manage") },
     { to: "/reconcile", label: t.nav.reconcile, icon: CircleDollarSign, show: hasPermission("payment.reconcile") },
     { to: "/audit", label: t.nav.audit, icon: ClipboardList, show: hasPermission("audit.view") },
@@ -25693,7 +27026,7 @@ function SettingsPage() {
       ] }),
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsAccordion, { id: "printer", title: t.settings.sectionPrinter, hint: t.settings.sectionPrinterHint, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "ps-printer-section space-y-4", children: [
+      false && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "ps-printer-section space-y-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: psAdminText("Printer qoşulması", "Yazıcı kurulumu", "Printer setup") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted", children: t.settings.printerHint }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-printer-setup", children: [
@@ -25875,6 +27208,7 @@ function SettingsPage() {
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-printer-legacy-hint", children: t.settings.testPrintHint }),
       ] }),
+      hasPermission("settings.manage") ? jsxRuntimeExports.jsx(PsKitchenStations, {}) : null,
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsAccordion,{id:"receipt",title:psAdminText("Çek ayarları","Fiş ayarları","Receipt settings"),hint:psAdminText("Loqo, QR kod, başlıq və kağız görünüşü","Logo, QR kod, başlık ve kağıt görünümü","Logo, QR, header and paper layout"),children:
         hasPermission("settings.manage") ? jsxRuntimeExports.jsx(PsReceiptSettingsPanel,{
@@ -25973,6 +27307,246 @@ function SettingsPage() {
     confirmDialog
   ] });
 }
+/* POS_KITCHEN_STATIONS_v4 */
+/** Kitchen printers a dish can be sent to besides the main kitchen (kitchen.stations). */
+function psExtraKitchenPrinters(list) {
+  return (Array.isArray(list) ? list : []).filter((s) => psPrinterKind(s) === "kitchen" && !psIsMainKitchen(s));
+}
+function psPrinterKind(s) {
+  if (s.kind) return s.kind;
+  const roles = s.roles || [];
+  return roles.includes("receipt") ? "receipt" : roles.includes("warehouse") ? "warehouse" : "kitchen";
+}
+function psIsMainKitchen(s) { return s.main === true || (s.roles || []).includes("kitchen"); }
+
+function PsKitchenStations() {
+  const L = psAdminText;
+  /* POS_FOCUS_FIX_v1 */
+  const [confirmAsk, confirmDialog] = useConfirm();
+  const h = (tag, props, ...children) => {
+    const { key, ...rest } = props || {};
+    const kids = children.flat().filter((c) => c !== null && c !== undefined && c !== false);
+    return kids.length > 1
+      ? jsxRuntimeExports.jsxs(tag, { ...rest, children: kids }, key)
+      : jsxRuntimeExports.jsx(tag, { ...rest, children: kids[0] }, key);
+  };
+  const KINDS = [
+    ["kitchen", L("Mətbəx", "Mutfak", "Kitchen")],
+    ["receipt", L("Kassa", "Kasa", "Till")],
+    ["warehouse", L("Anbar", "Depo", "Warehouse")],
+  ];
+  const ROLE_OF = { receipt: "receipt", warehouse: "warehouse" };
+  const [stations, setStations] = reactExports.useState([]);
+  // The printer being set up: { id, name, printer, kind, main, itemIds, categoryIds, step: "name" | "search" | "kind" }.
+  const [draft, setDraft] = reactExports.useState(null);
+  const [list, setList] = reactExports.useState([]);
+  const [at, setAt] = reactExports.useState(-1);
+  const [printed, setPrinted] = reactExports.useState(false);
+  const [manual, setManual] = reactExports.useState(false);
+  const [address, setAddress] = reactExports.useState("");
+  const [note, setNote] = reactExports.useState("");
+  const [busy, setBusy] = reactExports.useState(false);
+  const [found, setFound] = reactExports.useState(null);
+
+  reactExports.useEffect(() => {
+    let off = false;
+    void (async () => {
+      const all = await window.pos.settings.getAll();
+      let saved = [];
+      if (all.success) {
+        try { const v = JSON.parse(all.data.settings["kitchen.stations"] || "[]"); saved = Array.isArray(v) ? v : []; } catch { saved = []; }
+      }
+      const current = await window.pos.print.printers().catch(() => null);
+      if (off) return;
+      // Printers set up before this screen keep showing, under their role.
+      if (current?.success) {
+        const names = { receipt: L("Kassa", "Kasa", "Till"), kitchen: L("Mətbəx", "Mutfak", "Kitchen"), warehouse: L("Anbar", "Depo", "Warehouse") };
+        for (const role of ["receipt", "kitchen", "warehouse"]) {
+          const target = current.data[role];
+          if (!target || target === "auto" || /^virtual\b/i.test(target)) continue;
+          if (saved.some((s) => (role === "kitchen" ? psPrinterKind(s) === "kitchen" && psIsMainKitchen(s) : psPrinterKind(s) === role))) continue;
+          saved.push({ id: "st-" + role, name: names[role], printer: target, kind: role, main: role === "kitchen", roles: [role], itemIds: [], categoryIds: [] });
+        }
+      }
+      setStations(saved);
+      if (saved.length === 0) startNew();
+    })();
+    return () => { off = true; };
+  }, []);
+
+  const resetSearch = () => { setList([]); setAt(-1); setPrinted(false); setManual(false); setAddress(""); setNote(""); setFound(null); };
+  const startNew = () => { resetSearch(); setDraft({ id: "st-" + Date.now().toString(36), name: "", printer: "", kind: "", main: false, itemIds: [], categoryIds: [], step: "name" }); };
+  const label = () => (draft?.name || "").trim();
+
+  const persist = async (next) => {
+    setBusy(true);
+    const res = await window.pos.settings.set("kitchen.stations", JSON.stringify(next));
+    setBusy(false);
+    if (!res.success) { toast(res.error.message, "danger"); return false; }
+    setStations(next);
+    return true;
+  };
+  /** One test page to exactly this device; true when it left the till. */
+  const testPage = async (target) => {
+    let res;
+    try {
+      res = await window.pos.print.enqueue({ kind: "test_page", printer: target, exactTarget: true },
+        { idempotencyKey: crypto.randomUUID(), timeoutMs: 6e4 });
+    } catch (error) { setNote(error.message || String(error)); return false; }
+    if (!res.success) { setNote(res.error.message); return false; }
+    if (res.data.status !== "completed") { setNote(L("Yoxlama vərəqi göndərilmədi: ", "Test sayfası gönderilemedi: ", "Test page not sent: ") + (res.data.lastError || "")); return false; }
+    return true;
+  };
+  const probe = async (candidates, index) => {
+    if (index >= candidates.length) {
+      setAt(candidates.length);
+      setNote(L("Bütün cihazlar yoxlanıldı. Printer şəbəkədədirsə, ünvanı əl ilə yazın.", "Tüm cihazlar denendi. Yazıcı ağdaysa adresini elle yazın.", "Every device was tried. If the printer is on the network, type its address."));
+      return;
+    }
+    setAt(index); setNote(""); setPrinted(false); setBusy(true);
+    const ok = await testPage(candidates[index].name);
+    setBusy(false); setPrinted(ok);
+  };
+  /** only: "usb" or "network" when the first search found nothing and the cable was just plugged in. */
+  const search = async (only) => {
+    if (!label()) { toast(L("Əvvəlcə printerin adını yazın", "Önce yazıcının adını yazın", "Type the printer's name first"), "danger"); return; }
+    resetSearch(); setDraft((d) => ({ ...d, name: d.name.trim(), step: "search" })); setBusy(true);
+    let res;
+    try { res = await window.pos.print.detect({ probe: false }); }
+    catch (error) { setBusy(false); setNote(error.message || String(error)); setFound([]); return; }
+    setBusy(false);
+    if (!res.success) { setNote(res.error?.message || ""); setFound([]); return; }
+    const used = new Set(stations.filter((s) => s.id !== draft.id).map((s) => s.printer));
+    const all = (res.data?.candidates ?? []).filter((p) => p.connection !== "virtual" && !used.has(p.name));
+    const candidates = only ? all.filter((p) => (only === "network" ? p.connection === "network" : p.connection !== "network")) : all;
+    setList(candidates); setFound(candidates);
+    if (candidates.length === 0) {
+      setAt(0);
+      setNote(only === "usb" ? L("USB-də printer tapılmadı.", "USB'de yazıcı bulunamadı.", "No USB printer found.")
+        : only === "network" ? L("Şəbəkədə (LAN) printer tapılmadı.", "Ağda (LAN) yazıcı bulunamadı.", "No network printer found.")
+        : L("Printer tapılmadı. Kabeli taxın və USB və ya LAN ilə yenidən axtarın, ya da ünvanı əl ilə yazın.", "Yazıcı bulunamadı. Kabloyu takıp USB veya LAN ile yeniden arayın ya da adresi elle yazın.", "No printer found. Plug the cable in and search USB or LAN again, or type the address."));
+      return;
+    }
+    await probe(candidates, 0);
+  };
+  const keep = (target) => { setDraft((d) => ({ ...d, printer: target, step: "kind" })); setNote(""); };
+  const save = async () => {
+    const kind = draft.kind;
+    if (!kind) { toast(L("Printerin haraya aid olduğunu seçin", "Yazıcının nereye ait olduğunu seçin", "Choose where the printer belongs"), "danger"); return; }
+    // The first kitchen printer is the main kitchen; later ones (Kababçı) get dishes in the dish editor.
+    const mainTaken = stations.some((s) => s.id !== draft.id && psPrinterKind(s) === "kitchen" && psIsMainKitchen(s));
+    const main = kind === "kitchen" && (draft.main || !mainTaken);
+    const role = kind === "kitchen" ? (main ? "kitchen" : "") : ROLE_OF[kind];
+    if (role) {
+      const res = await window.pos.print.setPrinter(role, draft.printer);
+      if (!res.success) { toast(res.error.message, "danger"); return; }
+    }
+    // A till role moved here leaves the printer that had it.
+    const others = stations.filter((s) => s.id !== draft.id).map((s) => ({ ...s, roles: (s.roles || []).filter((r) => r !== role) }));
+    const row = { id: draft.id, name: label(), printer: draft.printer, kind, main, roles: role ? [role] : [],
+      itemIds: kind === "kitchen" && !main ? draft.itemIds || [] : [], categoryIds: kind === "kitchen" && !main ? draft.categoryIds || [] : [] };
+    const next = others.some((s) => s.id === row.id) ? others.map((s) => (s.id === row.id ? row : s)) : [...others, row];
+    if (!(await persist(next))) return;
+    toast(row.name + L(" printeri yadda saxlanıldı", " yazıcısı kaydedildi", " printer saved"), "success");
+    startNew();
+  };
+  const remove = async (row) => {
+    if (!(await confirmAsk(L(`"${row.name}" printeri silinsin?`, `"${row.name}" yazıcısı silinsin mi?`, `Remove "${row.name}"?`), { danger: true }))) return;
+    for (const role of row.roles || []) await window.pos.print.setPrinter(role, "auto");
+    await persist(stations.filter((s) => s.id !== row.id));
+  };
+  const edit = (row) => { resetSearch(); setDraft({ ...row, kind: psPrinterKind(row), main: psIsMainKitchen(row), step: "name" }); };
+  const kindLabel = (row) => {
+    const kind = psPrinterKind(row);
+    if (kind === "kitchen") {
+      if (psIsMainKitchen(row)) return L("Mətbəx — əsas (bütün yeməklər)", "Mutfak — ana", "Kitchen — main");
+      const n = (row.itemIds || []).length;
+      return L("Mətbəx — ", "Mutfak — ", "Kitchen — ") + (n ? n + L(" yemək", " yemek", " dishes") : L("yeməkləri Menyuda seçin", "yemekleri Menüde seçin", "pick its dishes in the Menu"));
+    }
+    return (KINDS.find((k) => k[0] === kind) || [kind, kind])[1];
+  };
+
+  const primary = "touch-target rounded-xl bg-gold/25 px-4 py-2.5 text-sm font-medium text-gold hover:bg-gold/35 disabled:opacity-50";
+  const quiet = "touch-target rounded-xl border border-hairline px-4 py-2 text-sm text-muted hover:text-cream disabled:opacity-40";
+  const yes = "touch-target rounded-xl border border-success/60 bg-success/15 px-4 py-2 text-sm text-success disabled:opacity-40";
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-sm text-cream";
+
+  const saved = stations.map((row) => h("div", { key: row.id, className: "ps-printer-role" },
+    h("div", { className: "flex flex-wrap items-center gap-3" },
+      h("div", { className: "min-w-0 flex-1" },
+        h("p", { className: "ps-printer-role-title" }, row.name, L(" printeri", " yazıcısı", " printer")),
+        h("p", { className: "ps-printer-role-status is-ready" }, row.printer),
+        h("p", { className: "mt-1 text-xs text-muted" }, kindLabel(row))),
+      h("button", { type: "button", disabled: busy, className: "ps-printer-find-button", onClick: () => edit(row) }, L("Dəyişdir", "Değiştir", "Change")),
+      h("button", { type: "button", disabled: busy, className: quiet, onClick: () => void remove(row) }, L("Sil", "Sil", "Remove")))));
+
+  let wizard = null;
+  if (draft) {
+    const name = label();
+    const stepName = h("div", { className: "flex flex-wrap items-end gap-3" },
+      h("label", { className: "min-w-0 flex-1 text-sm" },
+        h("span", { className: "text-xs uppercase tracking-wide text-faint" }, L("Printerin adı", "Yazıcının adı", "Printer name")),
+        h("input", { type: "text", value: draft.name, placeholder: L("məs. Kassa, Mətbəx, Kababçı, Bar", "ör. Kasa, Mutfak, Kebapçı, Bar", "e.g. Till, Kitchen, Grill, Bar"),
+          onChange: (e) => setDraft((d) => ({ ...d, name: e.target.value })),
+          onKeyDown: (e) => { if (e.key === "Enter") void search(); }, className: field })),
+      h("button", { type: "button", disabled: busy || !name, className: "ps-printer-find-button", onClick: () => void search() },
+        busy && draft.step === "search" ? L("Axtarılır…", "Aranıyor…", "Searching…") : L("Axtar", "Ara", "Search")));
+
+    const nothing = Array.isArray(found) && found.length === 0;
+    const candidate = draft.step === "search" && !manual && at >= 0 && at < list.length ? list[at] : null;
+    const okLabel = [L("OK — bu ", "Tamam — bu ", "OK — this is the "), name, L(" printeridir", " yazıcısı", " printer")];
+    const stepSearch = draft.step === "search" ? h("div", { className: "space-y-3 border-t border-hairline pt-3" },
+      busy && found === null ? h("p", { className: "text-sm text-muted" }, L("Axtarılır…", "Aranıyor…", "Searching…")) : null,
+      note ? h("p", { className: "text-sm text-warning" }, note) : null,
+      nothing && !manual ? h("div", { className: "flex flex-wrap gap-2" },
+        h("button", { type: "button", disabled: busy, className: primary, onClick: () => void search("usb") }, L("USB-də yenidən axtar", "USB'de yeniden ara", "Search USB again")),
+        h("button", { type: "button", disabled: busy, className: primary, onClick: () => void search("network") }, L("LAN-da yenidən axtar", "LAN'da yeniden ara", "Search LAN again")),
+        h("button", { type: "button", className: quiet, onClick: () => { setManual(true); setNote(""); } }, L("Əl ilə yaz", "Elle yaz", "Type it"))) : null,
+      !nothing && !manual && Array.isArray(found) && at >= found.length ? h("button", { type: "button", className: quiet, onClick: () => { setManual(true); setNote(""); } }, L("Əl ilə yaz", "Elle yaz", "Type it")) : null,
+      candidate ? h("div", { className: "rounded-xl border border-hairline bg-elevated px-4 py-3" },
+        h("p", { className: "text-xs text-faint" }, at + 1, " / ", list.length),
+        h("p", { className: "mt-1 truncate text-sm font-medium text-cream" }, candidate.displayName || candidate.name),
+        h("p", { className: "mt-0.5 truncate font-mono text-xs text-faint" }, candidate.name),
+        h("p", { className: "mt-2 text-sm text-cream" }, L("Bu cihaza yoxlama vərəqi göndərildi. ", "Bu cihaza test sayfası gönderildi. ", "A test page was sent to this device. "), name, L(" printerindən kağız çıxdı?", " yazıcısından kağıt çıktı mı?", " printer printed it?")),
+        h("div", { className: "mt-2 flex flex-wrap gap-2" },
+          h("button", { type: "button", disabled: busy || !printed, className: yes, onClick: () => keep(candidate.name) }, ...okLabel),
+          h("button", { type: "button", disabled: busy, className: quiet, onClick: () => void probe(list, at + 1) }, L("Yox — növbətini yoxla", "Hayır — sonrakini dene", "No — try the next")))) : null,
+      manual ? h("div", { className: "rounded-xl border border-hairline bg-elevated px-4 py-3" },
+        h("p", { className: "text-xs uppercase tracking-wide text-faint" }, L("Printerin ünvanı", "Yazıcının adresi", "Printer address")),
+        h("input", { type: "text", value: address, placeholder: "tcp:192.168.1.51:9100", onChange: (e) => setAddress(e.target.value), className: field + " font-mono" }),
+        h("p", { className: "mt-1 text-xs text-faint" }, "Şəbəkə printeri: tcp:IP:9100 · Windows növbəsi: adını yazın"),
+        h("div", { className: "mt-2 flex flex-wrap gap-2" },
+          h("button", { type: "button", disabled: busy || !address.trim(), className: "touch-target rounded-xl border border-gold/40 px-4 py-2 text-sm text-gold disabled:opacity-40",
+            onClick: async () => { setBusy(true); const ok = await testPage(address.trim()); setBusy(false); if (ok) toast(L("Yoxlama vərəqi göndərildi", "Test sayfası gönderildi", "Test page sent"), "success"); } }, busy ? "…" : "Test çap"),
+          h("button", { type: "button", disabled: !address.trim(), className: yes, onClick: () => keep(address.trim()) }, ...okLabel))) : null) : null;
+
+    const stepKind = draft.step === "kind" ? h("div", { className: "space-y-3 border-t border-hairline pt-3" },
+      h("p", { className: "ps-printer-role-status is-ready" }, name, ": ", draft.printer),
+      h("p", { className: "text-sm text-cream" }, name, L(" printeri haraya aiddir?", " yazıcısı nereye ait?", " printer belongs to?")),
+      h("div", { className: "flex flex-wrap gap-2" }, KINDS.map(([id, text]) => h("button", { key: id, type: "button", onClick: () => setDraft((d) => ({ ...d, kind: id })),
+        className: `touch-target rounded-xl px-5 py-3 text-sm ${draft.kind === id ? "bg-gold/15 text-gold" : "border border-hairline text-muted hover:text-cream"}` },
+        (draft.kind === id ? "✓ " : "") + text))),
+      draft.kind === "kitchen" && stations.some((s) => s.id !== draft.id && psPrinterKind(s) === "kitchen" && psIsMainKitchen(s)) && !draft.main
+        ? h("p", { className: "text-xs text-muted" }, L("Əsas mətbəx printeri artıq var. Bu printerdən çıxacaq yeməkləri Menyuda yemək açıb «Printer» sahəsindən seçin.", "Ana mutfak yazıcısı zaten var. Bu yazıcıdan çıkacak yemekleri Menüde yemeği açıp «Yazıcı» alanından seçin.", "There is already a main kitchen printer. Choose the dishes for this one in the Menu, in each dish's Printer field."))
+        : null,
+      h("div", { className: "flex flex-wrap gap-2" },
+        h("button", { type: "button", disabled: busy || !draft.kind, className: yes, onClick: () => void save() }, L("Yadda saxla", "Kaydet", "Save")),
+        h("button", { type: "button", disabled: busy, className: quiet, onClick: () => setDraft((d) => ({ ...d, step: "search" })) }, L("Geri", "Geri", "Back")))) : null;
+
+    wizard = h("div", { className: "ps-printer-role is-open" },
+      h("p", { className: "ps-printer-role-title" }, stations.some((s) => s.id === draft.id) ? L("Printeri dəyişdir", "Yazıcıyı değiştir", "Change printer") : L("Yeni printer", "Yeni yazıcı", "New printer")),
+      h("div", { className: "mt-3 space-y-3" }, stepName, stepSearch, stepKind),
+      stations.length ? h("button", { type: "button", disabled: busy, className: quiet + " mt-3", onClick: () => { setDraft(null); resetSearch(); } }, L("Bağla", "Kapat", "Close")) : null);
+  }
+
+  return h("section", { className: "ps-printer-section space-y-4" },
+    h("h2", { className: "font-display text-lg text-cream" }, L("Printerlər", "Yazıcılar", "Printers")),
+    h("p", { className: "text-sm text-muted" }, L("Printerin adını yazın və Axtar basın.", "Yazıcının adını yazıp Ara'ya basın.", "Type the printer's name and press Search.")),
+    h("div", { className: "ps-printer-setup space-y-2" }, saved, wizard,
+      !draft ? h("button", { type: "button", className: primary, onClick: () => startNew() }, L("+ Printer əlavə et", "+ Yazıcı ekle", "+ Add printer")) : null),
+    confirmDialog);
+}
+
 const ICONS = {
   open: Receipt,
   payment: CircleDollarSign,
@@ -27204,7 +28778,7 @@ function _psArea(path){
   const list=window.__psAccess;
   if(!Array.isArray(list))return true;
   const value=String(path||"");
-  const rules=[["tab=stock","stock"],["tab=suppliers","suppliers"],["tab=vendors","suppliers"],["tab=guests","guests"],["tab=reservations","guests"],["tab=delivery","delivery"],["tab=roster","roster"],["/settings","settings"],["/admin/catalog","catalog"],["/admin/reports","reports"],["/admin/cash","cash"],["/admin/staff","staff"],["/dashboard","reports"],["/audit","reports"],["/reconcile","cash"],["/diagnostics","settings"],["/tables","tables"],["/kds","kds"],["/refund","refund"],["/admin","admin"]];
+  const rules=[["tab=stock","stock"],["tab=suppliers","suppliers"],["tab=purchases","suppliers"],["tab=sales","reports"],["tab=vendors","suppliers"],["tab=guests","guests"],["tab=reservations","guests"],["tab=delivery","delivery"],["tab=roster","roster"],["/settings","settings"],["/admin/catalog","catalog"],["/admin/reports","reports"],["/admin/cash","cash"],["/admin/staff","staff"],["/dashboard","reports"],["/audit","reports"],["/reconcile","cash"],["/diagnostics","settings"],["/tables","tables"],["/kds","kds"],["/refund","refund"],["/admin","admin"]];
   const hit=rules.find(([needle])=>value.includes(needle));
   return !hit||list.includes(hit[1]);
 }

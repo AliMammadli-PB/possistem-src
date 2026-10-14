@@ -87,10 +87,13 @@ Json OrderService::load(const std::string& orderId, bool withItems) {
         "       o.total_minor AS totalMinor, o.paid_minor AS paidMinor, o.tip_minor AS tipMinor, "
         "       o.discount_type AS discountType, o.discount_value AS discountValue, "
         "       o.discount_reason AS discountReason, o.note, o.opened_at AS openedAt, "
-        "       o.submitted_at AS submittedAt, o.closed_at AS closedAt "
+        "       o.submitted_at AS submittedAt, o.closed_at AS closedAt, "
+        "       o.customer_id AS customerId, c.name AS partnerName, c.kind AS partnerKind, "
+        "       o.account_minor AS accountMinor "
         "FROM orders o "
         "LEFT JOIN restaurant_tables t ON t.id = o.table_id "
         "LEFT JOIN users u ON u.id = o.user_id "
+        "LEFT JOIN customers c ON c.id = o.customer_id "
         "WHERE o.id = :orderId");
     stmt.bind(":orderId", orderId);
 

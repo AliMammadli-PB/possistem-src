@@ -201,3 +201,30 @@ TEST_CASE("lifetime profit is sold portions times today's recipe margin", "[cost
     // 21.00 revenue − 3 × 0.12 maya = 20.64
     REQUIRE(row.at("totalProfitMinor") == 2064);
 }
+
+TEST_CASE("a new draft dish can be costed before it goes on the menu", "[costing]") {
+    CostingFixture f;
+    const auto pomegranate = f.ingredient("Nar", 400);
+    const auto dish = f.dish("Nar qovurması", 1500);
+    {
+        auto draft = f.fixture().db().prepare("UPDATE menu_items SET active = 0 WHERE id = :id");
+        draft.bind(":id", dish);
+        draft.exec();
+    }
+    const auto before = f.call("reports.costing", pos::Json::object());
+    const auto row = f.rowFor(before, dish);
+    REQUIRE_FALSE(row.is_null());
+    REQUIRE(row.at("active") == false);
+    REQUIRE(row.at("hasRecipe") == false);
+
+    f.recipeLine(dish, pomegranate, 250);  // 250 q of a 4.00/kg pomegranate
+    const auto after = f.call("reports.costing", pos::Json::object());
+    REQUIRE(f.rowFor(after, dish).at("costMinor") == 100);
+    // Not on the menu yet, so the menu-wide numbers do not count it.
+    REQUIRE(after.at("summary").at("dishes") == before.at("summary").at("dishes"));
+
+    auto archive = f.fixture().db().prepare("UPDATE menu_items SET archived = 1 WHERE id = :id");
+    archive.bind(":id", dish);
+    archive.exec();
+    REQUIRE(f.rowFor(f.call("reports.costing", pos::Json::object()), dish).is_null());
+}

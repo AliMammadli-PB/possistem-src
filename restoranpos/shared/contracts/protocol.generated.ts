@@ -361,6 +361,24 @@ export const METHODS = [
   'system.resetOperational',
   'sync.status',
   'sync.outbox',
+  'orders.setPartner',
+  'salary.list',
+  'salary.pay',
+  'cashAccounts.list',
+  'cashAccounts.save',
+  'cashAccounts.deactivate',
+  'cashAccounts.moves',
+  'cashAccounts.transfer',
+  'cashObjects.save',
+  'purchases.return',
+  'purchases.returns',
+  'purchases.update',
+  'sales.list',
+  'sales.get',
+  'sales.update',
+  'sales.delete',
+  'purchases.delete',
+  'purchases.deleteReturn',
 ] as const;
 export type MethodName = (typeof METHODS)[number];
 
@@ -572,6 +590,24 @@ export const METHOD_META: Record<MethodName, MethodMeta> = {
   'system.resetOperational': { auth: true, perm: 'system.reset', timeout: 120000, idempotent: true },
   'sync.status': { auth: true, perm: null, timeout: 3000, idempotent: false },
   'sync.outbox': { auth: true, perm: null, timeout: 3000, idempotent: false },
+  'orders.setPartner': { auth: true, perm: 'customers.view', timeout: 3000, idempotent: true },
+  'salary.list': { auth: true, perm: 'salary.manage', timeout: 3000, idempotent: false },
+  'salary.pay': { auth: true, perm: 'salary.manage', timeout: 3000, idempotent: true },
+  'cashAccounts.list': { auth: true, perm: 'cash.manage', timeout: 3000, idempotent: false },
+  'cashAccounts.save': { auth: true, perm: 'cash.accounts', timeout: 3000, idempotent: true },
+  'cashAccounts.deactivate': { auth: true, perm: 'cash.accounts', timeout: 3000, idempotent: true },
+  'cashAccounts.moves': { auth: true, perm: 'cash.manage', timeout: 3000, idempotent: false },
+  'cashAccounts.transfer': { auth: true, perm: 'cash.accounts', timeout: 3000, idempotent: true },
+  'cashObjects.save': { auth: true, perm: 'cash.accounts', timeout: 3000, idempotent: true },
+  'purchases.return': { auth: true, perm: 'suppliers.manage', timeout: 3000, idempotent: true },
+  'purchases.returns': { auth: true, perm: 'suppliers.view', timeout: 3000, idempotent: false },
+  'purchases.update': { auth: true, perm: 'purchases.edit', timeout: 3000, idempotent: true },
+  'sales.list': { auth: true, perm: 'sales.view', timeout: 3000, idempotent: false },
+  'sales.get': { auth: true, perm: 'sales.view', timeout: 3000, idempotent: false },
+  'sales.update': { auth: true, perm: 'sales.edit', timeout: 3000, idempotent: true },
+  'sales.delete': { auth: true, perm: 'sales.delete', timeout: 3000, idempotent: true },
+  'purchases.delete': { auth: true, perm: 'purchases.delete', timeout: 3000, idempotent: true },
+  'purchases.deleteReturn': { auth: true, perm: 'purchases.delete', timeout: 3000, idempotent: true },
 };
 
 export const EVENTS = [
@@ -654,6 +690,8 @@ export const PERMISSIONS = {
   'payment.split': ['cashier', 'supervisor', 'manager', 'administrator'],
   'discount.manage': ['manager', 'administrator'],
   'users.manage': ['manager', 'administrator'],
+  'salary.manage': ['manager', 'administrator'],
+  'cash.accounts': ['manager', 'administrator'],
 } as const;
 export type PermissionKey = keyof typeof PERMISSIONS;
 

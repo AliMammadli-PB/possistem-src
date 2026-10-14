@@ -73,7 +73,7 @@ bool parseNetworkPrinter(std::string_view printerName, std::string& host, int& p
 bool parseWindowsPrinter(std::string_view printerName, std::string& windowsName);
 
 bool sendRawTcp(const std::string& host, int port, const std::vector<std::uint8_t>& payload,
-                std::string& errorOut, int timeoutMs = 8000);
+                std::string& errorOut, int timeoutMs = 5000);
 
 /** RAW ESC/POS via the Windows spooler (USB / shared / local queues). */
 bool sendRawWindowsPrinter(const std::string& printerName, const std::vector<std::uint8_t>& payload,

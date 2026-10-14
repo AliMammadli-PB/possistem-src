@@ -67,6 +67,8 @@ void registerAll(ipc::StdioServer& server, db::Database& database) {
     registerPrinting(ctx);
     registerInventory(ctx);
     registerGuests(ctx);
+    registerCashAccounts(ctx);
+    registerSales(ctx);
     registerDelivery(ctx);
     registerExport(ctx);
     registerSystem(ctx);

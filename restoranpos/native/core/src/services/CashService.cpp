@@ -1,3 +1,4 @@
+#include <limits>
 #include "pos/services/CashService.hpp"
 
 #include "pos/services/RefundService.hpp"
@@ -66,11 +67,16 @@ Json CashService::recordMovement(std::string_view kind, Money amountMinor, std::
 
 Json CashService::listMovements(const std::string& businessDayId) {
     auto stmt = ctx_.db().prepare(
-        "SELECT id, business_day_id AS businessDayId, shift_id AS shiftId, kind, "
-        "       amount_minor AS amountMinor, reason, note, actor_user_id AS actorUserId, "
-        "       created_at AS createdAt "
-        "FROM cash_movements WHERE (:day = '' OR business_day_id = :day) "
-        "ORDER BY created_at DESC LIMIT 5000");
+        "SELECT m.id, m.business_day_id AS businessDayId, m.shift_id AS shiftId, m.kind, "
+        "       m.amount_minor AS amountMinor, m.reason, m.note, m.actor_user_id AS actorUserId, "
+        "       m.created_at AS createdAt, COALESCE(a.id, '') AS accountId, COALESCE(a.name, '') AS accountName, "
+        "       COALESCE(o.id, '') AS objectId, COALESCE(o.name, '') AS objectName "
+        "FROM cash_movements m "
+        "LEFT JOIN cash_account_moves am ON am.ref_type = 'cash_movement' AND am.ref_id = m.id "
+        "LEFT JOIN cash_accounts a ON a.id = am.account_id "
+        "LEFT JOIN cash_objects o ON o.id = a.object_id "
+        "WHERE (:day = '' OR m.business_day_id = :day) "
+        "ORDER BY m.created_at DESC LIMIT 5000");
     stmt.bind(":day", businessDayId);
     return Json{{"movements", stmt.rows()}};
 }
@@ -111,6 +117,99 @@ Money CashService::expectedCash(const std::string& businessDayId) {
     cashRefunds.step();
     total -= cashRefunds.columnInt(0);
     return total;
+}
+
+
+namespace {
+
+/** The same PC scope, over refunds `r` instead of payments `p`. */
+std::string refundScope(std::string sql) {
+    const std::string from = "p.terminal_id";
+    for (auto at = sql.find(from); at != std::string::npos; at = sql.find(from, at + 1)) {
+        sql.replace(at, from.size(), "r.terminal_id");
+    }
+    return sql;
+}
+
+/** Cash (or card) taken on the given PCs since `since`, net of refunds made there. */
+Money takings(handlers::Context& ctx, const std::string& method, const std::string& terminalsSql,
+              const std::string& terminal, std::int64_t since, std::int64_t until) {
+    auto paid = ctx.db().prepare(
+        "SELECT COALESCE(SUM(CASE WHEN p.method = :method THEN p.amount_minor + p.tip_minor "
+        "  WHEN p.method = 'mixed' THEN COALESCE((SELECT SUM(t.amount_minor + t.tip_minor) "
+        "    FROM payment_tenders t WHERE t.payment_id = p.id AND t.method = :method), 0) "
+        "  ELSE 0 END), 0) FROM payments p "
+        "WHERE p.status = 'approved' AND p.created_at >= :since AND p.created_at < :until AND " + terminalsSql);
+    paid.bind(":method", method).bind(":since", since).bind(":until", until);
+    if (terminalsSql.find(":terminal") != std::string::npos) paid.bind(":terminal", terminal);
+    paid.step();
+    auto back = ctx.db().prepare(
+        "SELECT COALESCE(SUM(r.amount_minor), 0) FROM refunds r "
+        "WHERE r.status = 'completed' AND r.method = :method AND r.created_at >= :since "
+        "  AND r.created_at < :until AND " + refundScope(terminalsSql));
+    back.bind(":method", method).bind(":since", since).bind(":until", until);
+    if (terminalsSql.find(":terminal") != std::string::npos) back.bind(":terminal", terminal);
+    back.step();
+    return paid.columnInt(0) - back.columnInt(0);
+}
+
+}  // namespace
+
+void CashService::accountMove(const std::string& accountId, Money amountMinor, std::string_view kind,
+                              std::string_view refType, std::string_view refId,
+                              std::string_view note) {
+    if (accountId.empty() || amountMinor == 0) return;
+    auto account = ctx_.db().prepare("SELECT 1 FROM cash_accounts WHERE id = :id AND active = 1");
+    account.bind(":id", accountId);
+    if (!account.step()) {
+        throw PosError(std::string(protocol::err::kNotFound), "Kassa tapılmadı");
+    }
+    auto insert = ctx_.db().prepare(
+        "INSERT INTO cash_account_moves (id, account_id, amount_minor, kind, ref_type, ref_id, note, "
+        "                                actor_user_id, created_at) "
+        "VALUES (:id, :account, :amount, :kind, :refType, :refId, :note, :actor, :now)");
+    insert.bind(":id", crypto::uuid4()).bind(":account", accountId).bind(":amount", amountMinor)
+        .bind(":kind", std::string(kind)).bind(":refType", std::string(refType))
+        .bind(":refId", std::string(refId)).bind(":note", std::string(note))
+        .bindOptional(":actor", ctx_.session().userId).bind(":now", nowMs());
+    insert.exec();
+}
+
+Money CashService::accountBalance(const std::string& accountId) {
+    auto row = ctx_.db().prepare(
+        "SELECT kind, terminal_id, COALESCE(object_id, ''), created_at FROM cash_accounts WHERE id = :id");
+    row.bind(":id", accountId);
+    if (!row.step()) return 0;
+    const auto kind = row.columnText(0);
+    const auto terminal = row.columnText(1);
+    const auto object = row.columnText(2);
+    const auto since = row.columnInt(3);
+
+    auto moves = ctx_.db().prepare(
+        "SELECT COALESCE(SUM(amount_minor), 0) FROM cash_account_moves WHERE account_id = :id");
+    moves.bind(":id", accountId);
+    moves.step();
+    Money balance = moves.columnInt(0);
+    const std::int64_t forever = std::numeric_limits<std::int64_t>::max();
+    if (kind == "till" && !terminal.empty()) {
+        balance += takings(ctx_, "cash", "p.terminal_id = :terminal", terminal, since, forever);
+    } else if (kind == "bank") {
+        balance += takings(ctx_, "card", bankScope(object), object, since, forever);
+    }
+    return balance;
+}
+
+std::string CashService::bankScope(const std::string& objectId) {
+    // A bank tied to a branch takes the card money of that branch's tills;
+    // one with no branch takes it all.
+    if (objectId.empty()) return "1 = 1";
+    return "p.terminal_id IN (SELECT a.terminal_id FROM cash_accounts a WHERE a.object_id = :terminal "
+           "AND a.kind = 'till' AND a.active = 1 AND a.terminal_id != '')";
+}
+
+Money CashService::takingsFor(const std::string& method, const std::string& terminalsSql,
+                              const std::string& bindValue, std::int64_t from, std::int64_t to) {
+    return takings(ctx_, method, terminalsSql, bindValue, from, to);
 }
 
 }  // namespace pos::services

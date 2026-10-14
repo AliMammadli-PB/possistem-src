@@ -618,6 +618,35 @@ void Migrator::ensurePermissionGrants() {
         "INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES "
         "('role-supervisor','perm-rep-export'),('role-manager','perm-rep-export')");
 
+    // Salaries: paying people is the owner's or a manager's call.
+    db_.exec(
+        "INSERT OR IGNORE INTO permissions (id, key, description) VALUES "
+        "('perm-salary', 'salary.manage', 'Set salaries, pay advances and salaries')");
+    db_.exec(
+        "INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES "
+        "('role-manager','perm-salary')");
+
+    // Kassalar: opening tills, transfers between them, the treasury.
+    db_.exec(
+        "INSERT OR IGNORE INTO permissions (id, key, description) VALUES "
+        "('perm-cash-accounts', 'cash.accounts', 'Create kassas and move money between them')");
+    db_.exec(
+        "INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES "
+        "('role-manager','perm-cash-accounts')");
+
+    // Satışlar and Alışlar: looking is a manager's job; correcting or deleting a
+    // closed sale or a purchase document is granted per role by the owner.
+    db_.exec(
+        "INSERT OR IGNORE INTO permissions (id, key, description) VALUES "
+        "('perm-sales-view', 'sales.view', 'See sales invoices'),"
+        "('perm-sales-edit', 'sales.edit', 'Correct a closed sale'),"
+        "('perm-sales-delete', 'sales.delete', 'Delete a closed sale'),"
+        "('perm-purchases-edit', 'purchases.edit', 'Correct a purchase invoice or return'),"
+        "('perm-purchases-delete', 'purchases.delete', 'Delete a purchase invoice or return')");
+    db_.exec(
+        "INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES "
+        "('role-manager','perm-sales-view'),('role-supervisor','perm-sales-view')");
+
     // The administrator holds every permission there is, including any added by
     // a later release. Without this, granting a manager a right the
     // administrator lacked would leave nobody able to take it back.
@@ -786,16 +815,16 @@ bool isDemoSeed(std::string_view name) {
 /**
  * Whether to install the demo catalogue on a fresh database.
  *
- * Defaults to yes, which is what every existing install got. Set
- * `POS_SEED_DEMO_MENU=0` when provisioning for a restaurant that will load its
- * own menu — otherwise its staff start by deleting 118 items belonging to a
- * different venue.
+ * No by default: a new restaurant starts with an empty menu and enters its
+ * own, instead of first deleting 118 items belonging to a different venue.
+ * `POS_SEED_DEMO_MENU=1` (true / yes) loads it - the web demo and the tests do.
+ * Existing databases are never re-seeded either way (see seedIfEmpty).
  */
 bool wantsDemoMenu() {
     const char* raw = std::getenv("POS_SEED_DEMO_MENU");
-    if (!raw) return true;
+    if (!raw) return false;
     const std::string_view value{raw};
-    return !(value == "0" || value == "false" || value == "no");
+    return value == "1" || value == "true" || value == "yes";
 }
 
 }  // namespace

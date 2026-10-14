@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brandBridge, brandDist, brandText } from '../../brands/offline/brand.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -42,15 +43,16 @@ for (const file of [path.join(RENDERER, 'index.html'), PRELOAD, path.join(WASM, 
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.cpSync(RENDERER, OUT, { recursive: true, dereference: true });
+await brandDist(OUT);
 const demo = path.join(OUT, 'demo');
 fs.mkdirSync(demo, { recursive: true });
 const wasm = publish(demo, 'restaurant-pos-core.wasm', fs.readFileSync(path.join(WASM, 'restaurant-pos-core.wasm')));
 const loader = fs.readFileSync(path.join(WASM, 'restaurant-pos-core.mjs'), 'utf8');
 if (!loader.includes('"restaurant-pos-core.wasm"')) throw new Error('core loader: wasm file name not found');
 const core = publish(demo, 'restaurant-pos-core.mjs', loader.replaceAll('"restaurant-pos-core.wasm"', `"${wasm}"`));
-const seed = publish(demo, 'seed.js', fs.readFileSync(path.join(HERE, 'seed.js'), 'utf8'));
+const seed = publish(demo, 'seed.js', brandText(fs.readFileSync(path.join(HERE, 'seed.js'), 'utf8')));
 
-const template = fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8');
+const template = brandBridge(fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8'));
 const preload = fs.readFileSync(PRELOAD, 'utf8');
 for (const slot of ['/*PRELOAD*/', "'./restaurant-pos-core.mjs'", "'./seed.js'"]) {
   if (!template.includes(slot)) throw new Error(`bridge template lost ${slot}`);

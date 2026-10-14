@@ -59,9 +59,10 @@ If you changed the desktop app, bump the version in **three** files
 - Databases are per restaurant: `data/tenants/<customerId>/pos.db`. One PC can
   serve several customers over its life.
 - Money is `int64` qəpik. `19.99 ₼` is `1999`.
-- A fresh database seeds the Milioner menu by default. That is a default, not an
-  assumption: `POS_SEED_DEMO_MENU=0` skips it, and activation replaces the seeded
-  restaurant name with the customer's real one.
+- A fresh database starts with an empty menu; the customer enters their own.
+  `POS_SEED_DEMO_MENU=1` seeds the Milioner demo menu (the web demo and the test
+  runner set it). Activation replaces the seeded restaurant name with the
+  customer's real one.
 - A version pin **holds a till back**; it does not downgrade one that already
   upgraded (`allowDowngrade = false`, and migrations are forward-only).
 

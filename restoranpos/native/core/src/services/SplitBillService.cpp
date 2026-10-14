@@ -236,9 +236,11 @@ MixedPreparation SplitBillService::prepareMixedPayment(const std::string& orderI
     auto insert = ctx_.db().prepare(
         "INSERT INTO payments (id, order_id, method, status, amount_minor, tip_minor, "
         "tendered_minor, change_minor, idempotency_key, user_id, shift_id, business_day_id, "
-        "created_at, updated_at, expires_at) VALUES ("
+        "created_at, updated_at, expires_at, terminal_id) VALUES ("
         ":id, :orderId, 'mixed', 'created', :amount, :tip, :tendered, :change, :key, :userId, "
-        ":shiftId, :day, :now, :now, :expires)");
+        ":shiftId, :day, :now, :now, :expires, :terminal)");
+    ctx_.touchTerminal();
+    insert.bind(":terminal", ctx_.saleTerminalId());
     insert.bind(":id", paymentId)
         .bind(":orderId", orderId)
         .bind(":amount", totalAmount)

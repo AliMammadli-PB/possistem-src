@@ -15,6 +15,7 @@ COMMON=(
   --exclude='*.tsbuildinfo' --exclude='*.orig' --exclude='*.pre-*' --exclude='*.bak-*'
   --exclude='.impeccable/' --exclude='graft/' --exclude='resources/rustdesk/' --exclude='test-results/'
   --exclude='demo-web/dist/'
+  --exclude='build/offline/' --exclude='dist-offline/'
 )
 rsync -a --delete --delete-excluded "${COMMON[@]}" \
   --exclude=/control --exclude=/ops/ --exclude=/artifacts/ --exclude='/sayt test/' --exclude=/chat.md \

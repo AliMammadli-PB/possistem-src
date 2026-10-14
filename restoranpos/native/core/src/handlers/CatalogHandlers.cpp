@@ -1,3 +1,4 @@
+#include "pos/printing/KitchenStations.hpp"
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
 #include "pos/handlers/Handlers.hpp"
@@ -254,6 +255,21 @@ void registerCatalog(const ContextPtr& ctx) {
                     return *replay;
                 }
                 result = services::CatalogAdminService(*ctx).upsertProduct(request.payload);
+                // The dish editor's "Printer" choice: which kitchen printer this
+                // dish prints on ("" = the main kitchen).
+                if (request.payload.contains("printerStationId") &&
+                    request.payload["printerStationId"].is_string()) {
+                    const std::string next = printing::assignItemToStation(
+                        ctx->setting("kitchen.stations", "[]"), result.value("id", ""),
+                        request.payload["printerStationId"].get<std::string>());
+                    auto upsert = ctx->db().prepare(
+                        "INSERT INTO app_settings (key, value, value_type, updated_at) "
+                        "VALUES ('kitchen.stations', :value, 'string', :now) "
+                        "ON CONFLICT(key) DO UPDATE SET value = :value, updated_at = :now");
+                    upsert.bind(":value", next).bind(":now", nowMs());
+                    upsert.exec();
+                    result["printerStationId"] = request.payload["printerStationId"];
+                }
                 idempotency.complete(key, result, "menu_item",
                                      result.value("id", ""));
                 txn.commit();

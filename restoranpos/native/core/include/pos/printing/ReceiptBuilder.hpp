@@ -70,7 +70,12 @@ public:
     RenderedReceipt customerReceipt(const std::string& orderId);
     RenderedReceipt customerReceipt(const std::string& orderId, const ReceiptSettings& config,
                                     bool isReprint);
-    RenderedReceipt kitchenTicket(const std::string& orderId);
+    /**
+     * The pass ticket. With `options.station` (an extra kitchen printer) it lists
+     * only `options.itemIds`; without, it leaves out dishes whose category
+     * prints on an extra printer.
+     */
+    RenderedReceipt kitchenTicket(const std::string& orderId, const Json& options = Json::object());
     RenderedReceipt shiftReport(const std::string& shiftId);
 
     /**

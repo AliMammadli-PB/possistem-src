@@ -1,3 +1,4 @@
+#include <cstdlib>
 /**
  * The restaurant core compiled to WebAssembly for the possistem.az live demo.
  *
@@ -40,6 +41,8 @@ extern "C" {
 EMSCRIPTEN_KEEPALIVE const char* pos_boot(const char* dbPath) {
     std::setlocale(LC_ALL, "C.UTF-8");
     try {
+        // The live demo shows a stocked restaurant; real installs start empty.
+        setenv("POS_SEED_DEMO_MENU", "1", 1);
         pos::AppConfig config;
         config.dbPath = dbPath;
         config.logDir = "/tmp/logs";

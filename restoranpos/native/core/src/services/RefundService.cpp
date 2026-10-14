@@ -151,10 +151,11 @@ Json RefundService::createRefund(const std::string& paymentId, Money amountMinor
         "INSERT INTO refunds ("
         "  id, order_id, payment_id, business_day_id, amount_minor, tip_refund_minor,"
         "  reason, status, method, actor_user_id, approved_by, idempotency_key,"
-        "  created_at, updated_at"
+        "  created_at, updated_at, terminal_id"
         ") VALUES ("
         "  :id, :order, :payment, :day, :amount, 0, :reason, 'completed', :method,"
-        "  :actor, :approved, :idem, :now, :now)");
+        "  :actor, :approved, :idem, :now, :now, :terminal)");
+    insert.bind(":terminal", ctx_.saleTerminalId());
     insert.bind(":id", refundId)
         .bind(":order", orderId)
         .bind(":payment", paymentId)

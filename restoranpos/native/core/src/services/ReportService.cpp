@@ -124,6 +124,18 @@ Json ReportService::buildCanonicalSnapshot(const std::string& businessDayId,
         grossSales += sales.columnInt(2);
         tips += sales.columnInt(3);
     }
+    {
+        // Bills closed onto a partner's tab: sold, but no money moved.
+        auto account = ctx_.db().prepare(
+            "SELECT COUNT(*), COALESCE(SUM(account_minor), 0) FROM orders "
+            "WHERE business_day_id = :day AND account_minor > 0 AND status IN ('paid','closed')");
+        account.bind(":day", businessDayId);
+        if (account.step() && account.columnInt(1) > 0) {
+            byMethod.push_back(Json{{"method", "account"}, {"count", account.columnInt(0)},
+                                    {"totalMinor", account.columnInt(1)}, {"tipsMinor", 0}});
+            grossSales += account.columnInt(1);
+        }
+    }
 
     Json canonical{
         // v2: cash is no longer counted into the system, so countedCashMinor is
@@ -183,6 +195,18 @@ Json ReportService::periodSummary(Timestamp from, Timestamp to) {
         byMethod.push_back(sales.row());
         gross += sales.columnInt(2);
         tips += sales.columnInt(3);
+    }
+    {
+        auto account = ctx_.db().prepare(
+            "SELECT COUNT(*), COALESCE(SUM(account_minor), 0) FROM orders "
+            "WHERE account_minor > 0 AND status IN ('paid','closed') "
+            "  AND closed_at BETWEEN :from AND :to");
+        account.bind(":from", from).bind(":to", to);
+        if (account.step() && account.columnInt(1) > 0) {
+            byMethod.push_back(Json{{"method", "account"}, {"count", account.columnInt(0)},
+                                    {"totalMinor", account.columnInt(1)}, {"tipsMinor", 0}});
+            gross += account.columnInt(1);
+        }
     }
 
     auto refunds = ctx_.db().prepare(

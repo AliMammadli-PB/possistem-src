@@ -364,3 +364,351 @@ button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 /* The chip shares the photo's cell, so the photo and the text keep explicit cells. */
 .product-card-lg>.product-visual{grid-row:1;grid-column:1}
 .product-card-lg>.product-copy{grid-row:2;grid-column:1}
+
+
+/* ===== Tenant (email + password) gate: copied verbatim from Restaurant POS
+   (restoranpos/packaged-renderer/possistem-system.css) so both tills look the same. */
+.ps-rest-gate .ps-brand-lockup { display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border: 0; }
+.ps-rest-gate .ps-brand-logo { display: block; object-fit: contain; }
+.ps-rest-gate-mobile .ps-brand-logo--compact { width: 2.75rem; height: 2.75rem; }
+.ps-rest-gate-error { margin: 0.9rem 0 0; color: #fca5a5; font-size: 0.95rem; font-weight: 600; }
+/* Activation card (Market only): licence facts and quiet secondary actions in the gate's style. */
+.ps-rest-gate-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 1.35rem 0 0; }
+.ps-rest-gate-facts div { min-width: 0; padding: 0.8rem 1rem; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px; background: rgba(255, 255, 255, 0.04); }
+.ps-rest-gate-facts dt { color: rgba(226, 232, 240, 0.6); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.ps-rest-gate-facts dd { margin: 0.3rem 0 0; color: #f4f7fb; font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
+.ps-rest-gate-links { display: flex; justify-content: center; gap: 1.5rem; margin-top: 1.1rem; }
+.ps-rest-gate-links button { border: 0; background: none; color: rgba(147, 197, 253, 0.9); font: inherit; font-size: 0.95rem; font-weight: 650; cursor: pointer; }
+.ps-rest-gate-links button:hover { color: #fff; }
+/* Restaurant POS typography inside the gate: Manrope body at 1.4, Montserrat headings, no tracking. */
+/* Restaurant POS lists Manrope but never ships it, so its gate renders in Segoe UI. */
+.ps-rest-gate { font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif; line-height: 1.4; }
+.ps-rest-gate h1, .ps-rest-gate h2 { font-family: "Montserrat Variable", Montserrat, "Segoe UI", system-ui, sans-serif; letter-spacing: normal; }
+.ps-rest-gate h2 { line-height: 1.4; }
+.ps-rest-gate .ps-rest-gate-desk-title, .ps-rest-gate .ps-rest-gate-card h2 { letter-spacing: normal; }
+.ps-rest-gate-submit { padding: 0; font-family: inherit; }
+/* Restaurant tenant login — left brand chrome like the previous Possistem gate. */
+/* ===== Restaurant login — touchscreen POS glass (45/55) ===== */
+.ps-rest-gate {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  overflow: hidden;
+  padding: clamp(1rem, 2.2vw, 2rem);
+  background: #06080d;
+  color: #f4f7fb;
+}
+.ps-rest-gate > .pointer-events-none { display: none !important; }
+.ps-rest-gate-photo,
+.ps-rest-staff-photo {
+  position: absolute;
+  inset: -2%;
+  background-color: #06080d;
+  background-image: url("./assets/backgrounds/login-bg.png");
+  background-size: cover;
+  background-position: center;
+  filter: saturate(1.06);
+  transform: scale(1.02);
+  pointer-events: none;
+}
+.ps-rest-gate-photo::after,
+.ps-rest-staff-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(105deg, rgba(4, 7, 14, 0.22) 0%, rgba(4, 7, 14, 0.1) 40%, rgba(4, 7, 14, 0.28) 100%),
+    radial-gradient(ellipse 55% 50% at 18% 55%, rgba(120, 70, 30, 0.1), transparent 60%),
+    radial-gradient(ellipse 40% 45% at 82% 30%, rgba(40, 90, 180, 0.08), transparent 55%);
+}
+.ps-rest-gate-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(1280px, 100%);
+  min-height: 0;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(1.1rem, 2.4vw, 2rem);
+  align-items: stretch;
+  padding: 0;
+}
+.ps-rest-gate-brand,
+.ps-rest-gate-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  backdrop-filter: blur(20px) saturate(1.12);
+  -webkit-backdrop-filter: blur(20px) saturate(1.12);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #f4f7fb;
+}
+.ps-rest-gate-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: min(640px, calc(100vh - 3rem));
+  padding: 2rem 2rem 1.75rem;
+  background: rgba(10, 14, 22, 0.48);
+}
+.ps-rest-gate-brand::before {
+  content: "";
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  left: -90px;
+  bottom: -100px;
+  border-radius: 50%;
+  background: rgba(120, 70, 28, 0.2);
+  filter: blur(70px);
+  pointer-events: none;
+}
+.ps-rest-gate-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.ps-rest-gate .ps-brand-lockup--hero {
+  flex: 0 0 auto;
+  width: 3.75rem;
+  height: 3.75rem;
+  background: linear-gradient(145deg, #0c5db8, #083d7a) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+}
+.ps-rest-gate .ps-brand-logo--hero {
+  width: 68%;
+  height: 68%;
+  filter: none !important;
+}
+.ps-rest-gate-wordmark {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: #f4f7fb;
+}
+.ps-rest-gate-sub,
+.ps-rest-gate-kicker {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #93c5fd;
+}
+.ps-rest-gate-copy { max-width: 22rem; padding-bottom: 0; }
+.ps-rest-gate-kicker { margin: 0; }
+.ps-rest-gate-title {
+  margin: 1rem 0 0;
+  font-size: clamp(2.75rem, 4.6vw, 4rem);
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 0.98;
+  color: #fff;
+}
+.ps-rest-gate-rule {
+  width: 3rem;
+  height: 2px;
+  margin-top: 1.25rem;
+  background: linear-gradient(90deg, #c9a86a, transparent);
+}
+.ps-rest-gate-secure {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.45);
+}
+.ps-rest-gate-rule--card {
+  width: 3rem;
+  margin-top: 0.65rem;
+  margin-bottom: 0.2rem;
+  opacity: 0.65;
+}
+.ps-rest-gate-hint {
+  margin: 1.1rem 0 0;
+  max-width: 22rem;
+  color: rgba(226, 232, 240, 0.7);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  font-weight: 500;
+  text-align: left;
+}
+.ps-rest-gate-card {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  min-height: min(640px, calc(100vh - 3rem));
+  align-self: stretch;
+  justify-self: stretch;
+  margin-top: 0;
+  padding: 2.1rem 2.2rem 1.9rem;
+  background: rgba(12, 17, 28, 0.64);
+  display: flex;
+  flex-direction: column;
+}
+.ps-rest-gate-card::before {
+  content: "";
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  right: -100px;
+  top: -110px;
+  border-radius: 50%;
+  background: rgba(54, 120, 255, 0.12);
+  filter: blur(70px);
+  pointer-events: none;
+}
+.ps-rest-gate-mobile {
+  display: none;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+.ps-rest-gate-mobile .ps-brand-logo--compact {
+  box-sizing: content-box;
+  padding: 0.4rem;
+  border-radius: 0.85rem;
+  background: linear-gradient(145deg, #0c5db8, #083d7a);
+  filter: none !important;
+}
+.ps-rest-gate-card h2,
+.ps-rest-gate-desk-title {
+  margin: 0;
+  font-size: 1.85rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  color: #f4f7fb;
+}
+@media (max-width: 900px) {
+  .ps-rest-gate-grid {
+    width: min(32rem, 100%);
+    grid-template-columns: 1fr;
+  }
+  .ps-rest-gate-brand { display: none; }
+  .ps-rest-gate-mobile { display: flex; }
+  .ps-rest-gate-desk-title,
+  .ps-rest-gate-rule--card { display: none; }
+  .ps-rest-gate-card { min-height: 0; }
+}
+.ps-rest-gate-card label {
+  display: block;
+  margin-top: 1.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.ps-rest-gate-card label span { color: rgba(226, 232, 240, 0.82); }
+.ps-rest-gate-input {
+  margin-top: 0.5rem;
+  width: 100%;
+  height: 3.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  padding: 0 1.1rem;
+  background: rgba(255, 255, 255, 0.055);
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 550;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.ps-rest-gate-input:hover { background: rgba(255, 255, 255, 0.07); }
+.ps-rest-gate-input:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+}
+.ps-rest-gate-input::placeholder { color: rgba(248, 250, 252, 0.35); }
+.ps-rest-gate-card label.ps-rest-gate-remember,
+.ps-rest-gate-remember {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 0.85rem;
+  margin-top: 1.35rem;
+  min-height: 2.75rem;
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.35rem;
+  cursor: pointer;
+  user-select: none;
+}
+.ps-rest-gate-card label.ps-rest-gate-remember input[type="checkbox"],
+.ps-rest-gate-remember input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex: 0 0 1.35rem;
+  border: 2px solid rgba(96, 165, 250, 0.85);
+  border-radius: 0.35rem;
+  background: rgba(15, 23, 42, 0.55);
+  display: inline-grid !important;
+  place-items: center;
+  position: static !important;
+  top: auto !important;
+  transform: none !important;
+  vertical-align: middle;
+}
+.ps-rest-gate-card label.ps-rest-gate-remember input[type="checkbox"]::before,
+.ps-rest-gate-remember input[type="checkbox"]::before {
+  content: "";
+  width: 0.7rem;
+  height: 0.7rem;
+  transform: scale(0);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+  background: #fff;
+  transition: transform 0.12s ease;
+}
+.ps-rest-gate-card label.ps-rest-gate-remember input[type="checkbox"]:checked,
+.ps-rest-gate-remember input[type="checkbox"]:checked {
+  background: #2563eb;
+  border-color: #60a5fa;
+}
+.ps-rest-gate-card label.ps-rest-gate-remember input[type="checkbox"]:checked::before,
+.ps-rest-gate-remember input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+.ps-rest-gate-card label.ps-rest-gate-remember > span,
+.ps-rest-gate-remember > span {
+  display: inline !important;
+  line-height: 1.35rem;
+  margin: 0 !important;
+  padding: 0 !important;
+  white-space: nowrap;
+}
+.ps-rest-gate-submit {
+  margin-top: 1.5rem;
+  width: 100%;
+  height: 4rem;
+  border: 0;
+  border-radius: 1.05rem;
+  background: linear-gradient(180deg, #4b8ff7, #2f6fe0);
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+}
+
+/* Extra kitchen printers (KitchenStations.tsx) */
+.kitchen-stations .hint { margin: 0 0 10px; }
+.kitchen-station-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.kitchen-station-row > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.kitchen-station-row small { color: var(--muted); overflow-wrap: anywhere; }
+.kitchen-station-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kitchen-station-actions button, .kitchen-station-chips button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 11px; background: #fff; color: var(--ink); font-weight: 700; }
+.kitchen-station-actions button svg { width: 16px; height: 16px; }
+.kitchen-station-actions .modal-primary { border-color: var(--primary); background: var(--primary); color: #fff; }
+.kitchen-station-form { display: grid; gap: 12px; }
+.kitchen-station-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.kitchen-station-chips button.active { border-color: var(--primary); background: var(--accent-soft); color: var(--primary); }
+.kitchen-station-chips button:disabled { opacity: .45; }

@@ -103,7 +103,7 @@ const api = {
     levels: (warehouseId) => call("inventory.levels", { warehouseId: warehouseId ?? "" }),
     lowStock: () => call("inventory.lowStock"),
     /** Kalkulyasiya: every dish costed from its recipe at today's prices. */
-    costing: () => call("reports.costing", {}, { timeoutMs: 15000 }),
+    costing: (since) => call("reports.costing", { since: since ?? 0 }, { timeoutMs: 15000 }),
     valuation: (warehouseId) => call("inventory.valuation", { warehouseId: warehouseId ?? "" }),
     movements: (params) => call("inventory.movements", params ?? {}),
     adjust: (input) => call("inventory.adjust", input),
@@ -126,7 +126,33 @@ const api = {
     purchases: () => call("purchases.list"),
     purchase: (purchaseId) => call("purchases.get", { purchaseId }),
     savePurchase: (input) => call("purchases.save", input),
-    receive: (purchaseId) => call("purchases.receive", { purchaseId }, { timeoutMs: 30000 })
+    receive: (purchaseId) => call("purchases.receive", { purchaseId }, { timeoutMs: 30000 }),
+    returnGoods: (input, options) => call("purchases.return", input, options),
+    updatePurchase: (input, options) => call("purchases.update", input, options),
+    deletePurchase: (purchaseId) => call("purchases.delete", { purchaseId }),
+    deleteReturn: (returnId) => call("purchases.deleteReturn", { returnId }),
+    returns: (supplierId) => call("purchases.returns", { supplierId: supplierId ?? "" })
+  },
+
+  sales: {
+    list: (from, to) => call("sales.list", { from, to }, { timeoutMs: 15000 }),
+    get: (orderId) => call("sales.get", { orderId }),
+    update: (input, options) => call("sales.update", input, options),
+    remove: (input) => call("sales.delete", input)
+  },
+
+  cashAccounts: {
+    list: (from, to) => call("cashAccounts.list", { from, to }),
+    save: (input, options) => call("cashAccounts.save", input, options),
+    deactivate: (accountId) => call("cashAccounts.deactivate", { accountId }),
+    moves: (accountId) => call("cashAccounts.moves", { accountId }),
+    transfer: (input, options) => call("cashAccounts.transfer", input, options),
+    saveObject: (input) => call("cashObjects.save", input)
+  },
+
+  salary: {
+    list: (input) => call("salary.list", input),
+    pay: (input, options) => call("salary.pay", input, options)
   },
 
   guests: {
@@ -355,6 +381,9 @@ const api = {
     setGuestCount: (orderId, guestCount) => call("orders.setGuestCount", { orderId, guestCount }),
     submit: (orderId, options) => call("orders.submit", { orderId }, options),
     close: (orderId, options) => call("orders.close", { orderId }, options),
+    /** Closes the bill with what is unpaid on the partner's tab ("nisyə"). */
+    closeToAccount: (orderId, options) => call("orders.close", { orderId, toAccount: true }, options),
+    setPartner: (orderId, customerId) => call("orders.setPartner", { orderId, customerId: customerId ?? "" }),
     void: (orderId, reason, managerPin, options) => call("orders.void", { orderId, reason, managerPin }, options)
   },
   kds: {

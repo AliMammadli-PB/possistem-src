@@ -39,6 +39,8 @@ declare global {
         health(): Promise<{ online: boolean; provider: string; configured?: boolean; target?: string }>;
         test(sessionToken: string, widthMm?: number): Promise<{ ok: boolean; bytes: number }>;
         receipt(sessionToken: string, receipt: unknown, widthMm?: number): Promise<{ ok: boolean; bytes: number }>;
+        /** Preparation ticket for an extra kitchen printer, sent to its own target. */
+        station?(sessionToken: string, target: string, ticket: { stationName: string; receiptNo: string; createdAt: number; items: Array<{ name: string; qty: number; unit?: string }> }, widthMm?: number): Promise<{ ok: boolean; bytes: number }>;
         /** Finds every printer and prints a page to each until one takes it. */
         detect(sessionToken: string, probe?: boolean): Promise<{
           current: string; chosen: string | null;

@@ -997,6 +997,16 @@ void registerSystem(const ContextPtr& ctx) {
                 getOr<std::string>(request.payload, "note", ""),
                 getOr<std::string>(request.payload, "businessDayId", ""),
                 getOr<std::string>(request.payload, "shiftId", ""));
+            // Which kassa the money went into or out of (Kassalar).
+            {
+                const auto kind = row.value("kind", std::string{});
+                const Money amount = row.value("amountMinor", Money{0});
+                const bool in = kind == "cash_in" || kind == "float_adjust";
+                services::CashService(*ctx).accountMove(
+                    getOr<std::string>(request.payload, "accountId", ""), in ? amount : -amount, kind,
+                    "cash_movement", row.value("id", std::string{}),
+                    row.value("reason", std::string{}) + (row.value("note", std::string{}).empty() ? "" : " · " + row.value("note", std::string{})));
+            }
             Json response{{"movement", row}};
             idem.complete(key, response, "cash_movement", row.value("id", ""));
             txn.commit();

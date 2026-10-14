@@ -23,8 +23,9 @@ public:
         pos::handlers::registerOrders(fixture_.contextPtr());
     }
 
-    pos::Json call(const std::string& method, pos::Json payload) {
+    pos::Json call(const std::string& method, pos::Json payload, const std::string& terminal = "") {
         pos::ipc::Request request;
+        request.terminalId = terminal;
         request.requestId = pos::crypto::uuid4();
         request.method = method;
         request.payload = std::move(payload);
@@ -144,4 +145,27 @@ TEST_CASE("a part payment leaves the store alone", "[stock]") {
 
     // The guest may still send the dish back; nothing has left yet.
     REQUIRE(f.level(meat, store) == 0);
+}
+
+TEST_CASE("a sale at a branch's till takes stock from that branch's store", "[stock]") {
+    StockFixture f;
+    const auto main = f.store();
+    const auto now = pos::nowMs();
+    auto& db = f.fixture().db();
+    auto wh = db.prepare("INSERT INTO warehouses (id, name, kind, active, sort_order, created_at, updated_at) "
+                         "VALUES ('wh-may', '28 May', 'store', 1, 100, :now, :now)");
+    wh.bind(":now", now);
+    wh.exec();
+    auto obj = db.prepare("INSERT INTO cash_objects (id, name, warehouse_id, created_at) VALUES ('obj-may', '28 May', 'wh-may', :now)");
+    obj.bind(":now", now);
+    obj.exec();
+    auto till = db.prepare("INSERT INTO cash_accounts (id, name, kind, object_id, terminal_id, created_at) "
+                           "VALUES ('acc-may', 'Kassa 1', 'till', 'obj-may', 'pc-may', :now)");
+    till.bind(":now", now);
+    till.exec();
+
+    const auto [orderId, meat] = f.burgerOrder(1);
+    f.call("payments.createCash", pos::Json{{"orderId", orderId}, {"amountMinor", 700}, {"tenderedMinor", 700}}, "pc-may");
+    REQUIRE(f.level(meat, "wh-may") == -150);
+    REQUIRE(f.level(meat, main) == 0);
 }

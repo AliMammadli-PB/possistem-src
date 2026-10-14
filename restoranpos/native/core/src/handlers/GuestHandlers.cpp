@@ -12,6 +12,7 @@
 #include "pos/db/Database.hpp"
 #include "pos/handlers/Handlers.hpp"
 #include "pos/protocol_generated.hpp"
+#include "pos/services/CashService.hpp"
 #include "pos/services/Idempotency.hpp"
 
 namespace pos::handlers {
@@ -69,14 +70,16 @@ void registerGuests(const ContextPtr& ctx) {
             const auto search = getOr<std::string>(request.payload, "search", "");
             auto stmt = ctx->db().prepare(
                 "SELECT id, name, phone, email, address, note, "
-                "       loyalty_points AS loyaltyPoints, debt_minor AS debtMinor "
+                "       loyalty_points AS loyaltyPoints, debt_minor AS debtMinor, "
+                "       kind, salary_minor AS salaryMinor, COALESCE(object_id, '') AS objectId "
                 "FROM customers "
                 // Parenthesised: without it the AND binds tighter than the ORs
                 // and an inactive customer would surface on any search.
-                "WHERE active = 1 "
+                "WHERE active = 1 AND (:kind = '' OR kind = :kind) "
                 "  AND (:search = '' OR name LIKE :like OR phone LIKE :like) "
                 "ORDER BY name LIMIT 5000");
-            stmt.bind(":search", search).bind(":like", "%" + search + "%");
+            stmt.bind(":search", search).bind(":like", "%" + search + "%")
+                .bind(":kind", getOr<std::string>(request.payload, "kind", ""));
             return Json{{"customers", stmt.rows()}};
         });
 
@@ -88,7 +91,8 @@ void registerGuests(const ContextPtr& ctx) {
 
             auto stmt = ctx->db().prepare(
                 "SELECT id, name, phone, email, address, note, "
-                "       loyalty_points AS loyaltyPoints, debt_minor AS debtMinor, active "
+                "       loyalty_points AS loyaltyPoints, debt_minor AS debtMinor, active, "
+                "       kind, salary_minor AS salaryMinor "
                 "FROM customers WHERE id = :id");
             stmt.bind(":id", id);
             if (!stmt.step()) {
@@ -108,6 +112,11 @@ void registerGuests(const ContextPtr& ctx) {
             const auto email = getOr<std::string>(request.payload, "email", "");
             const auto address = getOr<std::string>(request.payload, "address", "");
             const auto note = getOr<std::string>(request.payload, "note", "");
+            // A partner is a guest or an employee; an employee has a salary.
+            const auto kind = getOr<std::string>(request.payload, "kind", "customer");
+            require(kind == "customer" || kind == "employee", "Partnyorun tipi tanınmadı");
+            const auto salary = getOr<std::int64_t>(request.payload, "salaryMinor", 0);
+            require(salary >= 0, "Maaş mənfi ola bilməz");
             const auto now = nowMs();
 
             db::Transaction txn(ctx->db());
@@ -131,9 +140,134 @@ void registerGuests(const ContextPtr& ctx) {
                 update.exec();
                 require(ctx->db().changes() == 1, "Müştəri tapılmadı");
             }
+            if (request.payload.contains("kind") || request.payload.contains("salaryMinor")) {
+                auto partner = ctx->db().prepare(
+                    "UPDATE customers SET kind = :kind, salary_minor = :salary WHERE id = :id");
+                partner.bind(":kind", kind).bind(":salary", salary).bind(":id", id);
+                partner.exec();
+            }
+            if (request.payload.contains("objectId")) {
+                // Which branch they belong to ("" = none).
+                auto branch = ctx->db().prepare("UPDATE customers SET object_id = :object WHERE id = :id");
+                branch.bindOptional(":object", getOr<std::string>(request.payload, "objectId", "")).bind(":id", id);
+                branch.exec();
+            }
             ctx->audit("customer.save", "customer", id, Json{{"name", name}});
             txn.commit();
             return Json{{"id", id}, {"name", name}, {"phone", phone}};
+        });
+
+    // ---------------------------------------------------------------- salary
+    // An employee's month: the salary, what was paid (advances, full
+    // payments), what their tab took (meals put on their account that month)
+    // and what is still due. Months are passed in as local-time bounds, so a
+    // new month starts at the full salary on its own.
+    server.registerHandler(
+        std::string(protocol::method::kSalaryList), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("salary.manage");
+            const auto month = getOr<std::string>(request.payload, "month", "");
+            const auto from = getOr<std::int64_t>(request.payload, "from", 0);
+            const auto to = getOr<std::int64_t>(request.payload, "to", 0);
+            require(month.size() == 7 && to > from, "Ay düzgün deyil");
+
+            auto stmt = ctx->db().prepare(
+                "SELECT c.id, c.name, c.phone, c.salary_minor AS salaryMinor, c.debt_minor AS debtMinor, "
+                "  COALESCE(c.object_id, '') AS objectId, "
+                "  COALESCE((SELECT SUM(p.amount_minor) FROM salary_payments p "
+                "            WHERE p.customer_id = c.id AND p.month = :month), 0) AS paidMinor, "
+                "  COALESCE((SELECT SUM(l.amount_minor) FROM customer_ledger l "
+                "            WHERE l.customer_id = c.id AND l.kind = 'charge' "
+                "              AND l.created_at >= :from AND l.created_at < :to), 0) AS mealsMinor, "
+                "  EXISTS (SELECT 1 FROM salary_payments p WHERE p.customer_id = c.id "
+                "          AND p.month = :month AND p.kind = 'full') AS settled "
+                "FROM customers c WHERE c.active = 1 AND c.kind = 'employee' ORDER BY c.name");
+            stmt.bind(":month", month).bind(":from", from).bind(":to", to);
+            auto rows = stmt.rows();
+            for (auto& row : rows) {
+                const Money salary = row.value("salaryMinor", Money{0});
+                const Money paid = row.value("paidMinor", Money{0});
+                const Money meals = row.value("mealsMinor", Money{0});
+                const bool settled = row.value("settled", std::int64_t{0}) != 0;
+                row["settled"] = settled;
+                row["remainingMinor"] = settled ? Money{0} : std::max<Money>(0, salary - paid - meals);
+                auto history = ctx->db().prepare(
+                    "SELECT id, kind, amount_minor AS amountMinor, note, created_at AS createdAt "
+                    "FROM salary_payments WHERE customer_id = :id AND month = :month "
+                    "ORDER BY created_at DESC");
+                history.bind(":id", row.value("id", std::string{})).bind(":month", month);
+                row["history"] = history.rows();
+            }
+            return Json{{"month", month}, {"employees", rows}};
+        });
+
+    server.registerHandler(
+        std::string(protocol::method::kSalaryPay), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("salary.manage");
+            const auto customerId = getOr<std::string>(request.payload, "customerId", "");
+            const auto month = getOr<std::string>(request.payload, "month", "");
+            const auto kind = getOr<std::string>(request.payload, "kind", "");
+            const auto amount = getOr<Money>(request.payload, "amountMinor", 0);
+            const auto note = getOr<std::string>(request.payload, "note", "");
+            require(!customerId.empty() && month.size() == 7, "İşçi və ay tələb olunur");
+            require(kind == "advance" || kind == "full" || kind == "note", "Ödəniş növü tanınmadı");
+            require(kind == "note" ? !note.empty() : amount >= 0, "Məbləğ və ya qeyd düzgün deyil");
+            require(kind != "advance" || amount > 0, "Avans sıfırdan böyük olmalıdır");
+
+            db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            const auto key = request.idempotencyKey.empty()
+                                 ? getOr<std::string>(request.payload, "idempotencyKey", "")
+                                 : request.idempotencyKey;
+            if (auto replay = idem.begin(key, "salary.pay", request.payload)) return *replay;
+
+            auto who = ctx->db().prepare(
+                "SELECT name FROM customers WHERE id = :id AND active = 1 AND kind = 'employee'");
+            who.bind(":id", customerId);
+            require(who.step(), "İşçi tapılmadı");
+            const std::string name = who.columnText(0);
+            const auto now = nowMs();
+
+            auto insert = ctx->db().prepare(
+                "INSERT INTO salary_payments (id, customer_id, month, kind, amount_minor, note, "
+                "                             actor_user_id, created_at) "
+                "VALUES (:id, :customer, :month, :kind, :amount, :note, :actor, :now)");
+            insert.bind(":id", crypto::uuid4()).bind(":customer", customerId).bind(":month", month)
+                .bind(":kind", kind).bind(":amount", kind == "note" ? Money{0} : amount)
+                .bind(":note", note).bindOptional(":actor", ctx->session().userId).bind(":now", now);
+            insert.exec();
+
+            // The full payment is net of the tab: the meals were taken out of the
+            // salary, so the tab is cleared rather than collected again.
+            if (kind == "full") {
+                auto debt = ctx->db().prepare("SELECT debt_minor FROM customers WHERE id = :id");
+                debt.bind(":id", customerId);
+                const Money owed = debt.step() ? debt.columnInt(0) : 0;
+                if (owed > 0) {
+                    auto adjust = ctx->db().prepare(
+                        "INSERT INTO customer_ledger (id, customer_id, amount_minor, kind, note, "
+                        "                             actor_user_id, created_at) "
+                        "VALUES (:id, :customer, :amount, 'adjustment', 'Maaşdan tutuldu', :actor, :now)");
+                    adjust.bind(":id", crypto::uuid4()).bind(":customer", customerId)
+                        .bind(":amount", -owed).bindOptional(":actor", ctx->session().userId)
+                        .bind(":now", now);
+                    adjust.exec();
+                    refreshDebt(*ctx, customerId);
+                }
+            }
+            const auto accountId = getOr<std::string>(request.payload, "accountId", "");
+            if (kind != "note" && amount > 0 && (getOr<bool>(request.payload, "fromCash", false) || !accountId.empty())) {
+                // Listed under Xərclər, and taken out of the kassa or treasury picked.
+                const auto label = name + (kind == "advance" ? " · avans" : " · maaş");
+                const auto row = services::CashService(*ctx).recordMovement("expense", amount, "Maaş", label);
+                services::CashService(*ctx).accountMove(accountId, -amount, "salary", "cash_movement",
+                                                        row.value("id", std::string{}), "Maaş: " + label);
+            }
+            ctx->auditRequired("salary.pay", "customer", customerId,
+                               Json{{"kind", kind}, {"amountMinor", amount}, {"month", month}});
+            Json response{{"ok", true}, {"customerId", customerId}, {"month", month}};
+            idem.complete(key, response, "customer", customerId);
+            txn.commit();
+            return response;
         });
 
     server.registerHandler(
@@ -247,6 +381,14 @@ void registerGuests(const ContextPtr& ctx) {
             insert.exec();
 
             const Money debt = refreshDebt(*ctx, customerId);
+            // The money comes into the kassa the cashier picked.
+            {
+                auto who = ctx->db().prepare("SELECT name FROM customers WHERE id = :id");
+                who.bind(":id", customerId);
+                services::CashService(*ctx).accountMove(
+                    getOr<std::string>(request.payload, "accountId", ""), amount, "debt_in", "customer",
+                    customerId, "Borc: " + (who.step() ? who.columnText(0) : std::string{}));
+            }
             ctx->auditRequired("customer.payDebt", "customer", customerId,
                                Json{{"amountMinor", amount}, {"debtMinor", debt}});
             Json response{{"customerId", customerId}, {"debtMinor", debt}};

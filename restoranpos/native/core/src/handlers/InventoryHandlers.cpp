@@ -17,6 +17,7 @@
 #include "pos/handlers/Handlers.hpp"
 #include "pos/protocol_generated.hpp"
 #include "pos/services/InventoryService.hpp"
+#include "pos/services/CashService.hpp"
 #include "pos/services/Idempotency.hpp"
 
 namespace pos::handlers {
@@ -40,6 +41,49 @@ std::string defaultWarehouse(Context& ctx) {
 std::string warehouseFrom(Context& ctx, const Json& payload, const char* key = "warehouseId") {
     const auto given = getOr<std::string>(payload, key, "");
     return given.empty() ? defaultWarehouse(ctx) : given;
+}
+
+/** Takes a supplier return back: goods into the store, the money back on the debt. Returns {number}. */
+std::string undoReturn(Context& ctx, const std::string& returnId) {
+    auto head = ctx.db().prepare(
+        "SELECT supplier_id, COALESCE(purchase_id, ''), warehouse_id, total_minor, number "
+        "FROM purchase_returns WHERE id = :id");
+    head.bind(":id", returnId);
+    require(head.step(), "Qaytarma tapılmadı");
+    const std::string supplierId = head.columnText(0);
+    const std::string purchaseId = head.columnText(1);
+    const std::string warehouseId = head.columnText(2);
+    const Money total = head.columnInt(3);
+    const std::string number = head.columnText(4);
+    services::InventoryService inventory(ctx);
+    auto items = ctx.db().prepare("SELECT ingredient_id, qty_milli FROM purchase_return_items WHERE return_id = :id");
+    items.bind(":id", returnId);
+    std::vector<std::pair<std::string, std::int64_t>> lines;
+    while (items.step()) lines.emplace_back(items.columnText(0), items.columnInt(1));
+    for (const auto& [ingredient, qty] : lines)
+        inventory.move(ingredient, warehouseId, qty, "adjustment", returnId, "qaytarma ləğv edildi");
+    if (total != 0) {
+        auto ledger = ctx.db().prepare(
+            "INSERT INTO supplier_ledger (id, supplier_id, purchase_id, amount_minor, kind, note, actor_user_id, created_at) "
+            "VALUES (:id, :supplier, :purchase, :amount, 'charge', :note, :actor, :now)");
+        ledger.bind(":id", crypto::uuid4()).bind(":supplier", supplierId).bindOptional(":purchase", purchaseId)
+            .bind(":amount", total).bind(":note", "Qaytarma ləğv " + number)
+            .bindOptional(":actor", ctx.session().userId).bind(":now", nowMs());
+        ledger.exec();
+        if (!purchaseId.empty()) {
+            auto due = ctx.db().prepare(
+                "UPDATE purchase_orders SET due_minor = MIN(total_minor, due_minor + :amount) WHERE id = :id");
+            due.bind(":amount", total).bind(":id", purchaseId);
+            due.exec();
+        }
+    }
+    auto drop = ctx.db().prepare("DELETE FROM purchase_return_items WHERE return_id = :id");
+    drop.bind(":id", returnId);
+    drop.exec();
+    auto dropHead = ctx.db().prepare("DELETE FROM purchase_returns WHERE id = :id");
+    dropHead.bind(":id", returnId);
+    dropHead.exec();
+    return number;
 }
 
 }  // namespace
@@ -113,6 +157,9 @@ void registerInventory(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT i.id, i.sku, i.name, i.unit, i.cost_minor AS costMinor, "
                 "       i.min_qty_milli AS minQtyMilli, i.barcode, i.active, "
+                "       CASE WHEN i.sku LIKE 'MENU-%' THEN COALESCE((SELECT m.price_minor FROM menu_items m "
+                "         WHERE m.id = substr(i.sku, 6)), i.sale_price_minor) "
+                "         ELSE i.sale_price_minor END AS salePriceMinor, "
                 "       COALESCE((SELECT SUM(qty_milli) FROM stock_levels s "
                 "                  WHERE s.ingredient_id = i.id), 0) AS qtyMilli "
                 "FROM ingredients i "
@@ -139,7 +186,11 @@ void registerInventory(const ContextPtr& ctx) {
             const auto costMinor = getOr<std::int64_t>(request.payload, "costMinor", 0);
             const auto minQty = getOr<std::int64_t>(request.payload, "minQtyMilli", 0);
             const auto barcode = getOr<std::string>(request.payload, "barcode", "");
+            // Optional: an edit that does not send it keeps what was there.
+            const bool hasSalePrice = request.payload.contains("salePriceMinor");
+            const auto salePrice = getOr<std::int64_t>(request.payload, "salePriceMinor", 0);
             require(costMinor >= 0, "Maya dəyəri mənfi ola bilməz");
+            require(salePrice >= 0, "Satış qiyməti mənfi ola bilməz");
             require(minQty >= 0, "Minimum miqdar mənfi ola bilməz");
             const auto now = nowMs();
 
@@ -152,13 +203,16 @@ void registerInventory(const ContextPtr& ctx) {
                 if (sku.empty()) sku = "ING-" + id.substr(4);
                 auto insert = ctx->db().prepare(
                     "INSERT INTO ingredients (id, sku, name, unit, cost_minor, min_qty_milli, "
-                    "                         barcode, created_at, updated_at) "
-                    "VALUES (:id, :sku, :name, :unit, :cost, :min, :barcode, :now, :now)");
+                    "                         barcode, sale_price_minor, created_at, updated_at) "
+                    "VALUES (:id, :sku, :name, :unit, :cost, :min, :barcode, :sale, :now, :now)");
                 insert.bind(":id", id).bind(":sku", sku).bind(":name", name).bind(":unit", unit)
                     .bind(":cost", costMinor).bind(":min", minQty).bind(":barcode", barcode)
-                    .bind(":now", now);
+                    .bind(":sale", salePrice).bind(":now", now);
                 insert.exec();
             } else {
+                auto current = ctx->db().prepare("SELECT sku FROM ingredients WHERE id = :id");
+                current.bind(":id", id);
+                if (current.step()) sku = current.columnText(0);
                 auto update = ctx->db().prepare(
                     "UPDATE ingredients SET name = :name, unit = :unit, cost_minor = :cost, "
                     "                       min_qty_milli = :min, barcode = :barcode, "
@@ -168,6 +222,34 @@ void registerInventory(const ContextPtr& ctx) {
                     .bind(":id", id);
                 update.exec();
                 require(ctx->db().changes() == 1, "İnqrediyent tapılmadı");
+                if (hasSalePrice) {
+                    auto sale = ctx->db().prepare(
+                        "UPDATE ingredients SET sale_price_minor = :sale WHERE id = :id");
+                    sale.bind(":sale", salePrice).bind(":id", id);
+                    sale.exec();
+                }
+            }
+            // A stock item made for a catalog product (sku MENU-<id>) sells at the
+            // menu price: changing it here changes the menu, with its history.
+            if (hasSalePrice && sku.rfind("MENU-", 0) == 0) {
+                const auto itemId = sku.substr(5);
+                auto old = ctx->db().prepare("SELECT price_minor FROM menu_items WHERE id = :id");
+                old.bind(":id", itemId);
+                if (old.step() && old.columnInt(0) != salePrice) {
+                    const auto oldPrice = old.columnInt(0);
+                    auto menu = ctx->db().prepare(
+                        "UPDATE menu_items SET price_minor = :price, updated_at = :now WHERE id = :id");
+                    menu.bind(":price", salePrice).bind(":now", now).bind(":id", itemId);
+                    menu.exec();
+                    auto hist = ctx->db().prepare(
+                        "INSERT INTO menu_item_price_history "
+                        "(id, item_id, old_price_minor, new_price_minor, changed_by, reason, created_at) "
+                        "VALUES (:id, :item, :old, :new, :by, 'anbar', :now)");
+                    hist.bind(":id", crypto::uuid4()).bind(":item", itemId).bind(":old", oldPrice)
+                        .bind(":new", salePrice).bindOptional(":by", ctx->session().userId)
+                        .bind(":now", now);
+                    hist.exec();
+                }
             }
             ctx->audit("ingredient.save", "ingredient", id, Json{{"name", name}});
             Json response{{"id", id}, {"sku", sku}, {"name", name}, {"unit", unit}};
@@ -511,6 +593,12 @@ void registerInventory(const ContextPtr& ctx) {
                 update.exec();
                 require(ctx->db().changes() == 1, "Təchizatçı tapılmadı");
             }
+            if (request.payload.contains("active")) {
+                // Partnyorlar → Sil: hidden from lists, its history kept.
+                auto active = ctx->db().prepare("UPDATE suppliers SET active = :a WHERE id = :id");
+                active.bind(":a", getOr<bool>(request.payload, "active", true) ? 1 : 0).bind(":id", id);
+                active.exec();
+            }
             ctx->audit("supplier.save", "supplier", id, Json{{"name", name}});
             txn.commit();
             return Json{{"id", id}, {"name", name}};
@@ -574,6 +662,13 @@ void registerInventory(const ContextPtr& ctx) {
                 .bindOptional(":actor", ctx->session().userId).bind(":now", nowMs());
             insert.exec();
 
+            {
+                auto who = ctx->db().prepare("SELECT name FROM suppliers WHERE id = :id");
+                who.bind(":id", supplierId);
+                services::CashService(*ctx).accountMove(
+                    getOr<std::string>(request.payload, "accountId", ""), -amount, "supplier", "supplier",
+                    supplierId, "Təchizatçı: " + (who.step() ? who.columnText(0) : std::string{}));
+            }
             ctx->auditRequired("supplier.pay", "supplier", supplierId,
                                Json{{"amountMinor", amount}});
             Json response{{"ok", true}, {"supplierId", supplierId}, {"amountMinor", amount}};
@@ -600,10 +695,14 @@ void registerInventory(const ContextPtr& ctx) {
             ctx->requirePermission("suppliers.view");
             auto stmt = ctx->db().prepare(
                 "SELECT p.id, p.number, p.supplier_id AS supplierId, s.name AS supplierName, "
-                "       p.warehouse_id AS warehouseId, p.status, p.total_minor AS totalMinor, "
-                "       p.due_minor AS dueMinor, p.created_at AS createdAt, "
+                "       p.warehouse_id AS warehouseId, w.name AS warehouseName, "
+                "       COALESCE(o.id, '') AS objectId, COALESCE(o.name, '') AS objectName, "
+                "       p.status, p.total_minor AS totalMinor, "
+                "       p.due_minor AS dueMinor, p.note, p.created_at AS createdAt, "
                 "       p.received_at AS receivedAt "
                 "FROM purchase_orders p JOIN suppliers s ON s.id = p.supplier_id "
+                "LEFT JOIN warehouses w ON w.id = p.warehouse_id "
+                "LEFT JOIN cash_objects o ON o.warehouse_id = p.warehouse_id AND o.active = 1 "
                 "ORDER BY p.created_at DESC LIMIT 5000");
             return Json{{"purchases", stmt.rows()}};
         });
@@ -630,7 +729,12 @@ void registerInventory(const ContextPtr& ctx) {
             auto lines = ctx->db().prepare(
                 "SELECT l.id, l.ingredient_id AS ingredientId, i.name, i.unit, "
                 "       l.qty_milli AS qtyMilli, l.unit_cost_minor AS unitCostMinor, "
-                "       l.line_total_minor AS lineTotalMinor "
+                "       l.line_total_minor AS lineTotalMinor, "
+                // What already went back to the supplier from this invoice.
+                "       COALESCE((SELECT SUM(ri.qty_milli) FROM purchase_return_items ri "
+                "                 JOIN purchase_returns r ON r.id = ri.return_id "
+                "                 WHERE r.purchase_id = l.purchase_id "
+                "                   AND ri.ingredient_id = l.ingredient_id), 0) AS returnedMilli "
                 "FROM purchase_order_items l JOIN ingredients i ON i.id = l.ingredient_id "
                 "WHERE l.purchase_id = :id");
             lines.bind(":id", id);
@@ -807,6 +911,390 @@ void registerInventory(const ContextPtr& ctx) {
             return response;
         });
 
+    // ------------------------------------------------------ invoice correction
+    // A received invoice can be corrected after the fact (wrong quantity,
+    // price, item, supplier or branch). Done as "undo the old, apply the new"
+    // so stock, cost and the supplier's debt all stay consistent.
+    server.registerHandler(
+        std::string(protocol::method::kPurchasesUpdate), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("purchases.edit");
+            const auto id = getOr<std::string>(request.payload, "purchaseId", "");
+            const auto supplierId = getOr<std::string>(request.payload, "supplierId", "");
+            const auto note = getOr<std::string>(request.payload, "note", "");
+            require(!id.empty() && !supplierId.empty(), "Qaimə və təchizatçı tələb olunur");
+            require(request.payload.contains("lines") && request.payload["lines"].is_array(), "lines is required");
+
+            db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            const auto key = request.idempotencyKey.empty()
+                                 ? getOr<std::string>(request.payload, "idempotencyKey", "")
+                                 : request.idempotencyKey;
+            if (auto replay = idem.begin(key, "purchases.update", request.payload)) return *replay;
+
+            auto head = ctx->db().prepare(
+                "SELECT supplier_id, warehouse_id, status, total_minor, number FROM purchase_orders WHERE id = :id");
+            head.bind(":id", id);
+            require(head.step(), "Alış qaiməsi tapılmadı");
+            const std::string oldSupplier = head.columnText(0);
+            const std::string oldWarehouse = head.columnText(1);
+            require(head.columnText(2) != "cancelled", "Silinmiş qaiməyə düzəliş olunmur");
+            const bool received = head.columnText(2) == "received";
+            const Money oldTotal = head.columnInt(3);
+            const std::string number = head.columnText(4);
+            const std::string warehouseId = warehouseFrom(*ctx, request.payload);
+            auto supplier = ctx->db().prepare("SELECT 1 FROM suppliers WHERE id = :id");
+            supplier.bind(":id", supplierId);
+            require(supplier.step(), "Təchizatçı tapılmadı");
+
+            struct Line {
+                std::string ingredientId;
+                std::int64_t qty;
+                Money unitCost;
+            };
+            std::vector<Line> lines;
+            Money total = 0;
+            for (const auto& raw : request.payload["lines"]) {
+                if (!raw.is_object()) continue;
+                Line line{getOr<std::string>(raw, "ingredientId", ""), getOr<std::int64_t>(raw, "qtyMilli", 0),
+                          getOr<Money>(raw, "unitCostMinor", 0)};
+                if (line.ingredientId.empty() || line.qty <= 0) continue;
+                require(line.unitCost >= 0, "Qiymət mənfi ola bilməz");
+                total += line.qty * line.unitCost / 1000;
+                lines.push_back(line);
+            }
+            require(!lines.empty(), "Qaimədə ən azı bir mal olmalıdır");
+
+            // What already went back cannot be un-bought.
+            auto returned = ctx->db().prepare(
+                "SELECT ri.ingredient_id, SUM(ri.qty_milli) FROM purchase_return_items ri "
+                "JOIN purchase_returns r ON r.id = ri.return_id WHERE r.purchase_id = :id GROUP BY ri.ingredient_id");
+            returned.bind(":id", id);
+            Money returnedValue = 0;
+            while (returned.step()) {
+                std::int64_t kept = 0;
+                for (const auto& line : lines)
+                    if (line.ingredientId == returned.columnText(0)) kept += line.qty;
+                require(kept >= returned.columnInt(1), "Qaytarılmış miqdardan az yazmaq olmaz");
+            }
+            {
+                auto rv = ctx->db().prepare("SELECT COALESCE(SUM(total_minor), 0) FROM purchase_returns WHERE purchase_id = :id");
+                rv.bind(":id", id);
+                rv.step();
+                returnedValue = rv.columnInt(0);
+            }
+            {
+                auto sameWarehouse = ctx->db().prepare("SELECT COUNT(*) FROM purchase_returns WHERE purchase_id = :id");
+                sameWarehouse.bind(":id", id);
+                sameWarehouse.step();
+                require(sameWarehouse.columnInt(0) == 0 || warehouseId == oldWarehouse,
+                        "Qaytarması olan qaimənin obyektini dəyişmək olmaz");
+            }
+
+            services::InventoryService inventory(*ctx);
+            const auto now = nowMs();
+            if (received) {
+                auto old = ctx->db().prepare(
+                    "SELECT ingredient_id, qty_milli FROM purchase_order_items WHERE purchase_id = :id");
+                old.bind(":id", id);
+                std::vector<std::pair<std::string, std::int64_t>> before;
+                while (old.step()) before.emplace_back(old.columnText(0), old.columnInt(1));
+                for (const auto& [ingredient, qty] : before)
+                    inventory.move(ingredient, oldWarehouse, -qty, "adjustment", id, "qaimə düzəlişi");
+                for (const auto& line : lines) {
+                    inventory.move(line.ingredientId, warehouseId, line.qty, "receipt", id, "qaimə düzəlişi");
+                    if (line.unitCost > 0) {
+                        auto cost = ctx->db().prepare(
+                            "UPDATE ingredients SET cost_minor = :cost, updated_at = :now WHERE id = :id");
+                        cost.bind(":cost", line.unitCost).bind(":now", now).bind(":id", line.ingredientId);
+                        cost.exec();
+                    }
+                }
+                // The debt moves with the invoice: off the old supplier, onto the new one.
+                const auto ledger = [&](const std::string& who, Money amount) {
+                    if (amount == 0) return;
+                    auto row = ctx->db().prepare(
+                        "INSERT INTO supplier_ledger (id, supplier_id, purchase_id, amount_minor, kind, note, "
+                        "                             actor_user_id, created_at) "
+                        "VALUES (:id, :supplier, :purchase, :amount, 'charge', :note, :actor, :now)");
+                    row.bind(":id", crypto::uuid4()).bind(":supplier", who).bind(":purchase", id)
+                        .bind(":amount", amount).bind(":note", "Düzəliş " + number)
+                        .bindOptional(":actor", ctx->session().userId).bind(":now", now);
+                    row.exec();
+                };
+                if (oldSupplier == supplierId) {
+                    ledger(supplierId, total - oldTotal);
+                } else {
+                    ledger(oldSupplier, -oldTotal);
+                    ledger(supplierId, total);
+                }
+            }
+
+            auto clear = ctx->db().prepare("DELETE FROM purchase_order_items WHERE purchase_id = :id");
+            clear.bind(":id", id);
+            clear.exec();
+            for (const auto& line : lines) {
+                auto insert = ctx->db().prepare(
+                    "INSERT INTO purchase_order_items (id, purchase_id, ingredient_id, qty_milli, "
+                    "                                  unit_cost_minor, line_total_minor) "
+                    "VALUES (:id, :purchase, :ingredient, :qty, :cost, :total)");
+                insert.bind(":id", crypto::uuid4()).bind(":purchase", id).bind(":ingredient", line.ingredientId)
+                    .bind(":qty", line.qty).bind(":cost", line.unitCost).bind(":total", line.qty * line.unitCost / 1000);
+                insert.exec();
+            }
+
+            Money paid = 0;
+            {
+                auto p = ctx->db().prepare(
+                    "SELECT COALESCE(SUM(amount_minor), 0) FROM supplier_ledger "
+                    "WHERE purchase_id = :id AND kind = 'payment'");
+                p.bind(":id", id);
+                p.step();
+                paid = p.columnInt(0);
+            }
+            auto upd = ctx->db().prepare(
+                "UPDATE purchase_orders SET supplier_id = :supplier, warehouse_id = :warehouse, note = :note, "
+                "  total_minor = :total, due_minor = :due WHERE id = :id");
+            upd.bind(":supplier", supplierId).bind(":warehouse", warehouseId).bind(":note", note)
+                .bind(":total", total).bind(":due", received ? std::max<Money>(0, total - paid - returnedValue) : Money{0})
+                .bind(":id", id);
+            upd.exec();
+
+            ctx->auditRequired("purchase.update", "purchase", id,
+                               Json{{"oldTotalMinor", oldTotal}, {"totalMinor", total}, {"supplierId", supplierId}});
+            Json response{{"id", id}, {"totalMinor", total}};
+            idem.complete(key, response, "purchase", id);
+            txn.commit();
+            return response;
+        });
+
+    // ---------------------------------------------------------- delete invoice
+    server.registerHandler(
+        std::string(protocol::method::kPurchasesDelete), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("purchases.delete");
+            const auto id = getOr<std::string>(request.payload, "purchaseId", "");
+            db::Transaction txn(ctx->db());
+            auto head = ctx->db().prepare(
+                "SELECT supplier_id, warehouse_id, status, total_minor, number FROM purchase_orders WHERE id = :id");
+            head.bind(":id", id);
+            require(head.step(), "Alış qaiməsi tapılmadı");
+            require(head.columnText(2) != "cancelled", "Qaimə artıq silinib");
+            const std::string supplierId = head.columnText(0);
+            const std::string warehouseId = head.columnText(1);
+            const bool received = head.columnText(2) == "received";
+            const Money total = head.columnInt(3);
+            const std::string number = head.columnText(4);
+            auto returns = ctx->db().prepare("SELECT COUNT(*) FROM purchase_returns WHERE purchase_id = :id");
+            returns.bind(":id", id);
+            returns.step();
+            require(returns.columnInt(0) == 0, "Əvvəlcə bu qaimənin qaytarmalarını silin");
+            if (received) {
+                services::InventoryService inventory(*ctx);
+                auto items = ctx->db().prepare("SELECT ingredient_id, qty_milli FROM purchase_order_items WHERE purchase_id = :id");
+                items.bind(":id", id);
+                std::vector<std::pair<std::string, std::int64_t>> lines;
+                while (items.step()) lines.emplace_back(items.columnText(0), items.columnInt(1));
+                for (const auto& [ingredient, qty] : lines)
+                    inventory.move(ingredient, warehouseId, -qty, "adjustment", id, "qaimə silindi");
+                // What was paid on it stays paid: it becomes credit with the supplier.
+                auto ledger = ctx->db().prepare(
+                    "INSERT INTO supplier_ledger (id, supplier_id, purchase_id, amount_minor, kind, note, actor_user_id, created_at) "
+                    "VALUES (:id, :supplier, :purchase, :amount, 'charge', :note, :actor, :now)");
+                ledger.bind(":id", crypto::uuid4()).bind(":supplier", supplierId).bind(":purchase", id)
+                    .bind(":amount", -total).bind(":note", "Qaimə silindi " + number)
+                    .bindOptional(":actor", ctx->session().userId).bind(":now", nowMs());
+                ledger.exec();
+            }
+            auto upd = ctx->db().prepare("UPDATE purchase_orders SET status = 'cancelled', due_minor = 0 WHERE id = :id");
+            upd.bind(":id", id);
+            upd.exec();
+            ctx->auditRequired("purchase.delete", "purchase", id, Json{{"totalMinor", total}});
+            txn.commit();
+            return Json{{"id", id}};
+        });
+
+    server.registerHandler(
+        std::string(protocol::method::kPurchasesDeleteReturn), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("purchases.delete");
+            const auto id = getOr<std::string>(request.payload, "returnId", "");
+            db::Transaction txn(ctx->db());
+            const auto number = undoReturn(*ctx, id);
+            ctx->auditRequired("purchase.return.delete", "purchase_return", id, Json{{"number", number}});
+            txn.commit();
+            return Json{{"id", id}};
+        });
+
+    // -------------------------------------------------------- purchase returns
+    // Goods back to the supplier: out of the store, and the same money off the
+    // supplier's debt (a negative charge, so the balance query is unchanged).
+    server.registerHandler(
+        std::string(protocol::method::kPurchasesReturn), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("suppliers.manage");
+            const auto supplierId = getOr<std::string>(request.payload, "supplierId", "");
+            const auto purchaseId = getOr<std::string>(request.payload, "purchaseId", "");
+            const auto note = getOr<std::string>(request.payload, "note", "");
+            require(!supplierId.empty(), "Təchizatçını seçin");
+            require(request.payload.contains("lines") && request.payload["lines"].is_array(),
+                    "lines is required");
+
+            db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            const auto key = request.idempotencyKey.empty()
+                                 ? getOr<std::string>(request.payload, "idempotencyKey", "")
+                                 : request.idempotencyKey;
+            if (auto replay = idem.begin(key, "purchases.return", request.payload)) return *replay;
+
+            // Correcting a return = taking the old one back and writing it again under its own number.
+            const auto replaceId = getOr<std::string>(request.payload, "replaceReturnId", "");
+            std::string replacedNumber;
+            if (!replaceId.empty()) {
+                ctx->requirePermission("purchases.edit");
+                replacedNumber = undoReturn(*ctx, replaceId);
+            }
+
+            auto supplier = ctx->db().prepare("SELECT 1 FROM suppliers WHERE id = :id");
+            supplier.bind(":id", supplierId);
+            require(supplier.step(), "Təchizatçı tapılmadı");
+
+            std::string warehouseId = warehouseFrom(*ctx, request.payload);
+            if (!purchaseId.empty()) {
+                auto head = ctx->db().prepare(
+                    "SELECT supplier_id, warehouse_id, status FROM purchase_orders WHERE id = :id");
+                head.bind(":id", purchaseId);
+                require(head.step(), "Alış qaiməsi tapılmadı");
+                require(head.columnText(0) == supplierId, "Qaimə bu təchizatçıya aid deyil");
+                require(head.columnText(2) == "received", "Qəbul edilməmiş qaimədən qaytarmaq olmaz");
+                warehouseId = head.columnText(1);
+            }
+
+            struct Line {
+                std::string ingredientId;
+                std::int64_t qty;
+                Money unitCost;
+            };
+            std::vector<Line> lines;
+            services::InventoryService inventory(*ctx);
+            for (const auto& raw : request.payload["lines"]) {
+                if (!raw.is_object()) continue;
+                Line line{getOr<std::string>(raw, "ingredientId", ""), getOr<std::int64_t>(raw, "qtyMilli", 0),
+                          getOr<Money>(raw, "unitCostMinor", -1)};
+                if (line.ingredientId.empty() || line.qty <= 0) continue;
+                if (!purchaseId.empty()) {
+                    // No more back than came in on this invoice, at its price by default.
+                    auto bought = ctx->db().prepare(
+                        "SELECT COALESCE(SUM(qty_milli), 0), MAX(unit_cost_minor) FROM purchase_order_items "
+                        "WHERE purchase_id = :purchase AND ingredient_id = :ingredient");
+                    bought.bind(":purchase", purchaseId).bind(":ingredient", line.ingredientId);
+                    bought.step();
+                    auto back = ctx->db().prepare(
+                        "SELECT COALESCE(SUM(ri.qty_milli), 0) FROM purchase_return_items ri "
+                        "JOIN purchase_returns r ON r.id = ri.return_id "
+                        "WHERE r.purchase_id = :purchase AND ri.ingredient_id = :ingredient");
+                    back.bind(":purchase", purchaseId).bind(":ingredient", line.ingredientId);
+                    back.step();
+                    require(line.qty <= bought.columnInt(0) - back.columnInt(0),
+                            "Qaimədə alınandan çox qaytarmaq olmaz");
+                    if (line.unitCost < 0) line.unitCost = bought.columnInt(1);
+                }
+                if (line.unitCost < 0) {
+                    auto cost = ctx->db().prepare("SELECT cost_minor FROM ingredients WHERE id = :id");
+                    cost.bind(":id", line.ingredientId);
+                    line.unitCost = cost.step() ? cost.columnInt(0) : 0;
+                }
+                require(inventory.levelOf(line.ingredientId, warehouseId) >= line.qty,
+                        "Anbarda qaytarmaq üçün bu qədər mal yoxdur");
+                lines.push_back(line);
+            }
+            require(!lines.empty(), "Qaytarılan mal yoxdur");
+
+            const std::string id = replaceId.empty() ? "pr-" + crypto::uuid4().substr(0, 8) : replaceId;
+            auto seq = ctx->db().prepare(
+                "SELECT COALESCE(MAX(CAST(SUBSTR(number, 3) AS INTEGER)), 0) + 1 FROM purchase_returns");
+            seq.step();
+            char number[32];
+            if (replacedNumber.empty())
+                std::snprintf(number, sizeof(number), "Q-%05lld", static_cast<long long>(seq.columnInt(0)));
+            else
+                std::snprintf(number, sizeof(number), "%s", replacedNumber.c_str());
+            const auto now = nowMs();
+
+            Money total = 0;
+            for (const auto& line : lines) total += line.qty * line.unitCost / 1000;
+
+            auto insert = ctx->db().prepare(
+                "INSERT INTO purchase_returns (id, number, supplier_id, purchase_id, warehouse_id, "
+                "                              total_minor, note, actor_user_id, created_at) "
+                "VALUES (:id, :number, :supplier, :purchase, :warehouse, :total, :note, :actor, :now)");
+            insert.bind(":id", id).bind(":number", std::string(number)).bind(":supplier", supplierId)
+                .bindOptional(":purchase", purchaseId).bind(":warehouse", warehouseId).bind(":total", total)
+                .bind(":note", note).bindOptional(":actor", ctx->session().userId).bind(":now", now);
+            insert.exec();
+
+            for (const auto& line : lines) {
+                auto item = ctx->db().prepare(
+                    "INSERT INTO purchase_return_items (id, return_id, ingredient_id, qty_milli, "
+                    "                                   unit_cost_minor, line_total_minor) "
+                    "VALUES (:id, :ret, :ingredient, :qty, :cost, :total)");
+                item.bind(":id", crypto::uuid4()).bind(":ret", id).bind(":ingredient", line.ingredientId)
+                    .bind(":qty", line.qty).bind(":cost", line.unitCost)
+                    .bind(":total", line.qty * line.unitCost / 1000);
+                item.exec();
+                inventory.move(line.ingredientId, warehouseId, -line.qty, "issue", id, "təchizatçıya qaytarma");
+            }
+
+            if (total > 0) {
+                auto ledger = ctx->db().prepare(
+                    "INSERT INTO supplier_ledger (id, supplier_id, purchase_id, amount_minor, kind, "
+                    "                             note, actor_user_id, created_at) "
+                    "VALUES (:id, :supplier, :purchase, :amount, 'charge', :note, :actor, :now)");
+                ledger.bind(":id", crypto::uuid4()).bind(":supplier", supplierId)
+                    .bindOptional(":purchase", purchaseId).bind(":amount", -total)
+                    .bind(":note", "Qaytarma " + std::string(number)).bindOptional(":actor", ctx->session().userId)
+                    .bind(":now", now);
+                ledger.exec();
+                if (!purchaseId.empty()) {
+                    auto due = ctx->db().prepare(
+                        "UPDATE purchase_orders SET due_minor = MAX(0, due_minor - :amount) WHERE id = :id");
+                    due.bind(":amount", total).bind(":id", purchaseId);
+                    due.exec();
+                }
+            }
+
+            ctx->auditRequired("purchase.return", "purchase_return", id,
+                               Json{{"supplierId", supplierId}, {"purchaseId", purchaseId}, {"totalMinor", total}});
+            Json response{{"id", id}, {"number", std::string(number)}, {"totalMinor", total}};
+            idem.complete(key, response, "purchase_return", id);
+            txn.commit();
+            return response;
+        });
+
+    server.registerHandler(
+        std::string(protocol::method::kPurchasesReturns), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("suppliers.view");
+            const auto supplierId = getOr<std::string>(request.payload, "supplierId", "");
+            auto stmt = ctx->db().prepare(
+                "SELECT r.id, r.number, r.supplier_id AS supplierId, s.name AS supplierName, "
+                "       r.purchase_id AS purchaseId, p.number AS purchaseNumber, r.total_minor AS totalMinor, "
+                "       r.note, r.created_at AS createdAt, r.warehouse_id AS warehouseId, "
+                "       COALESCE(o.name, '') AS objectName "
+                "FROM purchase_returns r JOIN suppliers s ON s.id = r.supplier_id "
+                "LEFT JOIN purchase_orders p ON p.id = r.purchase_id "
+                "LEFT JOIN cash_objects o ON o.warehouse_id = r.warehouse_id AND o.active = 1 "
+                "WHERE (:supplier = '' OR r.supplier_id = :supplier) "
+                "ORDER BY r.created_at DESC LIMIT 2000");
+            stmt.bind(":supplier", supplierId);
+            auto rows = stmt.rows();
+            for (auto& row : rows) {
+                auto lines = ctx->db().prepare(
+                    "SELECT ri.ingredient_id AS ingredientId, i.name, i.unit, ri.qty_milli AS qtyMilli, "
+                    "       ri.unit_cost_minor AS unitCostMinor, ri.line_total_minor AS lineTotalMinor "
+                    "FROM purchase_return_items ri JOIN ingredients i ON i.id = ri.ingredient_id "
+                    "WHERE ri.return_id = :id");
+                lines.bind(":id", row.value("id", std::string{}));
+                row["lines"] = lines.rows();
+            }
+            return Json{{"returns", rows}};
+        });
+
     // ---------------------------------------------------------------- recipes
     server.registerHandler(
         std::string(protocol::method::kRecipesGet), [ctx](const ipc::Request& request) {
@@ -847,7 +1335,7 @@ void registerInventory(const ContextPtr& ctx) {
             // costing that prices only what reached the plate reads low by
             // exactly the amount that went in the bin.
             auto stmt = ctx->db().prepare(
-                "SELECT m.id, m.name_az AS name, c.name_az AS category, "
+                "SELECT m.id, m.name_az AS name, c.name_az AS category, m.active, "
                 "       m.price_minor AS priceMinor, "
                 "       COALESCE(SUM(r.qty_milli * i.cost_minor / 1000), 0) AS costMinor, "
                 "       COUNT(r.ingredient_id) AS lineCount, "
@@ -867,10 +1355,15 @@ void registerInventory(const ContextPtr& ctx) {
                 "  JOIN orders o ON o.id = oi.order_id "
                 "  WHERE oi.status != 'voided' "
                 "    AND o.status NOT IN ('voided', 'draft') "
+                // Kalkulyasiya's period (today, this week, since the last reset).
+                "    AND (:since = 0 OR COALESCE(o.closed_at, o.updated_at) >= :since) "
                 "  GROUP BY oi.product_id"
                 ") s ON s.productId = m.id "
-                "WHERE m.active = 1 "
+                // Drafts too: a dish is usually costed before it goes on the
+                // menu, and a new dish is saved as a draft. Archived ones are gone.
+                "WHERE m.archived = 0 "
                 "GROUP BY m.id ORDER BY c.name_az, m.name_az");
+            stmt.bind(":since", getOr<std::int64_t>(request.payload, "since", 0));
             auto rows = stmt.rows();
 
             Money soldValue = 0;
@@ -878,6 +1371,7 @@ void registerInventory(const ContextPtr& ctx) {
             std::int64_t missingRecipes = 0;
             std::int64_t unpriced = 0;
             std::int64_t losing = 0;
+            std::int64_t dishes = 0;
 
             for (auto& row : rows) {
                 const Money price = row.value("priceMinor", Money{0});
@@ -907,6 +1401,11 @@ void registerInventory(const ContextPtr& ctx) {
                     row["totalProfitMinor"] = nullptr;
                 }
 
+                row["active"] = row.value("active", std::int64_t{0}) != 0;
+                // The menu-wide figures describe what is on the menu: drafts are
+                // listed so they can be costed, but not counted.
+                if (!row["active"].get<bool>()) continue;
+                dishes += 1;
                 if (lineCount == 0) {
                     missingRecipes += 1;
                     continue;  // an unknown cost must not pretend to be zero
@@ -919,8 +1418,8 @@ void registerInventory(const ContextPtr& ctx) {
 
             return Json{{"items", rows},
                         {"summary",
-                         Json{{"dishes", static_cast<std::int64_t>(rows.size())},
-                              {"withRecipe", static_cast<std::int64_t>(rows.size()) - missingRecipes},
+                         Json{{"dishes", dishes},
+                              {"withRecipe", dishes - missingRecipes},
                               {"missingRecipes", missingRecipes},
                               {"unpricedIngredients", unpriced},
                               {"losingMoney", losing},

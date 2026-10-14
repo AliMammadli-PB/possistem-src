@@ -39,6 +39,9 @@ void registerPrinting(const ContextPtr& ctx);
 void registerInventory(const ContextPtr& ctx);
 /** Customers, house accounts, loyalty and table bookings. */
 void registerGuests(const ContextPtr& ctx);
+/** Kassalar: tills, treasury, bank, branches, transfers (CashAccountHandlers.cpp). */
+void registerCashAccounts(const ContextPtr& ctx);
+void registerSales(const ContextPtr& ctx);
 /** Deliveries, couriers, the staff rota and attendance. */
 void registerDelivery(const ContextPtr& ctx);
 /** Reports as CSV, which is what a spreadsheet opens. */

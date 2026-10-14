@@ -46,7 +46,7 @@ constexpr const char* kTableQuery =
 void registerTables(const ContextPtr& ctx) {
     auto& server = ctx->server();
 
-    server.registerHandler(std::string(protocol::method::kTablesList), [ctx](const ipc::Request&) {
+    server.registerHandler(std::string(protocol::method::kTablesList), [ctx](const ipc::Request& request) {
         ctx->requireAuth();
 
         auto areas = ctx->db().prepare(
@@ -55,8 +55,23 @@ void registerTables(const ContextPtr& ctx) {
             "ORDER BY sort_order");
 
         auto tables = ctx->db().prepare(std::string(kTableQuery) + "ORDER BY t.sort_order");
+        Json rows = tables.rows();
 
-        return Json{{"areas", areas.rows()}, {"tables", tables.rows()}, {"serverTime", nowMs()}};
+        // The owner's live floor (customer portal) shows what is on each table.
+        // Only the sync asks for it; the floor map itself does not need it.
+        if (request.payload.value("includeItems", false)) {
+            for (auto& row : rows) {
+                const auto orderId = row.value("orderId", Json()).is_string() ? row["orderId"].get<std::string>() : std::string();
+                if (orderId.empty()) continue;
+                auto items = ctx->db().prepare(
+                    "SELECT name_snapshot AS name, quantity, status, line_total_minor AS totalMinor, note FROM order_items "
+                    "WHERE order_id = :orderId AND status != 'voided' ORDER BY line_seq LIMIT 60");
+                items.bind(":orderId", orderId);
+                row["items"] = items.rows();
+            }
+        }
+
+        return Json{{"areas", areas.rows()}, {"tables", rows}, {"serverTime", nowMs()}};
     });
 
     server.registerHandler(

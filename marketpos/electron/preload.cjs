@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('marketSystem', {
     health: () => ipcRenderer.invoke('market:printer:health'),
     test: (sessionToken, widthMm) => ipcRenderer.invoke('market:printer:test', { sessionToken, widthMm }),
     receipt: (sessionToken, receipt, widthMm) => ipcRenderer.invoke('market:printer:receipt', { sessionToken, receipt, widthMm }),
+    station: (sessionToken, target, ticket, widthMm) => ipcRenderer.invoke('market:printer:station', { sessionToken, target, ticket, widthMm }),
     detect: (sessionToken, probe) => ipcRenderer.invoke('market:printer:detect', { sessionToken, probe }),
     report: (sessionToken, report, widthMm) => ipcRenderer.invoke('market:printer:report', { sessionToken, report, widthMm }),
     configure: (sessionToken, target) => ipcRenderer.invoke('market:printer:configure', { sessionToken, target }),

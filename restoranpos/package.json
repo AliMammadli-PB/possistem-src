@@ -1,7 +1,7 @@
 {
   "name": "possistem",
   "productName": "possistem",
-  "version": "1.7.10",
+  "version": "1.7.27",
   "description": "possistem restaurant POS (Electron + React + C++20 sidecar)",
   "author": "possistem",
   "license": "UNLICENSED",
@@ -66,6 +66,7 @@
   "devDependencies": {
     "@electron/asar": "^3.4.1",
     "@eslint/js": "^9.39.5",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.10.2",

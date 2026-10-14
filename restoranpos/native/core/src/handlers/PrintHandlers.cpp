@@ -357,8 +357,17 @@ DeliveryReport deliver(Context& ctx, const std::string& printerName, const std::
         // working till never pays for a scan.
         if (!isAutoTarget(printerName) && attempt(printerName)) return report;
 
-        for (const auto& target : discoveredTargets(ctx, printerName, tried)) {
-            if (attempt(target)) return report;
+        // Discovery sweeps the LAN, which takes seconds. When the configured
+        // printer is merely busy or switched off, sweeping again for every
+        // ticket kept the core busy for minutes; once a minute is enough.
+        static std::int64_t lastDiscoveryMs = -60000;
+        // Without a role (an extra kitchen printer) a substitute could print
+        // the kebab ticket at the till, so only role printers are rediscovered.
+        if (!settingKey.empty() && (isAutoTarget(printerName) || monotonicMs() - lastDiscoveryMs >= 60000)) {
+            lastDiscoveryMs = monotonicMs();
+            for (const auto& target : discoveredTargets(ctx, printerName, tried)) {
+                if (attempt(target)) return report;
+            }
         }
 
         if (lastError.empty()) lastError = "Heç bir printer tapılmadı";
@@ -522,8 +531,12 @@ int drainQueue(Context& ctx) {
     }
 
     int processed = 0;
+    // A printer that did not answer is not tried again in the same pass: its
+    // other jobs wait for their next turn instead of each paying the timeout.
+    std::vector<std::string> unreachable;
 
     for (const auto& job : jobs) {
+        if (std::find(unreachable.begin(), unreachable.end(), job.printer) != unreachable.end()) continue;
         printing::ReceiptBuilder builder(ctx);
         RenderedPayload payload;
         std::string receiptId = job.receiptId;
@@ -615,7 +628,7 @@ int drainQueue(Context& ctx) {
                 payload.renderMode = printing::RenderMode::Raster;
                 receiptId = printing::storeReceipt(ctx, job.orderId, job.kind, rendered);
             } else if (job.kind == "kitchen_ticket") {
-                const auto rendered = builder.kitchenTicket(job.orderId);
+                const auto rendered = builder.kitchenTicket(job.orderId, overrides);
                 payload.text = rendered.text;
                 receiptId = printing::storeReceipt(ctx, job.orderId, job.kind, rendered);
             } else if (!receiptId.empty()) {
@@ -679,7 +692,10 @@ int drainQueue(Context& ctx) {
             continue;
         }
 
-        const std::string settingKey = printerRoleFor(job.kind);
+        // An extra kitchen printer has its own address and no role: never
+        // remember another printer for it, never hunt for a substitute.
+        const bool stationJob = !overrides.value("station", "").empty();
+        const std::string settingKey = stationJob ? std::string() : printerRoleFor(job.kind);
         const DeliveryReport report = deliver(ctx, job.printer, job.id, payload, settingKey);
         const std::string error =
             report.errorMessage.empty() ? report.note
@@ -727,6 +743,7 @@ int drainQueue(Context& ctx) {
             update.exec();
 
             logger()->warn("print job {} attempt {} failed: {}", job.id, attempts, error);
+            unreachable.push_back(job.printer);
         }
 
         txn.commit();
@@ -1135,6 +1152,9 @@ void registerPrinting(const ContextPtr& ctx) {
                 if (kind == "test_page") {
                     for (const char* key : {"qrUrl", "brand", "currencyDisplay"})
                         if (request.payload.contains(key)) options[key] = request.payload[key];
+                    // Asking "is this the kebab printer?": the page must reach
+                    // exactly this device - no substitute, nothing remembered.
+                    if (request.payload.value("exactTarget", false)) options["station"] = "test";
                 }
                 if (profile.printQr) {
                     const auto link = kind == "test_page" ? options.value("qrUrl", ctx->setting("receipt.qrUrl", "")) : ctx->setting("receipt.qrUrl", "");

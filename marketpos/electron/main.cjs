@@ -1311,6 +1311,15 @@ function createSyncService() {
 
 app.on('second-instance', () => { if (!mainWindow) return; if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); });
 
+// On Windows a native dialog (confirm, file picker) can leave the page without
+// keyboard focus: inputs stop taking clicks until restart. Hand focus back to
+// the page whenever its window is focused again.
+app.on('browser-window-created', (_event, win) => {
+  win.on('focus', () => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.focus();
+  });
+});
+
 app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   const distRoot = path.resolve(__dirname, '..', 'dist');

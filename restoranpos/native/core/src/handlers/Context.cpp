@@ -1,3 +1,4 @@
+#include <map>
 #include "pos/handlers/Context.hpp"
 
 #include <algorithm>
@@ -175,6 +176,31 @@ std::string Context::terminalId() {
     static std::string cached;
     if (cached.empty()) cached = setting("terminal.id", "TERM-01");
     return cached;
+}
+
+std::string Context::saleTerminalId() {
+    const auto& fromCall = server_.currentTerminalId();
+    return fromCall.empty() ? terminalId() : fromCall;
+}
+
+std::string Context::saleTerminalName() {
+    const auto& fromCall = server_.currentTerminalName();
+    if (!fromCall.empty()) return fromCall;
+    return server_.currentTerminalId().empty() ? std::string("Bu kompüter") : server_.currentTerminalId();
+}
+
+void Context::touchTerminal() {
+    static std::map<std::string, Timestamp> seen;
+    const auto id = saleTerminalId();
+    const auto now = nowMs();
+    auto& last = seen[id];
+    if (now - last < 60000) return;
+    last = now;
+    auto upsert = database_.prepare(
+        "INSERT INTO pos_terminals (id, name, last_seen_at) VALUES (:id, :name, :now) "
+        "ON CONFLICT(id) DO UPDATE SET name = excluded.name, last_seen_at = excluded.last_seen_at");
+    upsert.bind(":id", id).bind(":name", saleTerminalName()).bind(":now", now);
+    upsert.exec();
 }
 
 void Context::loadPermissions(Session& session, const std::string& roleId) {

@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 40;
+inline constexpr int kSchemaVersion = 45;
 
 namespace detail {
 
@@ -3368,6 +3368,203 @@ CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status, next_atte
     return sql;
 }
 
+inline const std::string& migrationSql40() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1719);
+        s += R"MIGSQL(-- Partners, tabs and salaries (1.7.22).
+--
+-- Only new columns and one new table: nothing existing is rebuilt.
+--
+--   ingredients.sale_price_minor - what one unit sells for, so the store can
+--       show what its stock is worth at the till and the margin on it.
+--   customers.kind / salary_minor - a partner can be a guest or an employee;
+--       an employee has a monthly salary their tab is taken out of.
+--   orders.account_minor - the part of a bill left on the partner's tab
+--       ("nisyə") when the order was closed. Counted as settled, not as cash.
+--   salary_payments - advances and full payments, per employee and month.
+
+ALTER TABLE ingredients ADD COLUMN sale_price_minor INTEGER NOT NULL DEFAULT 0
+    CHECK (sale_price_minor >= 0);
+
+ALTER TABLE customers ADD COLUMN kind TEXT NOT NULL DEFAULT 'customer'
+    CHECK (kind IN ('customer','employee'));
+ALTER TABLE customers ADD COLUMN salary_minor INTEGER NOT NULL DEFAULT 0
+    CHECK (salary_minor >= 0);
+
+ALTER TABLE orders ADD COLUMN account_minor INTEGER NOT NULL DEFAULT 0
+    CHECK (account_minor >= 0);
+
+CREATE TABLE IF NOT EXISTS salary_payments (
+    id            TEXT PRIMARY KEY,
+    customer_id   TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    -- The salary month this counts against, 'YYYY-MM' in local time.
+    month         TEXT NOT NULL,
+    kind          TEXT NOT NULL CHECK (kind IN ('advance','full','note')),
+    amount_minor  INTEGER NOT NULL DEFAULT 0 CHECK (amount_minor >= 0),
+    note          TEXT NOT NULL DEFAULT '',
+    actor_user_id TEXT REFERENCES users(id),
+    created_at    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_salary_payments ON salary_payments(customer_id, month);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql41() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(2515);
+        s += R"MIGSQL(-- Kassalar (1.7.23): named tills, the treasury and the bank, grouped by
+-- branch (obyekt), each till fed by one sales point (PC).
+--
+-- Only new tables and columns; nothing existing is rebuilt.
+--
+--   cash_objects        - branches the kassas belong to.
+--   cash_accounts       - till / treasury / bank. A till is tied to the PC
+--                          (terminal_id) whose cash sales it receives.
+--   cash_account_moves  - every movement that is not a sale: opening balance,
+--                          transfers, salaries, debts, expenses... signed.
+--   pos_terminals       - the PCs seen ringing up, so a till can be tied to one.
+--   payments/refunds.terminal_id - which PC took the money.
+--
+-- A balance is never stored: sales since the account was opened plus its moves.
+
+CREATE TABLE IF NOT EXISTS cash_objects (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    active      INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+    created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cash_accounts (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    kind         TEXT NOT NULL CHECK (kind IN ('till','treasury','bank')),
+    object_id    TEXT REFERENCES cash_objects(id),
+    terminal_id  TEXT NOT NULL DEFAULT '',
+    active       INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+    created_at   INTEGER NOT NULL
+);
+
+-- One sales point feeds one till.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_accounts_terminal
+    ON cash_accounts(terminal_id) WHERE active = 1 AND kind = 'till' AND terminal_id != '';
+
+CREATE TABLE IF NOT EXISTS cash_account_moves (
+    id            TEXT PRIMARY KEY,
+    account_id    TEXT NOT NULL REFERENCES cash_accounts(id),
+    amount_minor  INTEGER NOT NULL,
+    kind          TEXT NOT NULL,
+    ref_type      TEXT NOT NULL DEFAULT '',
+    ref_id        TEXT NOT NULL DEFAULT '',
+    note          TEXT NOT NULL DEFAULT '',
+    actor_user_id TEXT REFERENCES users(id),
+    created_at    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cash_account_moves ON cash_account_moves(account_id, created_at);
+
+CREATE TABLE IF NOT EXISTS pos_terminals (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL DEFAULT '',
+    last_seen_at  INTEGER NOT NULL
+);
+
+ALTER TABLE payments ADD COLUMN terminal_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE refunds ADD COLUMN terminal_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_payments_terminal ON payments(terminal_id, created_at);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql42() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1532);
+        s += R"MIGSQL(-- Returning goods to a supplier (Alışlar, 1.7.25).
+--
+-- A return takes the goods out of the store and the same money off the
+-- supplier's debt. The debt side is a negative 'charge' in supplier_ledger, so
+-- the existing balance (charges minus payments) needs no change; these tables
+-- keep the document itself: what went back, from which invoice, at what price.
+
+CREATE TABLE IF NOT EXISTS purchase_returns (
+    id            TEXT PRIMARY KEY,
+    number        TEXT NOT NULL UNIQUE,
+    supplier_id   TEXT NOT NULL REFERENCES suppliers(id),
+    purchase_id   TEXT REFERENCES purchase_orders(id),
+    warehouse_id  TEXT NOT NULL REFERENCES warehouses(id),
+    total_minor   INTEGER NOT NULL DEFAULT 0 CHECK (total_minor >= 0),
+    note          TEXT NOT NULL DEFAULT '',
+    actor_user_id TEXT REFERENCES users(id),
+    created_at    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_purchase_returns_supplier ON purchase_returns(supplier_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_purchase_returns_purchase ON purchase_returns(purchase_id);
+
+CREATE TABLE IF NOT EXISTS purchase_return_items (
+    id               TEXT PRIMARY KEY,
+    return_id        TEXT NOT NULL REFERENCES purchase_returns(id) ON DELETE CASCADE,
+    ingredient_id    TEXT NOT NULL REFERENCES ingredients(id),
+    qty_milli        INTEGER NOT NULL CHECK (qty_milli > 0),
+    unit_cost_minor  INTEGER NOT NULL DEFAULT 0 CHECK (unit_cost_minor >= 0),
+    line_total_minor INTEGER NOT NULL DEFAULT 0 CHECK (line_total_minor >= 0)
+);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql43() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(325);
+        s += R"MIGSQL(-- Each branch (obyekt) has its own store room (1.7.26): purchases and returns
+-- name the branch, the goods go into or out of its warehouse, and a sale rung
+-- up on a branch's till takes its dishes out of that branch's stock.
+ALTER TABLE cash_objects ADD COLUMN warehouse_id TEXT REFERENCES warehouses(id);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql44() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(822);
+        s += R"MIGSQL(-- Satışlar (1.7.27): every closed bill is a sales invoice that can be looked
+-- up, corrected or deleted (with permission), and people belong to a branch.
+--
+--   orders.closed_by      - who settled the bill (the waiter may differ).
+--   orders.deleted_at/by  - a sale deleted from Satışlar: voided, its money
+--                           and stock taken back, but the row kept for audit.
+--   customers.object_id   - which branch (obyekt) a partner / employee is at.
+
+ALTER TABLE orders ADD COLUMN closed_by TEXT REFERENCES users(id);
+ALTER TABLE orders ADD COLUMN deleted_at INTEGER;
+ALTER TABLE orders ADD COLUMN deleted_by TEXT REFERENCES users(id);
+ALTER TABLE customers ADD COLUMN object_id TEXT REFERENCES cash_objects(id);
+CREATE INDEX IF NOT EXISTS idx_orders_closed_at ON orders(closed_at);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -3922,7 +4119,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 40> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 45> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -3963,6 +4160,11 @@ inline constexpr std::array<EmbeddedScript, 40> kMigrations{{
     {38, "038_attendance_same_minute.sql", "300c80b6", &detail::migrationSql37},
     {39, "039_refund_lookup.sql", "591b8734", &detail::migrationSql38},
     {40, "040_print_kinds.sql", "d8477f14", &detail::migrationSql39},
+    {41, "041_partners_salary.sql", "ad45e3c3", &detail::migrationSql40},
+    {42, "042_cash_accounts.sql", "94ff7698", &detail::migrationSql41},
+    {43, "043_purchase_returns.sql", "384f5852", &detail::migrationSql42},
+    {44, "044_object_warehouse.sql", "bf81d56b", &detail::migrationSql43},
+    {45, "045_sales_objects.sql", "f264ceae", &detail::migrationSql44},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

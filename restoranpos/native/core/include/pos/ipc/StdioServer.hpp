@@ -33,6 +33,14 @@ struct Request {
      */
     bool scoped = false;
     std::string actorUserId;
+
+    /**
+     * The PC the call was made at (envelope `terminal`: {id, name}), so a
+     * payment can be credited to the sales point's own kassa. Electron main
+     * stamps every frame, a LAN host passes the terminal's own one through.
+     */
+    std::string terminalId;
+    std::string terminalName;
 };
 
 using Handler = std::function<Json(const Request&)>;
@@ -70,6 +78,10 @@ public:
     void registerHandler(std::string method, Handler handler);
 
     void setRequestScope(RequestScope scope) { scope_ = std::move(scope); }
+
+    /** The terminal of the call being handled right now ("" when none was sent). */
+    const std::string& currentTerminalId() const { return currentTerminalId_; }
+    const std::string& currentTerminalName() const { return currentTerminalName_; }
 
     /**
      * Runs a registered handler synchronously and returns its payload.
@@ -141,6 +153,8 @@ private:
     std::atomic<std::size_t> handled_{0};
     std::function<void()> shutdownHook_;
     RequestScope scope_;
+    std::string currentTerminalId_;
+    std::string currentTerminalName_;
 };
 
 }  // namespace pos::ipc

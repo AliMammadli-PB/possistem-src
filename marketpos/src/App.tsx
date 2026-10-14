@@ -2,7 +2,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import {
   Activity, ArrowRightLeft, BadgeDollarSign, BarChart3, Boxes, Building2, Check,
   ChevronRight, CircleDollarSign, ClipboardList, Cloud, CloudOff, CreditCard, Download,
-  Expand, FileClock, ImagePlus, KeyRound, Languages, LockKeyhole, LogOut, Minus,
+  Expand, FileClock, ImagePlus, KeyRound, LockKeyhole, LogOut, Minus,
   Monitor, PackageCheck, PackagePlus, PackageSearch, Pause, Plus, ReceiptText, Scale,
   RefreshCw, RotateCcw, ScanBarcode, Search, Settings, ShieldCheck, ShoppingBag,
   ShoppingBasket, Smartphone, Store, Trash2, TriangleAlert, Truck, UserCog, Users,
@@ -13,6 +13,7 @@ import { createInitialState, demoStaff, initialProducts } from './data';
 import { BarcodeKeypad } from './BarcodeKeypad';
 import { CatalogAisleNav } from './CatalogAisleNav';
 import { ChangePinScreen } from './ChangePinScreen';
+import { KitchenStationsCard, printStationTickets } from './KitchenStations';
 import { cashChange, canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
 import { auditActionLabel, auditDetailLabel, roleLabel, tr, unitLabel, viewLabel } from './i18n';
 import { marketCoreClient } from './core/client';
@@ -889,14 +890,12 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
   );
 }
 
-function TenantLoginScreen({ lang, setLang, onSuccess }: { lang: Lang; setLang: (lang: Lang) => void; onSuccess: (tenant: TenantStatus) => void }) {
+function TenantLoginScreen({ lang, onSuccess }: { lang: Lang; setLang: (lang: Lang) => void; onSuccess: (tenant: TenantStatus) => void }) {
+  // Same gate as Restaurant POS: the email is always remembered, no extra toggles.
   const [email, setEmail] = useState(() => {
     try { return localStorage.getItem('marketpos.tenant.email') || ''; } catch { return ''; }
   });
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(() => {
-    try { return localStorage.getItem('marketpos.tenant.remember') === '1'; } catch { return false; }
-  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -906,15 +905,7 @@ function TenantLoginScreen({ lang, setLang, onSuccess }: { lang: Lang; setLang: 
     setError('');
     try {
       const status = await window.marketSystem.tenant.login(email.trim(), password);
-      try {
-        if (remember) {
-          localStorage.setItem('marketpos.tenant.remember', '1');
-          localStorage.setItem('marketpos.tenant.email', email.trim());
-        } else {
-          localStorage.removeItem('marketpos.tenant.remember');
-          localStorage.removeItem('marketpos.tenant.email');
-        }
-      } catch { /* ignore */ }
+      try { localStorage.setItem('marketpos.tenant.email', email.trim()); } catch { /* storage blocked */ }
       onSuccess(status);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : tr(lang, 'tenantWrongCredentials'));
@@ -924,66 +915,50 @@ function TenantLoginScreen({ lang, setLang, onSuccess }: { lang: Lang; setLang: 
   };
 
   return (
-    <main className="ps-login-screen" style={{ backgroundImage: 'url(./assets/login-bg.png)' }}>
-      <div className="ps-login-veil" aria-hidden />
-      <div className="ps-login-glow" aria-hidden />
-      <div className="ps-login-grid">
-        <section className="ps-login-brand">
-          <div className="ps-login-brand-head">
-            <span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" draggable={false} /></span>
+    <div className="ps-rest-gate">
+      <div className="ps-rest-gate-photo" style={{ backgroundImage: 'url(./assets/login-bg.png)' }} aria-hidden="true" />
+      <div className="ps-rest-gate-grid">
+        <div className="ps-rest-gate-brand">
+          <div className="ps-rest-gate-head">
+            <div className="ps-brand-lockup ps-brand-lockup--hero"><img src="./assets/brand-mark.png" alt="possistem" className="ps-brand-logo ps-brand-logo--hero" draggable={false} /></div>
             <div>
-              <p className="brand-wordmark">MarketPos</p>
-              <p className="brand-sub">{tr(lang, 'loginTagline')}</p>
+              <p className="ps-rest-gate-wordmark">possistem</p>
+              <p className="ps-rest-gate-sub">{tr(lang, 'gateTagline')}</p>
             </div>
-            <label className="ps-login-lang">
-              <Languages />
-              <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Language">
-                <option value="az">AZ</option>
-                <option value="ru">RU</option>
-                <option value="en">EN</option>
-              </select>
-            </label>
           </div>
-          <div className="ps-login-brand-copy">
-            <p className="brand-kicker">{tr(lang, 'tenantEyebrow')}</p>
-            <h1>{tr(lang, 'tenantWelcome')}</h1>
-            <div className="ps-login-rule"><i /><span>{tr(lang, 'tenantHint')}</span></div>
+          <div className="ps-rest-gate-copy">
+            <p className="ps-rest-gate-kicker">{tr(lang, 'gateTagline')}</p>
+            <h1 className="ps-rest-gate-title">{tr(lang, 'gateTitle')}</h1>
+            <div className="ps-rest-gate-rule" />
+            <p className="ps-rest-gate-hint">{tr(lang, 'gateHint')}</p>
           </div>
-          <div className="ps-login-secure"><ShieldCheck /><span>{tr(lang, 'loginSecure')}</span></div>
-        </section>
-        <section className="ps-login-glass">
-          <div className="ps-login-glass-shine" aria-hidden />
-          <form className="ps-tenant-form" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-            <header>
-              <p className="brand-kicker">01 / {tr(lang, 'tenantAccess')}</p>
-              <h2>{tr(lang, 'tenantLogin')}</h2>
-              <p className="ps-login-hint">{tr(lang, 'tenantLoginHint')}</p>
-            </header>
-            <label>
-              <span>{tr(lang, 'tenantEmail')}</span>
-              <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} />
-            </label>
-            <label>
-              <span>{tr(lang, 'tenantPassword')}</span>
-              <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} />
-            </label>
-            <label className="ps-tenant-remember">
-              <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-              <span>{tr(lang, 'tenantRemember')}</span>
-            </label>
-            {error && <p className="form-error">{error}</p>}
-            <button type="submit" className="modal-primary" disabled={busy || !email.trim() || !password}>
-              <LockKeyhole />{busy ? '…' : tr(lang, 'tenantContinue')}
-            </button>
-          </form>
-        </section>
+          <p className="ps-rest-gate-secure">{tr(lang, 'loginSecure')}</p>
+        </div>
+        <form className="ps-rest-gate-card" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+          <div className="ps-rest-gate-mobile">
+            <img src="./assets/brand-mark.png" alt="possistem" className="ps-brand-logo ps-brand-logo--compact" draggable={false} />
+            <h2>{tr(lang, 'gateTitle')}</h2>
+          </div>
+          <h2 className="ps-rest-gate-desk-title">{tr(lang, 'gateTitle')}</h2>
+          <div className="ps-rest-gate-rule ps-rest-gate-rule--card" />
+          <label>
+            <span>{tr(lang, 'tenantEmail')}</span>
+            <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} className="ps-rest-gate-input" required disabled={busy} />
+          </label>
+          <label>
+            <span>{tr(lang, 'tenantPassword')}</span>
+            <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="ps-rest-gate-input" required disabled={busy} />
+          </label>
+          {error && <p className="ps-rest-gate-error" role="alert">{error}</p>}
+          <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : tr(lang, 'gateSignIn')}</button>
+        </form>
       </div>
-    </main>
+    </div>
   );
 }
 
 function ActivationGateScreen({
-  lang, setLang, tenant, activation, onActivated, onTenantLogout,
+  lang, tenant, activation, onActivated, onTenantLogout,
 }: {
   lang: Lang;
   setLang: (lang: Lang) => void;
@@ -1033,71 +1008,53 @@ function ActivationGateScreen({
     }
   };
 
+  // Same frame as the email gate (and Restaurant POS); only the card's content differs.
   return (
-    <main className="ps-login-screen" style={{ backgroundImage: 'url(./assets/login-bg.png)' }}>
-      <div className="ps-login-veil" aria-hidden />
-      <div className="ps-login-glow" aria-hidden />
-      <div className="ps-login-grid">
-        <section className="ps-login-brand">
-          <div className="ps-login-brand-head">
-            <span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" draggable={false} /></span>
+    <div className="ps-rest-gate">
+      <div className="ps-rest-gate-photo" style={{ backgroundImage: 'url(./assets/login-bg.png)' }} aria-hidden="true" />
+      <div className="ps-rest-gate-grid">
+        <div className="ps-rest-gate-brand">
+          <div className="ps-rest-gate-head">
+            <div className="ps-brand-lockup ps-brand-lockup--hero"><img src="./assets/brand-mark.png" alt="possistem" className="ps-brand-logo ps-brand-logo--hero" draggable={false} /></div>
             <div>
-              <p className="brand-wordmark">MarketPos</p>
-              <p className="brand-sub">{tr(lang, 'loginTagline')}</p>
+              <p className="ps-rest-gate-wordmark">possistem</p>
+              <p className="ps-rest-gate-sub">{tr(lang, 'gateTagline')}</p>
             </div>
-            <label className="ps-login-lang">
-              <Languages />
-              <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Language">
-                <option value="az">AZ</option>
-                <option value="ru">RU</option>
-                <option value="en">EN</option>
-              </select>
-            </label>
           </div>
-          <div className="ps-login-brand-copy">
-            <p className="brand-kicker">{tr(lang, 'activation')}</p>
-            <h1>{tr(lang, 'licenseGateTitle')}</h1>
-            <div className="ps-login-rule"><i /><span>{tr(lang, 'licenseGateHint')}</span></div>
+          <div className="ps-rest-gate-copy">
+            <p className="ps-rest-gate-kicker">{tr(lang, 'activation')}</p>
+            <h1 className="ps-rest-gate-title">{tr(lang, 'licenseGateTitle')}</h1>
+            <div className="ps-rest-gate-rule" />
+            <p className="ps-rest-gate-hint">{tr(lang, 'licenseGateHint')}</p>
           </div>
-          <div className="ps-login-secure"><ShieldCheck /><span>{tenant.email}</span></div>
-        </section>
-        <section className="ps-login-glass">
-          <div className="ps-login-glass-shine" aria-hidden />
-          <div className={`ps-login-license blocked`}>
-            <header>
-              <h3>{tr(lang, 'activation')}</h3>
-              <em className="pill warn">{licenseModeLabel(lang, activation?.mode)}</em>
-            </header>
-            <div className="license-meta">
-              <span><small>{tr(lang, 'licenseCustomer')}</small><b>{activation?.customerName || tenant.customerName}</b></span>
-              <span><small>{tr(lang, 'licenseDevice')}</small><b>{shortHwid(activation?.deviceId)}</b></span>
-              <span><small>{tr(lang, 'licenseValidUntil')}</small><b>{activation?.validUntil ? new Date(activation.validUntil).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ') : '—'}</b></span>
-              <span><small>{tr(lang, 'tenantEmail')}</small><b>{tenant.email}</b></span>
-            </div>
-            <p>{tr(lang, 'licenseBlocked')}</p>
-            <div className="activation-row">
-              <input
-                value={activationKey}
-                onChange={(event) => setActivationKey(event.target.value)}
-                placeholder="MPOS-XXXX-XXXX-XXXX"
-                aria-label={tr(lang, 'activationKey')}
-                disabled={busy}
-              />
-              <button type="button" className="modal-primary" disabled={busy} onClick={() => void redeem()}>
-                <KeyRound />{tr(lang, 'activateNow')}
-              </button>
-            </div>
-            {activation?.serverDeviceId && (
-              <button type="button" className="ps-tenant-switch" disabled={busy} onClick={() => void recheck()}>
-                <RefreshCw />Serverdən yoxla
-              </button>
-            )}
-            {message && <p className="form-error">{message}</p>}
-            <button type="button" className="ps-tenant-switch" onClick={onTenantLogout}>{tr(lang, 'tenantSwitchAccount')}</button>
+          <p className="ps-rest-gate-secure">{tenant.email}</p>
+        </div>
+        <form className="ps-rest-gate-card" onSubmit={(event) => { event.preventDefault(); void redeem(); }}>
+          <div className="ps-rest-gate-mobile">
+            <img src="./assets/brand-mark.png" alt="possistem" className="ps-brand-logo ps-brand-logo--compact" draggable={false} />
+            <h2>{tr(lang, 'activation')}</h2>
           </div>
-        </section>
+          <h2 className="ps-rest-gate-desk-title">{tr(lang, 'activation')}</h2>
+          <div className="ps-rest-gate-rule ps-rest-gate-rule--card" />
+          <dl className="ps-rest-gate-facts">
+            <div><dt>{tr(lang, 'licenseCustomer')}</dt><dd>{activation?.customerName || tenant.customerName}</dd></div>
+            <div><dt>{tr(lang, 'licenseDevice')}</dt><dd>{shortHwid(activation?.deviceId)}</dd></div>
+            <div><dt>{tr(lang, 'licenseValidUntil')}</dt><dd>{activation?.validUntil ? new Date(activation.validUntil).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ') : '—'}</dd></div>
+            <div><dt>{licenseModeLabel(lang, activation?.mode)}</dt><dd>{tr(lang, 'licenseBlocked')}</dd></div>
+          </dl>
+          <label>
+            <span>{tr(lang, 'activationKey')}</span>
+            <input value={activationKey} onChange={(event) => setActivationKey(event.target.value)} placeholder="MPOS-XXXX-XXXX-XXXX" className="ps-rest-gate-input" disabled={busy} />
+          </label>
+          {message && <p className="ps-rest-gate-error" role="alert">{message}</p>}
+          <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : tr(lang, 'activateNow')}</button>
+          <div className="ps-rest-gate-links">
+            {activation?.serverDeviceId && <button type="button" disabled={busy} onClick={() => void recheck()}>Serverdən yoxla</button>}
+            <button type="button" onClick={onTenantLogout}>{tr(lang, 'tenantSwitchAccount')}</button>
+          </div>
+        </form>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -1383,6 +1340,9 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
             const receipt = await marketCoreClient.sales.receipt(sale.id);
             await window.marketSystem?.printer?.receipt(session.sessionToken, receipt, 80);
           } catch { /* printer optional */ }
+          // Extra kitchen printers get their own preparation ticket.
+          const missedStations = await printStationTickets(state.settings, state.products, cart, sale.receiptNo, session.sessionToken);
+          if (missedStations.length) notify(`Printer cavab vermədi: ${missedStations.join(', ')}`);
           await onRefresh();
           setCart([]); setDiscount('0'); setPaymentOpen(false);
           notify(`${tr(lang, 'completed')} · ${sale.receiptNo}`);
@@ -1719,6 +1679,8 @@ function SettingsPage({ state, session, lang, coreReady, notify, onSettings }: {
   return (
     <div className="module-page settings-grid">
       <HardwareSettingsCard session={session} lang={lang} notify={notify} />
+      {session.role === 'manager' && <KitchenStationsCard settings={state.settings} products={state.products} session={session} lang={lang} notify={notify}
+        onSave={(kitchenStations) => { onSettings({ ...state.settings, kitchenStations }); notify('Yadda saxlanıldı'); }} />}
       <section className="panel-card settings-card">
         <div className="panel-title">
           <h3>Mağaza məlumatları</h3>
@@ -1740,7 +1702,7 @@ function SettingsPage({ state, session, lang, coreReady, notify, onSettings }: {
           <Field label={tr(lang, 'address')} value={draft.address} onChange={(value) => setDraft({ ...draft, address: value })} wide />
           <Field label={tr(lang, 'terminal')} value={draft.terminalName} onChange={(value) => setDraft({ ...draft, terminalName: value })} />
         </div>
-        <button type="button" className="modal-primary" onClick={() => { onSettings(draft); setMessage('Mağaza məlumatları yadda saxlanıldı'); }}>
+        <button type="button" className="modal-primary" onClick={() => { onSettings({ ...draft, kitchenStations: state.settings.kitchenStations }); setMessage('Mağaza məlumatları yadda saxlanıldı'); }}>
           <Check />{tr(lang, 'save')}
         </button>
       </section>

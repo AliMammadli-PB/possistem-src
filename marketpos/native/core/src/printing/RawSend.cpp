@@ -114,16 +114,6 @@ bool sendRawTcp(const std::string& host, int port, const std::vector<std::uint8_
         return false;
     }
 
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) {
-        errorOut = "socket() failed";
-        return false;
-    }
-
-    DWORD tv = static_cast<DWORD>(timeoutMs);
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
-
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(static_cast<u_short>(port));
@@ -134,7 +124,6 @@ bool sendRawTcp(const std::string& host, int port, const std::vector<std::uint8_
         hints.ai_socktype = SOCK_STREAM;
         addrinfo* result = nullptr;
         if (getaddrinfo(host.c_str(), nullptr, &hints, &result) != 0 || !result) {
-            closesocket(sock);
             errorOut = "Invalid printer host: " + host;
             return false;
         }
@@ -142,11 +131,60 @@ bool sendRawTcp(const std::string& host, int port, const std::vector<std::uint8_
         freeaddrinfo(result);
     }
 
-    if (connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+    // A blocking connect() ignores SO_SNDTIMEO and waits ~21 s while a
+    // one-connection thermal printer is still busy with the previous ticket -
+    // and the whole core waits with it ("Kassa nüvəsi məşğuldur"). Connect
+    // without blocking, give each try at most the time left, and retry briefly
+    // while the printer finishes its last job.
+    const ULONGLONG deadline = GetTickCount64() + static_cast<ULONGLONG>(timeoutMs);
+    SOCKET sock = INVALID_SOCKET;
+    for (int round = 0; sock == INVALID_SOCKET && GetTickCount64() < deadline; ++round) {
+        if (round > 0) Sleep(300);
+        SOCKET candidate = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (candidate == INVALID_SOCKET) {
+            errorOut = "socket() failed";
+            return false;
+        }
+        u_long nonBlocking = 1;
+        ioctlsocket(candidate, FIONBIO, &nonBlocking);
+        connect(candidate, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+
+        const ULONGLONG now = GetTickCount64();
+        const ULONGLONG left = now < deadline ? deadline - now : 0;
+        timeval wait{};
+        wait.tv_sec = static_cast<long>(left / 1000);
+        wait.tv_usec = static_cast<long>((left % 1000) * 1000);
+        fd_set writable, failed;
+        FD_ZERO(&writable);
+        FD_ZERO(&failed);
+        FD_SET(candidate, &writable);
+        FD_SET(candidate, &failed);
+        int soError = 0;
+        int soLen = sizeof(soError);
+        if (select(0, nullptr, &writable, &failed, &wait) == 1 && FD_ISSET(candidate, &writable) &&
+            getsockopt(candidate, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&soError), &soLen) == 0 &&
+            soError == 0) {
+            nonBlocking = 0;
+            ioctlsocket(candidate, FIONBIO, &nonBlocking);
+            sock = candidate;
+        } else {
+            closesocket(candidate);
+        }
+    }
+    if (sock == INVALID_SOCKET) {
         errorOut = "Cannot connect to printer " + host + ":" + std::to_string(port);
-        closesocket(sock);
         return false;
     }
+
+    DWORD tv = static_cast<DWORD>(timeoutMs);
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+    // closesocket() waits (at most 3 s) until the printer has the whole ticket,
+    // so the next ticket does not collide with this one still in flight.
+    linger lingerOpt{};
+    lingerOpt.l_onoff = 1;
+    lingerOpt.l_linger = 3;
+    setsockopt(sock, SOL_SOCKET, SO_LINGER, reinterpret_cast<const char*>(&lingerOpt), sizeof(lingerOpt));
 
     std::size_t sent = 0;
     while (sent < payload.size()) {
@@ -160,6 +198,7 @@ bool sendRawTcp(const std::string& host, int port, const std::vector<std::uint8_
         sent += static_cast<std::size_t>(n);
     }
 
+    shutdown(sock, SD_SEND);
     closesocket(sock);
     logger()->info("ESC/POS sent {} bytes to {}:{}", payload.size(), host, port);
     return true;

@@ -200,9 +200,9 @@ void PaymentService::refreshOrderPaymentStatus(const std::string& orderId) {
     // Fully settled with no unresolved card rows → close immediately and free the table.
     if (remaining == 0 && anyPaid && unresolvedCount(orderId) == 0) {
         auto update = ctx_.db().prepare(
-            "UPDATE orders SET status = 'closed', closed_at = :now, updated_at = :now "
-            "WHERE id = :orderId");
-        update.bind(":now", now).bind(":orderId", orderId);
+            "UPDATE orders SET status = 'closed', closed_at = :now, updated_at = :now, "
+            "       closed_by = COALESCE(closed_by, :by) WHERE id = :orderId");
+        update.bind(":now", now).bind(":orderId", orderId).bindOptional(":by", ctx_.session().userId);
         update.exec();
 
         // The normal way a bill ends is its last payment, not the Close button;

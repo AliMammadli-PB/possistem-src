@@ -7,7 +7,7 @@
  * session; privileged actions go through the core's permission checks. See
  * drawer-auth.cjs for the drawer and hardware-policy.cjs for mock hardware.
  */
-const { buildXzReportEscPos } = require('./hardware/printer');
+const { buildStationTicketEscPos, buildXzReportEscPos } = require('./hardware/printer');
 const { openDrawerAuthorized } = require('./drawer-auth.cjs');
 const { mockHardwareAllowed, resolveTerminalMode } = require('./hardware-policy.cjs');
 const { CorePrinterProvider } = require('./hardware/printer');
@@ -75,6 +75,14 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   ipcMain.handle('market:printer:receipt', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken);
     return printerProvider.printReceipt(input?.receipt || {}, { widthMm: input?.widthMm || 80, cut: input?.cut !== false });
+  });
+  // Extra kitchen printers: one preparation ticket per station, to that
+  // station's own printer (target), never to the till's receipt printer.
+  ipcMain.handle('market:printer:station', async (event, input) => {
+    assertTrusted(event); requireSession(input?.sessionToken);
+    const target = String(input?.target || '').trim();
+    if (!target) throw new Error('Stansiya printeri seçilməyib');
+    return printerProvider.printRaw(buildStationTicketEscPos(input?.ticket || {}, { widthMm: input?.widthMm || 80 }), { kind: 'station', target });
   });
   ipcMain.handle('market:printer:label', async (event, input) => {
     assertTrusted(event); await requireCorePermission(input?.sessionToken, 'PRINT_LABEL');

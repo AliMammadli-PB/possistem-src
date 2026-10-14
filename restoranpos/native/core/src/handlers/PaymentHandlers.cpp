@@ -86,9 +86,11 @@ std::string insertPayment(Context& ctx, const std::string& orderId, const std::s
     auto insert = ctx.db().prepare(
         "INSERT INTO payments (id, order_id, method, status, amount_minor, tip_minor, "
         "        tendered_minor, change_minor, seat, idempotency_key, user_id, shift_id, "
-        "        business_day_id, created_at, updated_at, expires_at) "
+        "        business_day_id, created_at, updated_at, expires_at, terminal_id) "
         "VALUES (:id, :orderId, :method, 'created', :amount, :tip, :tendered, :change, :seat, "
-        "        :key, :userId, :shiftId, :day, :now, :now, :expires)");
+        "        :key, :userId, :shiftId, :day, :now, :now, :expires, :terminal)");
+    ctx.touchTerminal();
+    insert.bind(":terminal", ctx.saleTerminalId());
     insert.bind(":id", paymentId)
         .bind(":orderId", orderId)
         .bind(":method", method)

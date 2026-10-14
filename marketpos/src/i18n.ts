@@ -3,6 +3,7 @@ import { CATALOG_AISLES } from './catalogCategories';
 import type { Lang, Role, View } from './types';
 
 const az: Record<string, string> = {
+  gateTitle: 'Market girişi', gateHint: 'Proqramı ilk dəfə açanda super admindən aldığınız email və parolu daxil edin. Bu hesab lisenziyanı aktivləşdirir.', gateSignIn: 'Daxil ol', gateTagline: 'Market POS',
   priceScope: 'Qiymət əhatəsi', kickerWarehouses: 'Anbar şəbəkəsi', kickerRoles: 'Rola görə giriş', kickerReturns: 'Qaytarma masası', kickerOwner: 'MarketPos sahibkar',
   staffSignIn: 'Heyət girişi', switchAccount: 'Hesabı dəyiş', pinTitle: 'PIN kodunuzu daxil edin', pinHint: 'Hesabınıza daxil olmaq üçün 4 rəqəmli şəxsi kodunuzu yazın.', pinPad: 'PIN klaviaturası', pinClear: 'PIN-i təmizlə', pinBack: 'Son rəqəmi sil',
   systemActor: 'Sistem',
@@ -17,6 +18,7 @@ const az: Record<string, string> = {
 
 
 const ru: Record<string, string> = {
+  gateTitle: 'Вход в Market', gateHint: 'При первом запуске введите email и пароль, полученные от супер-администратора. Эта учётная запись активирует лицензию.', gateSignIn: 'Войти', gateTagline: 'Market POS',
   priceScope: 'Охват цены', kickerWarehouses: 'Складская сеть', kickerRoles: 'Доступ по ролям', kickerReturns: 'Стол возвратов', kickerOwner: 'Владелец MarketPos',
   staffSignIn: 'Вход персонала', switchAccount: 'Сменить аккаунт', pinTitle: 'Введите PIN-код', pinHint: 'Введите свой 4-значный личный код, чтобы войти.', pinPad: 'PIN-клавиатура', pinClear: 'Очистить PIN', pinBack: 'Удалить последнюю цифру',
   systemActor: 'Система',
@@ -30,6 +32,7 @@ const ru: Record<string, string> = {
 
 
 const en: Record<string, string> = {
+  gateTitle: 'Market sign-in', gateHint: 'On first launch, enter the email and password you received from the super admin. This account activates the licence.', gateSignIn: 'Sign in', gateTagline: 'Market POS',
   priceScope: 'Price scope', kickerWarehouses: 'Warehouse network', kickerRoles: 'Role-based access', kickerReturns: 'Returns desk', kickerOwner: 'MarketPos owner',
   staffSignIn: 'Staff sign-in', switchAccount: 'Switch account', pinTitle: 'Enter your PIN', pinHint: 'Type your 4-digit personal code to sign in.', pinPad: 'PIN keypad', pinClear: 'Clear PIN', pinBack: 'Delete last digit',
   systemActor: 'System',

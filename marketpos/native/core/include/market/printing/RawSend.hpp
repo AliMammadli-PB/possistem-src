@@ -21,7 +21,7 @@ bool parseUsbRawPrinter(std::string_view printerName, std::string& devicePath);
 bool parseSerialPrinter(std::string_view printerName, std::string& port, int& baud);
 
 bool sendRawTcp(const std::string& host, int port, const std::vector<std::uint8_t>& payload,
-                std::string& errorOut, int timeoutMs = 8000);
+                std::string& errorOut, int timeoutMs = 5000);
 bool sendRawWindowsPrinter(const std::string& printerName, const std::vector<std::uint8_t>& payload,
                            std::string& errorOut);
 bool sendRawUsbDevice(const std::string& devicePath, const std::vector<std::uint8_t>& payload,
