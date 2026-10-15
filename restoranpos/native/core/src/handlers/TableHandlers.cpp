@@ -48,6 +48,7 @@ void registerTables(const ContextPtr& ctx) {
 
     server.registerHandler(std::string(protocol::method::kTablesList), [ctx](const ipc::Request& request) {
         ctx->requireAuth();
+        sweepDeliveryTables(*ctx);
 
         auto areas = ctx->db().prepare(
             "SELECT id, name_az AS nameAz, name_tr AS nameTr, name_en AS nameEn, "

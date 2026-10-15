@@ -79,5 +79,6 @@
   "suppliers.save",
   "suppliers.pay",
   "tables.list",
-  "users.list"
+  "users.list",
+  "delivery.settle"
 ]

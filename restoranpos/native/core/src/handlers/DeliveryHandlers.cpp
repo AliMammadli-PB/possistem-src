@@ -12,9 +12,35 @@
 #include "pos/db/Database.hpp"
 #include "pos/handlers/Handlers.hpp"
 #include "pos/protocol_generated.hpp"
+#include "pos/services/CashService.hpp"
+#include "pos/services/Idempotency.hpp"
 
 namespace pos::handlers {
 namespace {
+
+constexpr const char* kDeliveryArea = "area-delivery";
+
+/** The courier's account (a partner), made on first use. */
+std::string courierAccount(Context& ctx, const std::string& courierId) {
+    auto row = ctx.db().prepare(
+        "SELECT c.name, c.phone, COALESCE(c.customer_id, ''), "
+        "       EXISTS (SELECT 1 FROM customers x WHERE x.id = c.customer_id AND x.active = 1) "
+        "FROM couriers c WHERE c.id = :id AND c.active = 1");
+    row.bind(":id", courierId);
+    require(row.step(), "Kuryer tapılmadı");
+    if (row.columnInt(3) != 0) return row.columnText(2);
+    const std::string id = "cus-" + crypto::uuid4().substr(0, 8);
+    const auto now = nowMs();
+    auto insert = ctx.db().prepare(
+        "INSERT INTO customers (id, name, phone, kind, created_at, updated_at) "
+        "VALUES (:id, :name, :phone, 'customer', :now, :now)");
+    insert.bind(":id", id).bind(":name", "Kuryer: " + row.columnText(0)).bind(":phone", row.columnText(1)).bind(":now", now);
+    insert.exec();
+    auto link = ctx.db().prepare("UPDATE couriers SET customer_id = :c, updated_at = :now WHERE id = :id");
+    link.bind(":c", id).bind(":now", now).bind(":id", courierId);
+    link.exec();
+    return id;
+}
 
 /** Records the change so "who had it and when" survives a shift change. */
 void logDeliveryEvent(Context& ctx, const std::string& deliveryId, const std::string& status,
@@ -34,6 +60,17 @@ void logDeliveryEvent(Context& ctx, const std::string& deliveryId, const std::st
 }
 
 }  // namespace
+
+void sweepDeliveryTables(Context& ctx) {
+    // A delivery table whose bill is no longer open leaves the floor plan; the
+    // next delivery takes it back.
+    auto stmt = ctx.db().prepare(
+        "UPDATE restaurant_tables SET active = 0, status = 'available', merged_into_id = NULL, updated_at = :now "
+        "WHERE area_id = :area AND active = 1 AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.table_id = restaurant_tables.id "
+        "  AND o.status IN ('draft','open','sent','partially_paid'))");
+    stmt.bind(":now", nowMs()).bind(":area", std::string(kDeliveryArea));
+    stmt.exec();
+}
 
 void registerDelivery(const ContextPtr& ctx) {
     auto& server = ctx->server();
@@ -98,24 +135,43 @@ void registerDelivery(const ContextPtr& ctx) {
         std::string(protocol::method::kDeliveryList), [ctx](const ipc::Request& request) {
             ctx->requirePermission("delivery.view");
             const auto status = getOr<std::string>(request.payload, "status", "");
+            const auto from = getOr<Timestamp>(request.payload, "from", 0);
+            const auto to = getOr<Timestamp>(request.payload, "to", nowMs() + 86400000LL);
+            const auto courierId = getOr<std::string>(request.payload, "courierId", "");
 
+            // money: open (bill still open), unpaid (the courier holds the
+            // guest's money), paid (paid at the till, or handed in).
             auto stmt = ctx->db().prepare(
                 "SELECT d.id, d.order_id AS orderId, o.order_number AS orderNumber, "
-                "       o.total_minor AS totalMinor, o.status AS orderStatus, "
-                "       d.customer_id AS customerId, c.name AS customerName, "
+                "       o.total_minor AS totalMinor, o.paid_minor AS paidMinor, o.account_minor AS accountMinor, "
+                "       o.status AS orderStatus, o.closed_at AS closedAt, o.table_id AS tableId, "
+                "       COALESCE(t.label, '') AS tableLabel, "
+                "       d.customer_id AS customerId, COALESCE(c.name, d.customer_name) AS customerName, "
                 "       d.courier_id AS courierId, cu.name AS courierName, "
-                "       d.address, d.phone, d.note, d.fee_minor AS feeMinor, d.status, "
+                "       d.address, d.phone, d.note, d.fee_minor AS feeMinor, d.status, d.pay_mode AS payMode, "
+                "       d.settled_at AS settledAt, "
                 "       d.assigned_at AS assignedAt, d.picked_up_at AS pickedUpAt, "
-                "       d.delivered_at AS deliveredAt, d.created_at AS createdAt "
+                "       d.delivered_at AS deliveredAt, d.created_at AS createdAt, "
+                "       CASE WHEN o.status = 'voided' THEN 'cancelled' "
+                "            WHEN o.status NOT IN ('paid','closed') THEN 'open' "
+                "            WHEN d.pay_mode = 'courier' AND d.settled_at IS NULL AND o.account_minor > 0 THEN 'unpaid' "
+                "            ELSE 'paid' END AS money, "
+                "       CASE WHEN d.pay_mode = 'courier' AND d.settled_at IS NULL AND o.status IN ('paid','closed') "
+                "            THEN o.account_minor ELSE 0 END AS dueMinor "
                 "FROM delivery_orders d "
                 "JOIN orders o ON o.id = d.order_id "
+                "LEFT JOIN restaurant_tables t ON t.id = o.table_id "
                 "LEFT JOIN customers c ON c.id = d.customer_id "
                 "LEFT JOIN couriers cu ON cu.id = d.courier_id "
                 // Parenthesised: an empty filter must mean "all", not "every
                 // row joined to the last branch".
-                "WHERE (:status = '' OR d.status = :status) "
-                "ORDER BY d.created_at DESC LIMIT 200");
-            stmt.bind(":status", status);
+                "WHERE (:status = '' OR d.status = :status) AND (:courier = '' OR d.courier_id = :courier) "
+                // An unpaid bill stays on the list whatever the period: it is still owed.
+                "  AND ((d.created_at >= :from AND d.created_at < :to) "
+                "       OR (d.pay_mode = 'courier' AND d.settled_at IS NULL AND o.account_minor > 0 "
+                "           AND o.status IN ('paid','closed'))) "
+                "ORDER BY d.created_at DESC LIMIT 1000");
+            stmt.bind(":status", status).bind(":courier", courierId).bind(":from", from).bind(":to", to);
             return Json{{"deliveries", stmt.rows()}};
         });
 
@@ -166,6 +222,200 @@ void registerDelivery(const ContextPtr& ctx) {
 
             return Json{{"id", id}, {"orderId", orderId}, {"status", "pending"},
                         {"feeMinor", fee}};
+        });
+
+    // ------------------------------------------------- delivery from the floor
+    // "Çatdırılma" on the floor plan: a table of its own in the delivery area,
+    // its bill opened and the delivery written, so the order screen takes over.
+    server.registerHandler(
+        std::string(protocol::method::kDeliveryStart), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("delivery.manage");
+            const auto address = getOr<std::string>(request.payload, "address", "");
+            const auto customerId = getOr<std::string>(request.payload, "customerId", "");
+            require(!address.empty(), "Ünvanı yazın");
+            const auto now = nowMs();
+
+            std::string tableId;
+            {
+                db::Transaction txn(ctx->db());
+                auto area = ctx->db().prepare(
+                    "INSERT INTO restaurant_areas (id, name_az, name_tr, name_en, sort_order, active) "
+                    "VALUES (:id, 'Çatdırılma', 'Paket servis', 'Delivery', 999, 1) "
+                    "ON CONFLICT(id) DO UPDATE SET active = 1");
+                area.bind(":id", std::string(kDeliveryArea));
+                area.exec();
+                sweepDeliveryTables(*ctx);
+                auto free = ctx->db().prepare(
+                    "SELECT id FROM restaurant_tables WHERE area_id = :area AND active = 0 ORDER BY sort_order LIMIT 1");
+                free.bind(":area", std::string(kDeliveryArea));
+                if (free.step()) {
+                    tableId = free.columnText(0);
+                    auto open = ctx->db().prepare(
+                        "UPDATE restaurant_tables SET active = 1, status = 'available', updated_at = :now WHERE id = :id");
+                    open.bind(":now", now).bind(":id", tableId);
+                    open.exec();
+                } else {
+                    auto count = ctx->db().prepare("SELECT COUNT(*) + 1 FROM restaurant_tables WHERE area_id = :area");
+                    count.bind(":area", std::string(kDeliveryArea));
+                    count.step();
+                    const auto n = count.columnInt(0);
+                    tableId = "tbl-del-" + crypto::uuid4().substr(0, 8);
+                    auto insert = ctx->db().prepare(
+                        "INSERT INTO restaurant_tables (id, area_id, label, seats, status, pos_x, pos_y, sort_order, active, updated_at) "
+                        "VALUES (:id, :area, :label, 1, 'available', :x, :y, :n, 1, :now)");
+                    insert.bind(":id", tableId).bind(":area", std::string(kDeliveryArea))
+                        .bind(":label", "Ç-" + std::to_string(n)).bind(":x", (n - 1) % 8).bind(":y", (n - 1) / 8)
+                        .bind(":n", n).bind(":now", now);
+                    insert.exec();
+                }
+                txn.commit();
+            }
+
+            // The bill itself, exactly as a table opens one (as the same person).
+            ipc::Request open;
+            open.requestId = crypto::uuid4();
+            open.method = std::string(protocol::method::kOrdersCreate);
+            open.payload = Json{{"tableId", tableId}, {"guestCount", 1}};
+            open.idempotencyKey = crypto::uuid4();
+            open.scoped = request.scoped;
+            open.actorUserId = request.actorUserId;
+            open.terminalId = request.terminalId;
+            open.terminalName = request.terminalName;
+            const Json order = ctx->server().callHandler(open);
+            const auto orderId = order.value("id", std::string{});
+            require(!orderId.empty(), "Hesab açılmadı");
+
+            db::Transaction txn(ctx->db());
+            const std::string id = "del-" + crypto::uuid4().substr(0, 8);
+            auto insert = ctx->db().prepare(
+                "INSERT INTO delivery_orders (id, order_id, customer_id, customer_name, address, phone, note, "
+                "  fee_minor, created_at, updated_at) "
+                "VALUES (:id, :order, :customer, :name, :address, :phone, :note, 0, :now, :now)");
+            insert.bind(":id", id).bind(":order", orderId).bindOptional(":customer", customerId)
+                .bind(":name", getOr<std::string>(request.payload, "customerName", ""))
+                .bind(":address", address).bind(":phone", getOr<std::string>(request.payload, "phone", ""))
+                .bind(":note", getOr<std::string>(request.payload, "note", "")).bind(":now", now);
+            insert.exec();
+            if (!customerId.empty()) {
+                auto link = ctx->db().prepare("UPDATE orders SET customer_id = :c, updated_at = :now WHERE id = :id");
+                link.bind(":c", customerId).bind(":now", now).bind(":id", orderId);
+                link.exec();
+            }
+            logDeliveryEvent(*ctx, id, "pending", "", "yaradıldı");
+            ctx->audit("delivery.start", "delivery", id, Json{{"orderId", orderId}, {"tableId", tableId}});
+            txn.commit();
+            return Json{{"id", id}, {"orderId", orderId}, {"tableId", tableId}};
+        });
+
+    // The food leaves with a courier. 'paid': the guest paid (the till takes
+    // the payment as usual); 'courier': the guest pays the courier, so the bill
+    // is put on the courier's account and closed by the caller (orders.close
+    // with toAccount).
+    server.registerHandler(
+        std::string(protocol::method::kDeliveryDispatch), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("delivery.assign");
+            const auto id = getOr<std::string>(request.payload, "deliveryId", "");
+            const auto orderIdIn = getOr<std::string>(request.payload, "orderId", "");
+            const auto courierId = getOr<std::string>(request.payload, "courierId", "");
+            const auto mode = getOr<std::string>(request.payload, "mode", "");
+            require(!courierId.empty(), "Kuryeri seçin");
+            require(mode == "paid" || mode == "courier", "Ödəniş yolunu seçin");
+            db::Transaction txn(ctx->db());
+            auto row = ctx->db().prepare(
+                "SELECT d.id, d.order_id, o.status FROM delivery_orders d JOIN orders o ON o.id = d.order_id "
+                "WHERE d.id = :id OR (:id = '' AND d.order_id = :order)");
+            row.bind(":id", id).bind(":order", orderIdIn);
+            require(row.step(), "Çatdırılma tapılmadı");
+            const std::string deliveryId = row.columnText(0);
+            const std::string orderId = row.columnText(1);
+            const std::string orderStatus = row.columnText(2);
+            require(orderStatus != "voided", "Bu hesab ləğv edilib");
+            auto courier = ctx->db().prepare("SELECT name FROM couriers WHERE id = :id AND active = 1");
+            courier.bind(":id", courierId);
+            require(courier.step(), "Kuryer tapılmadı");
+            const auto now = nowMs();
+            auto upd = ctx->db().prepare(
+                "UPDATE delivery_orders SET courier_id = :courier, pay_mode = :mode, "
+                "  status = CASE WHEN status IN ('pending','assigned') THEN 'picked_up' ELSE status END, "
+                "  assigned_at = COALESCE(assigned_at, :now), picked_up_at = COALESCE(picked_up_at, :now), "
+                "  updated_at = :now WHERE id = :id");
+            upd.bind(":courier", courierId).bind(":mode", mode).bind(":now", now).bind(":id", deliveryId);
+            upd.exec();
+            std::string partnerId;
+            if (mode == "courier") {
+                require(orderStatus != "paid" && orderStatus != "closed", "Hesab artıq bağlanıb");
+                partnerId = courierAccount(*ctx, courierId);
+                auto link = ctx->db().prepare("UPDATE orders SET customer_id = :c, updated_at = :now WHERE id = :id");
+                link.bind(":c", partnerId).bind(":now", now).bind(":id", orderId);
+                link.exec();
+            }
+            logDeliveryEvent(*ctx, deliveryId, "picked_up", courierId,
+                             courier.columnText(0) + (mode == "courier" ? " · pul kuryerdə" : " · ödənilib"));
+            ctx->audit("delivery.dispatch", "delivery", deliveryId, Json{{"courierId", courierId}, {"mode", mode}});
+            txn.commit();
+            return Json{{"id", deliveryId}, {"orderId", orderId}, {"partnerId", partnerId}, {"mode", mode}};
+        });
+
+    // Evening count with the courier: the money for the chosen bills comes in.
+    server.registerHandler(
+        std::string(protocol::method::kDeliverySettle), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("delivery.assign");
+            require(request.payload.contains("deliveryIds") && request.payload["deliveryIds"].is_array(),
+                    "Qaimələri seçin");
+            const auto accountId = getOr<std::string>(request.payload, "accountId", "");
+            db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            const auto key = getOr<std::string>(request.payload, "idempotencyKey", request.idempotencyKey);
+            if (auto replay = idem.begin(key, "delivery.settle", request.payload)) return *replay;
+            const auto now = nowMs();
+            Money total = 0;
+            std::int64_t settled = 0;
+            for (const auto& raw : request.payload["deliveryIds"]) {
+                if (!raw.is_string()) continue;
+                auto row = ctx->db().prepare(
+                    "SELECT d.pay_mode, d.settled_at IS NOT NULL, o.status, o.account_minor, o.order_number, "
+                    "       COALESCE(o.customer_id, ''), cu.name, o.id "
+                    "FROM delivery_orders d JOIN orders o ON o.id = d.order_id "
+                    "LEFT JOIN couriers cu ON cu.id = d.courier_id WHERE d.id = :id");
+                row.bind(":id", raw.get<std::string>());
+                require(row.step(), "Çatdırılma tapılmadı");
+                require(row.columnText(0) == "courier", "Bu qaimənin pulu kuryerdə deyil");
+                require(row.columnInt(1) == 0, "#" + row.columnText(4) + " artıq ödənilib");
+                require(row.columnText(2) == "paid" || row.columnText(2) == "closed", "#" + row.columnText(4) + " hələ bağlanmayıb");
+                const Money amount = row.columnInt(3);
+                const std::string partner = row.columnText(5);
+                const std::string number = row.columnText(4);
+                if (amount > 0 && !partner.empty()) {
+                    auto pay = ctx->db().prepare(
+                        "INSERT INTO customer_ledger (id, customer_id, order_id, amount_minor, kind, note, actor_user_id, created_at) "
+                        "VALUES (:id, :c, :order, :amount, 'payment', :note, :actor, :now)");
+                    pay.bind(":id", crypto::uuid4()).bind(":c", partner).bind(":order", row.columnText(7)).bind(":amount", amount)
+                        .bind(":note", "Çatdırılma #" + number + " — kuryerdən alındı").bindOptional(":actor", ctx->session().userId)
+                        .bind(":now", now);
+                    pay.exec();
+                    auto debt = ctx->db().prepare(
+                        "UPDATE customers SET debt_minor = (SELECT COALESCE(SUM(CASE WHEN kind = 'payment' THEN -amount_minor "
+                        "  ELSE amount_minor END), 0) FROM customer_ledger WHERE customer_id = :id), updated_at = :now WHERE id = :id");
+                    debt.bind(":id", partner).bind(":now", now);
+                    debt.exec();
+                    services::CashService(*ctx).accountMove(accountId, amount, "debt_in", "delivery", raw.get<std::string>(),
+                                                            "Kuryer: " + row.columnText(6) + " · #" + number);
+                }
+                auto done = ctx->db().prepare(
+                    "UPDATE delivery_orders SET settled_at = :now, settled_account_id = :account, "
+                    "  status = CASE WHEN status IN ('pending','assigned','picked_up') THEN 'delivered' ELSE status END, "
+                    "  delivered_at = COALESCE(delivered_at, :now), updated_at = :now WHERE id = :id");
+                done.bind(":now", now).bind(":account", accountId).bind(":id", raw.get<std::string>());
+                done.exec();
+                total += amount;
+                settled += 1;
+            }
+            require(settled > 0, "Qaimələri seçin");
+            ctx->auditRequired("delivery.settle", "delivery", "", Json{{"count", settled}, {"totalMinor", total}});
+            Json response{{"settled", settled}, {"totalMinor", total}};
+            idem.complete(key, response, "delivery", "");
+            txn.commit();
+            return response;
         });
 
     server.registerHandler(

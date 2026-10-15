@@ -2283,6 +2283,16 @@ button.ps-period-chip[aria-pressed].is-on, .ps-ops-panel button.ps-period-chip[a
 .ps-expiry-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; width: 100%; text-align: left; padding: 0.6rem 0.9rem; border-radius: 0.8rem; background: #fff4e0; color: #92400e; border: 1px solid #f5d29a; }
 .ps-expiry-banner b { color: var(--ps-danger, #dc2626); }
 .ps-expiry-banner small { margin-left: auto; font-weight: 600; }
+/* POS_DELIVERY_DISPATCH_v1 */
+.ps-delivery-start { align-self: center; min-height: 40px; padding: 0 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.35);
+  background: #f59e0b; color: #fff; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; box-shadow: 0 4px 14px rgba(245,158,11,0.35); }
+.ps-delivery-start:hover { background: #d97706; }
+.ps-delivery-dispatch { width: 100%; margin-top: 8px; min-height: 44px; border-radius: 12px; background: #f59e0b; color: #fff; font-weight: 700; }
+.ps-delivery-dispatch:hover { background: #d97706; }
+.ps-delivery-modes { display: grid; gap: 8px; }
+.ps-delivery-mode { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--ps-line, #e2e8f0); background: transparent; }
+.ps-delivery-mode small { color: #64748b; }
+.ps-delivery-mode.is-on { border-color: #f59e0b; background: #fff7e6; }
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

@@ -412,6 +412,9 @@ inline constexpr std::string_view kReportsSuppliers = "reports.suppliers";
 inline constexpr std::string_view kReportsStockLoss = "reports.stockLoss";
 inline constexpr std::string_view kInventoryCostingMethod = "inventory.costingMethod";
 inline constexpr std::string_view kLotsExtend = "lots.extend";
+inline constexpr std::string_view kDeliveryStart = "delivery.start";
+inline constexpr std::string_view kDeliveryDispatch = "delivery.dispatch";
+inline constexpr std::string_view kDeliverySettle = "delivery.settle";
 }  // namespace method
 
 namespace event {

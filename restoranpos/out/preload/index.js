@@ -208,7 +208,11 @@ const api = {
     create: (input) => call("delivery.create", input),
     assign: (deliveryId, courierId) => call("delivery.assign", { deliveryId, courierId }),
     setStatus: (deliveryId, status, note) => call("delivery.setStatus", { deliveryId, status, note }),
-    courierReport: (params) => call("delivery.courierReport", params ?? {})
+    courierReport: (params) => call("delivery.courierReport", params ?? {}),
+    listRange: (params) => call("delivery.list", params ?? {}),
+    start: (input) => call("delivery.start", input, { timeoutMs: 15000 }),
+    dispatch: (input) => call("delivery.dispatch", input),
+    settle: (input, options) => call("delivery.settle", input, options)
   },
 
   roster: {

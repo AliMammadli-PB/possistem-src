@@ -14911,7 +14911,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.8.0 · a969c71";
+const _PS_BUILD = "1.8.1 · 5887d03";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -20896,6 +20896,7 @@ function OrderPage() {
   const [productPage, setProductPage] = reactExports.useState(0);
   const [cartPage, setCartPage] = reactExports.useState(0);
   const [partnerOpen, setPartnerOpen] = reactExports.useState(false);
+  const [dispatchOpen, setDispatchOpen] = reactExports.useState(false);
   const loadOrder = reactExports.useCallback(async (orderId) => {
     try {
       const data = unwrap(await window.pos.orders.get(orderId));
@@ -21362,11 +21363,13 @@ function OrderPage() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: remaining })
           ] }),
           psH("button", { type: "button", className: "ps-partner-btn" + (order.customerId ? " is-on" : ""), onClick: () => setPartnerOpen(true) },
-            order.customerId ? ((order.partnerKind === "employee" ? "İşçi: " : "Partnyor: ") + (order.partnerName || "")) : "Partnyor seç")
+            order.customerId ? ((order.partnerKind === "employee" ? "İşçi: " : "Partnyor: ") + (order.partnerName || "")) : "Partnyor seç"),
+          table && table.areaId === PS_DELIVERY_AREA ? psH("button", { type: "button", className: "ps-delivery-dispatch", onClick: () => setDispatchOpen(true) }, "🛵 Kuryerə ver") : null
         ] })
       ] })
     ] }),
     partnerOpen && order ? jsxRuntimeExports.jsx(PsPartnerPicker, { order, onClose: () => setPartnerOpen(false), onPicked: () => { setPartnerOpen(false); void refreshOrder(); } }) : null,
+    dispatchOpen && order ? jsxRuntimeExports.jsx(PsDeliveryDispatch, { order, onClose: () => setDispatchOpen(false) }) : null,
     pending && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "glass-raised max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl p-6", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-display text-xl text-cream", children: localizedName(pending.product, lang) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-muted", children: t.order.modifiers }),
@@ -26057,159 +26060,227 @@ function OpsReservations() {
 }
 
 // ------------------------------------------------------------------ delivery
-function OpsDelivery() {
-  const [rows, setRows] = reactExports.useState([]);
+/* POS_DELIVERY_DISPATCH_v1 */
+const PS_DELIVERY_AREA = "area-delivery";
+/** Masalar → "Çatdırılma": guest and address, then straight into the order screen. */
+function PsDeliveryStartButton() {
+  const h = psH;
+  const navigate = useNavigate();
+  const hasPermission = useAuthStore((st) => st.hasPermission);
+  const [form, setForm] = reactExports.useState(null);
+  const [busy, setBusy] = reactExports.useState(false);
+  if (!hasPermission("delivery.manage")) return null;
+  const save = async () => {
+    if (!form.address.trim()) { toast("Ünvanı yazın", "danger"); return; }
+    setBusy(true);
+    try {
+      const r = await window.pos.delivery.start({ customerName: form.name.trim(), phone: form.phone.trim(), address: form.address.trim(), note: form.note.trim() });
+      if (!r.success) { toast(r.error.message, "danger"); return; }
+      setForm(null);
+      navigate("/orders/" + r.data.tableId);
+    } finally { setBusy(false); }
+  };
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
+  return h(reactExports.Fragment, null,
+    h("button", { type: "button", className: "ps-delivery-start", onClick: () => setForm({ name: "", phone: "", address: "", note: "" }) }, "🛵 Çatdırılma"),
+    form ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Yeni çatdırılma sifarişi", onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Müştəri", value: form.name, onChange: (v) => setForm({ ...form, name: v }), placeholder: "məs. Aysel" }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Telefon", value: form.phone, onChange: (v) => setForm({ ...form, phone: v }), placeholder: "050 000 00 00" })),
+      jsxRuntimeExports.jsx(OpsField, { label: "Ünvan", value: form.address, onChange: (v) => setForm({ ...form, address: v }), placeholder: "Küçə, bina, mənzil" }),
+      jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: form.note, onChange: (v) => setForm({ ...form, note: v }), placeholder: "məs. qapıda zəng edin" }),
+      h("p", { className: "text-xs text-muted" }, "Sifariş açılır: məhsulları vurun, sonra \"Kuryerə ver\" ilə kuryeri və ödənişi seçin."),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void save(), children: "Sifarişi aç" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setForm(null), children: "İmtina" }))) }) : null);
+}
+
+/** Order screen, delivery bill: who takes it, and who pays whom. */
+function PsDeliveryDispatch({ order, onClose }) {
+  const h = psH;
+  const navigate = useNavigate();
   const [couriers, setCouriers] = reactExports.useState([]);
-  const [report, setReport] = reactExports.useState([]);
-  const [courierName, setCourierName] = reactExports.useState("");
-
-  const reload = reactExports.useCallback(async () => {
-    const [list, cur, rep] = await Promise.all([
-      window.pos.delivery.list(), window.pos.delivery.couriers(), window.pos.delivery.courierReport()
-    ]);
-    if (list.success) setRows(list.data.deliveries ?? []);
-    if (cur.success) setCouriers(cur.data.couriers ?? []);
-    if (rep.success) setReport(rep.data.couriers ?? []);
-  }, []);
-  reactExports.useEffect(() => { void reload(); }, [reload]);
-  const [busy, run] = useOpsAction(reload);
-
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "space-y-2 rounded-xl border border-hairline p-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Kuryerlər" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-end gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, { label: "Yeni kuryer", value: courierName, onChange: setCourierName }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, {
-          disabled: busy,
-          onClick: () => {
-            if (!courierName.trim()) { toast("Ad tələb olunur", "danger"); return; }
-            void run(window.pos.delivery.saveCourier({ name: courierName.trim() }), "Kuryer əlavə olundu")
-              .then((ok) => { if (ok) setCourierName(""); });
-          },
-          children: "Əlavə et"
-        })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted", children: couriers.map((c) => `${c.name} (${c.openCount ?? 0})`).join(" · ") || "Kuryer yoxdur" })
-    ] }),
-
-    /* @__PURE__ */ jsxRuntimeExports.jsx(OpsTable, {
-      head: ["Hesab", "Ünvan", "Kuryer", "Status", ""],
-      empty: "Çatdırılma yoxdur",
-      rows: rows.map((d) => [
-        d.orderNumber, d.address, d.courierName || "—", d.status,
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex flex-wrap gap-1", children: [
-          d.status !== "delivered" && d.status !== "cancelled" && couriers.length > 0 &&
-            /* @__PURE__ */ jsxRuntimeExports.jsx("select", {
-              value: d.courierId || "",
-              onChange: (e) => { if (e.target.value) void run(window.pos.delivery.assign(d.id, e.target.value), "Kuryer təyin edildi"); },
-              className: "rounded-lg border border-hairline bg-elevated px-2 py-1 text-xs text-cream",
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Kuryer seç" }),
-                ...couriers.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c.id, children: c.name }, c.id))
-              ]
-            }),
-          d.status === "assigned" && /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy,
-            onClick: () => void run(window.pos.delivery.setStatus(d.id, "picked_up"), "Götürüldü"), children: "Götürdü" }),
-          (d.status === "assigned" || d.status === "picked_up") && /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { disabled: busy,
-            onClick: () => void run(window.pos.delivery.setStatus(d.id, "delivered"), "Çatdırıldı"), children: "Çatdı" })
-        ] })
-      ])
-    }),
-
-    report.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "space-y-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Kuryer hesabatı (24 saat)" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(OpsTable, {
-        head: ["Kuryer", "Say", "Çatdırılan", "Haqq", "Yığılan"],
-        empty: "—",
-        rows: report.map((r) => [r.courierName, String(r.deliveries), String(r.completed),
-                                formatMoney(r.feeMinor ?? 0), formatMoney(r.collectedMinor ?? 0)])
-      })
-    ] })
-  ] });
-}
-
-// -------------------------------------------------------------------- roster
-function OpsRoster() {
-  const [shifts, setShifts] = reactExports.useState([]);
-  const [entries, setEntries] = reactExports.useState([]);
-  const [staff, setStaff] = reactExports.useState([]);
-  const [form, setForm] = reactExports.useState({ userId: "", startsAt: opsLocalInput(Date.now()), endsAt: opsLocalInput(Date.now() + 8 * 3600000) });
-
-  const reload = reactExports.useCallback(async () => {
-    const [list, att, users] = await Promise.all([
-      window.pos.roster.shifts(), window.pos.roster.attendance(), window.pos.users.list()
-    ]);
-    if (list.success) setShifts(list.data.shifts ?? []);
-    if (att.success) setEntries(att.data.entries ?? []);
-    if (users.success) {
-      const rows = (users.data.users ?? []).filter((u) => u.active === 1 || u.active === true);
-      setStaff(rows);
-      setForm((prev) => ({ ...prev, userId: prev.userId || rows[0]?.id || "" }));
+  const [info, setInfo] = reactExports.useState(null);
+  const [courierId, setCourierId] = reactExports.useState("");
+  const [mode, setMode] = reactExports.useState("courier");
+  const [newName, setNewName] = reactExports.useState("");
+  const [busy, setBusy] = reactExports.useState(false);
+  const load = reactExports.useCallback(async () => {
+    const [c, l] = await Promise.all([window.pos.delivery.couriers(), window.pos.delivery.listRange({ from: 0 })]);
+    if (c.success) setCouriers((c.data.couriers ?? []).filter((x) => x.active !== false && x.active !== 0));
+    if (l.success) {
+      const mine = (l.data.deliveries ?? []).find((d) => d.orderId === order.id) || null;
+      setInfo(mine);
+      if (mine && mine.courierId) setCourierId(mine.courierId);
     }
-  }, []);
-  reactExports.useEffect(() => { void reload(); }, [reload]);
-  const [busy, run] = useOpsAction(reload);
-
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { disabled: busy,
-        onClick: () => void run(window.pos.roster.clockIn(), "İşə başladınız"), children: "İşə başla" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy,
-        onClick: () => void run(window.pos.roster.clockOut(), "İş bitdi"), children: "İşi bitir" })
-    ] }),
-
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(PsOpsComposer, { title: psAdminText("Növbə planla", "Vardiya planla", "Plan a shift"), children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Növbə planla" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid gap-2 sm:grid-cols-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs uppercase tracking-wide text-faint", children: "İşçi" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("select", {
-            value: form.userId,
-            onChange: (e) => setForm({ ...form, userId: e.target.value }),
-            className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream",
-            children: staff.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u.id, children: u.fullName }, u.id))
-          })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, { label: "Başlanğıc", type: "datetime-local", value: form.startsAt, onChange: (v) => setForm({ ...form, startsAt: v }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(OpsField, { label: "Bitiş", type: "datetime-local", value: form.endsAt, onChange: (v) => setForm({ ...form, endsAt: v }) })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, {
-        disabled: busy,
-        onClick: () => {
-          const startsAt = new Date(form.startsAt).getTime();
-          const endsAt = new Date(form.endsAt).getTime();
-          if (!form.userId || !Number.isFinite(startsAt) || !Number.isFinite(endsAt) || endsAt <= startsAt) { toast("Vaxt yanlışdır", "danger"); return; }
-          void run(window.pos.roster.saveShift({ userId: form.userId, startsAt, endsAt }), "Növbə planlandı");
-        },
-        children: "Planla"
-      })
-    ] }),
-
-    /* @__PURE__ */ jsxRuntimeExports.jsx(OpsTable, {
-      head: ["İşçi", "Başlanğıc", "Bitiş", ""],
-      empty: "Planlanmış növbə yoxdur",
-      rows: shifts.map((s) => [
-        s.fullName, opsWhen(s.startsAt), opsWhen(s.endsAt),
-        s.status !== "cancelled"
-          ? /* @__PURE__ */ jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy,
-              onClick: () => void run(window.pos.roster.removeShift(s.id), "Növbə ləğv edildi"), children: "Ləğv" })
-          : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-faint", children: "ləğv" })
-      ])
-    }),
-
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "space-y-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-faint", children: "Davamiyyət" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(OpsTable, {
-        head: ["İşçi", "Giriş", "Çıxış", "Dəqiqə"],
-        empty: "Qeyd yoxdur",
-        rows: entries.map((e) => [e.fullName, opsWhen(e.clockInAt), opsWhen(e.clockOutAt),
-                                 e.workedMinutes == null ? "davam edir" : String(e.workedMinutes)])
-      })
-    ] })
-  ] });
+  }, [order.id]);
+  reactExports.useEffect(() => { void load(); }, [load]);
+  const addCourier = async () => {
+    if (!newName.trim()) return;
+    const r = await window.pos.delivery.saveCourier({ name: newName.trim() });
+    if (!r.success) { toast(r.error.message, "danger"); return; }
+    setNewName("");
+    await load();
+    setCourierId(r.data.id);
+  };
+  const go = async () => {
+    if (!courierId) { toast("Kuryeri seçin", "danger"); return; }
+    if (!(order.items ?? []).some((i) => i.status !== "voided")) { toast("Əvvəlcə məhsulları vurun", "danger"); return; }
+    setBusy(true);
+    try {
+      // What is not yet with the kitchen goes now.
+      if ((order.items ?? []).some((i) => i.status === "draft")) {
+        const s = await window.pos.orders.submit(order.id, { idempotencyKey: newIdempotencyKey() });
+        if (!s.success) { toast(s.error.message, "danger"); return; }
+      }
+      const d = await window.pos.delivery.dispatch({ deliveryId: info ? info.id : "", orderId: order.id, courierId, mode });
+      if (!d.success) { toast(d.error.message, "danger"); return; }
+      if (mode === "courier") {
+        const c = await window.pos.orders.closeToAccount(order.id, { idempotencyKey: newIdempotencyKey() });
+        if (!c.success) { toast(c.error.message, "danger"); return; }
+        toast("Kuryerə verildi — " + formatMoney(order.totalMinor - (order.paidMinor ?? 0)) + " kuryerin adına borc yazıldı", "success");
+        navigate("/tables");
+      } else {
+        toast("Kuryerə verildi — indi ödənişi qəbul edin", "success");
+        navigate("/payments/" + order.id);
+      }
+    } finally { setBusy(false); }
+  };
+  const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
+  return jsxRuntimeExports.jsx(PsAdminDialog, { title: "Kuryerə ver — #" + (order.orderNumber || ""), onClose, busy, children: h("div", { className: "space-y-3" },
+    info ? h("p", { className: "text-sm text-muted" }, [info.customerName, info.phone, info.address].filter(Boolean).join(" · ")) : null,
+    h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Kuryer"),
+      h("select", { value: courierId, className: field, onChange: (e) => setCourierId(e.target.value) },
+        h("option", { value: "" }, couriers.length ? "Seçin…" : "Kuryer yoxdur — aşağıda əlavə edin"),
+        couriers.map((c) => h("option", { key: c.id, value: c.id }, c.name + (c.openCount ? " · " + c.openCount + " yolda" : ""))))),
+    h("div", { className: "flex items-end gap-2" },
+      jsxRuntimeExports.jsx(OpsField, { label: "Yeni kuryer", value: newName, onChange: setNewName, placeholder: "Ad" }),
+      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy || !newName.trim(), onClick: () => void addCourier(), children: "Əlavə et" })),
+    h("div", { className: "ps-delivery-modes" },
+      [["paid", "Müştəri ödəyib", "Ödənişi indi kassada qəbul edin, hesab bağlanır."],
+       ["courier", "Müştəri kuryerə ödəyəcək", formatMoney(order.totalMinor - (order.paidMinor ?? 0)) + " kuryerin adına borc yazılır; axşam Çatdırılma bölməsində kuryerdən alınır."]].map(([k, l, d]) =>
+        h("button", { key: k, type: "button", "aria-pressed": mode === k, className: "ps-delivery-mode" + (mode === k ? " is-on" : ""), onClick: () => setMode(k) }, h("b", null, l), h("small", null, d)))),
+    h("div", { className: "flex gap-2" },
+      jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void go(), children: mode === "courier" ? "Kuryerə ver və bağla" : "Kuryerə ver və ödənişə keç" }),
+      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: onClose, children: "İmtina" }))) });
 }
 
-// -------------------------------------------------------------------- export
+/** Əməliyyatlar → Çatdırılma: what was delivered, what was paid, what the couriers still hold. */
+function OpsDelivery() {
+  const h = psH;
+  const navigate = useNavigate();
+  const hasPermission = useAuthStore((st) => st.hasPermission);
+  const canSettle = hasPermission("delivery.assign");
+  const [period, setPeriod] = reactExports.useState("day");
+  const [view, setView] = reactExports.useState("unpaid");
+  const [courierFilter, setCourierFilter] = reactExports.useState("");
+  const [rows, setRows] = reactExports.useState(null);
+  const [couriers, setCouriers] = reactExports.useState([]);
+  const [picked, setPicked] = reactExports.useState({});
+  const [settle, setSettle] = reactExports.useState(null);
+  const [courierForm, setCourierForm] = reactExports.useState(null);
+  const reload = reactExports.useCallback(async () => {
+    const [from, to] = psDayRange(period, "", "");
+    const [l, c] = await Promise.all([window.pos.delivery.listRange({ from, to, courierId: courierFilter }), window.pos.delivery.couriers()]);
+    if (l.success) setRows(l.data.deliveries ?? []); else toast(l.error.message, "danger");
+    if (c.success) setCouriers(c.data.couriers ?? []);
+    setPicked({});
+  }, [period, courierFilter]);
+  reactExports.useEffect(() => { void reload(); }, [reload]);
+  const [busy, run] = useOpsAction(reload);
+  if (!rows) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
+
+  const sum = (list, key) => list.reduce((t, r) => t + (Number(r[key]) || 0), 0);
+  const unpaid = rows.filter((r) => r.money === "unpaid");
+  const paid = rows.filter((r) => r.money === "paid");
+  const open = rows.filter((r) => r.money === "open");
+  const shown = view === "unpaid" ? unpaid : view === "paid" ? paid : view === "open" ? open : rows;
+  const chosen = unpaid.filter((r) => picked[r.id]);
+  const perCourier = new Map();
+  for (const r of rows) {
+    if (!r.courierId) continue;
+    const row = perCourier.get(r.courierId) || { id: r.courierId, name: r.courierName || "—", count: 0, total: 0, due: 0, dueCount: 0 };
+    row.count += 1; row.total += r.money === "cancelled" ? 0 : Number(r.totalMinor) || 0;
+    if (r.money === "unpaid") { row.due += Number(r.dueMinor) || 0; row.dueCount += 1; }
+    perCourier.set(r.courierId, row);
+  }
+  const who = (r) => [r.customerName, r.phone].filter(Boolean).join(" · ") || "—";
+  const openSettle = (list) => {
+    if (!list.length) { toast("Ödənilməmiş qaimə seçin", "danger"); return; }
+    setSettle({ list, accountId: undefined });
+  };
+  const doSettle = () => void run(window.pos.delivery.settle({ deliveryIds: settle.list.map((r) => r.id), accountId: settle.accountId || "" }, { idempotencyKey: newIdempotencyKey() }),
+    "Ödəniş alındı — " + formatMoney(sum(settle.list, "dueMinor"))).then((ok) => { if (ok) setSettle(null); });
+  const chip = (k, l, value, set) => h("button", { key: k, type: "button", "aria-pressed": value === k, className: "ps-period-chip" + (value === k ? " is-on" : ""), onClick: () => set(k) }, l);
+  const statusLabel = { pending: "Gözləyir", assigned: "Kuryerə verilib", picked_up: "Yolda", delivered: "Çatdırılıb", failed: "Alınmadı", cancelled: "Ləğv" };
+
+  return h("div", { className: "space-y-4" },
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["day", "Bu gün"], ["yesterday", "Dünən"], ["week", "Bu həftə"], ["month", "Bu ay"]].map(([k, l]) => chip(k, l, period, setPeriod)),
+      h("select", { value: courierFilter, onChange: (e) => setCourierFilter(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" },
+        h("option", { value: "" }, "Bütün kuryerlər"), couriers.map((c) => h("option", { key: c.id, value: c.id }, c.name))),
+      h("span", { className: "ml-auto" }),
+      hasPermission("delivery.manage") ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setCourierForm({ name: "", phone: "" }), children: "+ Kuryer" }) : null,
+      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void reload(), children: "Yenilə" })),
+
+    h("div", { className: "ps-stock-metrics" },
+      psMetric("Çatdırılma", String(rows.filter((r) => r.money !== "cancelled").length), formatMoney(sum(rows.filter((r) => r.money !== "cancelled"), "totalMinor"))),
+      psMetric("Ödənilmiş", formatMoney(sum(paid, "totalMinor")), paid.length + " qaimə", "var(--ps-ok)"),
+      psMetric("Kuryerlərdə (ödənilməmiş)", formatMoney(sum(unpaid, "dueMinor")), unpaid.length + " qaimə", unpaid.length ? "var(--ps-danger)" : null),
+      psMetric("Açıq hesab", String(open.length), "hələ bağlanmayıb")),
+
+    perCourier.size ? jsxRuntimeExports.jsx(OpsTable, { head: ["Kuryer", "Çatdırılma", "Məbləğ", "Kuryerdə", ""], empty: "",
+      rows: [...perCourier.values()].map((c) => [h("b", null, c.name), String(c.count), formatMoney(c.total),
+        h("b", { style: c.due ? { color: "var(--ps-danger)" } : null }, formatMoney(c.due) + (c.dueCount ? " (" + c.dueCount + " qaimə)" : "")),
+        c.due && canSettle ? jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => openSettle(unpaid.filter((r) => r.courierId === c.id)), children: "Hesablaş" }) : null]) }) : null,
+
+    h("div", { className: "flex flex-wrap items-center gap-2" },
+      [["unpaid", "Ödənilməmiş (" + unpaid.length + ")"], ["paid", "Ödənilmiş (" + paid.length + ")"], ["open", "Açıq (" + open.length + ")"], ["all", "Hamısı"]].map(([k, l]) => chip(k, l, view, setView)),
+      view === "unpaid" && canSettle ? h("span", { className: "ml-auto flex items-center gap-2" },
+        h("small", { className: "text-muted" }, chosen.length + " seçilib · " + formatMoney(sum(chosen, "dueMinor"))),
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy || !chosen.length, onClick: () => openSettle(chosen), children: "Seçilənlərin ödənişini al" })) : null),
+
+    jsxRuntimeExports.jsx(OpsTable, {
+      head: view === "unpaid" && canSettle
+        ? [h("input", { type: "checkbox", "aria-label": "Hamısını seç", checked: unpaid.length > 0 && chosen.length === unpaid.length, onChange: (e) => setPicked(e.target.checked ? Object.fromEntries(unpaid.map((r) => [r.id, true])) : {}) }), "Qaimə", "Vaxt", "Müştəri", "Ünvan", "Kuryer", "Məbləğ", ""]
+        : ["Qaimə", "Vaxt", "Müştəri", "Ünvan", "Kuryer", "Məbləğ", "Vəziyyət", ""],
+      empty: view === "unpaid" ? "Kuryerlərdə ödənilməmiş qaimə yoxdur" : "Bu dövrdə çatdırılma yoxdur",
+      rows: shown.map((r) => {
+        const base = [h("b", null, "#" + r.orderNumber), opsWhen(r.createdAt), who(r), r.address || "—", r.courierName || "—",
+          h("b", null, formatMoney(r.money === "unpaid" ? r.dueMinor : r.totalMinor))];
+        if (view === "unpaid" && canSettle) {
+          return [h("input", { type: "checkbox", checked: Boolean(picked[r.id]), onChange: (e) => setPicked({ ...picked, [r.id]: e.target.checked }) }), ...base,
+            jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => openSettle([r]), children: "Ödəniş al" })];
+        }
+        const state = r.money === "unpaid" ? psBadge("Kuryerdə", "danger")
+          : r.money === "open" ? psBadge(statusLabel[r.status] || "Açıq", "warn")
+          : r.money === "cancelled" ? psBadge("Ləğv", "muted")
+          : psBadge(r.payMode === "courier" ? "Kuryerdən alındı" : "Kassada ödənilib", "ok");
+        return [...base, state,
+          r.money === "open" && r.tableId ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => navigate("/orders/" + r.tableId), children: "Aç" }) : null];
+      })
+    }),
+
+    settle ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Kuryerdən ödəniş — " + formatMoney(sum(settle.list, "dueMinor")), onClose: () => setSettle(null), busy, children: h("div", { className: "space-y-3" },
+      jsxRuntimeExports.jsx(OpsTable, { head: ["Qaimə", "Kuryer", "Müştəri", "Məbləğ"], empty: "",
+        rows: settle.list.map((r) => ["#" + r.orderNumber, r.courierName || "—", who(r), formatMoney(r.dueMinor)]) }),
+      jsxRuntimeExports.jsx(PsAccountSelect, { value: settle.accountId, onChange: (v) => setSettle((p) => (p ? { ...p, accountId: v } : p)), label: "Pul hansı kassaya girir" }),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: doSettle, children: "Ödənişi al" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setSettle(null), children: "İmtina" }))) }) : null,
+
+    courierForm ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Yeni kuryer", onClose: () => setCourierForm(null), busy, children: h("div", { className: "space-y-3" },
+      h("div", { className: "grid gap-2 sm:grid-cols-2" },
+        jsxRuntimeExports.jsx(OpsField, { label: "Ad", value: courierForm.name, onChange: (v) => setCourierForm({ ...courierForm, name: v }) }),
+        jsxRuntimeExports.jsx(OpsField, { label: "Telefon", value: courierForm.phone, onChange: (v) => setCourierForm({ ...courierForm, phone: v }) })),
+      h("div", { className: "flex gap-2" },
+        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => {
+          if (!courierForm.name.trim()) { toast("Ad tələb olunur", "danger"); return; }
+          void run(window.pos.delivery.saveCourier({ name: courierForm.name.trim(), phone: courierForm.phone.trim() }), "Kuryer əlavə olundu").then((ok) => { if (ok) setCourierForm(null); });
+        }, children: "Yadda saxla" }),
+        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setCourierForm(null), children: "İmtina" }))) }) : null);
+}
+
 function OpsExport() {
   const [busy, setBusy] = reactExports.useState("");
   const kinds = [
@@ -28652,6 +28723,7 @@ function TablesPage() {
               ] })
             ] })
           ] }),
+          jsxRuntimeExports.jsx(PsDeliveryStartButton, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap justify-end gap-2", children: areas.map((area) => {
             const active = areaFilter === area.id;
             return /* @__PURE__ */ jsxRuntimeExports.jsx(

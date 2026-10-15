@@ -110,3 +110,16 @@ async function Os(e){`;
   fs.writeFileSync(MAIN, m);
   console.log('main: portal rpc');
 }
+
+// The allowed list follows portal-web/remote-methods.json on every assemble.
+{
+  let t = fs.readFileSync(MAIN, 'utf8');
+  const fresh = `const _PS_PORTAL_METHODS=new Set(${JSON.stringify(METHODS)});`;
+  const current = t.match(/const _PS_PORTAL_METHODS=new Set\(\[[^\]]*\]\);/);
+  if (!current) throw new Error('portal method list not found in main');
+  if (current[0] !== fresh) {
+    t = t.replace(current[0], fresh);
+    fs.writeFileSync(MAIN, t);
+    console.log('main: portal method list updated');
+  }
+}

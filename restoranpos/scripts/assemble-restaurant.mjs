@@ -88,6 +88,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-procurement.mjs',
   'apply-restaurant-expiry-block.mjs',
   'apply-restaurant-portal-rpc.mjs',
+  'apply-restaurant-delivery-dispatch.mjs',
   'apply-restaurant-costing.mjs',
   'apply-restaurant-recipe-editor.mjs',
   'apply-restaurant-recipe-editor-v2.mjs',

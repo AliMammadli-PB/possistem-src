@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 50;
+inline constexpr int kSchemaVersion = 51;
 
 namespace detail {
 
@@ -3833,6 +3833,36 @@ ALTER TABLE stock_lots ADD COLUMN blocked_at INTEGER;
     return sql;
 }
 
+inline const std::string& migrationSql50() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1146);
+        s += R"MIGSQL(-- Delivery from the floor (1.8.1).
+--
+-- A delivery bill sits on a table of its own in the "Çatdırılma" area (made
+-- on first use; a table whose bill is closed leaves the floor plan until the
+-- next delivery reuses it), so the order screen, kitchen tickets and payment
+-- work exactly as for a table.
+--
+--   delivery_orders.pay_mode   - 'paid': the guest paid at the till;
+--                                'courier': the guest pays the courier, the
+--                                bill goes on the courier's account.
+--   delivery_orders.settled_at - when the courier handed that money in.
+--   couriers.customer_id       - the courier's account (a partner).
+
+ALTER TABLE delivery_orders ADD COLUMN customer_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE delivery_orders ADD COLUMN pay_mode TEXT NOT NULL DEFAULT '';
+ALTER TABLE delivery_orders ADD COLUMN settled_at INTEGER;
+ALTER TABLE delivery_orders ADD COLUMN settled_account_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE couriers ADD COLUMN customer_id TEXT REFERENCES customers(id);
+CREATE INDEX IF NOT EXISTS idx_delivery_settle ON delivery_orders(pay_mode, settled_at);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4387,7 +4417,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 50> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 51> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4438,6 +4468,7 @@ inline constexpr std::array<EmbeddedScript, 50> kMigrations{{
     {48, "048_lots_locations.sql", "8dd3e3e4", &detail::migrationSql47},
     {49, "049_costing_method.sql", "138cb388", &detail::migrationSql48},
     {50, "050_expired_lots_blocked.sql", "a86ca4b5", &detail::migrationSql49},
+    {51, "051_delivery_dispatch.sql", "43b9e146", &detail::migrationSql50},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

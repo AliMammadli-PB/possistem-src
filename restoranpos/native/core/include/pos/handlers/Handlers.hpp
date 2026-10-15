@@ -48,6 +48,8 @@ void registerPurchases(const ContextPtr& ctx);
 void registerStockControl(const ContextPtr& ctx);
 /** Recomputes a purchase's stage, supplier charge and what is still due. */
 void refreshPurchase(Context& ctx, const std::string& purchaseId);
+/** Delivery tables whose bill is closed leave the floor plan (DeliveryHandlers). */
+void sweepDeliveryTables(Context& ctx);
 /** Deliveries, couriers, the staff rota and attendance. */
 void registerDelivery(const ContextPtr& ctx);
 /** Reports as CSV, which is what a spreadsheet opens. */

@@ -1464,6 +1464,21 @@
       "auth": true,
       "perm": "inventory.adjust",
       "idempotent": true
+    },
+    "delivery.start": {
+      "auth": true,
+      "perm": "delivery.manage",
+      "idempotent": true
+    },
+    "delivery.dispatch": {
+      "auth": true,
+      "perm": "delivery.assign",
+      "idempotent": true
+    },
+    "delivery.settle": {
+      "auth": true,
+      "perm": "delivery.assign",
+      "idempotent": true
     }
   },
   "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",
