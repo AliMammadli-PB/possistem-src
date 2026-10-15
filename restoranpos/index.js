@@ -215,7 +215,7 @@ async function _psApplyRestaurantCommand(cmd){
       r=await call("inventory.adjust",{ingredientId:id,warehouseId:n("warehouseId"),qtyDeltaMilli:_psInvCountDeltas[cmd.id],reason:"sayım"},15000);
       break;
     }
-    default:_psInvLastReason="Əmr tanınmadı";return"fail";
+    case"product.deactivate":{if(!id){_psInvLastReason="Məhsul seçilməyib";return"fail"}const actor=await _psPortalActor();r=actor&&et?await et.invoke("ingredients.deactivate",{ingredientId:id},{idempotencyKey:"portal-"+cmd.id,timeoutMs:15000,actor:{userId:actor.id},terminal:{id:"portal",name:"Sayt paneli"}}):await call("ingredients.deactivate",{ingredientId:id},15000);if(r&&!r.success&&/tapılmadı|not.?found/i.test(String(r.error&&r.error.message||"")))return"ok";break}default:_psInvLastReason="Əmr tanınmadı";return"fail";
   }
   if(r&&r.success)return"ok";
   const msg=r&&r.error&&(r.error.message||r.error.code)||"";

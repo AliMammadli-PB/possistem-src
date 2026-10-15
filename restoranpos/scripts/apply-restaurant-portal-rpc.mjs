@@ -123,3 +123,21 @@ async function Os(e){`;
     console.log('main: portal method list updated');
   }
 }
+
+// 1.8.2 — a stock card deleted in the portal arrives as a queued command and
+// is applied here on the next sync (or when the till is back online).
+{
+  let t = fs.readFileSync(MAIN, 'utf8');
+  if (!t.includes('case"product.deactivate"')) {
+    t = replaceOnce(t, 'default:_psInvLastReason="Əmr tanınmadı";return"fail"',
+      'case"product.deactivate":{if(!id){_psInvLastReason="Məhsul seçilməyib";return"fail"}' +
+      // As the till's administrator: it goes through whoever is (or is not) signed in.
+      'const actor=await _psPortalActor();' +
+      'r=actor&&et?await et.invoke("ingredients.deactivate",{ingredientId:id},{idempotencyKey:"portal-"+cmd.id,timeoutMs:15000,actor:{userId:actor.id},terminal:{id:"portal",name:"Sayt paneli"}}):await call("ingredients.deactivate",{ingredientId:id},15000);' +
+      // Already gone (deleted at the till too): nothing left to do.
+      'if(r&&!r.success&&/tapılmadı|not.?found/i.test(String(r.error&&r.error.message||"")))return"ok";break}' +
+      'default:_psInvLastReason="Əmr tanınmadı";return"fail"', 'product delete command');
+    fs.writeFileSync(MAIN, t);
+    console.log('main: portal product delete');
+  }
+}
