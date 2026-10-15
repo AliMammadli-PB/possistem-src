@@ -87,9 +87,16 @@ const api = {
     session: () => electron.ipcRenderer.invoke(IPC.sessionGet),
     onSession: (cb) => subscribe(IPC.sessionChanged, cb)
   },
+  erp: {
+    /** Mallar, Kateqoriyalar, İnventarizasiya, Qazanc and dated lists (1.9.0). */
+    call: (method, payload, options) => ["categories.list","categories.save","categories.delete","goods.list","goods.prices","goods.import","stocktake.list","stocktake.create","stocktake.get","stocktake.count","stocktake.post","stocktake.import","stocktake.update","stocktake.cancel","income.list","income.save","income.delete","cashAccounts.moves","inventory.movements"].includes(method)
+      ? call(method, payload ?? {}, options)
+      : Promise.resolve({ success: false, data: null, error: { code: "E_FORBIDDEN", message: "Not allowed", retryable: false } })
+  },
   files: {
     /** Asks main to write text to a file the operator picks. */
     saveText: (filename, text) => call("files.saveText", { filename, text }),
+    saveBinary: (filename, base64) => call("files.saveBinary", { filename, base64 }, { timeoutMs: 60000 }),
     /** Renders HTML to PDF in a hidden window, so the till keeps working. */
     savePdf: (filename, html) => call("files.savePdf", { filename, html }, { timeoutMs: 60000 })
   },

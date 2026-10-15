@@ -1,7 +1,7 @@
 {
   "name": "possistem",
   "productName": "possistem",
-  "version": "1.8.2",
+  "version": "1.9.0",
   "description": "possistem restaurant POS (Electron + React + C++20 sidecar)",
   "author": "possistem",
   "license": "UNLICENSED",
@@ -32,7 +32,7 @@
     "clean": "node scripts/dev-clean.mjs",
     "fetch:assets": "node scripts/fetch-assets.mjs",
     "market:dev": "vite --config ../marketpos/vite.config.ts",
-    "market:build": "vite build --config ../marketpos/vite.config.ts",
+    "market:build": "vite build --config ../marketpos/vite.config.ts && node scripts/assemble-restaurant.mjs && node market-ops/build.mjs ../marketpos/dist/ops",
     "market:typecheck": "tsc --noEmit -p ../marketpos/tsconfig.json",
     "market:test": "vitest run tests/unit/market-pos-domain.test.ts",
     "market:package:win": "node scripts/package-market-win.mjs",

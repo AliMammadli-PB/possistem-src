@@ -10,10 +10,10 @@ export const parseMoneyInput = (value: string): number => {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : 0;
 };
 export const ROLE_VIEWS: Record<Role, View[]> = {
-  manager: ['dashboard', 'sale', 'inventory', 'warehouses', 'purchases', 'returns', 'reports', 'registers', 'stocktake', 'customers', 'import', 'platform', 'staff', 'mobile', 'settings'],
+  manager: ['dashboard', 'sale', 'ops', 'returns', 'reports', 'registers', 'customers', 'platform', 'staff', 'mobile', 'settings'],
   head_cashier: ['dashboard', 'sale', 'returns', 'reports', 'registers', 'customers'],
   cashier: ['dashboard', 'sale'],
-  warehouse: ['dashboard', 'inventory', 'warehouses', 'purchases', 'stocktake', 'import'],
+  warehouse: ['dashboard', 'ops'],
 };
 export const canAccess = (role: Role, view: View): boolean => ROLE_VIEWS[role].includes(view);
 export const findBarcode = (products: Product[], value: string): Product | undefined => {

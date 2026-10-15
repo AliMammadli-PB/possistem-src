@@ -162,6 +162,13 @@ async function invoke({ method, payload, options }) {
     case 'files.saveText':
       download(body.filename, new Blob([body.text ?? ''], { type: 'text/plain;charset=utf-8' }));
       return ok({ path: body.filename });
+    case 'files.saveBinary': {
+      const bin = atob(String(body.base64 ?? ''));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      download(body.filename, new Blob([bytes]));
+      return ok({ path: body.filename });
+    }
     case 'files.savePdf': {
       const w = window.open('', '_blank');
       if (w) { w.document.write(body.html ?? ''); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); }

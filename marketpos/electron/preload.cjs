@@ -90,6 +90,14 @@ contextBridge.exposeInMainWorld('marketSystem', {
   },
 });
 
+/** Əməliyyatlar (warehouse system) for the embedded screens; main checks the session. */
+contextBridge.exposeInMainWorld('marketOps', {
+  invoke: (input) => ipcRenderer.invoke('market:ops:invoke', input),
+  status: () => ipcRenderer.invoke('market:ops:status'),
+  setHost: (sessionToken, host) => ipcRenderer.invoke('market:ops:setHost', { sessionToken, host }),
+  sync: (sessionToken) => ipcRenderer.invoke('market:ops:sync', { sessionToken }),
+});
+
 contextBridge.exposeInMainWorld('marketCore', {
   /**
    * `options.managerPin` is what the override dialog collected. It is verified

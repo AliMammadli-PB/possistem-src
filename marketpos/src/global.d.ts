@@ -8,6 +8,13 @@ type DisplayPreset = { id: string; label: string; mode: 'fullscreen' | 'windowed
 
 declare global {
   interface Window {
+    /** Əməliyyatlar - the warehouse system (electron/ops-engine.cjs). */
+    marketOps?: {
+      invoke(input: { sessionToken: string; method: string; payload?: unknown; idempotencyKey?: string; timeoutMs?: number }): Promise<PosResult<unknown>>;
+      status(): Promise<{ host: boolean; state: string; available: boolean }>;
+      setHost(sessionToken: string, host: boolean): Promise<{ host: boolean; state: string; available: boolean }>;
+      sync(sessionToken: string): Promise<PosResult<unknown>>;
+    };
     marketSystem?: {
       staff: { list(): Promise<StaffProfile[]>; save(sessionToken: string, profile: Partial<StaffProfile>, pin: string): Promise<StaffProfile> };
       auth: { login(userId: string, pin: string): Promise<SessionUser>; logout(sessionToken: string): Promise<boolean>; current?(): Promise<SessionUser | null>; changePin(sessionToken: string, newPin: string): Promise<StaffProfile> };

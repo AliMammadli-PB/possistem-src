@@ -712,3 +712,8 @@ button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .kitchen-station-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .kitchen-station-chips button.active { border-color: var(--primary); background: var(--accent-soft); color: var(--primary); }
 .kitchen-station-chips button:disabled { opacity: .45; }
+
+/* Əməliyyatlar (1.5.0): the warehouse system's screens fill the page. */
+.ops-frame { display: block; width: 100%; height: calc(100vh - 110px); min-height: 520px; border: 0; border-radius: 18px; background: #fff; }
+.ops-host-card { display: grid; gap: 14px; align-content: start; }
+.ops-host-card > button { justify-self: start; }

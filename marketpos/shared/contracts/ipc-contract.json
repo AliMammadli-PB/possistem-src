@@ -78,6 +78,19 @@
     "market:invoke": {
       "auth": "session"
     },
+    "market:ops:invoke": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:ops:setHost": {
+      "auth": "roles:manager"
+    },
+    "market:ops:status": {
+      "auth": "none",
+      "why": "Whether this till runs the warehouse system and its core state, shown before the Əməliyyatlar frame opens."
+    },
+    "market:ops:sync": {
+      "auth": "roles:manager,warehouse"
+    },
     "market:printer:configure": {
       "auth": "roles:manager"
     },
@@ -101,11 +114,11 @@
     "market:printer:report": {
       "auth": "session"
     },
-    "market:printer:station": {
-      "auth": "session"
-    },
     "market:printer:setTarget": {
       "auth": "roles:manager"
+    },
+    "market:printer:station": {
+      "auth": "session"
     },
     "market:printer:test": {
       "auth": "roles:manager"

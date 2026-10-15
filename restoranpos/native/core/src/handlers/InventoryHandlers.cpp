@@ -155,6 +155,16 @@ void registerInventory(const ContextPtr& ctx) {
             services::Idempotency idem(*ctx);
             const auto key = getOr<std::string>(request.payload, "idempotencyKey", "");
             if (auto replay = idem.begin(key, "ingredients.save", request.payload)) return *replay;
+            // One barcode, one good: a copy must get its own barcode.
+            if (!barcode.empty()) {
+                auto other = ctx->db().prepare(
+                    "SELECT name FROM ingredients WHERE active = 1 AND barcode = :b AND id != :self LIMIT 1");
+                other.bind(":b", barcode).bind(":self", id);
+                if (other.step()) {
+                    throw PosError(std::string(protocol::err::kValidation),
+                                   "Bu barkod artıq \"" + other.columnText(0) + "\" malındadır");
+                }
+            }
             if (id.empty()) {
                 id = "ing-" + crypto::uuid4().substr(0, 8);
                 if (sku.empty()) sku = "ING-" + id.substr(4);
@@ -209,6 +219,63 @@ void registerInventory(const ContextPtr& ctx) {
                         .bind(":new", salePrice).bindOptional(":by", ctx->session().userId)
                         .bind(":now", now);
                     hist.exec();
+                }
+            }
+            // Kateqoriya, tərəzi (PLU / çəkili) and branch prices: each only when sent.
+            if (request.payload.contains("categoryId")) {
+                const auto category = getOr<std::string>(request.payload, "categoryId", "");
+                if (!category.empty()) {
+                    auto known = ctx->db().prepare("SELECT 1 FROM stock_categories WHERE id = :c AND active = 1");
+                    known.bind(":c", category);
+                    require(known.step(), "Kateqoriya tapılmadı");
+                }
+                auto set = ctx->db().prepare("UPDATE ingredients SET category_id = :c WHERE id = :id");
+                set.bindOptional(":c", category).bind(":id", id);
+                set.exec();
+            }
+            if (request.payload.contains("weighted")) {
+                auto set = ctx->db().prepare("UPDATE ingredients SET weighted = :w WHERE id = :id");
+                set.bind(":w", getOr<bool>(request.payload, "weighted", false) ? 1 : 0).bind(":id", id);
+                set.exec();
+            }
+            if (request.payload.contains("plu")) {
+                auto plu = getOr<std::int64_t>(request.payload, "plu", 0);
+                require(plu >= 0 && plu <= 99999, "PLU 0-99999 arasında olmalıdır");
+                auto weighted = ctx->db().prepare("SELECT weighted FROM ingredients WHERE id = :id");
+                weighted.bind(":id", id);
+                weighted.step();
+                if (plu == 0 && weighted.columnInt(0) != 0) {
+                    auto next = ctx->db().prepare("SELECT COALESCE(MAX(plu), 0) + 1 FROM ingredients WHERE active = 1");
+                    next.step();
+                    plu = next.columnInt(0);
+                }
+                if (plu > 0) {
+                    auto taken = ctx->db().prepare(
+                        "SELECT name FROM ingredients WHERE active = 1 AND plu = :p AND id != :id LIMIT 1");
+                    taken.bind(":p", plu).bind(":id", id);
+                    if (taken.step()) {
+                        throw PosError(std::string(protocol::err::kValidation),
+                                       "Bu PLU artıq \"" + taken.columnText(0) + "\" malındadır");
+                    }
+                }
+                auto set = ctx->db().prepare("UPDATE ingredients SET plu = :p WHERE id = :id");
+                set.bind(":p", plu).bind(":id", id);
+                set.exec();
+            }
+            if (request.payload.contains("prices") && request.payload["prices"].is_array()) {
+                auto wipe = ctx->db().prepare("DELETE FROM item_prices WHERE ingredient_id = :id");
+                wipe.bind(":id", id);
+                wipe.exec();
+                for (const auto& price : request.payload["prices"]) {
+                    const auto objectId = getOr<std::string>(price, "objectId", "");
+                    if (objectId.empty() || !price.contains("salePriceMinor") || price["salePriceMinor"].is_null()) continue;
+                    const auto value = getOr<std::int64_t>(price, "salePriceMinor", 0);
+                    require(value >= 0, "Qiymət mənfi ola bilməz");
+                    auto put = ctx->db().prepare(
+                        "INSERT OR REPLACE INTO item_prices (ingredient_id, object_id, sale_price_minor, updated_at) "
+                        "VALUES (:i, :o, :p, :now)");
+                    put.bind(":i", id).bind(":o", objectId).bind(":p", value).bind(":now", now);
+                    put.exec();
                 }
             }
             ctx->audit("ingredient.save", "ingredient", id, Json{{"name", name}});
@@ -268,7 +335,8 @@ void registerInventory(const ContextPtr& ctx) {
             ctx->requirePermission("inventory.view");
             const auto ingredientId = getOr<std::string>(request.payload, "ingredientId", "");
             const auto limit =
-                std::min<std::int64_t>(getOr<std::int64_t>(request.payload, "limit", 100), 500);
+                std::min<std::int64_t>(getOr<std::int64_t>(request.payload, "limit", 100), 5000);
+            const auto search = getOr<std::string>(request.payload, "search", "");
 
             auto stmt = ctx->db().prepare(
                 "SELECT m.id, m.ingredient_id AS ingredientId, i.name AS ingredientName, "
@@ -280,8 +348,16 @@ void registerInventory(const ContextPtr& ctx) {
                 "JOIN warehouses w ON w.id = m.warehouse_id "
                 "LEFT JOIN users u ON u.id = m.actor_user_id "
                 "WHERE (:ingredient = '' OR m.ingredient_id = :ingredient) "
+                "  AND m.created_at >= :from AND m.created_at < :to "
+                "  AND (:warehouse = '' OR m.warehouse_id = :warehouse) AND (:kind = '' OR m.kind = :kind) "
+                "  AND (:q = '' OR i.name LIKE :like OR i.barcode LIKE :like OR m.reason LIKE :like) "
                 "ORDER BY m.created_at DESC LIMIT :limit");
-            stmt.bind(":ingredient", ingredientId).bind(":limit", limit);
+            stmt.bind(":ingredient", ingredientId).bind(":limit", limit)
+                .bind(":from", getOr<std::int64_t>(request.payload, "from", 0))
+                .bind(":to", getOr<std::int64_t>(request.payload, "to", nowMs() + 86400000LL))
+                .bind(":warehouse", getOr<std::string>(request.payload, "warehouseId", ""))
+                .bind(":kind", getOr<std::string>(request.payload, "kind", ""))
+                .bind(":q", search).bind(":like", "%" + search + "%");
             return Json{{"movements", stmt.rows()}};
         });
 
@@ -369,26 +445,34 @@ void registerInventory(const ContextPtr& ctx) {
         });
 
     // ------------------------------------------------------------- stocktake
+    // İnventarizasiya: the "before" document is the snapshot taken when it is
+    // opened (expected_milli), the "after" one is what was counted. Posting
+    // makes the store hold exactly the counted amounts; with zero_uncounted a
+    // good nobody counted is taken as gone. Both stay on the document.
     server.registerHandler(
         std::string(protocol::method::kStocktakeCreate), [ctx](const ipc::Request& request) {
             ctx->requirePermission("inventory.count");
 
             const auto warehouseId = warehouseFrom(*ctx, request.payload);
             const auto note = getOr<std::string>(request.payload, "note", "");
+            const bool zero = getOr<bool>(request.payload, "zeroUncounted", true);
             const std::string id = "st-" + crypto::uuid4().substr(0, 8);
             const auto now = nowMs();
 
             db::Transaction txn(ctx->db());
+            auto seq = ctx->db().prepare(
+                "SELECT COALESCE(MAX(CAST(SUBSTR(number, 3) AS INTEGER)), 0) + 1 FROM stocktakes WHERE number LIKE 'S-%'");
+            seq.step();
+            char number[24];
+            std::snprintf(number, sizeof(number), "S-%05lld", static_cast<long long>(seq.columnInt(0)));
             auto insert = ctx->db().prepare(
-                "INSERT INTO stocktakes (id, warehouse_id, note, actor_user_id, created_at) "
-                "VALUES (:id, :warehouse, :note, :actor, :now)");
+                "INSERT INTO stocktakes (id, warehouse_id, note, actor_user_id, created_at, number, zero_uncounted) "
+                "VALUES (:id, :warehouse, :note, :actor, :now, :number, :zero)");
             insert.bind(":id", id).bind(":warehouse", warehouseId).bind(":note", note)
-                .bindOptional(":actor", ctx->session().userId).bind(":now", now);
+                .bindOptional(":actor", ctx->session().userId).bind(":now", now)
+                .bind(":number", std::string(number)).bind(":zero", zero ? 1 : 0);
             insert.exec();
 
-            // Every active ingredient gets a line with what the system believes
-            // is there. Counting is then a matter of typing what is actually on
-            // the shelf, and the difference is the whole point of the exercise.
             auto lines = ctx->db().prepare(
                 "INSERT INTO stocktake_lines (id, stocktake_id, ingredient_id, expected_milli) "
                 "SELECT lower(hex(randomblob(16))), :id, i.id, "
@@ -399,24 +483,36 @@ void registerInventory(const ContextPtr& ctx) {
             lines.exec();
 
             ctx->auditRequired("stocktake.create", "stocktake", id,
-                               Json{{"warehouseId", warehouseId}});
+                               Json{{"warehouseId", warehouseId}, {"number", number}});
             txn.commit();
-            return Json{{"id", id}, {"warehouseId", warehouseId}, {"status", "open"}};
+            return Json{{"id", id}, {"number", number}, {"warehouseId", warehouseId}, {"status", "open"}};
         });
 
     server.registerHandler(
-        std::string(protocol::method::kStocktakeList), [ctx](const ipc::Request&) {
+        std::string(protocol::method::kStocktakeList), [ctx](const ipc::Request& request) {
             ctx->requirePermission("inventory.count");
+            const auto q = getOr<std::string>(request.payload, "search", "");
             auto stmt = ctx->db().prepare(
-                "SELECT s.id, s.warehouse_id AS warehouseId, w.name AS warehouseName, s.status, "
-                "       s.note, u.full_name AS actorName, s.created_at AS createdAt, "
-                "       s.posted_at AS postedAt "
+                "SELECT s.id, COALESCE(s.number, '') AS number, s.warehouse_id AS warehouseId, w.name AS warehouseName, "
+                "       s.status, s.note, s.zero_uncounted AS zeroUncounted, u.full_name AS actorName, "
+                "       s.created_at AS createdAt, s.posted_at AS postedAt, "
+                "       (SELECT COUNT(*) FROM stocktake_lines l WHERE l.stocktake_id = s.id) AS lineCount, "
+                "       (SELECT COUNT(*) FROM stocktake_lines l WHERE l.stocktake_id = s.id AND l.counted_milli IS NOT NULL) AS countedCount "
                 "FROM stocktakes s JOIN warehouses w ON w.id = s.warehouse_id "
                 "LEFT JOIN users u ON u.id = s.actor_user_id "
-                "ORDER BY s.created_at DESC LIMIT 50");
+                "WHERE s.created_at >= :from AND s.created_at < :to "
+                "  AND (:warehouse = '' OR s.warehouse_id = :warehouse) AND (:status = '' OR s.status = :status) "
+                "  AND (:q = '' OR s.number LIKE :like OR s.note LIKE :like OR w.name LIKE :like) "
+                "ORDER BY s.created_at DESC LIMIT 500");
+            stmt.bind(":from", getOr<std::int64_t>(request.payload, "from", 0))
+                .bind(":to", getOr<std::int64_t>(request.payload, "to", nowMs() + 86400000LL))
+                .bind(":warehouse", getOr<std::string>(request.payload, "warehouseId", ""))
+                .bind(":status", getOr<std::string>(request.payload, "status", ""))
+                .bind(":q", q).bind(":like", "%" + q + "%");
             return Json{{"stocktakes", stmt.rows()}};
         });
 
+    // The two documents side by side: before, counted, difference, at cost and at sale price.
     server.registerHandler(
         std::string(protocol::method::kStocktakeGet), [ctx](const ipc::Request& request) {
             ctx->requirePermission("inventory.count");
@@ -424,42 +520,117 @@ void registerInventory(const ContextPtr& ctx) {
             require(!id.empty(), "stocktakeId is required");
 
             auto head = ctx->db().prepare(
-                "SELECT id, warehouse_id AS warehouseId, status, note, created_at AS createdAt, "
-                "       posted_at AS postedAt FROM stocktakes WHERE id = :id");
+                "SELECT s.id, COALESCE(s.number, '') AS number, s.warehouse_id AS warehouseId, w.name AS warehouseName, "
+                "       s.status, s.note, s.zero_uncounted AS zeroUncounted, s.created_at AS createdAt, "
+                "       s.posted_at AS postedAt FROM stocktakes s JOIN warehouses w ON w.id = s.warehouse_id WHERE s.id = :id");
             head.bind(":id", id);
             if (!head.step()) {
                 throw PosError(std::string(protocol::err::kNotFound), "İnventarizasiya tapılmadı");
             }
             Json result = head.row();
+            const bool zero = result.value("zeroUncounted", std::int64_t{1}) != 0;
 
+            services::InventoryService inventory(*ctx);
             auto lines = ctx->db().prepare(
-                "SELECT l.id, l.ingredient_id AS ingredientId, i.name, i.unit, "
-                "       l.expected_milli AS expectedMilli, l.counted_milli AS countedMilli "
+                "SELECT l.id, l.ingredient_id AS ingredientId, i.name, i.unit, i.barcode, i.sku, "
+                "       l.expected_milli AS expectedMilli, l.counted_milli AS countedMilli, l.counted_at AS countedAt, "
+                "       l.posted_before_milli AS postedBeforeMilli, "
+                "       " + services::InventoryService::unitCostSql(inventory.costingMethod()) + " AS costMinor, "
+                "       CASE WHEN i.sku LIKE 'MENU-%' THEN COALESCE((SELECT m.price_minor FROM menu_items m "
+                "         WHERE m.id = substr(i.sku, 6)), i.sale_price_minor) ELSE i.sale_price_minor END AS salePriceMinor "
                 "FROM stocktake_lines l JOIN ingredients i ON i.id = l.ingredient_id "
                 "WHERE l.stocktake_id = :id ORDER BY i.name");
             lines.bind(":id", id);
-            result["lines"] = lines.rows();
+            Json rows = lines.rows();
+            Money expectedCost = 0, countedCost = 0, expectedSale = 0, countedSale = 0;
+            std::int64_t counted = 0, short_ = 0, over = 0;
+            for (auto& row : rows) {
+                const auto expected = row.value("expectedMilli", std::int64_t{0});
+                const bool has = row["countedMilli"].is_number();
+                const std::int64_t target = has ? row["countedMilli"].get<std::int64_t>() : (zero ? 0 : expected);
+                const auto diff = target - expected;
+                const Money cost = row.value("costMinor", Money{0});
+                const Money sale = row.value("salePriceMinor", Money{0});
+                row["targetMilli"] = target;
+                row["diffMilli"] = diff;
+                row["diffCostMinor"] = diff * cost / 1000;
+                row["diffSaleMinor"] = diff * sale / 1000;
+                expectedCost += expected * cost / 1000;
+                countedCost += target * cost / 1000;
+                expectedSale += expected * sale / 1000;
+                countedSale += target * sale / 1000;
+                if (has) ++counted;
+                if (diff < 0) ++short_;
+                if (diff > 0) ++over;
+            }
+            result["lines"] = rows;
+            result["totals"] = Json{{"lines", rows.size()}, {"counted", counted}, {"short", short_}, {"over", over},
+                                    {"expectedCostMinor", expectedCost}, {"countedCostMinor", countedCost},
+                                    {"diffCostMinor", countedCost - expectedCost},
+                                    {"expectedSaleMinor", expectedSale}, {"countedSaleMinor", countedSale},
+                                    {"diffSaleMinor", countedSale - expectedSale}};
             return result;
         });
 
+    // One count: by line, by good or by barcode (scanner); set the amount or add to it.
     server.registerHandler(
         std::string(protocol::method::kStocktakeCount), [ctx](const ipc::Request& request) {
             ctx->requirePermission("inventory.count");
 
-            const auto lineId = getOr<std::string>(request.payload, "lineId", "");
-            require(!lineId.empty(), "lineId is required");
+            auto lineId = getOr<std::string>(request.payload, "lineId", "");
+            const auto mode = getOr<std::string>(request.payload, "mode", "set");
+            const bool clear = request.payload.contains("countedMilli") && request.payload["countedMilli"].is_null();
             require(request.payload.contains("countedMilli"), "countedMilli is required");
-            const auto counted = getOr<std::int64_t>(request.payload, "countedMilli", 0);
-            require(counted >= 0, "Sayılan miqdar mənfi ola bilməz");
+            const auto counted = clear ? 0 : getOr<std::int64_t>(request.payload, "countedMilli", 0);
+            require(mode == "add" || counted >= 0, "Sayılan miqdar mənfi ola bilməz");
+
+            db::Transaction txn(ctx->db());
+            if (lineId.empty()) {
+                const auto stocktakeId = getOr<std::string>(request.payload, "stocktakeId", "");
+                auto ingredientId = getOr<std::string>(request.payload, "ingredientId", "");
+                const auto barcode = getOr<std::string>(request.payload, "barcode", "");
+                require(!stocktakeId.empty(), "stocktakeId is required");
+                auto head = ctx->db().prepare("SELECT warehouse_id FROM stocktakes WHERE id = :id AND status = 'open'");
+                head.bind(":id", stocktakeId);
+                require(head.step(), "İnventarizasiya tapılmadı və ya bağlıdır");
+                const std::string warehouseId = head.columnText(0);
+                if (ingredientId.empty()) {
+                    require(!barcode.empty(), "Mal və ya barkod tələb olunur");
+                    auto find = ctx->db().prepare(
+                        "SELECT id FROM ingredients WHERE active = 1 AND (barcode = :c OR sku = :c) LIMIT 1");
+                    find.bind(":c", barcode);
+                    if (!find.step()) throw PosError(std::string(protocol::err::kNotFound), "Bu barkodla mal tapılmadı: " + barcode);
+                    ingredientId = find.columnText(0);
+                }
+                auto line = ctx->db().prepare(
+                    "INSERT INTO stocktake_lines (id, stocktake_id, ingredient_id, expected_milli) "
+                    "VALUES (lower(hex(randomblob(16))), :st, :i, :expected) ON CONFLICT(stocktake_id, ingredient_id) DO NOTHING");
+                line.bind(":st", stocktakeId).bind(":i", ingredientId)
+                    .bind(":expected", services::InventoryService(*ctx).levelOf(ingredientId, warehouseId));
+                line.exec();
+                auto pick = ctx->db().prepare("SELECT id FROM stocktake_lines WHERE stocktake_id = :st AND ingredient_id = :i");
+                pick.bind(":st", stocktakeId).bind(":i", ingredientId);
+                pick.step();
+                lineId = pick.columnText(0);
+            }
 
             auto stmt = ctx->db().prepare(
-                "UPDATE stocktake_lines SET counted_milli = :counted WHERE id = :id "
+                "UPDATE stocktake_lines SET counted_milli = CASE WHEN :clear = 1 THEN NULL "
+                "  WHEN :mode = 'add' THEN MAX(0, COALESCE(counted_milli, 0) + :counted) ELSE :counted END, "
+                "  counted_at = :now WHERE id = :id "
                 "  AND stocktake_id IN (SELECT id FROM stocktakes WHERE status = 'open')");
-            stmt.bind(":counted", counted).bind(":id", lineId);
+            stmt.bind(":clear", clear ? 1 : 0).bind(":mode", mode).bind(":counted", counted)
+                .bind(":now", nowMs()).bind(":id", lineId);
             stmt.exec();
             require(ctx->db().changes() == 1, "Sətir tapılmadı və ya inventarizasiya bağlıdır");
-
-            return Json{{"lineId", lineId}, {"countedMilli", counted}};
+            auto back = ctx->db().prepare(
+                "SELECT l.id AS lineId, l.ingredient_id AS ingredientId, i.name, i.unit, l.expected_milli AS expectedMilli, "
+                "       l.counted_milli AS countedMilli FROM stocktake_lines l JOIN ingredients i ON i.id = l.ingredient_id WHERE l.id = :id");
+            back.bind(":id", lineId);
+            back.step();
+            Json result = back.row();
+            txn.commit();
+            return result;
         });
 
     server.registerHandler(
@@ -469,35 +640,41 @@ void registerInventory(const ContextPtr& ctx) {
             const auto id = getOr<std::string>(request.payload, "stocktakeId", "");
             require(!id.empty(), "stocktakeId is required");
 
+            db::Transaction txn(ctx->db());
             auto head = ctx->db().prepare(
-                "SELECT warehouse_id, status FROM stocktakes WHERE id = :id");
+                "SELECT warehouse_id, status, zero_uncounted FROM stocktakes WHERE id = :id");
             head.bind(":id", id);
             require(head.step(), "İnventarizasiya tapılmadı");
             const std::string warehouseId = head.columnText(0);
             require(head.columnText(1) == "open", "Bu inventarizasiya artıq bağlanıb");
+            const bool zero = head.columnInt(2) != 0;
 
-            // Only counted lines move stock. An uncounted line means "we did not
-            // get to that shelf", which must not be read as "there is none".
+            // The store ends up holding what was counted. Sales made while
+            // counting are already in the level, so the move is target − now.
             auto lines = ctx->db().prepare(
-                "SELECT ingredient_id, expected_milli, counted_milli FROM stocktake_lines "
-                "WHERE stocktake_id = :id AND counted_milli IS NOT NULL");
-            lines.bind(":id", id);
-
-            struct Diff {
-                std::string ingredientId;
-                std::int64_t delta;
+                "SELECT id, ingredient_id, counted_milli FROM stocktake_lines "
+                "WHERE stocktake_id = :id AND (counted_milli IS NOT NULL OR :zero = 1)");
+            lines.bind(":id", id).bind(":zero", zero ? 1 : 0);
+            struct Target {
+                std::string lineId, ingredientId;
+                std::int64_t qty;
             };
-            std::vector<Diff> diffs;
+            std::vector<Target> targets;
             while (lines.step()) {
-                const auto delta = lines.columnInt(2) - lines.columnInt(1);
-                if (delta != 0) diffs.push_back({lines.columnText(0), delta});
+                targets.push_back({lines.columnText(0), lines.columnText(1), lines.columnIsNull(2) ? 0 : lines.columnInt(2)});
             }
 
-            db::Transaction txn(ctx->db());
             services::InventoryService inventory(*ctx);
-            for (const auto& diff : diffs) {
-                inventory.move(diff.ingredientId, warehouseId, diff.delta, "stocktake", id,
-                               "inventarizasiya fərqi");
+            std::int64_t adjusted = 0;
+            for (const auto& t : targets) {
+                const auto before = inventory.levelOf(t.ingredientId, warehouseId);
+                auto mark = ctx->db().prepare("UPDATE stocktake_lines SET posted_before_milli = :b WHERE id = :id");
+                mark.bind(":b", before).bind(":id", t.lineId);
+                mark.exec();
+                const auto delta = t.qty - before;
+                if (delta == 0) continue;
+                inventory.move(t.ingredientId, warehouseId, delta, "stocktake", id, "inventarizasiya fərqi");
+                ++adjusted;
             }
 
             auto close = ctx->db().prepare(
@@ -505,13 +682,11 @@ void registerInventory(const ContextPtr& ctx) {
             close.bind(":now", nowMs()).bind(":id", id);
             close.exec();
 
-            ctx->auditRequired("stocktake.post", "stocktake", id,
-                               Json{{"adjusted", static_cast<std::int64_t>(diffs.size())}});
+            ctx->auditRequired("stocktake.post", "stocktake", id, Json{{"adjusted", adjusted}});
             txn.commit();
-            logger()->info("stocktake {} posted with {} adjustment(s)", id, diffs.size());
+            logger()->info("stocktake {} posted with {} adjustment(s)", id, adjusted);
 
-            return Json{{"id", id}, {"status", "posted"},
-                        {"adjusted", static_cast<std::int64_t>(diffs.size())}};
+            return Json{{"id", id}, {"status", "posted"}, {"adjusted", adjusted}};
         });
 
     // -------------------------------------------------------------- suppliers
@@ -848,6 +1023,7 @@ void registerInventory(const ContextPtr& ctx) {
 
     registerPurchases(ctx);
     registerStockControl(ctx);
+    registerErp(ctx);
 }
 
 void registerExport(const ContextPtr& ctx) {

@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <string_view>
 namespace market::db {
-inline constexpr int kSchemaVersion = 10;
+inline constexpr int kSchemaVersion = 11;
 struct EmbeddedMigration { int version; const char* name; const char* checksum; std::string_view sql; };
 inline constexpr EmbeddedMigration kMigrations[] = {
   {1, "001_initial_schema.sql", "16074141", R"market(-- Market POS initial schema. Money is INTEGER qəpik (int64). Never REAL.
@@ -962,8 +962,14 @@ INSERT OR IGNORE INTO role_permissions(role, permission) VALUES
 INSERT OR IGNORE INTO role_permissions(role, permission)
 SELECT 'manager', permission FROM permission_catalogue;
 )market"},
+  {11, "011_ops_catalog.sql", "d22e7a3a", R"market(-- 1.5.0: goods come from Əməliyyatlar → Mallar (the shared warehouse system).
+-- Products made there carry ids "ops-<good>". The old catalogue stays in the
+-- database for history (sales, returns) but leaves the selling screen; the
+-- shop fills Mallar by Excel import or by hand.
+UPDATE products SET active = 0 WHERE id NOT LIKE 'ops-%';
+)market"},
 };
-inline constexpr std::size_t kMigrationCount = 10;
+inline constexpr std::size_t kMigrationCount = 11;
 struct EmbeddedSeed { const char* name; std::string_view sql; };
 inline constexpr EmbeddedSeed kSeeds[] = {
 };

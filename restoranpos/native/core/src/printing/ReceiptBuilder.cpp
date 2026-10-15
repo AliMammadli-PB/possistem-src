@@ -346,6 +346,33 @@ ReceiptDocument ReceiptBuilder::customerDocument(const std::string& orderId,
     }
 
     doc.footer = {"Təşəkkür edirik!", "Sizi yenidən gözləyirik.", doc.restaurant.name};
+    // A delivery bill is the courier's slip too: who, where, how it is paid.
+    {
+        auto delivery = ctx_.db().prepare(
+            "SELECT COALESCE(NULLIF(d.customer_name, ''), c.name, ''), COALESCE(NULLIF(d.phone, ''), c.phone, ''), "
+            "       d.address, d.note, COALESCE(k.name, ''), COALESCE(k.phone, ''), d.pay_mode, d.fee_minor "
+            "FROM delivery_orders d LEFT JOIN customers c ON c.id = d.customer_id "
+            "LEFT JOIN couriers k ON k.id = d.courier_id WHERE d.order_id = :order");
+        delivery.bind(":order", orderId);
+        if (delivery.step()) {
+            doc.orderType = "delivery";
+            std::vector<std::string> block{"-- ÇATDIRILMA --"};
+            const auto add = [&block](const std::string& label, const std::string& value) {
+                if (!value.empty()) block.push_back(label + value);
+            };
+            add("Müştəri: ", delivery.columnText(0));
+            add("Telefon: ", delivery.columnText(1));
+            add("Ünvan: ", delivery.columnText(2));
+            add("Qeyd: ", delivery.columnText(3));
+            add("Kuryer: ", delivery.columnText(4) +
+                               (delivery.columnText(5).empty() ? std::string{} : " · " + delivery.columnText(5)));
+            const auto mode = delivery.columnText(6);
+            if (mode == "paid") block.push_back("Ödəniş: ödənilib");
+            if (mode == "courier") block.push_back("Ödəniş: müştəri kuryerə ödəyəcək");
+            block.push_back("--------------------");
+            doc.footer.insert(doc.footer.begin(), block.begin(), block.end());
+        }
+    }
     doc.qrPayload = config.printQr ? buildQrPayload(doc, ctx_.setting("receipt.verifyUrl", ""),
                                                     ctx_.setting("receipt.qrUrl", ""))
                                    : "";

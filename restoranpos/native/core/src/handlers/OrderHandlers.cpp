@@ -240,7 +240,18 @@ void registerOrders(const ContextPtr& ctx) {
             }
 
             const std::string name = product.columnText(1);
-            const Money unitPrice = product.columnInt(2);
+            Money unitPrice = product.columnInt(2);
+            // A branch (obyekt) can sell the same product at its own price: the
+            // till of this PC says which branch we are in.
+            {
+                auto branch = ctx->db().prepare(
+                    "SELECT p.sale_price_minor FROM item_prices p "
+                    "JOIN ingredients i ON i.id = p.ingredient_id AND i.active = 1 AND i.sku = 'MENU-' || :productId "
+                    "JOIN cash_accounts a ON a.object_id = p.object_id AND a.kind = 'till' AND a.active = 1 "
+                    "WHERE a.terminal_id = :terminal AND a.terminal_id != '' LIMIT 1");
+                branch.bind(":productId", productId).bind(":terminal", ctx->saleTerminalId());
+                if (branch.step()) unitPrice = branch.columnInt(0);
+            }
             const bool available = product.columnInt(3) != 0;
             const bool soldOut = product.columnInt(4) != 0;
             const std::string defaultCourse = product.columnText(5);

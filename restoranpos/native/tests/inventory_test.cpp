@@ -419,7 +419,7 @@ TEST_CASE("a stocktake posts only what was counted", "[inventory][stocktake]") {
     inventory.move(flour, "wh-main", 5000, "receipt");
     inventory.move(sugar, "wh-main", 3000, "receipt");
 
-    const auto takeId = f.call(pos::protocol::method::kStocktakeCreate, pos::Json::object())
+    const auto takeId = f.call(pos::protocol::method::kStocktakeCreate, pos::Json{{"zeroUncounted", false}})
                             .at("id")
                             .get<std::string>();
     const auto detail = f.call(pos::protocol::method::kStocktakeGet,

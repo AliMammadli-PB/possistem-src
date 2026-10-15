@@ -2293,6 +2293,16 @@ button.ps-period-chip[aria-pressed].is-on, .ps-ops-panel button.ps-period-chip[a
 .ps-delivery-mode { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--ps-line, #e2e8f0); background: transparent; }
 .ps-delivery-mode small { color: #64748b; }
 .ps-delivery-mode.is-on { border-color: #f59e0b; background: #fff7e6; }
+/* POS_ERP_V2_v1 */
+.ps-toast-host[popover] { inset: auto; top: 24px; left: 50%; right: auto; bottom: auto; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; color: inherit; }
+.ps-toast-host:not(:popover-open) { display: none; }
+.ps-cat-name { display: inline-block; }
+.ps-mini-btn { min-width: 40px; margin-top: 4px; border-radius: 12px; border: 1px solid var(--ps-line, #e2e8f0); background: transparent; font-size: 16px; }
+.ps-price-box { display: grid; gap: 6px; padding: 12px; border-radius: 14px; border: 1px dashed var(--ps-line, #e2e8f0); }
+.ps-count-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; border-radius: 14px; border: 1px solid rgba(201,168,106,0.35); background: rgba(201,168,106,0.07); }
+.ps-count-input { width: 96px; min-height: 36px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--ps-line, #e2e8f0); background: transparent; color: inherit; }
+.ps-count-input:focus { outline: none; border-color: #c9a86a; }
+@media (max-width: 640px) { .ps-count-bar input:first-child { min-width: 100%; } }
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

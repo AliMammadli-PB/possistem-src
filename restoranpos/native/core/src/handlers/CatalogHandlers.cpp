@@ -1,3 +1,5 @@
+#include <map>
+
 #include "pos/printing/KitchenStations.hpp"
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
@@ -118,6 +120,21 @@ void registerCatalog(const ContextPtr& ctx) {
 
             Json products = stmt.rows();
             for (auto& product : products) expandAllergens(product);
+            // The selling screen shows this branch's price (Mallar → obyekt qiyməti).
+            if (!includeDrafts) {
+                auto branch = ctx->db().prepare(
+                    "SELECT substr(i.sku, 6), p.sale_price_minor FROM item_prices p "
+                    "JOIN ingredients i ON i.id = p.ingredient_id AND i.active = 1 AND i.sku LIKE 'MENU-%' "
+                    "JOIN cash_accounts a ON a.object_id = p.object_id AND a.kind = 'till' AND a.active = 1 "
+                    "WHERE a.terminal_id = :terminal AND a.terminal_id != ''");
+                branch.bind(":terminal", ctx->saleTerminalId());
+                std::map<std::string, Money> prices;
+                while (branch.step()) prices[branch.columnText(0)] = branch.columnInt(1);
+                for (auto& product : products) {
+                    const auto it = prices.find(product.value("id", std::string{}));
+                    if (it != prices.end()) product["priceMinor"] = it->second;
+                }
+            }
 
             return Json{{"products", products}};
         });

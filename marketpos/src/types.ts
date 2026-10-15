@@ -1,6 +1,6 @@
 export type Lang = 'az' | 'ru' | 'en';
 export type Role = 'manager' | 'head_cashier' | 'cashier' | 'warehouse';
-export type View = 'dashboard' | 'sale' | 'inventory' | 'warehouses' | 'purchases' | 'returns' | 'reports' | 'registers' | 'staff' | 'mobile' | 'settings' | 'stocktake' | 'customers' | 'import' | 'platform' | 'support' | 'help';
+export type View = 'dashboard' | 'sale' | 'ops' | 'inventory' | 'warehouses' | 'purchases' | 'returns' | 'reports' | 'registers' | 'staff' | 'mobile' | 'settings' | 'stocktake' | 'customers' | 'import' | 'platform' | 'support' | 'help';
 export type LocalizedText = Record<Lang, string>;
 export type ProductImage =
   | { kind: 'sprite'; index: number }
@@ -8,7 +8,7 @@ export type ProductImage =
 export type Product = { id: string; sku: string; barcode: string; internalCode?: string; color?: string; size?: string; parentProductId?: string; name: LocalizedText; category: string; unit: string; priceMinor: number; costMinor: number; minStock: number; taxRate: number; supplier: string; stock?: number; /** Legacy wire shape; the shop keeps one stock figure. */ warehouseStock: Record<string, number>; accent: string; image: ProductImage; active: boolean; createdAt: number; comment?: string; department?: string; kind?: 'product' | 'service'; minPriceMinor?: number; packQty?: number; packUnit?: string; priceDealerMinor?: number; priceDiscountMinor?: number; priceWholesaleMinor?: number; serial?: boolean; station?: string; tags?: string; weighted?: boolean; };
 /** A product as a form submits it: `stock` absent means "leave the quantity alone". */
 export type ProductDraft = Omit<Product, 'stock'> & { stock?: number };
-export type CartLine = { saleItemId?: number; productId: string; qty: number; discountMinor?: number; note?: string };
+export type CartLine = { saleItemId?: number; productId: string; qty: number; /** Weight from a scale label, in thousandths (grams for kq). */ qtyMilli?: number; discountMinor?: number; note?: string };
 export type Payment = { method: 'cash' | 'card' | 'mixed' | 'credit' | 'loyalty'; amountMinor: number; tenderedMinor: number; changeMinor: number; cashMinor?: number; cardMinor?: number; creditMinor?: number; loyaltyMinor?: number; terminalRef?: string };
 export type Sale = { id: string; receiptNo: string; createdAt: number; items: CartLine[]; subtotalMinor: number; discountMinor: number; totalMinor: number; payment: Payment; refunded: boolean; cashierId: string; registerId: string; customerId?: string; customerName?: string; loyaltyEarnedMinor?: number; loyaltyRedeemedMinor?: number; creditMinor?: number; note?: string };
 export type PurchaseOrder = { id: string; documentNo?: string; supplier: string; expectedAt: string; createdAt: number; updatedAt?: number; createdBy: string; warehouseId: string; status: 'draft' | 'ordered' | 'received'; totalMinor?: number; paymentStatus?: 'unpaid' | 'partial' | 'paid'; lines: Array<{ id?: string; productId: string; qty: number; costMinor: number; returnedQty?: number }> };

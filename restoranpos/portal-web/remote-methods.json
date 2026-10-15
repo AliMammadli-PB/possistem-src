@@ -80,5 +80,22 @@
   "suppliers.pay",
   "tables.list",
   "users.list",
-  "delivery.settle"
+  "delivery.settle",
+  "categories.list",
+  "categories.save",
+  "categories.delete",
+  "goods.list",
+  "goods.prices",
+  "goods.import",
+  "stocktake.list",
+  "stocktake.create",
+  "stocktake.get",
+  "stocktake.count",
+  "stocktake.post",
+  "stocktake.import",
+  "stocktake.update",
+  "stocktake.cancel",
+  "income.list",
+  "income.save",
+  "income.delete"
 ]

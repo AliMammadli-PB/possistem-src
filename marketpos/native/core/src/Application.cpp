@@ -111,6 +111,7 @@ nlohmann::json productRowToJson(const nlohmann::json& row, db::Database& db) {
       {"image", image},
       {"active", row.at("active").get<std::int64_t>() != 0},
       {"createdAt", row.at("created_at")},
+      {"plu", db::columnOr(row, "plu", "")},
   };
 }
 
@@ -507,6 +508,19 @@ void saveProduct(db::Database& db, const nlohmann::json& product, bool isCreate)
   }
   sqlite3_finalize(stmt);
 
+  // Scale PLU (Əməliyyatlar → Mallar); empty clears it.
+  if (product.contains("plu") && (product["plu"].is_string() || product["plu"].is_null())) {
+    const std::string plu = product["plu"].is_string() ? product["plu"].get<std::string>() : std::string{};
+    sqlite3_stmt* pluStmt = nullptr;
+    if (sqlite3_prepare_v2(db.raw(), "UPDATE products SET plu = ? WHERE id = ?", -1, &pluStmt, nullptr) == SQLITE_OK) {
+      if (plu.empty()) sqlite3_bind_null(pluStmt, 1);
+      else sqlite3_bind_text(pluStmt, 1, plu.c_str(), -1, SQLITE_TRANSIENT);
+      sqlite3_bind_text(pluStmt, 2, id.c_str(), -1, SQLITE_TRANSIENT);
+      sqlite3_step(pluStmt);
+    }
+    sqlite3_finalize(pluStmt);
+  }
+
   if (product.contains("warehouseStock") && product["warehouseStock"].is_object()) {
     for (auto it = product["warehouseStock"].begin(); it != product["warehouseStock"].end(); ++it) {
       upsertStock(db, id, it.key(), it.value().get<std::int64_t>());
@@ -563,11 +577,12 @@ nlohmann::json syncStatus(db::Database& db) {
 nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow) {
   const std::string saleId = saleRow.at("id").get<std::string>();
   auto items = db.query(
-      "SELECT id, product_id, qty, discount_minor, note FROM sale_items WHERE sale_id = ? ORDER BY id", {saleId},
-      {});
+      "SELECT id, product_id, qty, discount_minor, note, unit_price_minor, line_total_minor FROM sale_items "
+      "WHERE sale_id = ? ORDER BY id", {saleId}, {});
   nlohmann::json lines = nlohmann::json::array();
   for (const auto& it : items) {
-    nlohmann::json line = {{"saleItemId", it.at("id")}, {"productId", it.at("product_id")}, {"qty", it.at("qty")}};
+    nlohmann::json line = {{"saleItemId", it.at("id")}, {"productId", it.at("product_id")}, {"qty", it.at("qty")},
+                           {"unitPriceMinor", it.at("unit_price_minor")}, {"lineTotalMinor", it.at("line_total_minor")}};
     if (!it["discount_minor"].is_null() && it["discount_minor"].get<std::int64_t>() != 0) {
       line["discountMinor"] = it["discount_minor"];
     }
@@ -584,6 +599,20 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow) {
   if (!saleRow["card_minor"].is_null()) payment["cardMinor"] = saleRow["card_minor"];
   payment["creditMinor"] = saleRow.value("credit_minor", 0);
   payment["loyaltyMinor"] = saleRow.value("loyalty_redeemed_minor", 0);
+  // Partial returns, one entry per return slip (the warehouse system books them).
+  nlohmann::json refunds = nlohmann::json::array();
+  {
+    auto rows = db.query(
+        "SELECT refund_id, product_id, qty, amount_minor, created_at FROM refund_lines WHERE sale_id = ? "
+        "ORDER BY created_at, refund_id", {saleId}, {});
+    for (const auto& r : rows) {
+      const auto refundId = r.at("refund_id").get<std::string>();
+      if (refunds.empty() || refunds.back().at("refundId") != refundId) {
+        refunds.push_back({{"refundId", refundId}, {"createdAt", r.at("created_at")}, {"lines", nlohmann::json::array()}});
+      }
+      refunds.back()["lines"].push_back({{"productId", r.at("product_id")}, {"qty", r.at("qty")}, {"amountMinor", r.at("amount_minor")}});
+    }
+  }
   return {
       {"id", saleId},
       {"receiptNo", saleRow.at("receipt_no")},
@@ -602,6 +631,7 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow) {
       {"loyaltyRedeemedMinor", saleRow.value("loyalty_redeemed_minor", 0)},
       {"creditMinor", saleRow.value("credit_minor", 0)},
       {"note", saleRow["note"].is_null() ? nullptr : saleRow["note"]},
+      {"refunds", refunds},
   };
 }
 

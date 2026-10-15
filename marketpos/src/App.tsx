@@ -1,12 +1,12 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, ArrowRightLeft, BadgeDollarSign, BarChart3, Boxes, Building2, Check,
-  ChevronRight, CircleDollarSign, ClipboardList, Cloud, CloudOff, CreditCard, Download,
+  Activity, BarChart3, Boxes, Building2, Check,
+  ChevronRight, CircleDollarSign, Cloud, CloudOff, CreditCard, Download,
   Expand, FileClock, ImagePlus, KeyRound, LockKeyhole, LogOut, Minus,
-  Monitor, PackageCheck, PackagePlus, PackageSearch, Pause, Plus, ReceiptText, Scale,
+  Monitor, PackageSearch, Pause, Plus, ReceiptText, Scale,
   RefreshCw, RotateCcw, ScanBarcode, Search, Settings, ShieldCheck, ShoppingBag,
-  ShoppingBasket, Smartphone, Store, Trash2, TriangleAlert, Truck, UserCog, Users,
-  WalletCards, Warehouse as WarehouseIcon, Wheat, X,
+  ShoppingBasket, Smartphone, Store, Trash2, TriangleAlert, Users,
+  WalletCards, Wheat, X,
 } from 'lucide-react';
 
 import { createInitialState, demoStaff, initialProducts } from './data';
@@ -19,18 +19,19 @@ import { auditActionLabel, auditDetailLabel, roleLabel, tr, unitLabel, viewLabel
 import { marketCoreClient } from './core/client';
 import { ProductVisual } from './ProductVisual';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
-import { InventoryProductGrid, SaleProductGrid } from './SaleProductGrid';
+import { SaleProductGrid } from './SaleProductGrid';
 import {
-  CustomersPage, FiscalBadge, HardwareSettingsCard, ImportCsvPage, PlatformStubsPage,
-  RegistersOpsPage, ReportsOpsPage, StocktakePage,
+  CustomersPage, FiscalBadge, HardwareSettingsCard, PlatformStubsPage,
+  RegistersOpsPage, ReportsOpsPage,
 } from './RetailOpsPanels';
+import { OpsFrame } from './OpsFrame';
 import { useBarcodeScanner } from './useBarcodeScanner';
-import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, PurchaseOrder, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
+import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
 
 import { marketBooks, stockLines } from './books';
 import { longDate, money, newId } from './format';
 import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
-import { ProductModal, WarehouseModal, RegisterModal, PurchaseModal, TransferModal, WasteModal, StaffModal, RoleAvatar, Kpi, Modal, Field } from './forms';
+import { RegisterModal, StaffModal, RoleAvatar, Kpi, Modal, Field } from './forms';
 const STORE_KEY = 'possistem.market.pos.v2';
 const LEGACY_MIGRATED_KEY = 'possistem.market.pos.core-migrated';
 const CATALOG_SYNC_KEY = 'possistem.market.pos.catalog-sync';
@@ -47,7 +48,7 @@ for (const name of ['v2', 'core-migrated', 'catalog-sync']) {
 }
 const CATALOG_SYNC_TOKEN = 'bravo-narimanov-azinko-catalog-aisles-v1';
 
-const STOCK_VIEWS = new Set<View>(['inventory', 'warehouses', 'purchases', 'stocktake']);
+const STOCK_VIEWS = new Set<View>(['ops']);
 // The owner's rule: a missing permission never hides a button; using it says so.
 const DENIED = 'Buna icazəniz yoxdur';
 /** Electron wraps a main-process refusal in "Error invoking remote method …"; show the refusal itself. */
@@ -91,14 +92,14 @@ function cleanNotice(message: string | null): string | null {
   const bare = message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
   return /icazə yoxdur|PERMISSION_DENIED|role required/i.test(bare) ? DENIED : bare;
 }
-const MARKET_AREAS = ['dashboard', 'sale', 'inventory', 'warehouses', 'purchases', 'returns', 'reports', 'registers', 'stocktake', 'customers', 'import', 'staff', 'settings'];
+const MARKET_AREAS = ['dashboard', 'sale', 'ops', 'inventory', 'warehouses', 'purchases', 'returns', 'reports', 'registers', 'stocktake', 'customers', 'import', 'staff', 'settings'];
 // What each PC is for, set by the owner on possistem.az (Kompüterlər): the
 // website's areas are narrowed to it, so the store-room PC opens on stock.
 const STATION_VIEWS: Record<string, string[]> = {
   cashier: ['sale', 'returns', 'registers', 'customers', 'settings'],
   waiter: ['sale', 'customers', 'settings'],
   kitchen: ['sale', 'settings'],
-  warehouse: ['inventory', 'warehouses', 'purchases', 'stocktake', 'import', 'reports', 'settings'],
+  warehouse: ['ops', 'inventory', 'reports', 'settings'],
 };
 function narrowByStation(access: string[] | null, station: string | undefined): string[] | null {
   const allowed = station ? STATION_VIEWS[station] : undefined;
@@ -169,13 +170,8 @@ export default function App() {
   const [notice, setNoticeRaw] = useState<string | null>(null);
   const setNotice = useCallback((message: string | null) => setNoticeRaw(cleanNotice(message)), []);
   const deny = useCallback(() => setNoticeRaw(DENIED), []);
-  const [productModal, setProductModal] = useState<Product | 'new' | null>(null);
-  const [warehouseModal, setWarehouseModal] = useState(false);
   const [registerModal, setRegisterModal] = useState(false);
-  const [purchaseModal, setPurchaseModal] = useState(false);
   const [staffModal, setStaffModal] = useState(false);
-  const [transferModal, setTransferModal] = useState(false);
-  const [wasteModal, setWasteModal] = useState(false);
 
   const t = (key: string) => tr(lang, key);
 
@@ -595,61 +591,18 @@ export default function App() {
     );
   }
 
-  const viewAllowed = (id: View) => (inventoryOn || !STOCK_VIEWS.has(id)) && (marketAccess == null || marketAccess.includes(id));
+  const viewAllowed = (id: View) => (inventoryOn || !STOCK_VIEWS.has(id)) && (marketAccess == null || marketAccess.includes(id)
+    || (id === 'ops' && ['inventory', 'warehouses', 'purchases', 'stocktake'].some((area) => marketAccess.includes(area))));
   const allowedViews = ROLE_VIEWS[session.role].filter((id) => viewAllowed(id));
   const safeSetView = (next: View) => { if (canAccess(session.role, next) && viewAllowed(next)) setView(next); else deny(); };
   const allNav: Array<{ id: View; icon: typeof Store }> = [
-    { id: 'dashboard', icon: Activity }, { id: 'sale', icon: ShoppingBasket }, { id: 'inventory', icon: Boxes },
-    { id: 'warehouses', icon: WarehouseIcon }, { id: 'purchases', icon: Truck }, { id: 'returns', icon: RotateCcw },
-    { id: 'reports', icon: BarChart3 }, { id: 'registers', icon: Store }, { id: 'stocktake', icon: ClipboardList },
-    { id: 'customers', icon: Users }, { id: 'import', icon: Download }, { id: 'platform', icon: Cloud },
+    { id: 'dashboard', icon: Activity }, { id: 'sale', icon: ShoppingBasket }, { id: 'ops', icon: Boxes },
+    { id: 'returns', icon: RotateCcw }, { id: 'reports', icon: BarChart3 }, { id: 'registers', icon: Store },
+    { id: 'customers', icon: Users }, { id: 'platform', icon: Cloud },
     { id: 'staff', icon: Users }, { id: 'mobile', icon: Smartphone }, { id: 'settings', icon: Settings },
   ];
   // Every screen stays in the sidebar; the locked ones are dimmed and refuse.
   const nav = allNav;
-
-  const productMap = new Map(state.products.map((product) => [product.id, product]));
-
-  const saveProduct = (product: Product) => {
-    void (async () => {
-      try {
-        if (coreReady && marketCoreClient.available()) {
-          const exists = state.products.some((row) => row.id === product.id);
-          if (exists) await marketCoreClient.products.save(product, session.id);
-          else await marketCoreClient.products.create(product, session.id);
-          await refreshFromCore();
-        } else {
-          mutate((previous) => ({ ...previous, products: previous.products.some((row) => row.id === product.id) ? previous.products.map((row) => row.id === product.id ? product : row) : [product, ...previous.products] }), 'PRODUCT_SAVE', `${product.sku} · ${product.name.az}`);
-        }
-        setProductModal(null); setNotice(t('productSaved'));
-      } catch (err) {
-        setNotice(err instanceof Error ? err.message : String(err));
-      }
-    })();
-  };
-
-  const receiveOrder = (order: PurchaseOrder) => {
-    void (async () => {
-      try {
-        if (coreReady && marketCoreClient.available()) {
-          await marketCoreClient.purchases.receive(order.id, session.id);
-          await refreshFromCore();
-        } else {
-          mutate((previous) => ({
-            ...previous,
-            products: previous.products.map((product) => {
-              const qty = order.lines.find((line) => line.productId === product.id)?.qty ?? 0;
-              return qty ? { ...product, warehouseStock: { ...product.warehouseStock, [order.warehouseId]: (product.warehouseStock[order.warehouseId] ?? 0) + qty } } : product;
-            }),
-            purchaseOrders: previous.purchaseOrders.map((row) => row.id === order.id ? { ...row, status: 'received' } : row),
-          }), 'PURCHASE_RECEIVE', order.id);
-        }
-        setNotice(`${order.id} · ${t('received')}`);
-      } catch (err) {
-        setNotice(err instanceof Error ? err.message : String(err));
-      }
-    })();
-  };
 
   const refundSale = (sale: Sale) => {
     void (async () => {
@@ -711,15 +664,11 @@ export default function App() {
           <LockedArea locked={!viewAllowed(view)} onDenied={deny}>
           {view === 'dashboard' && <Dashboard state={state} staff={staff} session={session} lang={lang} onView={safeSetView} />}
           {view === 'sale' && <SalePage state={state} setState={setState} session={session} lang={lang} cart={cart} setCart={setCart} cloudConnected={cloudConnected} notify={setNotice} coreReady={coreReady} onRefresh={refreshFromCore} audit={mutate} />}
-          {view === 'inventory' && <InventoryPage state={state} lang={lang} canEdit={session.role === 'manager' || session.role === 'warehouse'} onDenied={deny} onAdd={() => setProductModal('new')} onEdit={setProductModal} onTransfer={() => setTransferModal(true)} onWaste={() => setWasteModal(true)} />}
-          {view === 'warehouses' && <WarehousesPage state={state} lang={lang} onAdd={() => setWarehouseModal(true)} onTransfer={() => setTransferModal(true)} />}
-          {view === 'purchases' && <PurchasesPage state={state} lang={lang} onAdd={() => setPurchaseModal(true)} onReceive={receiveOrder} />}
+          {view === 'ops' && <OpsFrame session={session} notify={setNotice} />}
           {view === 'returns' && <ReturnsPage state={state} lang={lang} onRefund={refundSale} />}
           {view === 'reports' && <ReportsOpsPage state={state} staff={staff} lang={lang} coreReady={coreReady} />}
           {view === 'registers' && <RegistersOpsPage state={state} staff={staff} session={session} lang={lang} coreReady={coreReady} onAdd={() => setRegisterModal(true)} onToggle={toggleRegister} onRefresh={refreshFromCore} notify={setNotice} />}
-          {view === 'stocktake' && <StocktakePage state={state} session={session} coreReady={coreReady} notify={setNotice} onRefresh={refreshFromCore} />}
           {view === 'customers' && <CustomersPage session={session} lang={lang} coreReady={coreReady} notify={setNotice} />}
-          {view === 'import' && <ImportCsvPage session={session} coreReady={coreReady} notify={setNotice} />}
           {view === 'platform' && <PlatformStubsPage coreReady={coreReady} notify={setNotice} />}
           {view === 'staff' && <><StaffPage staff={staff} lang={lang} onAdd={() => setStaffModal(true)} /><RolePermissionsPanel actorRole={session.role} /></>}
           {view === 'mobile' && <MobilePage state={state} staff={staff} lang={lang} cloudConnected={cloudConnected} />}
@@ -737,18 +686,6 @@ export default function App() {
         </main>
       </section>
 
-      {productModal && <ProductModal lang={lang} products={state.products} warehouses={state.warehouses} session={session} product={productModal === 'new' ? null : productModal} onClose={() => setProductModal(null)} onSave={saveProduct} />}
-      {warehouseModal && <WarehouseModal lang={lang} onClose={() => setWarehouseModal(false)} onSave={(warehouse) => {
-        void (async () => {
-          try {
-            if (coreReady && marketCoreClient.available()) {
-              await marketCoreClient.warehouses.create(warehouse, session.id);
-              await refreshFromCore();
-            } else mutate((previous) => ({ ...previous, warehouses: [...previous.warehouses, warehouse], products: previous.products.map((product) => ({ ...product, warehouseStock: { ...product.warehouseStock, [warehouse.id]: 0 } })) }), 'WAREHOUSE_CREATE', warehouse.name);
-            setWarehouseModal(false); setNotice(t('warehouseSaved'));
-          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
-        })();
-      }} />}
       {registerModal && <RegisterModal lang={lang} onClose={() => setRegisterModal(false)} onSave={(register) => {
         void (async () => {
           try {
@@ -757,38 +694,6 @@ export default function App() {
               await refreshFromCore();
             } else mutate((previous) => ({ ...previous, registers: [...previous.registers, register] }), 'REGISTER_CREATE', register.name);
             setRegisterModal(false); setNotice(t('registerSaved'));
-          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
-        })();
-      }} />}
-      {purchaseModal && <PurchaseModal lang={lang} products={state.products} warehouses={state.warehouses} session={session} onClose={() => setPurchaseModal(false)} onSave={(order) => {
-        void (async () => {
-          try {
-            if (coreReady && marketCoreClient.available()) {
-              await marketCoreClient.purchases.create(order);
-              await refreshFromCore();
-            } else mutate((previous) => ({ ...previous, purchaseOrders: [order, ...previous.purchaseOrders] }), 'PURCHASE_CREATE', order.id);
-            setPurchaseModal(false); setNotice(t('orderSaved'));
-          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
-        })();
-      }} />}
-      {transferModal && <TransferModal lang={lang} products={state.products} warehouses={state.warehouses} onClose={() => setTransferModal(false)} onSave={(productId, from, to, qty) => {
-        void (async () => {
-          try {
-            if (coreReady && marketCoreClient.available()) {
-              await marketCoreClient.inventory.transfer({ productId, fromWarehouseId: from, toWarehouseId: to, qty, actorId: session.id });
-              await refreshFromCore();
-            } else mutate((previous) => ({ ...previous, products: previous.products.map((product) => product.id !== productId ? product : { ...product, warehouseStock: { ...product.warehouseStock, [from]: (product.warehouseStock[from] ?? 0) - qty, [to]: (product.warehouseStock[to] ?? 0) + qty } }) }), 'STOCK_TRANSFER', `${productMap.get(productId)?.sku} · ${qty}`);
-            setTransferModal(false); setNotice(t('stockAdded'));
-          } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
-        })();
-      }} />}
-      {wasteModal && <WasteModal lang={lang} products={state.products} warehouses={state.warehouses} onClose={() => setWasteModal(false)} onSave={(input) => {
-        void (async () => {
-          try {
-            await marketCoreClient.inventory.waste({ ...input, actorId: session.id });
-            await refreshFromCore();
-            setWasteModal(false);
-            setNotice('Silinmə qeyd edildi');
           } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
         })();
       }} />}
@@ -1184,7 +1089,7 @@ function Dashboard({ state, staff, session, lang, onView }: { state: PersistedSt
   const open = state.registers.filter((register) => register.status === 'open');
   const totalStock = state.products.reduce((sum, product) => sum + stockOf(product), 0);
   const roleMessage: Record<Role, string> = { manager: 'Satış, kassa, anbar və işçi vəziyyəti tam nəzarətdədir.', head_cashier: 'Açıq kassaları, qaytarmaları və növbə satışlarını idarə edin.', cashier: 'Kassanızı açın, barkodu oxudun və sürətli satış edin.', warehouse: 'Kritik qalıqları, depoları və alış sifarişlərini idarə edin.' };
-  return <div className="module-page dashboard"><section className="welcome-card"><div><p>{longDate(new Date(), lang)}</p><h2>Salam, {session.name.split(' ')[0]}</h2><span>{roleMessage[session.role]}</span></div><div className="live-badge"><Activity /><span>CANLI<small>{state.settings.storeName}</small></span></div></section><section className="kpi-grid"><Kpi icon={CircleDollarSign} label={tr(lang, 'todaySales')} value={money(revenue, lang)} note={`${activeSales.length} ${tr(lang, 'transactions').toLowerCase()}`} tone="green" /><Kpi icon={Store} label={tr(lang, 'openRegisters')} value={`${open.length} / ${state.registers.length}`} note={open.map((row) => row.name).join(' · ')} tone="blue" /><Kpi icon={TriangleAlert} label={tr(lang, 'criticalProducts')} value={String(critical.length)} note={critical.slice(0, 2).map((row) => row.name[lang]).join(' · ')} tone="amber" /><Kpi icon={Boxes} label={tr(lang, 'totalStock')} value={String(totalStock)} note={`${state.warehouses.length} ${tr(lang, 'warehouses').toLowerCase()}`} tone="violet" /></section><section className="dashboard-grid"><article className="panel-card quick-card"><div className="panel-title"><div><p>{tr(lang, 'quickOpsKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'quickActions')}</h3></div></div><div className="quick-grid">{canAccess(session.role, 'sale') && <button onClick={() => onView('sale')}><span><ShoppingBasket /></span><b>{tr(lang, 'newSale')}</b><small>{tr(lang, 'scanReady')}</small><ChevronRight /></button>}{canAccess(session.role, 'inventory') && <button onClick={() => onView('inventory')}><span><PackageSearch /></span><b>{tr(lang, 'inventory')}</b><small>{critical.length} {tr(lang, 'low').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'purchases') && <button onClick={() => onView('purchases')}><span><Truck /></span><b>{tr(lang, 'purchases')}</b><small>{state.purchaseOrders.filter((row) => row.status === 'ordered').length} {tr(lang, 'ordered').toLowerCase()}</small><ChevronRight /></button>}{canAccess(session.role, 'registers') && <button onClick={() => onView('registers')}><span><Store /></span><b>{tr(lang, 'registers')}</b><small>{open.length} {tr(lang, 'active').toLowerCase()}</small><ChevronRight /></button>}</div></article><article className="panel-card"><div className="panel-title"><div><p>{tr(lang, 'auditKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'audit')}</h3></div><FileClock /></div><div className="activity-list">{state.audits.slice(0, 5).map((entry) => <div key={entry.id}><span><Activity /></span><p><b>{auditActionLabel(entry.action, lang)}</b><small>{auditDetailLabel(entry.detail, lang)} · {staff.find((row) => row.id === entry.actorId)?.name ?? tr(lang, 'systemActor')}</small></p><time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div></article></section></div>;
+  return <div className="module-page dashboard"><section className="welcome-card"><div><p>{longDate(new Date(), lang)}</p><h2>Salam, {session.name.split(' ')[0]}</h2><span>{roleMessage[session.role]}</span></div><div className="live-badge"><Activity /><span>CANLI<small>{state.settings.storeName}</small></span></div></section><section className="kpi-grid"><Kpi icon={CircleDollarSign} label={tr(lang, 'todaySales')} value={money(revenue, lang)} note={`${activeSales.length} ${tr(lang, 'transactions').toLowerCase()}`} tone="green" /><Kpi icon={Store} label={tr(lang, 'openRegisters')} value={`${open.length} / ${state.registers.length}`} note={open.map((row) => row.name).join(' · ')} tone="blue" /><Kpi icon={TriangleAlert} label={tr(lang, 'criticalProducts')} value={String(critical.length)} note={critical.slice(0, 2).map((row) => row.name[lang]).join(' · ')} tone="amber" /><Kpi icon={Boxes} label={tr(lang, 'totalStock')} value={String(totalStock)} note={`${state.warehouses.length} ${tr(lang, 'warehouses').toLowerCase()}`} tone="violet" /></section><section className="dashboard-grid"><article className="panel-card quick-card"><div className="panel-title"><div><p>{tr(lang, 'quickOpsKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'quickActions')}</h3></div></div><div className="quick-grid">{canAccess(session.role, 'sale') && <button onClick={() => onView('sale')}><span><ShoppingBasket /></span><b>{tr(lang, 'newSale')}</b><small>{tr(lang, 'scanReady')}</small><ChevronRight /></button>}{canAccess(session.role, 'ops') && <button onClick={() => onView('ops')}><span><PackageSearch /></span><b>{tr(lang, 'ops')}</b><small>Mallar · Anbar · Alışlar</small><ChevronRight /></button>}{canAccess(session.role, 'registers') && <button onClick={() => onView('registers')}><span><Store /></span><b>{tr(lang, 'registers')}</b><small>{open.length} {tr(lang, 'active').toLowerCase()}</small><ChevronRight /></button>}</div></article><article className="panel-card"><div className="panel-title"><div><p>{tr(lang, 'auditKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'audit')}</h3></div><FileClock /></div><div className="activity-list">{state.audits.slice(0, 5).map((entry) => <div key={entry.id}><span><Activity /></span><p><b>{auditActionLabel(entry.action, lang)}</b><small>{auditDetailLabel(entry.detail, lang)} · {staff.find((row) => row.id === entry.actorId)?.name ?? tr(lang, 'systemActor')}</small></p><time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div></article></section></div>;
 }
 
 function SalePage({ state, setState, session, lang, cart, setCart, cloudConnected, notify, coreReady, onRefresh, audit }: { state: PersistedState; setState: React.Dispatch<React.SetStateAction<PersistedState>>; session: SessionUser; lang: Lang; cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; cloudConnected: boolean; notify: (text: string) => void; coreReady: boolean; onRefresh: () => Promise<PersistedState>; audit: (fn: (state: PersistedState) => PersistedState, action?: string, detail?: string) => void }) {
@@ -1226,20 +1131,21 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
     const product = productMap.get(line.productId);
     return product ? [{ ...line, product }] : [];
   });
-  const subtotal = detail.reduce((sum, line) => sum + line.product.priceMinor * line.qty, 0);
+  const lineMinor = (line: CartLine & { product: Product }) => line.qtyMilli ? Math.round(line.product.priceMinor * line.qtyMilli / 1000) : line.product.priceMinor * line.qty;
+  const subtotal = detail.reduce((sum, line) => sum + lineMinor(line), 0);
   const discountMinor = Math.min(subtotal, parseMoneyInput(discount));
   const total = subtotal - discountMinor;
 
   const add = useCallback((product: Product) => {
     const available = product.warehouseStock[warehouseId] ?? 0;
     setCart((rows) => {
-      const inCart = rows.find((line) => line.productId === product.id)?.qty ?? 0;
+      const inCart = rows.find((line) => line.productId === product.id && !line.qtyMilli)?.qty ?? 0;
       if (available <= inCart) {
         queueMicrotask(() => notify(tr(lang, 'outOfStock')));
         return rows;
       }
-      return rows.some((row) => row.productId === product.id)
-        ? rows.map((row) => row.productId === product.id ? { ...row, qty: row.qty + 1 } : row)
+      return rows.some((row) => row.productId === product.id && !row.qtyMilli)
+        ? rows.map((row) => row.productId === product.id && !row.qtyMilli ? { ...row, qty: row.qty + 1 } : row)
         : [...rows, { productId: product.id, qty: 1 }];
     });
     startTransition(() => setQuery(''));
@@ -1253,6 +1159,13 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
           const productId = String(resolved.productId || resolved.id || '');
           if (productId) {
             const product = products.find((p) => p.id === productId);
+            // A scale label carries the weight: its own line, priced by weight.
+            const qtyMilli = Number(resolved.qtyMilli) || 0;
+            if (product && resolved.scale && qtyMilli > 0) {
+              setCart((rows) => [...rows, { productId: product.id, qty: 1, qtyMilli }]);
+              notify(`${product.name[lang]} · ${(qtyMilli / 1000).toFixed(3)} ${unitLabel(product.unit, lang)}`);
+              return;
+            }
             if (product) {
               add(product);
               notify(`${product.name[lang]} · ${tr(lang, 'completed')}`);
@@ -1271,7 +1184,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
 
   useBarcodeScanner({ enabled: true, onScan: scan });
 
-  const adjust = (productId: string, delta: number) => setCart((rows) => rows.map((row) => row.productId === productId ? { ...row, qty: Math.max(0, Math.min(productMap.get(productId)?.warehouseStock[warehouseId] ?? row.qty, row.qty + delta)) } : row).filter((row) => row.qty > 0));
+  const adjust = (productId: string, delta: number) => setCart((rows) => rows.map((row) => row.productId === productId && !row.qtyMilli ? { ...row, qty: Math.max(0, Math.min(productMap.get(productId)?.warehouseStock[warehouseId] ?? row.qty, row.qty + delta)) } : row).filter((row) => row.qty > 0));
   const hold = () => {
     if (!cart.length) return;
     void (async () => {
@@ -1447,7 +1360,20 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
         <div className="cart-lines">
           {!detail.length ? (
             <div className="cart-empty"><ShoppingBag /><strong>{tr(lang, 'emptyCart')}</strong><span>GTIN / EAN-13</span></div>
-          ) : detail.map(({ product, qty }) => (
+          ) : detail.map((line, lineIndex) => line.qtyMilli ? (
+            <div className="cart-line" key={`w-${lineIndex}`}>
+              <ProductVisual image={line.product.image} compact alt={line.product.name[lang]} accent={line.product.accent} />
+              <div className="line-copy">
+                <strong>{line.product.name[lang]}</strong>
+                <small>{money(line.product.priceMinor, lang)} / {unitLabel(line.product.unit, lang)}</small>
+                <div className="stepper"><b>{(line.qtyMilli / 1000).toFixed(3)} {unitLabel(line.product.unit, lang)}</b></div>
+              </div>
+              <div className="line-total">
+                <b>{money(lineMinor(line), lang)}</b>
+                <button onClick={() => setCart((rows) => rows.filter((_, index) => index !== lineIndex))} aria-label="Məhsulu səbətdən sil"><X /></button>
+              </div>
+            </div>
+          ) : ((({ product, qty }) => (
             <div className="cart-line" key={product.id}>
               <ProductVisual image={product.image} compact alt={product.name[lang]} accent={product.accent} />
               <div className="line-copy">
@@ -1464,7 +1390,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
                 <button onClick={() => adjust(product.id, -qty)} aria-label="Məhsulu səbətdən sil"><X /></button>
               </div>
             </div>
-          ))}
+          ))(line)))}
         </div>
         {state.heldCarts.length > 0 && (
           <div className="held-strip">
@@ -1511,132 +1437,6 @@ function PaymentModal({ lang, storeName, totalMinor, onClose, onComplete }: { la
   const cardMinor = Math.max(0, totalMinor - cashMinor);
   const valid = method === 'card' || method === 'mixed' ? method === 'card' || (cashMinor > 0 && cardMinor >= 0) : tenderedMinor >= totalMinor;
   return <Modal title={tr(lang, 'pay')} subtitle={`${tr(lang, 'total')} · ${money(totalMinor, lang)}`} onClose={onClose} wide><div className="payment-layout"><section><div className="payment-methods"><button className={method === 'cash' ? 'active' : ''} onClick={() => setMethod('cash')}><CircleDollarSign /><b>{tr(lang, 'cash')}</b><small>AZN</small></button><button className={method === 'card' ? 'active' : ''} onClick={() => setMethod('card')}><CreditCard /><b>{tr(lang, 'card')}</b><small>POS terminal</small></button><button className={method === 'mixed' ? 'active' : ''} onClick={() => setMethod('mixed')}><WalletCards /><b>{tr(lang, 'mixed')}</b><small>Nağd + kart</small></button></div>{method === 'cash' && <><label className="money-field">{tr(lang, 'tendered')}<span><input autoFocus value={tendered} onChange={(event) => setTendered(event.target.value)} inputMode="decimal" /> AZN</span></label><div className="quick-cash">{[totalMinor, Math.ceil(totalMinor / 500) * 500, Math.ceil(totalMinor / 1000) * 1000, 5000, 10000].filter((value, index, rows) => rows.indexOf(value) === index).map((value) => <button key={value} onClick={() => setTendered((value / 100).toFixed(2))}>{money(value, lang)}</button>)}</div></>}{method === 'mixed' && <div className="split-fields"><label>{tr(lang, 'cash')}<input value={cashPart} onChange={(event) => setCashPart(event.target.value)} inputMode="decimal" /></label><label>{tr(lang, 'card')}<input value={(cardMinor / 100).toFixed(2)} disabled /></label></div>}{(method === 'card' || method === 'mixed') && <label className="money-field">Terminal ref (manual)<span><input value={terminalRef} onChange={(e) => setTerminalRef(e.target.value)} placeholder="RRN / auth" /></span></label>}<div className="payment-summary"><div><span>{tr(lang, 'total')}</span><b>{money(totalMinor, lang)}</b></div><div><span>{tr(lang, 'tendered')}</span><b>{money(method === 'mixed' ? cashMinor + cardMinor : tenderedMinor, lang)}</b></div><div className="change"><span>{tr(lang, 'change')}</span><strong>{money(method === 'cash' ? change : 0, lang)}</strong></div></div></section><aside className="receipt-preview"><div className="receipt-paper"><p>{(storeName || 'MarketPos').toLocaleUpperCase('az')}</p><small>{new Date().toLocaleString('az-AZ')}</small><hr /><span>YEKUN <b>{money(totalMinor, lang)}</b></span><span>{tr(lang, method).toLocaleUpperCase('az')} <b>{money(method === 'cash' ? tenderedMinor : totalMinor, lang)}</b></span><span>QALIQ <b>{money(method === 'cash' ? change : 0, lang)}</b></span><hr /><small>Alış-verişiniz üçün təşəkkür edirik</small></div></aside></div><button className="modal-primary payment-complete" disabled={!valid} onClick={() => onComplete({ method, amountMinor: totalMinor, tenderedMinor: method === 'cash' ? tenderedMinor : totalMinor, changeMinor: method === 'cash' ? change : 0, cashMinor: method === 'mixed' ? cashMinor : undefined, cardMinor: method === 'mixed' ? cardMinor : method === 'card' ? totalMinor : undefined, terminalRef: terminalRef || undefined })}><Check />{tr(lang, 'completePayment')}<strong>{method === 'cash' ? `${tr(lang, 'change')}: ${money(change, lang)}` : money(totalMinor, lang)}</strong></button></Modal>;
-}
-
-function InventoryPage({ state, lang, canEdit, onDenied, onAdd, onEdit, onTransfer, onWaste }: { state: PersistedState; lang: Lang; canEdit: boolean; onDenied: () => void; onAdd: () => void; onEdit: (product: Product) => void; onTransfer: () => void; onWaste: () => void }) {
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('all');
-  const categories = useMemo(() => [...new Set(state.products.map((product) => product.category))], [state.products]);
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const product of state.products) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
-    return counts;
-  }, [state.products]);
-  const rows = useMemo(
-    () => state.products.filter((product) => {
-      if (category !== 'all' && product.category !== category) return false;
-      if (!query) return true;
-      return product.barcode.includes(query)
-        || product.sku.toLowerCase().includes(query.toLowerCase())
-        || product.name[lang].toLowerCase().includes(query.toLowerCase());
-    }),
-    [state.products, query, lang, category],
-  );
-  const value = useMemo(
-    () => state.products.reduce((sum, product) => sum + product.costMinor * stockOf(product), 0),
-    [state.products],
-  );
-  const activeCount = useMemo(() => state.products.filter((p) => p.active).length, [state.products]);
-  const lowCount = useMemo(() => state.products.filter((p) => stockOf(p) <= p.minStock).length, [state.products]);
-
-  return (
-    <div className="module-page inventory-page">
-      <section className="kpi-grid three">
-        <Kpi icon={Boxes} label={tr(lang, 'product')} value={String(state.products.length)} note={`${activeCount} ${tr(lang, 'active').toLowerCase()}`} tone="green" />
-        <Kpi icon={TriangleAlert} label={tr(lang, 'low')} value={String(lowCount)} note="Minimum səviyyə" tone="amber" />
-        <Kpi icon={BadgeDollarSign} label={tr(lang, 'inventory')} value={money(value, lang)} note="Maya dəyəri" tone="blue" />
-      </section>
-      <section className="data-card inventory-card-shell">
-        <div className="data-title">
-          <div>
-            <h2>{tr(lang, 'inventory')}</h2>
-          </div>
-          <div className="data-actions">
-            <label className="table-search">
-              <Search />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tr(lang, 'search')} />
-            </label>
-            <button type="button" aria-disabled={!canEdit || undefined} onClick={canEdit ? onTransfer : onDenied}><ArrowRightLeft />{tr(lang, 'transfer')}</button>
-            <button type="button" aria-disabled={!canEdit || undefined} onClick={canEdit ? onWaste : onDenied}><Trash2 />Silinmə</button>
-            <button type="button" className="primary-action" aria-disabled={!canEdit || undefined} onClick={canEdit ? onAdd : onDenied}><PackagePlus />{tr(lang, 'addProduct')}</button>
-          </div>
-        </div>
-        <div className="inventory-catalog-layout">
-          <aside className="catalog-aisles inventory-aisles">
-            <h2>{tr(lang, 'catalogAisles')}</h2>
-            <CatalogAisleNav
-              lang={lang}
-              categories={categories}
-              counts={categoryCounts}
-              total={state.products.length}
-              value={category}
-              onChange={setCategory}
-              layout="rail"
-            />
-          </aside>
-          <InventoryProductGrid products={rows} lang={lang} money={money} canEdit onEdit={canEdit ? onEdit : onDenied} />
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function WarehousesPage({ state, lang, onAdd, onTransfer }: { state: PersistedState; lang: Lang; onAdd: () => void; onTransfer: () => void }) {
-  return <div className="module-page"><section className="page-intro"><div><p>{tr(lang, 'kickerWarehouses').toLocaleUpperCase(lang)}</p><h2>{tr(lang, 'warehouses')}</h2><span>{state.warehouses.length} aktiv saxlama nöqtəsi</span></div><div><button onClick={onTransfer}><ArrowRightLeft />{tr(lang, 'transfer')}</button><button className="primary-action" onClick={onAdd}><Plus />{tr(lang, 'addWarehouse')}</button></div></section><div className="warehouse-grid">{state.warehouses.map((warehouse) => { const units = state.products.reduce((sum, product) => sum + (product.warehouseStock[warehouse.id] ?? 0), 0); const value = state.products.reduce((sum, product) => sum + (product.warehouseStock[warehouse.id] ?? 0) * product.costMinor, 0); return <article className="warehouse-card" key={warehouse.id}><header><span><WarehouseIcon /></span><div><small>{warehouse.code}</small><h3>{warehouse.name}</h3></div><em className="pill ok">{tr(lang, 'active')}</em></header><p>{warehouse.address}</p><div className="warehouse-stats"><div><small>SKU</small><b>{state.products.filter((product) => (product.warehouseStock[warehouse.id] ?? 0) > 0).length}</b></div><div><small>{tr(lang, 'stock')}</small><b>{units}</b></div><div><small>Dəyər</small><b>{money(value, lang)}</b></div></div><footer><span><UserCog />{warehouse.manager}</span><button onClick={onTransfer}>{tr(lang, 'transfer')}<ChevronRight /></button></footer></article>; })}</div></div>;
-}
-
-function PurchasesPage({ state, lang, onAdd, onReceive }: { state: PersistedState; lang: Lang; onAdd: () => void; onReceive: (order: PurchaseOrder) => void }) {
-  const products = new Map(state.products.map((product) => [product.id, product]));
-  const pending = state.purchaseOrders.filter((row) => row.status === 'ordered').length;
-  return (
-    <div className="module-page purchases-page">
-      <section className="page-intro">
-        <div>
-          <h2>{tr(lang, 'purchases')}</h2>
-          <span>{pending} {tr(lang, 'ordered').toLowerCase()}</span>
-        </div>
-        <button className="primary-action" onClick={onAdd}><Plus />{tr(lang, 'createOrder')}</button>
-      </section>
-      <div className="po-grid">
-        {state.purchaseOrders.map((order) => {
-          const warehouse = state.warehouses.find((row) => row.id === order.warehouseId);
-          const units = order.lines.reduce((sum, line) => sum + line.qty, 0);
-          const received = order.status === 'received';
-          return (
-            <article className={received ? 'po-card received' : 'po-card'} key={order.id}>
-              <header className="po-head">
-                <div className="po-title">
-                  <h3>{order.supplier}</h3>
-                  <small>{order.id}</small>
-                </div>
-                <em className={received ? 'pill ok' : 'pill info'}>{received ? tr(lang, 'received') : tr(lang, 'ordered')}</em>
-              </header>
-              <div className="po-meta">
-                <span><small>{tr(lang, 'expectedDate')}</small><strong>{new Date(order.expectedAt).toLocaleDateString()}</strong></span>
-                <span><small>Depo</small><strong>{warehouse?.code ?? '—'}</strong></span>
-                <span><small>SKU</small><strong>{order.lines.length}</strong></span>
-                <span><small>{tr(lang, 'stock')}</small><strong>{units}</strong></span>
-              </div>
-              <ul className="po-lines">
-                {order.lines.map((line) => (
-                  <li key={line.productId}>
-                    <span>{products.get(line.productId)?.name[lang] ?? line.productId}</span>
-                    <b>+{line.qty}</b>
-                  </li>
-                ))}
-              </ul>
-              <footer className="po-foot">
-                <button type="button" className={received ? 'po-receive done' : 'po-receive'} disabled={received} onClick={() => onReceive(order)}>
-                  {received ? <Check /> : <PackageCheck />}
-                  {received ? tr(lang, 'received') : tr(lang, 'receive')}
-                </button>
-              </footer>
-            </article>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 function ReturnsPage({ state, lang, onRefund }: { state: PersistedState; lang: Lang; onRefund: (sale: Sale) => void }) {

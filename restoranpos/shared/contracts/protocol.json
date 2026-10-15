@@ -1479,6 +1479,67 @@
       "auth": true,
       "perm": "delivery.assign",
       "idempotent": true
+    },
+    "categories.list": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "categories.save": {
+      "auth": true,
+      "perm": "inventory.manage"
+    },
+    "categories.delete": {
+      "auth": true,
+      "perm": "inventory.manage"
+    },
+    "goods.list": {
+      "auth": true,
+      "perm": "inventory.view"
+    },
+    "goods.prices": {
+      "auth": true,
+      "perm": "inventory.manage"
+    },
+    "goods.import": {
+      "auth": true,
+      "perm": "inventory.manage",
+      "timeout": 60000
+    },
+    "stocktake.import": {
+      "auth": true,
+      "perm": "inventory.count",
+      "timeout": 60000
+    },
+    "stocktake.update": {
+      "auth": true,
+      "perm": "inventory.count"
+    },
+    "stocktake.cancel": {
+      "auth": true,
+      "perm": "inventory.count"
+    },
+    "income.list": {
+      "auth": true,
+      "perm": "cash.manage"
+    },
+    "income.save": {
+      "auth": true,
+      "perm": "cash.manage",
+      "idempotent": true
+    },
+    "income.delete": {
+      "auth": true,
+      "perm": "cash.manage"
+    },
+    "sales.recordExternal": {
+      "auth": true,
+      "perm": "sales.edit",
+      "idempotent": true
+    },
+    "sales.recordExternalRefund": {
+      "auth": true,
+      "perm": "sales.edit",
+      "idempotent": true
     }
   },
   "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import pngToIco from 'png-to-ico';
 import {verifyMarketModules} from './verify-market-package.mjs';
-import {APP_DIR, ARTIFACT_NAME, CORE_NAME, ICON_FILE} from './pos-app.mjs';
+import {APP_DIR, ARTIFACT_NAME, CORE_NAME, ICON_FILE, POS_APP} from './pos-app.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MARKET = APP_DIR;
@@ -76,6 +76,15 @@ if (!fs.existsSync(coreExe)) {
 }
 run(process.execPath, [path.join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '--noEmit', '-p', path.join(MARKET, 'tsconfig.json')]);
 run(process.execPath, [path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--config', path.join(MARKET, 'vite.config.ts')]);
+// Market POS 1.5.0: Əməliyyatlar is the restaurant's warehouse system - its
+// screens (dist/ops) and its core (restaurant-pos-core.exe, see electron-builder.yml).
+if (POS_APP === 'marketpos') {
+  if (!fs.existsSync(path.join(ROOT, 'native', 'build', 'restaurant-pos-core.exe'))) {
+    fail('restaurant-pos-core.exe missing - run node scripts/build-core.mjs --config Release first');
+  }
+  run(process.execPath, [path.join(ROOT, 'scripts', 'assemble-restaurant.mjs')]);
+  run(process.execPath, [path.join(ROOT, 'market-ops', 'build.mjs'), path.join(MARKET, 'dist', 'ops')]);
+}
 run(process.execPath, [
   path.join(ROOT, 'node_modules', 'electron-builder', 'out', 'cli', 'cli.js'),
   '--win',

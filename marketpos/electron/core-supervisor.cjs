@@ -16,8 +16,20 @@ const { app } = require('electron');
 const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 const MAX_PENDING = 200;
 class CoreSupervisor extends EventEmitter {
-  constructor() {
+  /**
+   * @param options.binaryName  core executable without .exe (market-pos-core)
+   * @param options.searchDirs  extra development folders holding the binary
+   * @param options.dbFile      database file name under data/tenants/<shop>
+   * @param options.label       log prefix
+   * @param options.env         extra environment for the child
+   */
+  constructor(options = {}) {
     super();
+    this.binaryName = options.binaryName || 'market-pos-core';
+    this.searchDirs = options.searchDirs || [];
+    this.dbFile = options.dbFile || 'market.db';
+    this.label = options.label || 'market-core';
+    this.extraEnv = options.env || {};
     this.child = null;
     this.state = 'stopped';
     this.pending = new Map();
@@ -32,23 +44,24 @@ class CoreSupervisor extends EventEmitter {
   }
 
   resolveCorePath() {
-    if (process.env.MARKET_POS_CORE_PATH && existsSync(process.env.MARKET_POS_CORE_PATH)) {
-      return process.env.MARKET_POS_CORE_PATH;
-    }
-    const packaged = path.join(process.resourcesPath || '', 'native', 'win32-x64', 'market-pos-core.exe');
+    const override = this.binaryName === 'market-pos-core' ? process.env.MARKET_POS_CORE_PATH : process.env.MARKET_OPS_CORE_PATH;
+    if (override && existsSync(override)) return override;
+    const packaged = path.join(process.resourcesPath || '', 'native', 'win32-x64', `${this.binaryName}.exe`);
     if (existsSync(packaged)) return packaged;
     const root = path.resolve(__dirname, '..');
-    const linux = path.join(root, 'native', 'build', 'market-pos-core');
-    const win = path.join(root, 'native', 'build', 'market-pos-core.exe');
-    if (existsSync(linux)) return linux;
-    if (existsSync(win)) return win;
+    for (const dir of [path.join(root, 'native', 'build'), ...this.searchDirs]) {
+      const linux = path.join(dir, this.binaryName);
+      const win = path.join(dir, `${this.binaryName}.exe`);
+      if (existsSync(linux)) return linux;
+      if (existsSync(win)) return win;
+    }
     return null;
   }
 
   resolvePaths(customerId = '_default') {
     const userData = app.getPath('userData');
     const safeId = String(customerId || '_default').replace(/[^a-zA-Z0-9_-]/g, '_');
-    this.dbPath = process.env.MARKET_POS_DB_PATH || path.join(userData, 'data', 'tenants', safeId, 'market.db');
+    this.dbPath = (this.dbFile === 'market.db' && process.env.MARKET_POS_DB_PATH) || path.join(userData, 'data', 'tenants', safeId, this.dbFile);
     this.logDir = process.env.MARKET_POS_LOG_DIR || path.join(userData, 'logs');
     mkdirSync(path.dirname(this.dbPath), { recursive: true });
     mkdirSync(this.logDir, { recursive: true });
@@ -68,7 +81,7 @@ class CoreSupervisor extends EventEmitter {
     const corePath = this.resolveCorePath();
     if (!corePath) {
       this.setState('crashed');
-      throw new Error('market-pos-core binary not found — run npm run market:build:core');
+      throw new Error(`${this.binaryName} binary not found`);
     }
     this.setState('starting');
     await new Promise((resolve, reject) => {
@@ -89,7 +102,7 @@ class CoreSupervisor extends EventEmitter {
         if (settled) return;
         settled = true;
         this.off('event', waitReady);
-        reject(new Error('market-pos-core ready timeout'));
+        reject(new Error(`${this.binaryName} ready timeout`));
       }, 20000);
       this.on('event', waitReady);
 
@@ -98,7 +111,7 @@ class CoreSupervisor extends EventEmitter {
         windowsHide: true,
         shell: false,
         cwd: path.dirname(corePath),
-        env: { ...process.env, MARKET_POS_LOG_LEVEL: app.isPackaged ? 'info' : 'debug' },
+        env: { ...process.env, MARKET_POS_LOG_LEVEL: app.isPackaged ? 'info' : 'debug', ...this.extraEnv },
       });
       this.writeQueue = [];
       this.writeBlocked = false;
@@ -109,7 +122,7 @@ class CoreSupervisor extends EventEmitter {
       this.child.stdout.on('data', (chunk) => this.onStdout(chunk));
       this.child.stderr.on('data', (chunk) => {
         for (const line of String(chunk).split(/\r?\n/)) {
-          if (line.trim()) console.error('[market-core]', line);
+          if (line.trim()) console.error(`[${this.label}]`, line);
         }
       });
       this.child.on('exit', (code, signal) => this.onExit(code, signal));
@@ -216,7 +229,13 @@ class CoreSupervisor extends EventEmitter {
     }, 1000 * this.restartAttempts);
   }
 
-  invoke(method, payload = {}, timeoutMs = 15000) {
+  /**
+   * @param options a timeout in ms, or { timeoutMs, actor, terminal, idempotencyKey }
+   *   (actor/terminal are what the restaurant core reads to know who is acting).
+   */
+  invoke(method, payload = {}, options = 15000) {
+    const opts = typeof options === 'number' ? { timeoutMs: options } : (options || {});
+    const timeoutMs = Number(opts.timeoutMs) || 15000;
     if (!this.child || !this.child.stdin.writable || this.state !== 'ready') {
       return Promise.resolve({
         success: false,
@@ -232,13 +251,16 @@ class CoreSupervisor extends EventEmitter {
       });
     }
     const requestId = randomUUID();
-    const frame = JSON.stringify({
+    const envelope = {
       requestId,
       method,
       protocolVersion: 1,
       timestamp: Date.now(),
-      payload: payload ?? {},
-    }) + '\n';
+      payload: opts.idempotencyKey ? { ...(payload ?? {}), idempotencyKey: opts.idempotencyKey } : (payload ?? {}),
+    };
+    if (opts.actor) envelope.actor = opts.actor;
+    if (opts.terminal) envelope.terminal = opts.terminal;
+    const frame = JSON.stringify(envelope) + '\n';
     if (Buffer.byteLength(frame, 'utf8') > MAX_MESSAGE_BYTES) {
       return Promise.resolve({
         requestId,

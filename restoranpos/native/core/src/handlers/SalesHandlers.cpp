@@ -397,6 +397,195 @@ void registerSales(const ContextPtr& ctx) {
         txn.commit();
         return Json{{"orderId", orderId}};
     });
+
+    // ---------------------------------------------------------- Market sales
+    // A sale rung up on the Market till, written here as a closed bill: the
+    // goods leave this branch's store, cash/card land on the till of the
+    // Market PC (terminal) and nisyə goes on the partner. Same externalId twice
+    // is the same sale.
+    server.registerHandler(std::string(protocol::method::kSalesRecordExternal), [ctx](const ipc::Request& request) {
+        ctx->requirePermission("sales.edit");
+        const auto externalId = getOr<std::string>(request.payload, "externalId", "");
+        require(!externalId.empty(), "externalId tələb olunur");
+        require(request.payload.contains("lines") && request.payload["lines"].is_array() &&
+                    !request.payload["lines"].empty(), "Satışda mal yoxdur");
+        db::Transaction txn(ctx->db());
+        {
+            auto seen = ctx->db().prepare("SELECT order_id FROM external_sales WHERE external_id = :id");
+            seen.bind(":id", externalId);
+            if (seen.step()) return Json{{"orderId", seen.columnText(0)}, {"duplicate", true}};
+        }
+        const auto at = getOr<std::int64_t>(request.payload, "at", nowMs());
+        const auto cash = getOr<Money>(request.payload, "cashMinor", 0);
+        const auto card = getOr<Money>(request.payload, "cardMinor", 0);
+        const auto credit = getOr<Money>(request.payload, "creditMinor", 0);
+        const auto discount = getOr<Money>(request.payload, "discountMinor", 0);
+        const auto customerId = getOr<std::string>(request.payload, "customerId", "");
+        require(cash >= 0 && card >= 0 && credit >= 0 && discount >= 0, "Məbləğ mənfi ola bilməz");
+        // Nisyə without a partner here is a Market customer's debt, kept in Market.
+        const std::string terminal = ctx->saleTerminalId();
+        const std::string userId = ctx->session().userId;
+
+        // This PC's branch store, or the one asked for, or the main one.
+        std::string warehouseId = getOr<std::string>(request.payload, "warehouseId", "");
+        if (warehouseId.empty()) {
+            auto branch = ctx->db().prepare(
+                "SELECT o.warehouse_id FROM cash_accounts a JOIN cash_objects o ON o.id = a.object_id "
+                "JOIN warehouses w ON w.id = o.warehouse_id AND w.active = 1 "
+                "WHERE a.terminal_id = :t AND a.terminal_id != '' AND a.kind = 'till' AND a.active = 1 LIMIT 1");
+            branch.bind(":t", terminal);
+            if (branch.step()) warehouseId = branch.columnText(0);
+        }
+        if (warehouseId.empty()) {
+            auto store = ctx->db().prepare("SELECT id FROM warehouses WHERE active = 1 ORDER BY sort_order, id LIMIT 1");
+            require(store.step(), "Anbar yoxdur");
+            warehouseId = store.columnText(0);
+        }
+
+        const std::string orderId = "ord-" + crypto::uuid4().substr(0, 12);
+        const std::string number = services::OrderService(*ctx).nextOrderNumber();
+        auto order = ctx->db().prepare(
+            "INSERT INTO orders (id, order_number, user_id, status, opened_at, closed_at, updated_at, note, customer_id, closed_by) "
+            "VALUES (:id, :no, :user, 'closed', :at, :at, :at, :note, :customer, :user)");
+        order.bind(":id", orderId).bind(":no", number).bind(":user", userId).bind(":at", at)
+            .bind(":note", "Market " + getOr<std::string>(request.payload, "number", externalId))
+            .bindOptional(":customer", customerId);
+        order.exec();
+
+        // Each good sold gets a hidden menu row (EXT-<good>) under a hidden category,
+        // so the sale reads like any other bill. Made here, not in a migration:
+        // an empty menu is how a fresh install knows to seed itself.
+        {
+            auto hidden = ctx->db().prepare(
+                "INSERT OR IGNORE INTO menu_categories (id, name_az, sort_order, active) VALUES ('cat-external', 'Market', 999, 0)");
+            hidden.exec();
+        }
+        services::InventoryService inventory(*ctx);
+        Money subtotal = 0;
+        std::int64_t seq = 0;
+        for (const auto& line : request.payload["lines"]) {
+            const auto ingredientId = getOr<std::string>(line, "ingredientId", "");
+            const auto qty = getOr<std::int64_t>(line, "qtyMilli", 0);
+            const auto unitPrice = getOr<Money>(line, "unitPriceMinor", 0);
+            const auto total = getOr<Money>(line, "totalMinor", qty * unitPrice / 1000);
+            require(qty > 0, "Miqdar sıfırdan böyük olmalıdır");
+            auto good = ctx->db().prepare("SELECT name, unit FROM ingredients WHERE id = :id");
+            good.bind(":id", ingredientId);
+            require(good.step(), "Mal tapılmadı: " + ingredientId);
+            std::string name = getOr<std::string>(line, "name", good.columnText(0));
+            const std::string productId = "ext-" + ingredientId;
+            auto product = ctx->db().prepare(
+                "INSERT OR IGNORE INTO menu_items (id, category_id, sku, name_az, price_minor, active, archived, created_at, updated_at) "
+                "VALUES (:id, 'cat-external', :sku, :name, 0, 0, 1, :now, :now)");
+            product.bind(":id", productId).bind(":sku", "EXT-" + ingredientId).bind(":name", name).bind(":now", at);
+            product.exec();
+            // Whole pieces keep their count; a weighed amount is one line priced in full.
+            std::int64_t quantity = 1;
+            Money linePrice = total;
+            if (qty % 1000 == 0) {
+                quantity = qty / 1000;
+                linePrice = total / quantity;
+            } else {
+                char buf[48];
+                std::snprintf(buf, sizeof(buf), " × %.3f %s", static_cast<double>(qty) / 1000.0, good.columnText(1).c_str());
+                name += buf;
+            }
+            auto item = ctx->db().prepare(
+                "INSERT INTO order_items (id, order_id, product_id, line_seq, name_snapshot, unit_price_minor, quantity, "
+                "  line_total_minor, status, created_at, updated_at) "
+                "VALUES (:id, :order, :product, :seq, :name, :price, :qty, :total, 'served', :at, :at)");
+            item.bind(":id", crypto::uuid4()).bind(":order", orderId).bind(":product", productId).bind(":seq", ++seq)
+                .bind(":name", name).bind(":price", linePrice).bind(":qty", quantity).bind(":total", total).bind(":at", at);
+            item.exec();
+            inventory.move(ingredientId, warehouseId, -qty, "sale", orderId, "Market satışı");
+            subtotal += total;
+        }
+        const Money totalMinor = std::max<Money>(0, subtotal - discount);
+        auto totals = ctx->db().prepare(
+            "UPDATE orders SET subtotal_minor = :sub, discount_minor = :disc, total_minor = :total, paid_minor = :paid, "
+            "  account_minor = :credit WHERE id = :id");
+        totals.bind(":sub", subtotal).bind(":disc", subtotal - totalMinor).bind(":total", totalMinor)
+            .bind(":paid", cash + card).bind(":credit", credit).bind(":id", orderId);
+        totals.exec();
+        for (const auto& [method, amount] : {std::pair<const char*, Money>{"cash", cash}, {"card", card}}) {
+            if (amount <= 0) continue;
+            auto pay = ctx->db().prepare(
+                "INSERT INTO payments (id, order_id, method, status, amount_minor, tendered_minor, user_id, terminal_id, created_at, updated_at) "
+                "VALUES (:id, :order, :method, 'approved', :amount, :amount, :user, :t, :at, :at)");
+            pay.bind(":id", crypto::uuid4()).bind(":order", orderId).bind(":method", std::string(method))
+                .bind(":amount", amount).bind(":user", userId).bind(":t", terminal).bind(":at", at);
+            pay.exec();
+        }
+        chargeTab(*ctx, customerId, orderId, credit, "Market " + number);
+        auto mark = ctx->db().prepare(
+            "INSERT INTO external_sales (external_id, order_id, kind, created_at) VALUES (:e, :o, 'sale', :now)");
+        mark.bind(":e", externalId).bind(":o", orderId).bind(":now", nowMs());
+        mark.exec();
+        txn.commit();
+        return Json{{"orderId", orderId}, {"number", number}, {"warehouseId", warehouseId}};
+    });
+
+    // A Market return: goods back into the store, money back out of the till
+    // (or off the partner's tab), against the sale it came from.
+    server.registerHandler(std::string(protocol::method::kSalesRecordExternalRefund), [ctx](const ipc::Request& request) {
+        ctx->requirePermission("sales.edit");
+        const auto externalId = getOr<std::string>(request.payload, "externalId", "");
+        const auto saleId = getOr<std::string>(request.payload, "saleExternalId", "");
+        require(!externalId.empty() && !saleId.empty(), "externalId və saleExternalId tələb olunur");
+        db::Transaction txn(ctx->db());
+        {
+            auto seen = ctx->db().prepare("SELECT order_id FROM external_sales WHERE external_id = :id");
+            seen.bind(":id", externalId);
+            if (seen.step()) return Json{{"orderId", seen.columnText(0)}, {"duplicate", true}};
+        }
+        auto sale = ctx->db().prepare(
+            "SELECT e.order_id, COALESCE(o.customer_id, '') FROM external_sales e JOIN orders o ON o.id = e.order_id "
+            "WHERE e.external_id = :id AND e.kind = 'sale'");
+        sale.bind(":id", saleId);
+        if (!sale.step()) throw PosError(std::string(protocol::err::kNotFound), "Qaytarılan satış hələ yazılmayıb");
+        const std::string orderId = sale.columnText(0);
+        const std::string customerId = sale.columnText(1);
+        auto moved = ctx->db().prepare(
+            "SELECT warehouse_id FROM stock_movements WHERE reference_id = :o AND kind = 'sale' LIMIT 1");
+        moved.bind(":o", orderId);
+        std::string warehouseId;
+        if (moved.step()) warehouseId = moved.columnText(0);
+        const auto reason = getOr<std::string>(request.payload, "reason", "Market qaytarma");
+        services::InventoryService inventory(*ctx);
+        if (request.payload.contains("lines") && request.payload["lines"].is_array() && !warehouseId.empty()) {
+            for (const auto& line : request.payload["lines"]) {
+                const auto ingredientId = getOr<std::string>(line, "ingredientId", "");
+                const auto qty = getOr<std::int64_t>(line, "qtyMilli", 0);
+                if (ingredientId.empty() || qty <= 0) continue;
+                inventory.move(ingredientId, warehouseId, qty, "sale", orderId, reason);
+            }
+        }
+        const auto now = getOr<std::int64_t>(request.payload, "at", nowMs());
+        for (const auto& [method, amount] : {std::pair<const char*, Money>{"cash", getOr<Money>(request.payload, "cashMinor", 0)},
+                                             {"card", getOr<Money>(request.payload, "cardMinor", 0)}}) {
+            if (amount <= 0) continue;
+            auto pay = ctx->db().prepare(
+                "SELECT id FROM payments WHERE order_id = :o AND status = 'approved' "
+                "ORDER BY CASE WHEN method = :m THEN 0 ELSE 1 END LIMIT 1");
+            pay.bind(":o", orderId).bind(":m", std::string(method));
+            if (!pay.step()) continue;
+            auto refund = ctx->db().prepare(
+                "INSERT INTO refunds (id, order_id, payment_id, amount_minor, reason, status, method, actor_user_id, "
+                "  terminal_id, created_at, updated_at) "
+                "VALUES (:id, :o, :p, :amount, :reason, 'completed', :method, :actor, :t, :at, :at)");
+            refund.bind(":id", crypto::uuid4()).bind(":o", orderId).bind(":p", pay.columnText(0)).bind(":amount", amount)
+                .bind(":reason", reason).bind(":method", std::string(method)).bindOptional(":actor", ctx->session().userId)
+                .bind(":t", ctx->saleTerminalId()).bind(":at", now);
+            refund.exec();
+        }
+        chargeTab(*ctx, customerId, orderId, -getOr<Money>(request.payload, "creditMinor", 0), "Market qaytarma");
+        auto mark = ctx->db().prepare(
+            "INSERT INTO external_sales (external_id, order_id, kind, created_at) VALUES (:e, :o, 'refund', :now)");
+        mark.bind(":e", externalId).bind(":o", orderId).bind(":now", nowMs());
+        mark.exec();
+        txn.commit();
+        return Json{{"orderId", orderId}};
+    });
 }
 
 }  // namespace pos::handlers

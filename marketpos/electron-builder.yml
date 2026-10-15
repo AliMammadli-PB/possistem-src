@@ -36,6 +36,9 @@ files:
 extraResources:
   - from: native/build/market-pos-core.exe
     to: native/win32-x64/market-pos-core.exe
+  # Əməliyyatlar (1.5.0): the restaurant warehouse core, built in ../restoranpos.
+  - from: ../restoranpos/native/build/restaurant-pos-core.exe
+    to: native/win32-x64/restaurant-pos-core.exe
 win:
   target:
     - target: nsis

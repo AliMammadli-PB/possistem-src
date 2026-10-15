@@ -212,8 +212,13 @@ void registerCashAccounts(const ContextPtr& ctx) {
                 "SELECT m.id, m.amount_minor AS amountMinor, m.kind, m.ref_type AS refType, m.note, "
                 "       u.full_name AS actorName, m.created_at AS createdAt "
                 "FROM cash_account_moves m LEFT JOIN users u ON u.id = m.actor_user_id "
-                "WHERE m.account_id = :id ORDER BY m.created_at DESC LIMIT 500");
-            stmt.bind(":id", id);
+                "WHERE m.account_id = :id AND m.created_at >= :from AND m.created_at < :to "
+                "  AND (:kind = '' OR m.kind = :kind) AND (:q = '' OR m.note LIKE :like OR m.kind LIKE :like) "
+                "ORDER BY m.created_at DESC LIMIT 5000");
+            const auto q = getOr<std::string>(request.payload, "search", "");
+            stmt.bind(":id", id).bind(":from", getOr<std::int64_t>(request.payload, "from", 0))
+                .bind(":to", getOr<std::int64_t>(request.payload, "to", nowMs() + 86400000LL))
+                .bind(":kind", getOr<std::string>(request.payload, "kind", "")).bind(":q", q).bind(":like", "%" + q + "%");
             return Json{{"accountId", id},
                         {"balanceMinor", services::CashService(*ctx).accountBalance(id)},
                         {"moves", stmt.rows()}};

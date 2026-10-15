@@ -404,6 +404,20 @@ export const METHODS = [
   'delivery.start',
   'delivery.dispatch',
   'delivery.settle',
+  'categories.list',
+  'categories.save',
+  'categories.delete',
+  'goods.list',
+  'goods.prices',
+  'goods.import',
+  'stocktake.import',
+  'stocktake.update',
+  'stocktake.cancel',
+  'income.list',
+  'income.save',
+  'income.delete',
+  'sales.recordExternal',
+  'sales.recordExternalRefund',
 ] as const;
 export type MethodName = (typeof METHODS)[number];
 
@@ -658,6 +672,20 @@ export const METHOD_META: Record<MethodName, MethodMeta> = {
   'delivery.start': { auth: true, perm: 'delivery.manage', timeout: 3000, idempotent: true },
   'delivery.dispatch': { auth: true, perm: 'delivery.assign', timeout: 3000, idempotent: true },
   'delivery.settle': { auth: true, perm: 'delivery.assign', timeout: 3000, idempotent: true },
+  'categories.list': { auth: true, perm: 'inventory.view', timeout: 3000, idempotent: false },
+  'categories.save': { auth: true, perm: 'inventory.manage', timeout: 3000, idempotent: false },
+  'categories.delete': { auth: true, perm: 'inventory.manage', timeout: 3000, idempotent: false },
+  'goods.list': { auth: true, perm: 'inventory.view', timeout: 3000, idempotent: false },
+  'goods.prices': { auth: true, perm: 'inventory.manage', timeout: 3000, idempotent: false },
+  'goods.import': { auth: true, perm: 'inventory.manage', timeout: 60000, idempotent: false },
+  'stocktake.import': { auth: true, perm: 'inventory.count', timeout: 60000, idempotent: false },
+  'stocktake.update': { auth: true, perm: 'inventory.count', timeout: 3000, idempotent: false },
+  'stocktake.cancel': { auth: true, perm: 'inventory.count', timeout: 3000, idempotent: false },
+  'income.list': { auth: true, perm: 'cash.manage', timeout: 3000, idempotent: false },
+  'income.save': { auth: true, perm: 'cash.manage', timeout: 3000, idempotent: true },
+  'income.delete': { auth: true, perm: 'cash.manage', timeout: 3000, idempotent: false },
+  'sales.recordExternal': { auth: true, perm: 'sales.edit', timeout: 3000, idempotent: true },
+  'sales.recordExternalRefund': { auth: true, perm: 'sales.edit', timeout: 3000, idempotent: true },
 };
 
 export const EVENTS = [

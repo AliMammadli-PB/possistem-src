@@ -415,6 +415,20 @@ inline constexpr std::string_view kLotsExtend = "lots.extend";
 inline constexpr std::string_view kDeliveryStart = "delivery.start";
 inline constexpr std::string_view kDeliveryDispatch = "delivery.dispatch";
 inline constexpr std::string_view kDeliverySettle = "delivery.settle";
+inline constexpr std::string_view kCategoriesList = "categories.list";
+inline constexpr std::string_view kCategoriesSave = "categories.save";
+inline constexpr std::string_view kCategoriesDelete = "categories.delete";
+inline constexpr std::string_view kGoodsList = "goods.list";
+inline constexpr std::string_view kGoodsPrices = "goods.prices";
+inline constexpr std::string_view kGoodsImport = "goods.import";
+inline constexpr std::string_view kStocktakeImport = "stocktake.import";
+inline constexpr std::string_view kStocktakeUpdate = "stocktake.update";
+inline constexpr std::string_view kStocktakeCancel = "stocktake.cancel";
+inline constexpr std::string_view kIncomeList = "income.list";
+inline constexpr std::string_view kIncomeSave = "income.save";
+inline constexpr std::string_view kIncomeDelete = "income.delete";
+inline constexpr std::string_view kSalesRecordExternal = "sales.recordExternal";
+inline constexpr std::string_view kSalesRecordExternalRefund = "sales.recordExternalRefund";
 }  // namespace method
 
 namespace event {

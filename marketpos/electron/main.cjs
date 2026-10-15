@@ -135,6 +135,12 @@ const { cacheCatalogImages, rewriteSyncEvents } = require('./catalog-images.cjs'
 const { authorizeCorePayload } = require('./core-payload.cjs');
 const { buildXzReportEscPos } = require('./hardware/printer');
 const coreSupervisor = new CoreSupervisor();
+// Əməliyyatlar (1.5.0): the restaurant warehouse core, run beside the till's own.
+const { OpsEngine, ok: opsOk, fail: opsFail } = require('./ops-engine.cjs');
+const opsEngine = new OpsEngine({ market: coreSupervisor, searchDirs: [path.resolve(__dirname, '..', '..', 'restoranpos', 'native', 'build')] });
+function startOps(customerId) {
+  return opsEngine.start(customerId).catch((err) => console.error('[ops-core] failed to start:', err instanceof Error ? err.message : err));
+}
 let syncService = null;
 let printerProvider = null;
 
@@ -1097,6 +1103,8 @@ function registerIpc() {
     if (syncService) await syncService.stop().catch(() => undefined);
     await coreSupervisor.stop();
     await coreSupervisor.start(activation.customerId || '_default');
+    await opsEngine.stop();
+    void startOps(activation.customerId || '_default');
     syncService = createSyncService();
     await syncService.start().catch((error) => console.error('[market-sync]', error.message || error));
     return activation;
@@ -1249,6 +1257,38 @@ function registerIpc() {
     return { state: coreSupervisor.state };
   });
 
+  // Əməliyyatlar screens (an iframe of the restaurant renderer) call through here.
+  ipcMain.handle('market:ops:invoke', async (event, input) => {
+    assertTrusted(event);
+    let staff;
+    try { staff = requireSession(input?.sessionToken, ['manager', 'warehouse']); } catch (error) { return opsFail('E_FORBIDDEN', error instanceof Error ? error.message : String(error)); }
+    const method = String(input?.method || '');
+    if (method === '__session') {
+      try { return await opsEngine.session(staff); } catch (error) { return opsFail('E_CORE_DOWN', error instanceof Error ? error.message : String(error)); }
+    }
+    if (!opsEngine.allowed(method, staff.role)) return opsFail('E_FORBIDDEN', 'Buna icazəniz yoxdur');
+    return opsEngine.invoke(method, input?.payload ?? {}, {
+      terminal: { id: 'market-ops', name: staff.name },
+      idempotencyKey: typeof input?.idempotencyKey === 'string' ? input.idempotencyKey : undefined,
+      timeoutMs: Math.min(Math.max(Number(input?.timeoutMs) || 15000, 1000), 120000),
+    });
+  });
+  ipcMain.handle('market:ops:status', (event) => { assertTrusted(event); return opsEngine.status(); });
+  ipcMain.handle('market:ops:setHost', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager']);
+    opsEngine.saveSettings({ host: Boolean(input?.host) });
+    if (input?.host) await startOps(loadSecureState().activation?.customerId || '_default');
+    else await opsEngine.stop();
+    return opsEngine.status();
+  });
+  ipcMain.handle('market:ops:sync', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager', 'warehouse']);
+    await opsEngine.tick();
+    return opsOk(opsEngine.status());
+  });
+
   printerProvider = registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin });
 }
 
@@ -1341,6 +1381,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     console.error('[market-core] failed to start:', err instanceof Error ? err.message : err);
   }
+  void startOps(secure.activation?.customerId || '_default');
   syncService = createSyncService();
   await syncService.start().catch((error) => console.error('[market-sync]', error.message || error));
   coreSupervisor.on('status', (status) => {
@@ -1364,7 +1405,7 @@ app.on('before-quit', (event) => {
   if (coreSupervisor.state === 'stopped') return;
   if (!coreSupervisor.child) return;
   event.preventDefault();
-  void (syncService?.stop() ?? Promise.resolve()).finally(() => coreSupervisor.stop().finally(() => app.exit(0)));
+  void (syncService?.stop() ?? Promise.resolve()).finally(() => opsEngine.stop().catch(() => undefined).finally(() => coreSupervisor.stop().finally(() => app.exit(0))));
 });
 
 app.on('window-all-closed', () => app.quit());

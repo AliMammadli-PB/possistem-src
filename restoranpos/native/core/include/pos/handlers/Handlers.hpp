@@ -44,6 +44,8 @@ void registerCashAccounts(const ContextPtr& ctx);
 void registerSales(const ContextPtr& ctx);
 /** Alışlar (purchase orders, receiving, returns); registered by registerInventory. */
 void registerPurchases(const ContextPtr& ctx);
+/** Mallar, Kateqoriyalar, İnventarizasiya import, Qazanc; registered by registerInventory. */
+void registerErp(const ContextPtr& ctx);
 /** Replenishment, lots, locations and stock reports; registered by registerInventory. */
 void registerStockControl(const ContextPtr& ctx);
 /** Recomputes a purchase's stage, supplier charge and what is still due. */
