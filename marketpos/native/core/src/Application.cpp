@@ -407,7 +407,7 @@ void applyStockDelta(db::Database& db, const std::string& type, const std::strin
   // reflected and are not counted twice. Receiving and manual adjustments stay
   // blocked — pausing those is the point of a count.
   const bool exemptFromStocktakeLock =
-      type == "STOCKTAKE" || type == "SALE" || type == "SALE_RETURN";
+      type == "STOCKTAKE" || type == "SALE" || type == "SALE_RETURN" || type == "CONSOLIDATE";
   if (!exemptFromStocktakeLock &&
       db.queryInt("SELECT COUNT(*) FROM stocktakes WHERE warehouse_id = ? AND status IN ('draft','counting','review')", {warehouseId}, {}) > 0) {
     throw PosError("E_CONFLICT", "Warehouse is locked by an active stocktake");
@@ -870,6 +870,24 @@ void importLegacy(db::Database& db, const nlohmann::json& snapshot) {
   }
 }
 
+/** Mallar / another warehouse can hold the qty the till is about to sell. Move it onto the selling warehouse first. */
+void pullStockOnto(db::Database& db, const std::string& productId, const std::string& warehouseId,
+                   std::int64_t need, const std::string& actorId, const std::string& saleId) {
+  if (need <= 0) return;
+  const auto rows = db.query(
+      "SELECT warehouse_id, qty FROM stock_levels WHERE product_id = ? AND warehouse_id != ? AND qty > 0",
+      {productId, warehouseId}, {});
+  for (const auto& row : rows) {
+    if (need <= 0) break;
+    const auto from = row.at("warehouse_id").get<std::string>();
+    const auto qty = row.at("qty").get<std::int64_t>();
+    const auto move = std::min(need, qty);
+    applyStockDelta(db, "CONSOLIDATE", productId, from, -move, "sale", saleId, actorId, "sell from other warehouse", false);
+    applyStockDelta(db, "CONSOLIDATE", productId, warehouseId, move, "sale", saleId, actorId, "sell from other warehouse", false);
+    need -= move;
+  }
+}
+
 nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
   const std::string requestKey = payload.value("idempotencyKey", std::string());
   if (requestKey.size() > 128) throw PosError("E_VALIDATION", "submission key too long");
@@ -1000,6 +1018,8 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
   db.begin();
   try {
     for (const auto& line : lines) {
+      const auto here = getStock(db, line.productId, wh);
+      if (here < line.qty) pullStockOnto(db, line.productId, wh, line.qty - here, cashierId, saleId);
       applyStockDelta(db, "SALE", line.productId, wh, -line.qty, "sale", saleId, cashierId, "", false);
     }
 
