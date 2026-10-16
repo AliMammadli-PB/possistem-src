@@ -11,6 +11,9 @@
 window.__psMarketMode = true;
 const host = window.parent && window.parent !== window ? window.parent : null;
 const params = new URLSearchParams(location.search);
+window.__psMarketCatalog = params.get('panel') === 'catalog';
+if (window.__psMarketCatalog) document.documentElement.classList.add('ps-market-catalog');
+window.__psMarketSettingsPanel = ['printer', 'receipt'].includes(params.get('panel')) ? params.get('panel') : null;
 
 const listeners = new Map();
 const emit = (channel, payload) => {
@@ -29,6 +32,7 @@ async function call(method, payload, options) {
       method, payload: payload ?? {},
       idempotencyKey: options?.idempotencyKey, timeoutMs: options?.timeoutMs,
     });
+    if (res?.syncWarning) host.dispatchEvent(new CustomEvent('market:ops:warning'));
     return res && typeof res === 'object' ? res : fail('E_MARKET', 'Cavab gəlmədi');
   } catch (err) {
     return fail('E_MARKET', String(err?.message ?? err).replace(/^Error invoking remote method '[^']*': (?:Error: )?/, ''));
@@ -71,7 +75,27 @@ window.addEventListener('hashchange', guardRoute);
 document.documentElement.classList.add('ps-market-ops');
 document.addEventListener('DOMContentLoaded', () => {
   const style = document.createElement('style');
-  style.textContent = '.ps-market-ops .ps-shell > .flex > aside { display: none !important; }';
+  style.textContent = `
+    /* Avoid full-screen GPU blur on touch terminals when opening an editor. */
+    html.ps-market-ops .ps-admin-dialog::backdrop { backdrop-filter:none!important; }
+    .ps-market-ops .ps-shell > .flex > aside { display: none !important; }
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] { display:block; background:#fff; }
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] > .ps-admin-breadcrumb,
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] .settings-hero,
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] nav.category-bar,
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] .ps-settings-stack > div > div:first-child { display:none!important; }
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] .settings-shell { display:block!important; padding:0!important; max-width:none!important; }
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] .ps-settings-stack { padding:0; border:0; border-radius:0; box-shadow:none; }
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] .ps-admin-content { padding:0; }
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] input:not([type=checkbox]):not([type=radio]),
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] select { min-height:52px!important; font-size:16px!important; }
+    html.ps-market-ops .ps-admin-workspace[data-page="/settings"] button { min-height:48px; touch-action:manipulation; }
+    html.ps-market-catalog .ps-admin-breadcrumb,
+    html.ps-market-catalog .ps-operations-page > header { display:none!important; }
+    html.ps-market-catalog .ps-operations-page { padding:0!important; }
+    html.ps-market-catalog .ps-admin-workspace { display:block; }
+
+  `;
   document.head.appendChild(style);
 });
 

@@ -497,7 +497,9 @@ void registerSales(const ContextPtr& ctx) {
             item.bind(":id", crypto::uuid4()).bind(":order", orderId).bind(":product", productId).bind(":seq", ++seq)
                 .bind(":name", name).bind(":price", linePrice).bind(":qty", quantity).bind(":total", total).bind(":at", at);
             item.exec();
-            inventory.move(ingredientId, warehouseId, -qty, "sale", orderId, "Market satışı");
+            // This sale is already paid in Market. Archiving its goods before
+            // the asynchronous feed must not block the stock/finance ledger.
+            inventory.move(ingredientId, warehouseId, -qty, "sale", orderId, "Market satışı", {}, true);
             subtotal += total;
         }
         const Money totalMinor = std::max<Money>(0, subtotal - discount);
@@ -557,7 +559,7 @@ void registerSales(const ContextPtr& ctx) {
                 const auto ingredientId = getOr<std::string>(line, "ingredientId", "");
                 const auto qty = getOr<std::int64_t>(line, "qtyMilli", 0);
                 if (ingredientId.empty() || qty <= 0) continue;
-                inventory.move(ingredientId, warehouseId, qty, "sale", orderId, reason);
+                inventory.move(ingredientId, warehouseId, qty, "sale", orderId, reason, {}, true);
             }
         }
         const auto now = getOr<std::int64_t>(request.payload, "at", nowMs());

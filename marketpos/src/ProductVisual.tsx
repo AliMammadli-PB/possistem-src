@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 
 import type { Product } from './types';
 
@@ -20,7 +20,7 @@ type ProductVisualProps = {
   defer?: boolean;
 };
 
-export function ProductVisual({
+export const ProductVisual = memo(function ProductVisual({
   image,
   compact = false,
   alt = 'Məhsul',
@@ -86,4 +86,4 @@ export function ProductVisual({
       <em>{letter}</em>
     </span>
   );
-}
+});

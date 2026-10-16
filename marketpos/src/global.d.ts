@@ -11,9 +11,10 @@ declare global {
     /** Əməliyyatlar - the warehouse system (electron/ops-engine.cjs). */
     marketOps?: {
       invoke(input: { sessionToken: string; method: string; payload?: unknown; idempotencyKey?: string; timeoutMs?: number }): Promise<PosResult<unknown>>;
-      status(): Promise<{ host: boolean; state: string; available: boolean }>;
-      setHost(sessionToken: string, host: boolean): Promise<{ host: boolean; state: string; available: boolean }>;
+      status(): Promise<{ host: boolean; state: string; available: boolean; catalogPending?: boolean; catalogError?: string | null }>;
+      setHost(sessionToken: string, host: boolean): Promise<{ host: boolean; state: string; available: boolean; catalogPending?: boolean; catalogError?: string | null }>;
       sync(sessionToken: string): Promise<PosResult<unknown>>;
+      cashSummary(sessionToken: string): Promise<PosResult<{ accounts: Array<{ id: string; name: string; kind: string; terminalId: string; balanceMinor: number; todayCashMinor: number; todayCardMinor: number }>; registerNames: Record<string, string> }>>;
     };
     marketSystem?: {
       staff: { list(): Promise<StaffProfile[]>; save(sessionToken: string, profile: Partial<StaffProfile>, pin: string): Promise<StaffProfile> };

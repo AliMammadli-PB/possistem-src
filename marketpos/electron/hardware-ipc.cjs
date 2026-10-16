@@ -10,6 +10,7 @@
 const { buildStationTicketEscPos, buildXzReportEscPos } = require('./hardware/printer');
 const { openDrawerAuthorized } = require('./drawer-auth.cjs');
 const { mockHardwareAllowed, resolveTerminalMode } = require('./hardware-policy.cjs');
+const { createReceiptOnce } = require('./receipt-once.cjs');
 const { CorePrinterProvider } = require('./hardware/printer');
 const { MockFiscalProvider } = require('./hardware/fiscal');
 const { ManualTerminalProvider, MockTerminalProvider } = require('./hardware/terminal');
@@ -72,9 +73,11 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
       kind: String(report.reportType || 'X').toLowerCase() === 'z' ? 'z-report' : 'x-report',
     });
   });
+  const receiptOnce = createReceiptOnce();
   ipcMain.handle('market:printer:receipt', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken);
     const receipt = input?.receipt || {};
+    return receiptOnce(receipt, async () => {
     // 1.5.1: the restaurant's receipt design (logo, QR, header from Parametrlər
     // → Çek dizaynı). The plain text receipt stays as the fallback.
     let designed = null;
@@ -92,6 +95,7 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
     if (designed?.printed) return { ok: true };
     if (designed) return printerProvider.printRaw(designed.bytes, { kind: 'receipt' });
     return printerProvider.printReceipt(receipt, { widthMm: input?.widthMm || 80, cut: input?.cut !== false });
+    });
   });
   // Extra kitchen printers: one preparation ticket per station, to that
   // station's own printer (target), never to the till's receipt printer.

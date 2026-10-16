@@ -1,37 +1,36 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, BarChart3, Boxes, Building2, Check,
-  ChevronRight, CircleDollarSign, Cloud, CloudOff, CreditCard, Download,
-  Expand, FileClock, ImagePlus, KeyRound, LockKeyhole, LogOut, Minus,
-  Monitor, PackageSearch, Pause, Plus, ReceiptText, Scale,
-  RefreshCw, RotateCcw, ScanBarcode, Search, Settings, ShieldCheck, ShoppingBag,
+  Activity, BarChart3, Boxes, Check,
+  ChevronRight, CircleDollarSign, Cloud, CloudOff, 
+  Expand, FileClock, LockKeyhole, LogOut, Minus,
+  Monitor, PackageSearch, Pause, Plus, ReceiptText,
+  RotateCcw, Settings, ShieldCheck, ShoppingBag,
   ShoppingBasket, Smartphone, Store, Trash2, TriangleAlert, Users,
-  WalletCards, Wheat, X,
+  WalletCards, X,
 } from 'lucide-react';
 
 import { createInitialState, demoStaff, initialProducts } from './data';
-import { BarcodeKeypad } from './BarcodeKeypad';
-import { CatalogAisleNav } from './CatalogAisleNav';
 import { ChangePinScreen } from './ChangePinScreen';
-import { KitchenStationsCard, printStationTickets } from './KitchenStations';
-import { cashChange, canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
+import { printStationTickets } from './KitchenStations';
+import { canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
 import { auditActionLabel, auditDetailLabel, roleLabel, tr, unitLabel, viewLabel } from './i18n';
 import { marketCoreClient } from './core/client';
 import { ProductVisual } from './ProductVisual';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
-import { SaleProductGrid } from './SaleProductGrid';
+import { SaleCatalog } from './SaleCatalog';
+import { PaymentModal, checkoutErrorMessage } from './PaymentModal';
 import {
-  CustomersPage, FiscalBadge, HardwareSettingsCard, PlatformStubsPage,
+  CustomersPage, FiscalBadge, PlatformStubsPage,
   RegistersOpsPage, ReportsOpsPage,
 } from './RetailOpsPanels';
-import { OpsFrame, ReceiptDesignCard } from './OpsFrame';
-import { useBarcodeScanner } from './useBarcodeScanner';
-import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
+import { OpsFrame } from './OpsFrame';
+import { SettingsPage } from './SettingsPage';
+import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, Register, Role, Sale, SessionUser, StaffProfile, TenantStatus, View } from './types';
 
 import { marketBooks, stockLines } from './books';
 import { longDate, money, newId } from './format';
 import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
-import { RegisterModal, StaffModal, RoleAvatar, Kpi, Modal, Field } from './forms';
+import { RegisterModal, StaffModal, RoleAvatar, Kpi } from './forms';
 const STORE_KEY = 'possistem.market.pos.v2';
 const LEGACY_MIGRATED_KEY = 'possistem.market.pos.core-migrated';
 const CATALOG_SYNC_KEY = 'possistem.market.pos.catalog-sync';
@@ -107,36 +106,11 @@ function narrowByStation(access: string[] | null, station: string | undefined): 
   return (access ?? MARKET_AREAS).filter((key) => allowed.includes(key));
 }
 
-function refreshSeedCatalog(products: Product[]): Product[] {
-  const existingById = new Map(products.map((product) => [product.id, product]));
-  const seedIds = new Set(initialProducts.map((product) => product.id));
-  const refreshed = initialProducts.map((seed) => {
-    const existing = existingById.get(seed.id);
-    if (!existing) return seed;
-    return {
-      ...existing,
-      name: seed.name,
-      category: seed.category,
-      unit: seed.unit,
-      priceMinor: seed.priceMinor,
-      costMinor: seed.costMinor,
-      supplier: seed.supplier,
-      accent: seed.accent,
-      image: seed.image,
-      barcode: seed.barcode,
-      sku: seed.sku,
-    };
-  });
-  // Keep merchant-created products; drop obsolete demo seed ids that are no longer in catalog.
-  const custom = products.filter((product) => !seedIds.has(product.id) && !product.id.startsWith('p-fruit-') && !product.id.startsWith('p-egg-') && !product.id.startsWith('p-bread-') && !product.id.startsWith('p-tea-') && !product.id.startsWith('p-coffee-') && !product.id.startsWith('p-oil-') && !product.id.startsWith('p-drink-') && !product.id.startsWith('p-dairy-') && !product.id.startsWith('p-chips-') && !product.id.startsWith('p-sweet-') && !product.id.startsWith('p-pasta-') && !product.id.startsWith('p-clean-') && !product.id.startsWith('p-water-') && product.id !== 'p-butter');
-  return [...refreshed, ...custom];
-}
-
 function loadState(): PersistedState {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') as (Omit<PersistedState, 'schemaVersion'> & { schemaVersion: number }) | null;
     if (parsed?.schemaVersion === 5 && Array.isArray(parsed.products)) {
-      return { ...parsed, products: refreshSeedCatalog(parsed.products) } as PersistedState;
+      return { ...parsed, products: parsed.products } as PersistedState;
     }
     if (parsed && Array.isArray(parsed.products) && (parsed.schemaVersion === 4 || parsed.schemaVersion === 3 || parsed.schemaVersion === 2)) {
       const custom = parsed.products.filter((product) => product.id.startsWith('product-'));
@@ -147,8 +121,7 @@ function loadState(): PersistedState {
 }
 
 export default function App() {
-  const initial = useRef(loadState()).current;
-  const [state, setState] = useState<PersistedState>(initial);
+  const [state, setState] = useState<PersistedState>(loadState);
   const [coreReady, setCoreReady] = useState(false);
   const [coreError, setCoreError] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffProfile[]>(demoStaff);
@@ -156,6 +129,7 @@ export default function App() {
   const [lang, setLang] = useState<Lang>('az');
   const [view, setView] = useState<View>('dashboard');
   const [cart, setCart] = useState<CartLine[]>([]);
+  const navigationRequest = useRef(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [cloudConnected, setCloudConnected] = useState(false);
   const [inventoryOn, setInventoryOn] = useState(true);
@@ -169,6 +143,7 @@ export default function App() {
   });
   const [notice, setNoticeRaw] = useState<string | null>(null);
   const setNotice = useCallback((message: string | null) => setNoticeRaw(cleanNotice(message)), []);
+  useEffect(() => { const warning = () => setNotice(tr(lang, 'inventorySyncPending')); window.addEventListener('market:ops:warning', warning); return () => window.removeEventListener('market:ops:warning', warning); }, [lang, setNotice]);
   const deny = useCallback(() => setNoticeRaw(DENIED), []);
   const [registerModal, setRegisterModal] = useState(false);
   const [staffModal, setStaffModal] = useState(false);
@@ -273,15 +248,9 @@ export default function App() {
         if (status.state !== 'ready') throw new Error(`core state: ${status.state}`);
         const snapshot = await marketCoreClient.getState();
         if (cancelled) return;
-        const catalogSynced = localStorage.getItem(CATALOG_SYNC_KEY) === CATALOG_SYNC_TOKEN;
-        const customOnly = (snapshot.products ?? []).filter((product) => product.id.startsWith('product-'));
-        setState({
-          ...snapshot,
-          schemaVersion: 5,
-          products: catalogSynced
-            ? refreshSeedCatalog(snapshot.products ?? [])
-            : [...initialProducts, ...customOnly],
-        });
+        // Native storage is authoritative. Never add demo SKUs or replace the
+        // merchant's prices/stock when a populated register starts.
+        setState({ ...snapshot, schemaVersion: 5 });
         setCoreReady(true);
         setCoreError(null);
       } catch (err) {
@@ -293,47 +262,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // The one-time migrations, once somebody is signed in. They rewrite the
-    // catalogue, so they run as that person and are refused if their role may
-    // not - in which case they simply run for the next person who may, and the
-    // screen keeps showing the in-memory catalogue meanwhile.
+    // Import browser-era data only into an empty database, after staff login.
+    // Old catalogue flags must never reseed a populated shop or restore stock.
     if (!coreReady || !session) return;
-    const legacyDone = localStorage.getItem(LEGACY_MIGRATED_KEY) === '1';
-    const catalogDone = localStorage.getItem(CATALOG_SYNC_KEY) === CATALOG_SYNC_TOKEN;
-    if (legacyDone && catalogDone) return;
-
+    if (localStorage.getItem(LEGACY_MIGRATED_KEY) === '1' &&
+        localStorage.getItem(CATALOG_SYNC_KEY) === CATALOG_SYNC_TOKEN) return;
     let cancelled = false;
     const migrate = async () => {
       try {
         let snapshot = await marketCoreClient.getState();
-        if (!legacyDone) {
-          if (!snapshot.products || snapshot.products.length === 0) {
-            snapshot = await marketCoreClient.importLegacy(loadState());
-          }
-          localStorage.setItem(LEGACY_MIGRATED_KEY, '1');
-        }
-        if (!catalogDone) {
-          const customOnly = (snapshot.products ?? []).filter((product) => product.id.startsWith('product-'));
-          snapshot = await marketCoreClient.importLegacy({
-            ...snapshot,
-            schemaVersion: 5,
-            products: [...initialProducts, ...customOnly],
-            settings: snapshot.settings ?? createInitialState().settings,
-          });
-          // Deactivate obsolete demo SKUs so they leave the sale grid.
-          for (const old of snapshot.products ?? []) {
-            if (old.id.startsWith('product-') || old.id.startsWith('p-wolt-')) continue;
-            await marketCoreClient.products.save({ ...old, active: false }, session.id);
-          }
-          snapshot = await marketCoreClient.getState();
-          localStorage.setItem(CATALOG_SYNC_KEY, CATALOG_SYNC_TOKEN);
+        if (!snapshot.products?.length && localStorage.getItem(LEGACY_MIGRATED_KEY) !== '1') {
+          snapshot = await marketCoreClient.importLegacy(loadState());
         }
         if (!cancelled) {
-          setState({ ...snapshot, schemaVersion: 5, products: refreshSeedCatalog(snapshot.products ?? []) });
+          setState({ ...snapshot, schemaVersion: 5 });
+          localStorage.setItem(LEGACY_MIGRATED_KEY, '1');
+          localStorage.setItem(CATALOG_SYNC_KEY, CATALOG_SYNC_TOKEN);
         }
       } catch {
-        // Not permitted, or offline mid-migration: the flags stay unset and the
-        // next sign-in tries again. The UI keeps the in-memory catalogue.
+        // Keep the last native snapshot. A failed import never creates a fake
+        // catalogue in memory; the next authorized login can retry.
       }
     };
     void migrate();
@@ -594,7 +542,29 @@ export default function App() {
   const viewAllowed = (id: View) => (inventoryOn || !STOCK_VIEWS.has(id)) && (marketAccess == null || marketAccess.includes(id)
     || (id === 'ops' && ['inventory', 'warehouses', 'purchases', 'stocktake'].some((area) => marketAccess.includes(area))));
   const allowedViews = ROLE_VIEWS[session.role].filter((id) => viewAllowed(id));
-  const safeSetView = (next: View) => { if (canAccess(session.role, next) && viewAllowed(next)) setView(next); else deny(); };
+  const safeSetView = (next: View) => {
+    const request = ++navigationRequest.current;
+    if (!canAccess(session.role, next) || !viewAllowed(next)) { deny(); return; }
+    // The selling screen opens at once. Coming from Əməliyyatlar the warehouse's
+    // latest quantities are pulled in behind it (the core announces the change
+    // and the screen refreshes) - waiting for that here is what made Satış open
+    // late, or not at all when the sync failed.
+    setView(next);
+    if (next !== 'sale' || view === 'sale' || !coreReady) return;
+    void (async () => {
+      try {
+        if ((view === 'ops' || view === 'settings') && window.marketOps) {
+          const status = await window.marketOps.status();
+          if (status.host && (status.catalogPending || status.catalogError)) {
+            const res = await window.marketOps.sync(session.sessionToken);
+            if (!res.success) throw new Error('sync');
+          }
+        }
+        const fresh = await marketCoreClient.getState();
+        if (request === navigationRequest.current) setState(fresh);
+      } catch { if (request === navigationRequest.current) setNotice(tr(lang, 'inventorySyncFailed')); }
+    })();
+  };
   const allNav: Array<{ id: View; icon: typeof Store }> = [
     { id: 'dashboard', icon: Activity }, { id: 'sale', icon: ShoppingBasket }, { id: 'ops', icon: Boxes },
     { id: 'returns', icon: RotateCcw }, { id: 'reports', icon: BarChart3 }, { id: 'registers', icon: Store },
@@ -611,7 +581,7 @@ export default function App() {
           await marketCoreClient.returns.create(sale.id, session.id);
           await refreshFromCore();
         } else {
-          mutate((previous) => ({ ...previous, sales: previous.sales.map((row) => row.id === sale.id ? { ...row, refunded: true } : row), products: previous.products.map((product) => { const qty = sale.items.find((line) => line.productId === product.id)?.qty ?? 0; return qty ? { ...product, warehouseStock: { ...product.warehouseStock, [previous.settings.defaultWarehouseId]: (product.warehouseStock[previous.settings.defaultWarehouseId] ?? 0) + qty } } : product; }) }), 'SALE_REFUND', sale.receiptNo);
+          mutate((previous) => ({ ...previous, sales: previous.sales.map((row) => row.id === sale.id ? { ...row, refunded: true } : row), products: previous.products.map((product) => { const qty = sale.items.find((line) => line.productId === product.id)?.qty ?? 0; return qty ? { ...product, stock: stockOf(product) + qty, warehouseStock: { ...product.warehouseStock, [previous.settings.defaultWarehouseId]: (product.warehouseStock[previous.settings.defaultWarehouseId] ?? 0) + qty } } : product; }) }), 'SALE_REFUND', sale.receiptNo);
         }
       } catch (err) {
         setNotice(err instanceof Error ? err.message : String(err));
@@ -672,15 +642,11 @@ export default function App() {
           {view === 'platform' && <PlatformStubsPage coreReady={coreReady} notify={setNotice} />}
           {view === 'staff' && <><StaffPage staff={staff} lang={lang} onAdd={() => setStaffModal(true)} /><RolePermissionsPanel actorRole={session.role} /></>}
           {view === 'mobile' && <MobilePage state={state} staff={staff} lang={lang} cloudConnected={cloudConnected} />}
-          {view === 'settings' && <SettingsPage state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={(settings) => {
-            void (async () => {
-              try {
+          {view === 'settings' && <SettingsPage state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={async (settings) => {
                 if (coreReady && marketCoreClient.available()) {
                   await marketCoreClient.settings.set(settings, session.id);
                   await refreshFromCore();
                 } else mutate((previous) => ({ ...previous, settings }), 'SETTINGS_SAVE', settings.storeName);
-              } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
-            })();
           }} />}
           </LockedArea>
         </main>
@@ -1092,41 +1058,24 @@ function Dashboard({ state, staff, session, lang, onView }: { state: PersistedSt
   return <div className="module-page dashboard"><section className="welcome-card"><div><p>{longDate(new Date(), lang)}</p><h2>Salam, {session.name.split(' ')[0]}</h2><span>{roleMessage[session.role]}</span></div><div className="live-badge"><Activity /><span>CANLI<small>{state.settings.storeName}</small></span></div></section><section className="kpi-grid"><Kpi icon={CircleDollarSign} label={tr(lang, 'todaySales')} value={money(revenue, lang)} note={`${activeSales.length} ${tr(lang, 'transactions').toLowerCase()}`} tone="green" /><Kpi icon={Store} label={tr(lang, 'openRegisters')} value={`${open.length} / ${state.registers.length}`} note={open.map((row) => row.name).join(' · ')} tone="blue" /><Kpi icon={TriangleAlert} label={tr(lang, 'criticalProducts')} value={String(critical.length)} note={critical.slice(0, 2).map((row) => row.name[lang]).join(' · ')} tone="amber" /><Kpi icon={Boxes} label={tr(lang, 'totalStock')} value={String(totalStock)} note={`${state.warehouses.length} ${tr(lang, 'warehouses').toLowerCase()}`} tone="violet" /></section><section className="dashboard-grid"><article className="panel-card quick-card"><div className="panel-title"><div><p>{tr(lang, 'quickOpsKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'quickActions')}</h3></div></div><div className="quick-grid">{canAccess(session.role, 'sale') && <button onClick={() => onView('sale')}><span><ShoppingBasket /></span><b>{tr(lang, 'newSale')}</b><small>{tr(lang, 'scanReady')}</small><ChevronRight /></button>}{canAccess(session.role, 'ops') && <button onClick={() => onView('ops')}><span><PackageSearch /></span><b>{tr(lang, 'ops')}</b><small>Mallar · Anbar · Alışlar</small><ChevronRight /></button>}{canAccess(session.role, 'registers') && <button onClick={() => onView('registers')}><span><Store /></span><b>{tr(lang, 'registers')}</b><small>{open.length} {tr(lang, 'active').toLowerCase()}</small><ChevronRight /></button>}</div></article><article className="panel-card"><div className="panel-title"><div><p>{tr(lang, 'auditKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'audit')}</h3></div><FileClock /></div><div className="activity-list">{state.audits.slice(0, 5).map((entry) => <div key={entry.id}><span><Activity /></span><p><b>{auditActionLabel(entry.action, lang)}</b><small>{auditDetailLabel(entry.detail, lang)} · {staff.find((row) => row.id === entry.actorId)?.name ?? tr(lang, 'systemActor')}</small></p><time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div></article></section></div>;
 }
 
-function SalePage({ state, setState, session, lang, cart, setCart, cloudConnected, notify, coreReady, onRefresh, audit }: { state: PersistedState; setState: React.Dispatch<React.SetStateAction<PersistedState>>; session: SessionUser; lang: Lang; cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; cloudConnected: boolean; notify: (text: string) => void; coreReady: boolean; onRefresh: () => Promise<PersistedState>; audit: (fn: (state: PersistedState) => PersistedState, action?: string, detail?: string) => void }) {
-  const [query, setQuery] = useState('');
-  const [keypadOpen, setKeypadOpen] = useState(false);
-  const [category, setCategory] = useState('all');
-  const [quick, setQuick] = useState<'bread' | 'weighted' | null>(null);
+export function SalePage({ state, setState, session, lang, cart, setCart, cloudConnected, notify, coreReady, onRefresh, audit }: { state: PersistedState; setState: React.Dispatch<React.SetStateAction<PersistedState>>; session: SessionUser; lang: Lang; cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; cloudConnected: boolean; notify: (text: string) => void; coreReady: boolean; onRefresh: () => Promise<PersistedState>; audit: (fn: (state: PersistedState) => PersistedState, action?: string, detail?: string) => void }) {
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [pendingScans, setPendingScans] = useState(0);
+  const pendingScanCount = useRef(0);
+  const scanEpoch = useRef(0);
+  useEffect(() => () => { scanEpoch.current += 1; }, []);
+  const paymentLock = useRef(false);
+  const submissionKey = useRef<string | null>(null);
+  const committedSale = useRef<Sale | null>(null);
+
   const [discount, setDiscount] = useState('0');
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const products = useMemo(() => state.products.filter((product) => product.active), [state.products]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
-  const categories = useMemo(() => [...new Set(products.map((product) => product.category))], [products]);
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const product of products) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
-    return counts;
-  }, [products]);
   const warehouseId = state.settings.defaultWarehouseId;
   const register = state.registers.find((row) => row.id === state.settings.defaultRegisterId);
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
-    return products.filter((product) => {
-      const matchesQuick = quick === 'bread'
-        ? product.category === 'Çörək'
-        : quick === 'weighted'
-          ? product.unit === 'kq'
-          : category === 'all' || product.category === category;
-      if (!matchesQuick) return false;
-      if (!needle) return true;
-      return product.barcode.includes(needle)
-        || product.sku.toLocaleLowerCase().includes(needle)
-        || Object.values(product.name).some((name) => name.toLocaleLowerCase().includes(needle));
-    });
-  }, [products, query, category, quick]);
-
   const detail = cart.flatMap((line) => {
     const product = productMap.get(line.productId);
     return product ? [{ ...line, product }] : [];
@@ -1137,7 +1086,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
   const total = subtotal - discountMinor;
 
   const add = useCallback((product: Product) => {
-    const available = product.warehouseStock[warehouseId] ?? 0;
+    const available = stockOf(product);
     setCart((rows) => {
       const inCart = rows.find((line) => line.productId === product.id && !line.qtyMilli)?.qty ?? 0;
       if (available <= inCart) {
@@ -1148,45 +1097,78 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
         ? rows.map((row) => row.productId === product.id && !row.qtyMilli ? { ...row, qty: row.qty + 1 } : row)
         : [...rows, { productId: product.id, qty: 1 }];
     });
-    startTransition(() => setQuery(''));
   }, [warehouseId, setCart, notify, lang]);
 
-  const scan = (value: string) => {
+  const barcodeIndex = useMemo(() => {
+    const index = new Map<string, Product>();
+    for (const product of products) {
+      for (const key of [product.barcode, product.sku]) if (key && !index.has(key)) index.set(key, product);
+    }
+    return index;
+  }, [products]);
+  const scanEnabled = useRef(true);
+  scanEnabled.current = !paymentOpen && !paying;
+  const scan = useCallback((value: string, inputValue?: string) => {
+    const burst = value.trim();
+    const full = inputValue?.trim() || burst;
+    // A manual entry can pause mid-code; a scanner can arrive after a name search.
+    // Prefer a complete exact code, then the fresh burst, without confusing the two.
+    const code = /^\d{8,14}$/.test(full) ? full : burst;
+    if (!code || !scanEnabled.current || paymentLock.current) return;
+    const known = barcodeIndex.get(full) || barcodeIndex.get(burst);
+    if (known) { add(known); notify(`${known.name[lang]} · ${tr(lang, 'completed')}`); return; }
+    const epoch = scanEpoch.current;
+    pendingScanCount.current += 1; setPendingScans(pendingScanCount.current);
     void (async () => {
       try {
+      try {
         if (coreReady && marketCoreClient.available()) {
-          const resolved = await marketCoreClient.barcode.resolve(value);
-          const productId = String(resolved.productId || resolved.id || '');
-          if (productId) {
-            const product = products.find((p) => p.id === productId);
-            // A scale label carries the weight: its own line, priced by weight.
-            const qtyMilli = Number(resolved.qtyMilli) || 0;
-            if (product && resolved.scale && qtyMilli > 0) {
-              setCart((rows) => [...rows, { productId: product.id, qty: 1, qtyMilli }]);
-              notify(`${product.name[lang]} · ${(qtyMilli / 1000).toFixed(3)} ${unitLabel(product.unit, lang)}`);
-              return;
-            }
-            if (product) {
-              add(product);
-              notify(`${product.name[lang]} · ${tr(lang, 'completed')}`);
-              return;
-            }
+          let resolved: Record<string, unknown> | undefined;
+          const candidates = [...new Set([code, ...(full !== code && /^[0-9A-Za-z.-]+$/.test(full) ? [full] : [])])];
+          for (const candidate of candidates) {
+            try { resolved = await marketCoreClient.barcode.resolve(candidate); break; }
+            catch (error) { if (candidate === candidates[candidates.length - 1]) throw error; }
           }
+          if (!resolved) return;
+          // An outstanding lookup must not change a basket after payment opened.
+          if (epoch !== scanEpoch.current || !scanEnabled.current || paymentLock.current) return;
+          const productId = String(resolved.productId || resolved.id || '');
+          const product = productMap.get(productId);
+          const qtyMilli = Number(resolved.qtyMilli) || 0;
+          if (product && resolved.scale && qtyMilli > 0) {
+            setCart((rows) => [...rows, { productId: product.id, qty: 1, qtyMilli }]);
+            notify(`${product.name[lang]} · ${(qtyMilli / 1000).toFixed(3)} ${unitLabel(product.unit, lang)}`);
+            return;
+          }
+          if (product) { add(product); notify(`${product.name[lang]} · ${tr(lang, 'completed')}`); return; }
         }
-      } catch { /* fall through to local */ }
-      const product = findBarcode(products, value);
-      if (product) {
-        add(product);
-        notify(`${product.name[lang]} · ${tr(lang, 'completed')}`);
-      } else notify(tr(lang, 'noResults'));
+      } catch { /* Exact local fallback remains available offline. */ }
+      if (epoch !== scanEpoch.current || !scanEnabled.current || paymentLock.current) return;
+      const product = findBarcode(products, code);
+      if (product) { add(product); notify(`${product.name[lang]} · ${tr(lang, 'completed')}`); }
+      else notify(tr(lang, 'noResults'));
+      } finally {
+        if (epoch === scanEpoch.current) {
+          pendingScanCount.current = Math.max(0, pendingScanCount.current - 1);
+          setPendingScans(pendingScanCount.current);
+        }
+      }
     })();
-  };
+  }, [barcodeIndex, products, productMap, coreReady, setCart, add, notify, lang]);
+  const clearCart = useCallback(() => {
+    scanEpoch.current += 1; pendingScanCount.current = 0; setPendingScans(0); setCart([]);
+  }, [setCart]);
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  const newSale = useCallback(() => {
+    if (paymentLock.current) return false;
+    if (cartRef.current.length && !confirm('Cari səbət təmizlənsin?')) return false;
+    clearCart(); setDiscount('0'); return true;
+  }, [clearCart]);
 
-  useBarcodeScanner({ enabled: true, onScan: scan });
-
-  const adjust = (productId: string, delta: number) => setCart((rows) => rows.map((row) => row.productId === productId && !row.qtyMilli ? { ...row, qty: Math.max(0, Math.min(productMap.get(productId)?.warehouseStock[warehouseId] ?? row.qty, row.qty + delta)) } : row).filter((row) => row.qty > 0));
+  const adjust = (productId: string, delta: number) => setCart((rows) => rows.map((row) => row.productId === productId && !row.qtyMilli ? { ...row, qty: Math.max(0, Math.min(productMap.has(productId) ? stockOf(productMap.get(productId)!) : row.qty, row.qty + delta)) } : row).filter((row) => row.qty > 0));
   const hold = () => {
-    if (!cart.length) return;
+    if (!cart.length || pendingScanCount.current) return;
     void (async () => {
       try {
         if (coreReady && marketCoreClient.available()) {
@@ -1210,9 +1192,13 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
     })();
   };
   const complete = (payment: Payment) => {
+    if (paymentLock.current || committedSale.current || !cart.length) return;
+    paymentLock.current = true; setPaying(true); setPaymentError(null);
+    submissionKey.current ??= newId('payment');
     void (async () => {
       try {
         if (coreReady && marketCoreClient.available()) {
+          if (committedSale.current) return;
           let terminalRef = payment.terminalRef;
           if ((payment.method === 'card' || payment.method === 'mixed') && window.marketSystem?.terminal) {
             const mode = (localStorage.getItem('marketpos.terminalMode') as 'manual' | 'mock_integrated') || 'manual';
@@ -1232,6 +1218,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
             });
           }
           const sale = await marketCoreClient.sales.complete({
+            idempotencyKey: submissionKey.current,
             cashierId: session.id,
             registerId: register?.id ?? state.settings.defaultRegisterId,
             warehouseId,
@@ -1240,6 +1227,10 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
             payment: { ...payment, terminalRef },
             role: session.role,
           });
+          committedSale.current = sale;
+          // Close and clear before optional integrations/refresh. A refresh
+          // failure must never leave a paid cart available for another charge.
+          setCart([]); setDiscount('0'); setPaymentOpen(false);
           try {
             await marketCoreClient.fiscal.enqueue({
               saleId: sale.id,
@@ -1249,24 +1240,32 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
             });
             await window.marketSystem?.fiscal?.processPending(session.sessionToken);
           } catch { /* fiscal mock optional */ }
+          const warnings: string[] = [];
           try {
             const receipt = await marketCoreClient.sales.receipt(sale.id);
-            await window.marketSystem?.printer?.receipt(session.sessionToken, receipt, 80);
-          } catch { /* printer optional */ }
+            const printed = await window.marketSystem?.printer?.receipt(session.sessionToken, receipt, 80);
+            if (!printed || printed.ok === false) throw new Error('Receipt was not accepted');
+          } catch { warnings.push(tr(lang, 'salePrintFailed')); }
           // Extra kitchen printers get their own preparation ticket.
           const missedStations = await printStationTickets(state.settings, state.products, cart, sale.receiptNo, session.sessionToken);
-          if (missedStations.length) notify(`Printer cavab vermədi: ${missedStations.join(', ')}`);
-          await onRefresh();
-          setCart([]); setDiscount('0'); setPaymentOpen(false);
-          notify(`${tr(lang, 'completed')} · ${sale.receiptNo}`);
+          if (missedStations.length) warnings.push(`${tr(lang, 'checkoutStationFailed')}: ${missedStations.join(', ')}`);
+          try { await onRefresh(); } catch { warnings.push(tr(lang, 'saleRefreshFailed')); }
+          // A generic success message must never replace the print failure.
+          notify([`${tr(lang, 'completed')} · ${sale.receiptNo}`, ...warnings].join(' · '));
           return;
         }
         const createdAt = Date.now();
         const sale: Sale = { id: newId('sale'), receiptNo: `M-${new Date(createdAt).toISOString().slice(2, 10).replace(/-/g, '')}-${String(state.sales.length + 1).padStart(4, '0')}`, createdAt, items: cart, subtotalMinor: subtotal, discountMinor, totalMinor: total, payment, refunded: false, cashierId: session.id, registerId: register?.id ?? 'unknown' };
-        audit((previous) => ({ ...previous, sales: [sale, ...previous.sales], products: previous.products.map((product) => { const qty = cart.find((line) => line.productId === product.id)?.qty ?? 0; return qty && product.kind !== 'service' ? { ...product, warehouseStock: { ...product.warehouseStock, [warehouseId]: Math.max(0, (product.warehouseStock[warehouseId] ?? 0) - qty) } } : product; }) }), 'SALE_COMPLETE', `${sale.receiptNo} · ${money(total, lang)}`);
+        committedSale.current = sale;
+        audit((previous) => ({ ...previous, sales: [sale, ...previous.sales], products: previous.products.map((product) => { const qty = cart.find((line) => line.productId === product.id)?.qty ?? 0; return qty && product.kind !== 'service' ? { ...product, stock: Math.max(0, stockOf(product) - qty), warehouseStock: { ...product.warehouseStock, [warehouseId]: Math.max(0, (product.warehouseStock[warehouseId] ?? 0) - qty) } } : product; }) }), 'SALE_COMPLETE', `${sale.receiptNo} · ${money(total, lang)}`);
         setCart([]); setDiscount('0'); setPaymentOpen(false); notify(`${tr(lang, 'completed')} · ${sale.receiptNo}`);
       } catch (err) {
-        notify(err instanceof Error ? err.message : String(err));
+        setPaymentError(checkoutErrorMessage(err, products, lang));
+        // A refusal is not a sale. Keep the basket and refresh authoritative
+        // availability so the cashier can correct it without a duplicate print.
+        try { await onRefresh(); } catch { /* Keep the explicit payment error. */ }
+      } finally {
+        paymentLock.current = false; setPaying(false);
       }
     })();
   };
@@ -1306,42 +1305,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
 
   return (
     <div className="sale-layout">
-      <aside className="catalog-aisles">
-        <h2>{tr(lang, 'catalogAisles')}</h2>
-        <CatalogAisleNav
-          lang={lang}
-          categories={categories}
-          counts={categoryCounts}
-          total={products.length}
-          value={quick ? '' : category}
-          onChange={(next) => { setCategory(next); setQuick(null); }}
-          layout="rail"
-        />
-      </aside>
-      <section className="catalog-pane">
-        <div className="sale-toolbar">
-          <label className="search-box">
-            <Search />
-            <input ref={inputRef} data-scanner="allow" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') scan(query); }} placeholder={tr(lang, 'search')} />
-          </label>
-          <button className="scan-button" aria-expanded={keypadOpen} aria-haspopup="dialog" onClick={() => setKeypadOpen((open) => !open)}><ScanBarcode /><span>{tr(lang, 'barcode')}</span><small>{tr(lang, 'scanReady')}</small></button>
-          {keypadOpen && <BarcodeKeypad lang={lang} initial={/^\d+$/.test(query.trim()) ? query.trim() : ''} onSubmit={(code) => { scan(code); setQuery(''); }} onClose={() => { setKeypadOpen(false); inputRef.current?.focus(); }} />}
-          <button className="new-sale-button" onClick={() => { if (!cart.length || confirm('Cari səbət təmizlənsin?')) { setCart([]); setDiscount('0'); inputRef.current?.focus(); } }}><Plus />{tr(lang, 'newSale')}</button>
-        </div>
-        <div className="sale-live-row">
-          <div className="scan-status">
-            <span className="pulse-dot" />
-            <b>{tr(lang, 'scanReady')}</b>
-            <small>EAN-13 · CODE128 · USB HID</small>
-            <em className={cloudConnected ? 'ok' : ''}>{cloudConnected ? tr(lang, 'online') : tr(lang, 'offline')}</em>
-          </div>
-          <div className="cashier-quick">
-            <button className={quick === 'bread' ? 'active' : ''} aria-pressed={quick === 'bread'} onClick={() => setQuick(quick === 'bread' ? null : 'bread')}><Wheat /><span>Çörək</span></button>
-            <button className={quick === 'weighted' ? 'active' : ''} aria-pressed={quick === 'weighted'} onClick={() => setQuick(quick === 'weighted' ? null : 'weighted')}><Scale /><span>Kilo məhsul</span></button>
-          </div>
-        </div>
-        <SaleProductGrid products={filtered} lang={lang} warehouseId={warehouseId} money={money} onAdd={add} />
-      </section>
+      <SaleCatalog products={products} lang={lang} warehouseId={warehouseId} cloudConnected={cloudConnected} scannerEnabled={!paymentOpen && !paying} onAdd={add} onScan={scan} onNewSale={newSale}/>
       <aside className="cart-pane">
         <div className="cart-head">
           <div>
@@ -1349,7 +1313,7 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
             <strong>#{String(state.sales.length + 1).padStart(4, '0')}</strong>
             <small>{register?.name ?? 'Kassa seçilməyib'}</small>
           </div>
-          <button disabled={!cart.length} onClick={() => setCart([])} aria-label="Səbəti təmizlə"><Trash2 /></button>
+          <button disabled={paying || !cart.length} onClick={clearCart} aria-label="Səbəti təmizlə"><Trash2 /></button>
         </div>
         {register?.status !== 'open' && (
           <div className="register-warning">
@@ -1414,30 +1378,17 @@ function SalePage({ state, setState, session, lang, cart, setCart, cloudConnecte
           <div className="grand"><span>{tr(lang, 'total')}</span><strong>{money(total, lang)}</strong></div>
         </div>
         <div className="checkout-actions">
-          <button className="hold" disabled={!cart.length} onClick={hold}><Pause />{tr(lang, 'hold')}</button>
-          <button className="pay" disabled={!cart.length || register?.status !== 'open'} onClick={() => setPaymentOpen(true)}>
-            <WalletCards /><span>{tr(lang, 'pay')}<small>Nağd · Kart · Qarışıq</small></span><b>{money(total, lang)}</b>
+          <button className="hold" disabled={paying || pendingScans > 0 || !cart.length} onClick={hold}><Pause />{tr(lang, 'hold')}</button>
+          <button className="pay" disabled={paying || pendingScans > 0 || !cart.length || register?.status !== 'open'} onClick={() => { if (paying || pendingScanCount.current) return; submissionKey.current = null; committedSale.current = null; setPaymentError(null); setPaymentOpen(true); }}>
+            <WalletCards /><span>{tr(lang, pendingScans > 0 ? 'barcodeResolving' : 'pay')}<small>Nağd · Kart · Qarışıq</small></span><b>{money(total, lang)}</b>
           </button>
         </div>
       </aside>
-      {paymentOpen && <PaymentModal lang={lang} storeName={state.settings.storeName} totalMinor={total} onClose={() => setPaymentOpen(false)} onComplete={complete} />}
+      {paymentOpen && <PaymentModal busy={paying} error={paymentError} lang={lang} storeName={state.settings.storeName} totalMinor={total} subtotalMinor={subtotal} discountMinor={discountMinor} items={detail.map((line) => ({ name: line.product.name[lang] || line.product.name.az, quantity: `${line.qtyMilli ? line.qtyMilli / 1000 : line.qty} ${unitLabel(line.product.unit, lang)}`, totalMinor: lineMinor(line) }))} onClose={() => { if (!paymentLock.current) setPaymentOpen(false); }} onComplete={complete} />}
     </div>
   );
 }
 
-
-function PaymentModal({ lang, storeName, totalMinor, onClose, onComplete }: { lang: Lang; storeName: string; totalMinor: number; onClose: () => void; onComplete: (payment: Payment) => void }) {
-  const [method, setMethod] = useState<'cash' | 'card' | 'mixed'>('cash');
-  const [tendered, setTendered] = useState((totalMinor / 100).toFixed(2));
-  const [cashPart, setCashPart] = useState((totalMinor / 200).toFixed(2));
-  const [terminalRef, setTerminalRef] = useState('');
-  const tenderedMinor = method === 'card' ? totalMinor : parseMoneyInput(tendered);
-  const change = cashChange(totalMinor, tenderedMinor);
-  const cashMinor = parseMoneyInput(cashPart);
-  const cardMinor = Math.max(0, totalMinor - cashMinor);
-  const valid = method === 'card' || method === 'mixed' ? method === 'card' || (cashMinor > 0 && cardMinor >= 0) : tenderedMinor >= totalMinor;
-  return <Modal title={tr(lang, 'pay')} subtitle={`${tr(lang, 'total')} · ${money(totalMinor, lang)}`} onClose={onClose} wide><div className="payment-layout"><section><div className="payment-methods"><button className={method === 'cash' ? 'active' : ''} onClick={() => setMethod('cash')}><CircleDollarSign /><b>{tr(lang, 'cash')}</b><small>AZN</small></button><button className={method === 'card' ? 'active' : ''} onClick={() => setMethod('card')}><CreditCard /><b>{tr(lang, 'card')}</b><small>POS terminal</small></button><button className={method === 'mixed' ? 'active' : ''} onClick={() => setMethod('mixed')}><WalletCards /><b>{tr(lang, 'mixed')}</b><small>Nağd + kart</small></button></div>{method === 'cash' && <><label className="money-field">{tr(lang, 'tendered')}<span><input autoFocus value={tendered} onChange={(event) => setTendered(event.target.value)} inputMode="decimal" /> AZN</span></label><div className="quick-cash">{[totalMinor, Math.ceil(totalMinor / 500) * 500, Math.ceil(totalMinor / 1000) * 1000, 5000, 10000].filter((value, index, rows) => rows.indexOf(value) === index).map((value) => <button key={value} onClick={() => setTendered((value / 100).toFixed(2))}>{money(value, lang)}</button>)}</div></>}{method === 'mixed' && <div className="split-fields"><label>{tr(lang, 'cash')}<input value={cashPart} onChange={(event) => setCashPart(event.target.value)} inputMode="decimal" /></label><label>{tr(lang, 'card')}<input value={(cardMinor / 100).toFixed(2)} disabled /></label></div>}{(method === 'card' || method === 'mixed') && <label className="money-field">Terminal ref (manual)<span><input value={terminalRef} onChange={(e) => setTerminalRef(e.target.value)} placeholder="RRN / auth" /></span></label>}<div className="payment-summary"><div><span>{tr(lang, 'total')}</span><b>{money(totalMinor, lang)}</b></div><div><span>{tr(lang, 'tendered')}</span><b>{money(method === 'mixed' ? cashMinor + cardMinor : tenderedMinor, lang)}</b></div><div className="change"><span>{tr(lang, 'change')}</span><strong>{money(method === 'cash' ? change : 0, lang)}</strong></div></div></section><aside className="receipt-preview"><div className="receipt-paper"><p>{(storeName || 'MarketPos').toLocaleUpperCase('az')}</p><small>{new Date().toLocaleString('az-AZ')}</small><hr /><span>YEKUN <b>{money(totalMinor, lang)}</b></span><span>{tr(lang, method).toLocaleUpperCase('az')} <b>{money(method === 'cash' ? tenderedMinor : totalMinor, lang)}</b></span><span>QALIQ <b>{money(method === 'cash' ? change : 0, lang)}</b></span><hr /><small>Alış-verişiniz üçün təşəkkür edirik</small></div></aside></div><button className="modal-primary payment-complete" disabled={!valid} onClick={() => onComplete({ method, amountMinor: totalMinor, tenderedMinor: method === 'cash' ? tenderedMinor : totalMinor, changeMinor: method === 'cash' ? change : 0, cashMinor: method === 'mixed' ? cashMinor : undefined, cardMinor: method === 'mixed' ? cardMinor : method === 'card' ? totalMinor : undefined, terminalRef: terminalRef || undefined })}><Check />{tr(lang, 'completePayment')}<strong>{method === 'cash' ? `${tr(lang, 'change')}: ${money(change, lang)}` : money(totalMinor, lang)}</strong></button></Modal>;
-}
 
 function ReturnsPage({ state, lang, onRefund }: { state: PersistedState; lang: Lang; onRefund: (sale: Sale) => void }) {
   const [query, setQuery] = useState(''); const products = new Map(state.products.map((product) => [product.id, product]));
@@ -1454,168 +1405,3 @@ function MobilePage({ state, staff, lang, cloudConnected }: { state: PersistedSt
   const sales = state.sales.filter((sale) => !sale.refunded); const revenue = sales.reduce((sum, sale) => sum + sale.totalMinor, 0); const low = state.products.filter((product) => stockOf(product) <= product.minStock);
   return <div className="module-page mobile-module"><section className="page-intro"><div><p>POSSISTEM.AZ / MARKETPOS</p><h2>{tr(lang, 'ownerLive')}</h2><span>{tr(lang, 'remoteNote')}</span></div><div className={`connection ${cloudConnected ? 'online' : ''}`}>{cloudConnected ? <Cloud /> : <CloudOff />}{cloudConnected ? tr(lang, 'connected') : tr(lang, 'offline')}</div></section><section className="mobile-showcase"><div className="phone-frame"><div className="phone-notch" /><header><div><small>{tr(lang, 'kickerOwner').toLocaleUpperCase(lang)}</small><h3>{state.settings.storeName}</h3></div><span className={cloudConnected ? 'online-dot' : ''} /></header><div className="phone-content"><p>Bugün · Canlı baxış</p><article className="phone-revenue"><small>{tr(lang, 'todaySales')}</small><strong>{money(revenue, lang)}</strong><span>{sales.length} çek</span></article><div className="phone-kpis"><span><small>{tr(lang, 'transactions')}</small><b>{sales.length}</b></span><span><small>{tr(lang, 'openRegisters')}</small><b>{state.registers.filter((row) => row.status === 'open').length}</b></span><span><small>{tr(lang, 'low')}</small><b>{low.length}</b></span><span><small>{tr(lang, 'staff')}</small><b>{staff.filter((row) => row.active).length}</b></span></div><h4>Kassalar</h4>{state.registers.map((register) => <div className="phone-row" key={register.id}><span className={register.status === 'open' ? 'online-dot' : ''} /><p><b>{register.name}</b><small>{staff.find((row) => row.id === register.operatorId)?.name ?? 'Bağlı'}</small></p><strong>{money(state.sales.filter((sale) => sale.registerId === register.id && !sale.refunded).reduce((sum, sale) => sum + sale.totalMinor, 0), lang)}</strong></div>)}<h4>Kritik stok</h4>{low.slice(0, 3).map((product) => <div className="phone-row" key={product.id}><ProductVisual image={product.image} compact alt={product.name[lang]} accent={product.accent} /><p><b>{product.name[lang]}</b><small>{product.sku}</small></p><strong className="danger">{stockOf(product)}</strong></div>)}</div><nav><span><Activity />Panel</span><span><ReceiptText />Satış</span><span><Boxes />Stok</span><span><Settings />Ayar</span></nav></div><div className="mobile-copy"><span><Smartphone /></span><h3>Mağaza cibinizdə</h3><p>Satış məbləği, kassa vəziyyəti, kassir performansı və kritik stoklar sahibkar hesabında telefon ölçüsünə uyğun göstərilir.</p><ul><li><Check />30 saniyəlik canlı sinxron</li><li><Check />POS offline olsa növbə saxlanılır</li><li><Check />Hər müştəri üçün ayrı tenant məlumatı</li><li><Check />AZ / RU / EN interfeys</li></ul><div className="portal-address"><Cloud /><span>Sahibkar ünvanı<b>possistem.az/marketpos</b></span></div></div></section></div>;
 }
-function SettingsPage({ state, session, lang, coreReady, notify, onSettings }: { state: PersistedState; session: SessionUser; lang: Lang; coreReady: boolean; notify: (text: string) => void; onSettings: (settings: StoreSettings) => void }) {
-  const [draft, setDraft] = useState(state.settings); const [display, setDisplay] = useState<{ prefs: { mode: 'fullscreen' | 'windowed'; width: number; height: number; zoomFactor: number }; presets: Array<{ id: string; label: string; mode: 'fullscreen' | 'windowed'; width: number; height: number }> } | null>(null);
-  const [activation, setActivation] = useState<ActivationStatus | null>(null); const [activationKey, setActivationKey] = useState(''); const [update, setUpdate] = useState<UpdateStatus>({ state: 'idle' }); const [info, setInfo] = useState<{ version: string; updateUrl: string; controlUrl: string; packaged: boolean } | null>(null); const [message, setMessage] = useState(''); const [checkingUpdate, setCheckingUpdate] = useState(false);
-  useEffect(() => { if (!window.marketSystem) return; void window.marketSystem.display.get().then(setDisplay); void window.marketSystem.activation.status().then(setActivation); void window.marketSystem.update.status().then(setUpdate); void window.marketSystem.app.info().then(setInfo); return window.marketSystem.update.onChanged(setUpdate); }, []);
-  useEffect(() => {
-    if (activation?.mode !== 'active') return;
-    const branded: StoreSettings = {
-      ...state.settings,
-      storeName: activation.branding?.productName || activation.customerName,
-      legalName: activation.customer?.legalName || activation.customerName,
-      address: activation.customer?.address || state.settings.address,
-      phone: activation.customer?.phone || state.settings.phone,
-      taxId: activation.customer?.taxId || state.settings.taxId,
-      logoUrl: activation.branding?.logoDataUrl || state.settings.logoUrl,
-    };
-    setDraft(branded);
-    onSettings(branded);
-    // A server device id changes only after a successful activation/re-activation.
-  }, [activation?.serverDeviceId]);
-  const chooseLogo = async () => { const url = await window.marketSystem?.image.pick(session.sessionToken); if (url) setDraft((value) => ({ ...value, logoUrl: url })); };
-  const checkUpdate = async () => { if (checkingUpdate) return; setCheckingUpdate(true); setMessage(''); try { if (!window.marketSystem) { setUpdate({ state: 'disabled', message: 'Yeniləmə masaüstü Setup versiyasında işləyir' }); return; } setUpdate({ state: 'checking' }); const status = await window.marketSystem.update.check(session.sessionToken); setUpdate(status); } catch { setUpdate({ state: 'error', message: 'Yeniləmə serverinə qoşulmaq mümkün olmadı' }); setMessage('İnternet bağlantısını yoxlayın və yenidən cəhd edin'); } finally { setCheckingUpdate(false); } };
-  const updateText = update.state === 'idle' ? 'Yoxlanılmayıb' : update.state === 'checking' ? 'Yoxlanılır...' : update.state === 'not_available' ? 'Son versiyadır' : update.state === 'available' ? `v${update.version} tapıldı` : update.state === 'downloading' ? `${update.percent}% yüklənir` : update.state === 'downloaded' ? `v${update.version} hazırdır` : update.message;
-  return (
-    <div className="module-page settings-grid">
-      <HardwareSettingsCard session={session} lang={lang} notify={notify} />
-      {session.role === 'manager' && <ReceiptDesignCard session={session} />}
-      {session.role === 'manager' && <KitchenStationsCard settings={state.settings} products={state.products} session={session} lang={lang} notify={notify}
-        onSave={(kitchenStations) => { onSettings({ ...state.settings, kitchenStations }); notify('Yadda saxlanıldı'); }} />}
-      <section className="panel-card settings-card">
-        <div className="panel-title">
-          <h3>Mağaza məlumatları</h3>
-          <Building2 />
-        </div>
-        {!coreReady && <p className="hint">Core offline — local settings only.</p>}
-        <div className="logo-picker">
-          <button type="button" onClick={() => void chooseLogo()}>
-            {draft.logoUrl ? <img src={draft.logoUrl} alt="Logo" /> : <ImagePlus />}
-            <span>{tr(lang, 'chooseImage')}</span>
-          </button>
-          <p>Logo qəbz, giriş, telefon paneli və hesabatlarda görünəcək.</p>
-        </div>
-        <div className="form-grid">
-          <Field label="Mağaza adı" value={draft.storeName} onChange={(value) => setDraft({ ...draft, storeName: value })} />
-          <Field label="Hüquqi ad" value={draft.legalName} onChange={(value) => setDraft({ ...draft, legalName: value })} />
-          <Field label="VÖEN" value={draft.taxId} onChange={(value) => setDraft({ ...draft, taxId: value })} />
-          <Field label="Telefon" value={draft.phone} onChange={(value) => setDraft({ ...draft, phone: value })} />
-          <Field label={tr(lang, 'address')} value={draft.address} onChange={(value) => setDraft({ ...draft, address: value })} wide />
-          <Field label={tr(lang, 'terminal')} value={draft.terminalName} onChange={(value) => setDraft({ ...draft, terminalName: value })} />
-        </div>
-        <button type="button" className="modal-primary" onClick={() => { onSettings({ ...draft, kitchenStations: state.settings.kitchenStations }); setMessage('Mağaza məlumatları yadda saxlanıldı'); }}>
-          <Check />{tr(lang, 'save')}
-        </button>
-      </section>
-
-      <section className="panel-card settings-card">
-        <div className="panel-title">
-          <h3>{tr(lang, 'update')}</h3>
-          <RefreshCw className={checkingUpdate ? 'spin' : ''} />
-        </div>
-        <div className={`update-box ${update.state}`}>
-          <span><Download /></span>
-          <div>
-            <small>{tr(lang, 'version')}</small>
-            <b>{info?.version ?? '1.0.0'} · {updateText}</b>
-            <p>{info?.updateUrl ?? 'https://possistem.az/marketpos/updates/'}</p>
-          </div>
-        </div>
-        {update.state === 'downloading' && (
-          <div className="progress"><span style={{ width: `${update.percent}%` }} /></div>
-        )}
-        <div className="button-row">
-          <button type="button" disabled={checkingUpdate || update.state === 'downloading'} onClick={() => void checkUpdate()}>
-            <RefreshCw className={checkingUpdate ? 'spin' : ''} />
-            {checkingUpdate ? 'Yoxlanılır...' : tr(lang, 'checkUpdate')}
-          </button>
-          {update.state === 'downloaded' && (
-            <button type="button" className="primary-action" onClick={() => void window.marketSystem?.update.install(session.sessionToken)}>
-              {tr(lang, 'installUpdate')}
-            </button>
-          )}
-        </div>
-        <p className="hint">Setup ilə qurulan proqram hər 30 dəqiqədə serveri yoxlayır, yeniləməni avtomatik yükləyir və təhlükəsiz çıxışda quraşdırır.</p>
-      </section>
-
-      <section className="panel-card settings-card">
-        <div className="panel-title">
-          <h3>{tr(lang, 'activation')}</h3>
-          <ShieldCheck />
-        </div>
-        <div className={`activation-box ${activation?.mode ?? 'trial'}`}>
-          <ShieldCheck />
-          <div>
-            <small>{activation?.mode === 'active' ? tr(lang, 'active') : activation?.mode === 'expired' ? tr(lang, 'expired') : activation?.mode === 'revoked' ? tr(lang, 'revoked') : activation?.mode === 'unlicensed' ? tr(lang, 'unlicensed') : tr(lang, 'trial')}</small>
-            <b>{activation?.customerName ?? state.settings.storeName}</b>
-            <p>Cihaz: {activation?.deviceId.slice(0, 16) ?? '...'}</p>
-            <p>Bitmə: {activation ? new Date(activation.validUntil).toLocaleDateString() : '...'}</p>
-          </div>
-        </div>
-        <label className="activation-input">
-          Aktivasiya açarı
-          <input value={activationKey} onChange={(event) => setActivationKey(event.target.value)} placeholder="MPOS-XXXX-XXXX-XXXX" />
-        </label>
-        <button
-          type="button"
-          className="modal-primary"
-          onClick={() => void window.marketSystem?.activation.activate(session.sessionToken, activationKey).then((status) => {
-            setActivation(status);
-            setMessage('Aktivasiya tamamlandı');
-          }).catch((error: Error) => setMessage(error.message))}
-        >
-          <KeyRound />Aktivləşdir
-        </button>
-        <p className="hint">Açar cihazla bağlanır və serverin Ed25519 imzası yoxlanmadan qəbul edilmir.</p>
-      </section>
-
-      <section className="panel-card settings-card">
-        <div className="panel-title">
-          <h3>{tr(lang, 'display')}</h3>
-          <Monitor />
-        </div>
-        <div className="preset-grid">
-          {display?.presets.map((preset) => (
-            <button
-              type="button"
-              key={preset.id}
-              className={display.prefs.mode === preset.mode && (preset.mode === 'fullscreen' || display.prefs.width === preset.width) ? 'active' : ''}
-              onClick={() => void window.marketSystem?.display.set(session.sessionToken, {
-                mode: preset.mode,
-                width: preset.width || 1500,
-                height: preset.height || 940,
-                zoomFactor: display.prefs.zoomFactor,
-              }).then((prefs) => setDisplay({ ...display, prefs })).catch(() => setMessage('Ekran ölçüsü tətbiq olunmadı'))}
-            >
-              <Monitor />
-              <b>{preset.label}</b>
-              <small>{preset.mode === 'fullscreen' ? 'F11' : `${preset.width}×${preset.height}`}</small>
-            </button>
-          ))}
-        </div>
-        <div className="zoom-row">
-          <span>UI ölçüsü</span>
-          {[0.8, 0.9, 1, 1.1, 1.2].map((zoom) => (
-            <button
-              type="button"
-              key={zoom}
-              className={display?.prefs.zoomFactor === zoom ? 'active' : ''}
-              onClick={() => display && void window.marketSystem?.display.set(session.sessionToken, { ...display.prefs, zoomFactor: zoom }).then((prefs) => setDisplay({ ...display, prefs })).catch(() => setMessage('UI ölçüsü tətbiq olunmadı'))}
-            >
-              {Math.round(zoom * 100)}%
-            </button>
-          ))}
-        </div>
-        <p className="hint">F11 düyməsi istənilən ekranda tam ekranı açıb-bağlayır. 1024×768 terminallar ayrıca optimallaşdırılıb.</p>
-      </section>
-
-      {message && (
-        <div className="settings-message">
-          <Check />{message}
-          <button type="button" onClick={() => setMessage('')}><X /></button>
-        </div>
-      )}
-    </div>
-  );
-}
-

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 type ScannerOptions = {
   minLength?: number;
-  onScan: (barcode: string) => void;
+  onScan: (barcode: string, inputValue?: string) => void;
   enabled?: boolean;
 };
 
@@ -36,11 +36,12 @@ export function useBarcodeScanner({ minLength = 6, onScan, enabled = true }: Sca
   onScanRef.current = onScan;
 
   useEffect(() => {
+    buffer.current = '';
     if (!enabled) return;
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
-      const isField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      const isField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable;
       const allowField = target?.dataset?.scanner === 'allow';
       if (isField && !allowField) return;
 
@@ -55,10 +56,13 @@ export function useBarcodeScanner({ minLength = 6, onScan, enabled = true }: Sca
       }
       if (event.key === 'Enter' && buffer.current.length >= minLength) {
         event.preventDefault();
+        // An opted-in input already contains the full code, including characters
+        // typed before a scheduling pause. Its own Enter handler checks defaultPrevented.
         const code = buffer.current;
+        const inputValue = allowField && tag === 'INPUT' ? (target as HTMLInputElement).value.trim() : undefined;
         buffer.current = '';
         if (timer.current) window.clearTimeout(timer.current);
-        onScanRef.current(code);
+        onScanRef.current(code, inputValue);
         return;
       }
       // Any other key ends the burst: a half-typed code must not merge with the

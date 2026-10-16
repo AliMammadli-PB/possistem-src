@@ -173,6 +173,10 @@
     "market:update:status": {
       "auth": "none",
       "why": "Update progress indicator."
+    },
+    "market:ops:cashSummary": {
+      "auth": "roles:manager,head_cashier,cashier",
+      "why": "Read shared cash balances only after a trusted session and native VIEW_REPORTS permission check."
     }
   }
 }

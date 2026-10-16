@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { categoryLabel, tr } from './i18n';
 import { sortAisleIds } from './catalogCategories';
 import type { Lang } from './types';
@@ -13,7 +14,7 @@ type CatalogAisleNavProps = {
   layout?: 'rail' | 'chips';
 };
 
-export function CatalogAisleNav({
+export const CatalogAisleNav = memo(function CatalogAisleNav({
   lang,
   categories,
   counts,
@@ -22,7 +23,7 @@ export function CatalogAisleNav({
   onChange,
   layout = 'rail',
 }: CatalogAisleNavProps) {
-  const ordered = sortAisleIds(categories);
+  const ordered = useMemo(() => sortAisleIds(categories), [categories]);
   const className = layout === 'chips' ? 'category-tabs catalog-aisle-chips' : 'catalog-aisle-rail';
 
   return (
@@ -50,4 +51,4 @@ export function CatalogAisleNav({
       ))}
     </nav>
   );
-}
+});

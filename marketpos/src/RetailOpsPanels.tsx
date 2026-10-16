@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Check, CircleDollarSign, ClipboardList, Download, KeyRound, LockKeyhole,
   PackageSearch, Plus, Printer, ReceiptText, RefreshCw, Store, Users, WalletCards,
@@ -34,9 +34,45 @@ export function RegistersOpsPage({
   const [reason, setReason] = useState('');
   const [xReport, setXReport] = useState<Record<string, unknown> | null>(null);
   const [zCount, setZCount] = useState('');
+  const cashAction = useRef(false);
+  const [cashBusy, setCashBusy] = useState(false);
+  const withCashLock = async (action: () => Promise<void>) => {
+    if (cashAction.current) return;
+    cashAction.current = true; setCashBusy(true);
+    try { await action(); } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
+    finally { cashAction.current = false; setCashBusy(false); }
+  };
   const [approval, setApproval] = useState<null | { permission: string; run: (managerPin: string) => Promise<void> }>(null);
   const selected = state.registers.find((r) => r.id === selectedId) ?? state.registers[0];
   const openCount = state.registers.filter((r) => r.status === 'open').length;
+  const [shared, setShared] = useState<{ accounts: Array<{ id: string; name: string; kind: string; terminalId: string; balanceMinor: number; todayCashMinor: number; todayCardMinor: number }> } | null>(null);
+  const [sharedError, setSharedError] = useState(false);
+  const [sharedBusy, setSharedBusy] = useState(false);
+  const [sharedAccess, setSharedAccess] = useState<boolean | null>(null);
+  const sharedAvailable = Boolean(coreReady && window.marketOps?.cashSummary && sharedAccess !== false);
+  useEffect(() => {
+    if (!sharedAvailable) return;
+    let alive = true;
+    setSharedBusy(true); setSharedError(false);
+    void (async () => {
+      const status = await window.marketOps!.status?.();
+      if (status?.host === false) {
+        if (alive) { setSharedAccess(false); setShared(null); setSharedError(false); setSharedBusy(false); }
+        return null;
+      }
+      return window.marketOps!.cashSummary(session.sessionToken);
+    })().then(result => {
+      if (!alive || !result) return;
+      if (result.success && result.data) setShared(result.data);
+      else if (result.error?.code === 'E_FORBIDDEN') { setSharedAccess(false); setShared(null); }
+      else setSharedError(true);
+    }).catch(() => { if (alive) setSharedError(true); })
+      .finally(() => { if (alive) setSharedBusy(false); });
+    return () => { alive = false; };
+  }, [sharedAvailable, session.sessionToken, state.registers, state.sales]);
+  const selectedName = shared?.accounts.find(a => a.kind === 'till' && a.terminalId === `market-${selected?.id}`)?.name ?? selected?.name;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
 
   // Who is acting is added by main from the session; only business data is sent.
   const cashPayload = () => ({
@@ -45,7 +81,7 @@ export function RegistersOpsPage({
     reason,
   });
 
-  const runCash = async (kind: 'cashIn' | 'cashOut' | 'safeDrop') => {
+  const runCash = (kind: 'cashIn' | 'cashOut' | 'safeDrop') => withCashLock(async () => {
     if (!selected || !coreReady) return;
     const permission = kind === 'cashIn' ? 'CASH_IN' : kind === 'cashOut' ? 'CASH_OUT' : 'SAFE_DROP';
     const label = kind === 'cashIn' ? 'Nağd daxil' : kind === 'cashOut' ? 'Nağd çıxış' : 'Seyfə atma';
@@ -61,11 +97,11 @@ export function RegistersOpsPage({
       setApproval(null);
     };
     if (!allowed.allowed) {
-      setApproval({ permission, run: (id) => exec(id) });
+      setApproval({ permission, run: (id) => withCashLock(() => exec(id)) });
       return;
     }
-    try { await exec(); } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
-  };
+    await exec();
+  });
 
   const loadX = async () => {
     if (!selected || !coreReady) return;
@@ -75,7 +111,7 @@ export function RegistersOpsPage({
     } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
   };
 
-  const runZ = async () => {
+  const runZ = () => withCashLock(async () => {
     if (!selected || !coreReady) return;
     const allowed = await marketCoreClient.auth.checkPermission(session.role, 'CLOSE_SHIFT').catch(() => ({ allowed: false }));
     const exec = async (managerPin?: string) => {
@@ -89,11 +125,11 @@ export function RegistersOpsPage({
       setApproval(null);
     };
     if (!allowed.allowed) {
-      setApproval({ permission: 'CLOSE_SHIFT', run: (id) => exec(id) });
+      setApproval({ permission: 'CLOSE_SHIFT', run: (id) => withCashLock(() => exec(id)) });
       return;
     }
-    try { await exec(); } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
-  };
+    await exec();
+  });
 
   return (
     <div className="module-page registers-ops">
@@ -105,11 +141,21 @@ export function RegistersOpsPage({
         <button className="primary-action" type="button" onClick={onAdd}><Plus />{tr(lang, 'addRegister')}</button>
       </section>
 
+      {sharedAvailable && <section className="panel-card" aria-busy={sharedBusy}>
+        <div className="panel-title"><h3>{tr(lang, 'sharedCashTitle')}</h3>
+          <button type="button" className="ops-chip" disabled={sharedBusy} onClick={() => void onRefresh().catch(() => notify(tr(lang, 'sharedCashError')))}><RefreshCw />{tr(lang, 'sharedCashRefresh')}</button>
+        </div>
+        <p>{tr(lang, 'sharedCashHint')}</p>
+        {sharedBusy && <p role="status">{tr(lang, 'sharedCashLoading')}</p>}
+        {sharedError && <p role="alert">{tr(lang, 'sharedCashError')}</p>}
+      </section>}
+
       <div className="register-grid">
         {state.registers.map((register) => {
           const operator = staff.find((u) => u.id === register.operatorId);
-          const revenue = state.sales.filter((s) => s.registerId === register.id && !s.refunded)
-            .reduce((sum, s) => sum + s.totalMinor, 0);
+          const account = shared?.accounts.find(a => a.kind === 'till' && a.terminalId === `market-${register.id}`);
+          const revenue = state.sales.filter((s) => s.registerId === register.id && s.createdAt >= today.getTime() && !s.refunded)
+            .reduce((sum, s) => sum + Math.max(0, s.totalMinor - (s.refunds || []).reduce((n, r) => n + r.lines.reduce((v, l) => v + l.amountMinor, 0), 0)), 0);
           const isSelected = selected?.id === register.id;
           return (
             <article
@@ -122,7 +168,7 @@ export function RegistersOpsPage({
                 <span className="register-icon" aria-hidden="true"><Store /></span>
                 <div className="register-copy">
                   <small>{register.code}</small>
-                  <h3>{register.name}</h3>
+                  <h3>{account?.name ?? register.name}</h3>
                   <p>{register.location}</p>
                 </div>
                 <em className={register.status === 'open' ? 'pill ok' : 'pill'}>
@@ -146,11 +192,17 @@ export function RegistersOpsPage({
                   <b>{money(revenue, lang)}</b>
                 </span>
               </div>
+              {sharedAvailable && <div className="register-money register-shared-money" aria-label={tr(lang, 'sharedCashTitle')}>
+                <span><small>{tr(lang, 'sharedCashBalance')}</small><b>{account && !sharedError && !sharedBusy ? money(account.balanceMinor, lang) : '—'}</b></span>
+                <span><small>{tr(lang, 'sharedCashToday')}</small><b>{account && !sharedError && !sharedBusy ? money(account.todayCashMinor, lang) : '—'}</b></span>
+                <span><small>{tr(lang, 'sharedCardToday')}</small><b>{account && !sharedError && !sharedBusy ? money(account.todayCardMinor, lang) : '—'}</b></span>
+              </div>}
               <footer className="register-actions">
                 <button
                   type="button"
                   className={register.status === 'open' ? 'register-toggle danger' : 'register-toggle'}
-                  onClick={(e) => { e.stopPropagation(); onToggle(register); }}
+                  disabled={register.status === 'closed' && sharedAvailable && sharedBusy}
+                  onClick={(e) => { e.stopPropagation(); onToggle(register.status === 'closed' && account ? { ...register, openingFloatMinor: account.balanceMinor } : register); }}
                 >
                   {register.status === 'open' ? <LockKeyhole /> : <KeyRound />}
                   {register.status === 'open' ? tr(lang, 'closeRegister') : tr(lang, 'openRegister')}
@@ -161,11 +213,16 @@ export function RegistersOpsPage({
         })}
       </div>
 
+      {shared && !sharedError && shared.accounts.some(a => a.kind === 'bank') && <section className="panel-card">
+        <h3>{tr(lang, 'sharedCashBank')}</h3>
+        <div className="register-money register-shared-money">{shared.accounts.filter(a => a.kind === 'bank').map(a => <span key={a.id}><small>{a.name}</small><b>{sharedBusy ? '—' : money(a.balanceMinor, lang)}</b></span>)}</div>
+      </section>}
+
       {selected?.status === 'open' && coreReady ? (
         <section className="panel-card cash-ops-panel">
           <div className="panel-title">
             <div>
-              <h3>{selected.name} · nağd əməliyyat</h3>
+              <h3>{selectedName} · nağd əməliyyat</h3>
             </div>
             <WalletCards />
           </div>
@@ -183,13 +240,13 @@ export function RegistersOpsPage({
 
           <div className="cash-ops-toolbar">
             <div className="cash-ops-moves">
-              <button type="button" className="ops-chip" onClick={() => void runCash('cashIn')}>
+              <button type="button" className="ops-chip" disabled={cashBusy} onClick={() => void runCash('cashIn')}>
                 <CircleDollarSign />Nağd daxil
               </button>
-              <button type="button" className="ops-chip" onClick={() => void runCash('cashOut')}>
+              <button type="button" className="ops-chip" disabled={cashBusy} onClick={() => void runCash('cashOut')}>
                 <Download />Nağd çıxış
               </button>
-              <button type="button" className="ops-chip" onClick={() => void runCash('safeDrop')}>
+              <button type="button" className="ops-chip" disabled={cashBusy} onClick={() => void runCash('safeDrop')}>
                 <WalletCards />Seyfə atma
               </button>
               <button type="button" className="ops-chip" onClick={() => void loadX()}>
@@ -201,7 +258,7 @@ export function RegistersOpsPage({
                 <span>Z sayım · faktiki nağd</span>
                 <input value={zCount} onChange={(e) => setZCount(e.target.value)} inputMode="decimal" placeholder="0.00" />
               </label>
-              <button type="button" className="primary-action" onClick={() => void runZ()}>
+              <button type="button" className="primary-action" disabled={cashBusy} onClick={() => void runZ()}>
                 <KeyRound />Z bağla
               </button>
             </div>
@@ -228,7 +285,7 @@ export function RegistersOpsPage({
         <section className="panel-card cash-ops-empty">
           <Store />
           <div>
-            <strong>{selected.name} bağlıdır</strong>
+            <strong>{selectedName} bağlıdır</strong>
             <span>Nağd əməliyyat və X/Z üçün əvvəl növbəni açın.</span>
           </div>
         </section>
@@ -364,7 +421,7 @@ export function ReportsOpsPage({ state, staff, lang, coreReady }: {
   );
 }
 
-export function HardwareSettingsCard({ session, lang, notify }: { session: SessionUser; lang: Lang; notify: Notify }) {
+export function HardwareSettingsCard({ session, lang, notify, includePrinter = true }: { session: SessionUser; lang: Lang; notify: Notify; includePrinter?: boolean }) {
   const [health, setHealth] = useState<{ online: boolean; provider: string; configured?: boolean; target?: string } | null>(null);
   const [printers, setPrinters] = useState<Array<{ id: string; name: string; connection?: string; status?: string; isCurrent?: boolean; confirmed?: boolean }>>([]);
   const [detecting, setDetecting] = useState(false);
@@ -390,17 +447,17 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
 
   return (
     <section className="panel-card settings-card hardware-settings">
-      <div className="panel-title"><h3>Printer · pul qutusu · fiskal · terminal</h3><Printer /></div>
+      <div className="panel-title"><h3>{includePrinter ? 'Printer · pul qutusu · fiskal · terminal' : 'Terminal · pul qutusu · fiskal'}</h3><Printer /></div>
       <p className="hint">
         {/* "No printer chosen" and "chosen but unreachable" are different
             problems for the operator, so the line says which one this is. */}
-        {!health?.configured
+        {!includePrinter ? (fiscalPending ? `${fiscalPending} fiskal növbədə` : 'Ödəniş cihazları') : !health?.configured
           ? 'Printer seçilməyib'
           : `${health.target} · ${health.online ? 'hazır' : 'cavab vermir'}`}
         {fiscalPending ? ` · ${fiscalPending} fiskal növbədə` : ''}
       </p>
       <div className="hardware-controls">
-        <label className="field">
+        {includePrinter && <><label className="field">
           <span>Printer</span>
           <select
             value={health?.target ?? ''}
@@ -425,7 +482,7 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
             <option value={58}>58 mm</option>
             <option value={80}>80 mm</option>
           </select>
-        </label>
+        </label></>}
         <label className="field">
           <span>Terminal rejimi</span>
           <select value={terminalMode} onChange={(e) => setTerminalMode(e.target.value as 'manual' | 'mock_integrated')}>
@@ -435,7 +492,7 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
         </label>
       </div>
       <div className="button-row hardware-actions">
-        <button type="button" disabled={detecting} onClick={() => {
+        {includePrinter && <><button type="button" disabled={detecting} onClick={() => {
           // The sweep can take most of a minute and prints a page to each
           // candidate; the operator picks whichever one came out of the
           // printer, so the button says what is happening while it runs.
@@ -454,7 +511,7 @@ export function HardwareSettingsCard({ session, lang, notify }: { session: Sessi
         </button>
         <button type="button" onClick={() => void window.marketSystem?.printer?.test(session.sessionToken, widthMm).then(() => notify('Test çap')).catch((e: Error) => notify(e.message))}>
           <Printer />Test çap
-        </button>
+        </button></>}
         <button type="button" onClick={() => void window.marketSystem?.drawer?.open(session.sessionToken, { reason: 'settings' }).then(() => notify('Çekmece açıldı')).catch((e: Error) => notify(e.message))}>
           <KeyRound />Çekmece
         </button>

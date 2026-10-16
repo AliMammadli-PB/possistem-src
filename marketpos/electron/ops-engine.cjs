@@ -18,12 +18,14 @@
  * products through Market's sync.
  */
 const path = require('node:path');
+const { syncRegisters, syncWarehouseLedger, refundTenders } = require('./register-bridge.cjs');
 const { readFileSync, writeFileSync } = require('node:fs');
 
 const UNIT = { kg: 'kq', l: 'litr', 'ədəd': 'əd', qab: 'əd', q: 'kq' };
 /** What a "warehouse" Market role may do in Əməliyyatlar; a manager may do all. */
 const WAREHOUSE_METHODS = /^(categories|goods|stocktake|ingredients|inventory|warehouses|purchases|suppliers|supplierItems|lots|locations|replenish|stockRules|recipes)\.|^reports\.(expiry|suppliers|stockLoss)$|^permissions\.list$|^cashAccounts\.list$/;
-const CATALOG_WRITES = /^(ingredients\.(save|deactivate)|goods\.(import|prices)|categories\.|purchases\.|inventory\.|stocktake\.post|lots\.)/;
+const CATALOG_WRITES = /^(ingredients\.(save|deactivate)|goods\.(import|prices)|categories\.(save|delete)|purchases\.(save|confirm|receive|inspect|invoice|addCost|removeCost|update|delete|return|deleteReturn)|inventory\.(adjust|waste|costingMethod)|stocktake\.post|lots\.(relocate|writeOff|extend))$/;
+const isCatalogWrite = (method) => CATALOG_WRITES.test(method);
 
 const ok = (data) => ({ success: true, data, error: null });
 const fail = (code, message) => ({ success: false, data: null, error: { code, message, retryable: false } });
@@ -157,6 +159,8 @@ class OpsEngine {
     this.busy = { catalog: false, feed: false, again: false };
     this.registers = new Map();
     this.methods = null;
+    this.reconcilePromise = null;
+    this.catalogError = null;
   }
 
   settingsFile() { return path.join(require('electron').app.getPath('userData'), 'market-ops.json'); }
@@ -179,11 +183,12 @@ class OpsEngine {
   }
   async stop() {
     clearInterval(this.timer);
+    clearTimeout(this.catalogTimer); this.catalogTimer = null;
     this.timer = null;
     await this.core.stop();
   }
   status() {
-    return { host: this.isHost(), state: this.core.state, available: Boolean(this.core.resolveCorePath()) };
+    return { host: this.isHost(), state: this.core.state, available: Boolean(this.core.resolveCorePath()), catalogPending: Boolean(this.reconcilePromise || this.catalogTimer), catalogError: this.catalogError };
   }
 
   /** The method list the screens may call (built next to them as ops/methods.json). */
@@ -214,7 +219,7 @@ class OpsEngine {
     const res = await this.core.invoke(method, payload ?? {}, {
       actor: { userId: admin.id }, terminal: terminal || { id: 'market-ops', name: 'Market' }, idempotencyKey, timeoutMs: timeoutMs || 15000,
     });
-    if (res?.success && CATALOG_WRITES.test(method)) this.scheduleCatalog();
+    if (res?.success && isCatalogWrite(method)) this.scheduleCatalog();
     return { success: Boolean(res?.success), data: res?.data ?? null, error: res?.error ?? null };
   }
 
@@ -230,10 +235,46 @@ class OpsEngine {
   }
 
   async tick() {
-    if (!this.isHost() || this.core.state !== 'ready' || this.market.state !== 'ready') return;
-    try { await this.importMarketProducts(); } catch (error) { console.error('[ops-import]', error?.message || error); }
-    try { await this.feedSales(); } catch (error) { console.error('[ops-feed]', error?.message || error); }
-    try { await this.syncCatalog(); } catch (error) { console.error('[ops-catalog]', error?.message || error); }
+    try { await this.reconcile(); }
+    catch (error) { console.error('[ops-sync]', error?.message || error); }
+  }
+
+  // Sales must reach the warehouse before its quantity is copied back to the till.
+  // All polling and explicit writes share this barrier, including a write that
+  // arrives while an older catalog snapshot is still being copied.
+  reconcile() {
+    if (!this.isHost() || this.core.state !== 'ready' || this.market.state !== 'ready') return Promise.resolve();
+    if (this.reconcilePromise) return this.reconcilePromise;
+    this.reconcilePromise = (async () => {
+      do {
+        this.reconcileAgain = false;
+        await this.importMarketProducts();
+        if (!this.settings().legacyImported) throw new Error('Catalog import incomplete');
+        await this.syncRegisters();
+        if ((await this.feedSales()) === false) throw new Error('Pending sales could not reach warehouse');
+        await this.syncWarehouseLedger();
+        await this.syncCatalog();
+      } while (this.reconcileAgain);
+      this.catalogError = null;
+    })().catch((error) => { this.catalogError = error?.message || String(error); throw error; })
+      .finally(() => { this.reconcilePromise = null; });
+    return this.reconcilePromise;
+  }
+
+  flushCatalog({ timeoutMs = 0 } = {}) {
+    clearTimeout(this.catalogTimer); this.catalogTimer = null;
+    if (this.isHost() && (this.core.state !== 'ready' || this.market.state !== 'ready')) {
+      this.catalogError = 'Anbar–kassa bağlantısı hazır deyil';
+      return Promise.reject(new Error(this.catalogError));
+    }
+    const pending = this.reconcile();
+    if (!(timeoutMs > 0)) return pending;
+    // Do not cancel a committed write or its background mirror. The UI can
+    // finish and report pending sync while a large initial catalog catches up.
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Anbar–kassa yenilənməsi davam edir')), timeoutMs);
+      pending.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
+    });
   }
 
   /**
@@ -250,8 +291,11 @@ class OpsEngine {
   }
 
   scheduleCatalog() {
+    // Only a successful mutation invalidates the snapshot being copied. Polls
+    // and concurrent reads merely join it; otherwise a slow pass never ends.
     clearTimeout(this.catalogTimer);
-    this.catalogTimer = setTimeout(() => { void this.syncCatalog().catch((error) => console.error('[ops-catalog]', error?.message || error)); }, 800);
+    if (this.reconcilePromise) { this.reconcileAgain = true; this.catalogTimer = null; return; }
+    this.catalogTimer = setTimeout(() => { this.catalogTimer = null; void this.tick(); }, 200);
   }
 
   async syncCatalog() {
@@ -262,9 +306,9 @@ class OpsEngine {
     this.busy.catalog = true;
     try {
       const goodsRes = await this.invoke('goods.list', { objectId: await this.branchObject() }, { timeoutMs: 60000 });
-      if (!goodsRes.success) return;
+      if (!goodsRes.success) throw new Error(goodsRes.error?.message || 'Warehouse catalog unavailable');
       const listRes = await this.market.invoke('product.list', { activeOnly: false }, 60000);
-      if (!listRes?.success || !Array.isArray(listRes.data)) return;
+      if (!listRes?.success || !Array.isArray(listRes.data)) throw new Error(listRes?.error?.message || 'Till catalog unavailable');
       const links = this.settings().links || {};
       const productOf = new Map(Object.entries(links).map(([productId, goodId]) => [goodId, productId]));
       const all = new Map(listRes.data.map((p) => [p.id, p]));
@@ -278,11 +322,14 @@ class OpsEngine {
         seen.add(want.id);
         if (have && sameProduct(have, want)) continue;
         const res = await this.market.invoke(have ? 'product.update' : 'product.create', { product: want, actorId: 'system' }, 15000);
+        // One product the till rejects (e.g. a clashing SKU) must not keep every
+        // other product's quantity from reaching it.
         if (!res?.success) console.error('[ops-catalog]', want.sku, res?.error?.message);
       }
       for (const [id, have] of existing) {
         if (seen.has(id) || !have.active) continue;
-        await this.market.invoke('product.update', { product: { ...have, active: false }, actorId: 'system' }, 15000);
+        const res = await this.market.invoke('product.update', { product: { ...have, active: false }, actorId: 'system' }, 15000);
+        if (!res?.success) console.error('[ops-catalog] deactivate', id, res?.error?.message);
       }
     } finally {
       this.busy.catalog = false;
@@ -324,7 +371,8 @@ class OpsEngine {
         }));
         for (let i = 0; i < rows.length; i += 500) {
           const res = await this.invoke('goods.import', { rows: rows.slice(i, i + 500), updateExisting: true }, { timeoutMs: 120000 });
-          if (!res.success) throw new Error(res.error?.message || 'goods.import');
+          // One bad batch must not keep every product's quantity off the till.
+          if (!res.success) console.error('[ops-import] batch', i, res.error?.message);
         }
         const goodsRes = await this.invoke('goods.list', {}, { timeoutMs: 60000 });
         if (!goodsRes.success) throw new Error(goodsRes.error?.message || 'goods.list');
@@ -346,7 +394,7 @@ class OpsEngine {
       }
       // The stock imported is today's: sales already made must not come off it again.
       const fed = new Set(this.settings().fed || []);
-      const sales = await this.market.invoke('sale.list', {}, 60000);
+      const sales = await this.market.invoke('sale.list', { since: Date.now() - 3 * 864e5, limit: 5000, withRefunds: true }, 60000);
       for (const sale of Array.isArray(sales?.data) ? sales.data : []) {
         fed.add(sale.id);
         fed.add(`r:${sale.id}`);
@@ -357,6 +405,26 @@ class OpsEngine {
     } finally {
       this.busy.importing = false;
     }
+  }
+
+  async syncRegisters() { await syncRegisters(this); }
+  async syncWarehouseLedger() { await syncWarehouseLedger(this); }
+
+  async cashOpening(registerId) {
+    const result = await this.invoke('cashAccounts.list', {});
+    if (!result.success) throw new Error(result.error?.message || 'Kassa qalığı alınmadı');
+    const account = result.data.accounts.find(a => a.kind === 'till' && a.terminalId === `market-${registerId}`);
+    if (!account || !Number.isSafeInteger(account.balanceMinor) || account.balanceMinor < 0) throw new Error('Kassa qalığını yoxlayın');
+    return account.balanceMinor;
+  }
+
+  async cashSummary() {
+    if (!this.isHost()) throw new Error('Kassa əlaqəsi anbar kompüterində işləyir');
+    await this.flushCatalog({ timeoutMs: 20000 });
+    const from = new Date(); from.setHours(0, 0, 0, 0);
+    const result = await this.invoke('cashAccounts.list', { from: from.getTime(), to: Date.now() + 1 });
+    if (!result.success) throw new Error(result.error?.message || 'Kassa məlumatı alınmadı');
+    return { accounts: result.data.accounts, registerNames: Object.fromEntries(this.registers) };
   }
 
   async registerName(id) {
@@ -372,35 +440,56 @@ class OpsEngine {
     if (this.busy.feed) return;
     this.busy.feed = true;
     try {
-      const res = await this.market.invoke('sale.list', {}, 60000);
-      if (!res?.success || !Array.isArray(res.data)) return;
+      // Three days back covers a return made on a later day; older sales are booked.
+      const res = await this.market.invoke('sale.list', { since: Date.now() - 3 * 864e5, limit: 3000, withRefunds: true }, 60000);
+      if (!res?.success || !Array.isArray(res.data)) throw new Error(res?.error?.message || 'Till sales unavailable');
+      let complete = true;
       const fed = new Set(this.settings().fed || []);
+      // A receipt the warehouse keeps refusing is set aside after a few tries
+      // (market-ops.json "parked", with the reason) instead of holding every
+      // quantity off the till behind it.
+      const failures = { ...(this.settings().failures || {}) };
+      const parked = { ...(this.settings().parked || {}) };
+      const failed = (key, message) => {
+        failures[key] = (failures[key] || 0) + 1;
+        if (failures[key] < 3) return false;
+        parked[key] = { at: Date.now(), error: String(message || '') };
+        delete failures[key];
+        console.error('[ops-feed] parked', key, message);
+        return true;
+      };
       const links = this.settings().links || {};
-      const before = fed.size;
+      let changed = false;
       for (const sale of res.data.slice().reverse()) {
         const terminal = { id: `market-${sale.registerId || 'kassa'}`, name: await this.registerName(String(sale.registerId || '')) };
         if (!fed.has(sale.id)) {
-          if (!(await this.recordSale(sale, terminal, links))) continue;
-          fed.add(sale.id);
+          const booked = await this.recordSale(sale, terminal, links);
+          if (booked !== true) {
+            changed = true;
+            if (!failed(sale.id, booked)) { complete = false; continue; }
+          }
+          fed.add(sale.id); changed = true;
         }
         const money = saleMoney(sale);
-        const refundMoney = (amount) => money.card > 0 && money.cash === 0 ? { cardMinor: amount }
-          : money.cash === 0 && money.card === 0 && money.credit > 0 ? { creditMinor: amount } : { cashMinor: amount };
+        let refundedBefore = 0;
         for (const refund of sale.refunds || []) {
           const key = `r:${refund.refundId}`;
-          if (fed.has(key)) continue;
           const amount = (refund.lines || []).reduce((t, l) => t + (Number(l.amountMinor) || 0), 0);
+          const tenders = refundTenders(money, amount, refundedBefore, Number(sale.totalMinor) || 0);
+          refundedBefore += amount;
+          if (fed.has(key)) continue;
           const lines = (refund.lines || []).filter((l) => goodOf(l.productId, links))
             .map((l) => ({ ingredientId: goodOf(l.productId, links), qtyMilli: (Number(l.qty) || 0) * 1000 }));
-          if (await this.recordRefund(key, sale.id, lines, refundMoney(amount), refund.createdAt, terminal)) fed.add(key);
+          if (await this.recordRefund(key, sale.id, lines, tenders, refund.createdAt, terminal) || failed(key, 'refund')) { fed.add(key); changed = true; } else complete = false;
         }
         const full = `r:${sale.id}`;
         if (sale.refunded && !(sale.refunds || []).length && !fed.has(full)) {
           const lines = saleLines(sale.items, links).map((l) => ({ ingredientId: l.ingredientId, qtyMilli: l.qtyMilli }));
-          if (await this.recordRefund(full, sale.id, lines, { cashMinor: money.cash, cardMinor: money.card, creditMinor: money.credit }, Date.now(), terminal)) fed.add(full);
+          if (await this.recordRefund(full, sale.id, lines, { cashMinor: money.cash, cardMinor: money.card, creditMinor: money.credit }, Date.now(), terminal) || failed(full, 'refund')) { fed.add(full); changed = true; } else complete = false;
         }
       }
-      if (fed.size !== before) this.saveSettings({ fed: [...fed].slice(-4000) });
+      if (changed) this.saveSettings({ fed: [...fed].slice(-4000), failures, parked });
+      return complete;
     } finally {
       this.busy.feed = false;
     }
@@ -417,7 +506,7 @@ class OpsEngine {
       discountMinor: Math.max(0, linesTotal - (money.cash + money.card + money.credit)),
     }, { terminal, idempotencyKey: `mkt-sale-${sale.id}`, timeoutMs: 30000 });
     if (!res.success) console.error('[ops-feed] sale', sale.receiptNo, res.error?.message);
-    return res.success;
+    return res.success ? true : (res.error?.message || 'xəta');
   }
 
   async recordRefund(externalId, saleId, lines, money, at, terminal) {
@@ -432,4 +521,4 @@ class OpsEngine {
   }
 }
 
-module.exports = { OpsEngine, marketProduct, sameProduct, lineQtyMilli, saleMoney, saleLines, goodOf, receiptDocument, ok, fail };
+module.exports = { OpsEngine, marketProduct, sameProduct, lineQtyMilli, saleMoney, saleLines, goodOf, receiptDocument, isCatalogWrite, ok, fail };

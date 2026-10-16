@@ -53,6 +53,144 @@ std::string ensureObjectWarehouse(Context& ctx, const std::string& objectId) {
 void registerCashAccounts(const ContextPtr& ctx) {
     auto& server = ctx->server();
 
+    // Private desktop bridge. A physical Market register has one stable terminal
+    // identity in the warehouse ledger; only newly-created accounts include the
+    // full imported history. Existing opening balances and cutoffs stay intact.
+    server.registerHandler("cashAccounts.syncMarket", [ctx](const ipc::Request& request) {
+        ctx->requirePermission("cash.accounts");
+        db::Transaction txn(ctx->db());
+        bool changed = false;
+        auto move = [&](const std::string& id, const std::string& account, Money amount,
+                        const std::string& kind, const std::string& ref, const std::string& note,
+                        std::int64_t at) {
+            if (amount == 0 && kind != "opening") return;
+            auto seen = ctx->db().prepare("SELECT account_id, amount_minor FROM cash_account_moves WHERE id=:id");
+            seen.bind(":id", id);
+            if (seen.step()) {
+                require(seen.columnInt(1) == amount, "Kassa hərəkəti uyğun gəlmir");
+                return;
+            }
+            auto insert = ctx->db().prepare(
+                "INSERT INTO cash_account_moves(id,account_id,amount_minor,kind,ref_type,ref_id,note,actor_user_id,created_at) "
+                "VALUES(:id,:account,:amount,:kind,'market_cash',:ref,:note,:actor,:at)");
+            insert.bind(":id", id).bind(":account", account).bind(":amount", amount).bind(":kind", kind)
+                .bind(":ref", ref).bind(":note", note).bindOptional(":actor", ctx->session().userId).bind(":at", at);
+            insert.exec();
+            changed = true;
+        };
+        for (const auto& r : request.payload.value("registers", Json::array())) {
+            const auto id = r.value("id", std::string{});
+            const auto name = r.value("name", std::string{});
+            require(!id.empty() && !name.empty(), "Kassa məlumatı natamamdır");
+            const auto terminal = "market-" + id;
+            auto found = ctx->db().prepare(
+                "SELECT id, name, created_at FROM cash_accounts WHERE kind='till' AND terminal_id=:terminal ORDER BY active DESC LIMIT 1");
+            found.bind(":terminal", terminal);
+            std::string account;
+            bool fresh = false;
+            if (found.step()) {
+                account = found.columnText(0);
+                fresh = found.columnInt(2) == 0;
+                auto revive = ctx->db().prepare("UPDATE cash_accounts SET active=1 WHERE id=:id AND active=0");
+                revive.bind(":id", account); revive.exec();
+                if (ctx->db().changes() > 0) changed = true;
+                if (found.columnText(1) != name) {
+                    auto update = ctx->db().prepare("UPDATE cash_accounts SET name=:name WHERE id=:id");
+                    update.bind(":name", name).bind(":id", account); update.exec(); changed = true;
+                }
+            } else {
+                account = r.value("accountId", std::string{});
+                if (!account.empty()) {
+                    auto old = ctx->db().prepare(
+                        "SELECT terminal_id FROM cash_accounts WHERE id=:id AND kind='till' AND active=1");
+                    old.bind(":id", account);
+                    require(old.step() && old.columnText(0).empty(), "Kassa artıq başqa satış nöqtəsinə bağlıdır");
+                    auto link = ctx->db().prepare("UPDATE cash_accounts SET terminal_id=:terminal WHERE id=:id");
+                    link.bind(":terminal", terminal).bind(":id", account); link.exec();
+                } else {
+                    account = "kas-" + crypto::uuid4().substr(0, 8);
+                    auto insert = ctx->db().prepare(
+                        "INSERT INTO cash_accounts(id,name,kind,terminal_id,created_at) VALUES(:id,:name,'till',:terminal,0)");
+                    insert.bind(":id", account).bind(":name", name).bind(":terminal", terminal); insert.exec();
+                    fresh = true;
+                }
+                changed = true;
+            }
+            auto terminalRow = ctx->db().prepare(
+                "INSERT INTO pos_terminals(id,name,last_seen_at) VALUES(:id,:name,0) "
+                "ON CONFLICT(id) DO UPDATE SET name=excluded.name WHERE name != excluded.name");
+            terminalRow.bind(":id", terminal).bind(":name", name); terminalRow.exec();
+            if (fresh) {
+                const auto opening = r.value("firstOpeningMinor", Money{0});
+                require(opening >= 0, "İlkin qalıq mənfi ola bilməz");
+                auto seeded = ctx->db().prepare("SELECT 1 FROM cash_account_moves WHERE id=:id");
+                seeded.bind(":id", "market-opening-" + id);
+                if (!seeded.step()) move("market-opening-" + id, account, opening, "opening", id, "Market ilkin qalıq", 0);
+            }
+        }
+        // Card takings need a bank ledger too. Do not duplicate an existing bank.
+        auto bank = ctx->db().prepare("SELECT id FROM cash_accounts WHERE active=1 AND kind='bank' LIMIT 1");
+        if (!bank.step()) {
+            auto insert = ctx->db().prepare(
+                "INSERT INTO cash_accounts(id,name,kind,terminal_id,created_at) VALUES(:id,'Market · Bank','bank','',0)");
+            insert.bind(":id", "kas-" + crypto::uuid4().substr(0, 8)); insert.exec(); changed = true;
+        }
+        for (const auto& m : request.payload.value("movements", Json::array())) {
+            const auto id = m.value("id", std::string{});
+            const auto registerId = m.value("registerId", std::string{});
+            const auto kind = m.value("kind", std::string{});
+            const auto amount = m.value("amountMinor", Money{0});
+            require(!id.empty() && amount > 0 && (kind == "cash_in" || kind == "cash_out" || kind == "safe_drop"), "Kassa hərəkəti düzgün deyil");
+            auto booked = ctx->db().prepare("SELECT amount_minor FROM cash_account_moves WHERE id=:id");
+            booked.bind(":id", "market-cash-" + id);
+            if (booked.step()) {
+                require(booked.columnInt(0) == (kind == "cash_in" ? amount : -amount), "Kassa hərəkəti uyğun gəlmir");
+                continue;
+            }
+            auto account = ctx->db().prepare(
+                "SELECT id, COALESCE(object_id,''), created_at FROM cash_accounts "
+                "WHERE active=1 AND kind='till' AND terminal_id=:terminal");
+            account.bind(":terminal", "market-" + registerId);
+            require(account.step(), "Satış kassası anbara bağlanmayıb");
+            const auto at = m.value("createdAt", std::int64_t{0});
+            if (at < account.columnInt(2)) continue; // included in this existing account's opening balance
+            const auto accountId = account.columnText(0);
+            const auto objectId = account.columnText(1);
+            const auto note = m.value("reason", std::string{});
+            move("market-cash-" + id, accountId, kind == "cash_in" ? amount : -amount, kind, id, note, at);
+            if (kind == "safe_drop") {
+                auto safe = ctx->db().prepare(
+                    "SELECT id FROM cash_accounts WHERE active=1 AND kind='treasury' AND COALESCE(object_id,'')=:object ORDER BY id LIMIT 1");
+                safe.bind(":object", objectId);
+                std::string safeId;
+                if (safe.step()) safeId = safe.columnText(0);
+                else {
+                    safeId = "kas-" + crypto::uuid4().substr(0, 8);
+                    auto insert = ctx->db().prepare(
+                        "INSERT INTO cash_accounts(id,name,kind,object_id,terminal_id,created_at) VALUES(:id,'Market · Seyf','treasury',:object,'',0)");
+                    insert.bind(":id", safeId).bindOptional(":object", objectId); insert.exec(); changed = true;
+                }
+                move("market-safe-" + id, safeId, amount, "transfer_in", id, note, at);
+            }
+        }
+        if (changed) ctx->auditRequired("market.cash.sync", "cash_account", "market", Json::object());
+        auto external = ctx->db().prepare(
+            "SELECT m.id, substr(a.terminal_id,8) AS registerId, m.amount_minor AS amountMinor, "
+            "COALESCE(m.note,'') AS reason, m.created_at AS createdAt FROM cash_account_moves m "
+            "JOIN cash_accounts a ON a.id=m.account_id WHERE a.active=1 AND a.kind='till' "
+            "AND a.terminal_id GLOB 'market-*' AND m.ref_type!='market_cash' AND m.kind!='opening' "
+            "ORDER BY m.created_at,m.id");
+        auto movements = external.rows();
+        auto linked = ctx->db().prepare(
+            "SELECT id AS accountId, substr(terminal_id,8) AS registerId FROM cash_accounts "
+            "WHERE active=1 AND kind='till' AND terminal_id GLOB 'market-*' ORDER BY terminal_id,id");
+        auto balances = linked.rows();
+        services::CashService cash(*ctx);
+        for (auto& row : balances) row["balanceMinor"] = cash.accountBalance(row.value("accountId", std::string{}));
+        txn.commit();
+        return Json{{"ok", true}, {"movements", movements}, {"balances", balances}};
+    });
+
     server.registerHandler(
         std::string(protocol::method::kCashAccountsList), [ctx](const ipc::Request& request) {
             ctx->requirePermission("cash.manage");
@@ -148,6 +286,12 @@ void registerCashAccounts(const ContextPtr& ctx) {
                 object.bind(":id", objectId);
                 require(object.step(), "Obyekt tapılmadı");
             }
+            if (!id.empty()) {
+                auto old = ctx->db().prepare("SELECT terminal_id FROM cash_accounts WHERE id=:id AND active=1");
+                old.bind(":id", id);
+                if (old.step() && old.columnText(0).rfind("market-", 0) == 0)
+                    require(terminalId == old.columnText(0), "Satış kassasının əlaqəsini dəyişmək olmaz; adını və filialını dəyişə bilərsiniz");
+            }
             if (!terminalId.empty()) {
                 auto taken = ctx->db().prepare(
                     "SELECT name FROM cash_accounts WHERE terminal_id = :terminal AND kind = 'till' "
@@ -192,6 +336,10 @@ void registerCashAccounts(const ContextPtr& ctx) {
             const auto id = getOr<std::string>(request.payload, "accountId", "");
             require(!id.empty(), "accountId is required");
             db::Transaction txn(ctx->db());
+            auto linked = ctx->db().prepare("SELECT terminal_id FROM cash_accounts WHERE id=:id");
+            linked.bind(":id", id);
+            require(!linked.step() || linked.columnText(0).rfind("market-", 0) != 0,
+                    "Bu hesab satış kassasına bağlıdır; onu ayrıca silmək olmaz");
             const Money balance = services::CashService(*ctx).accountBalance(id);
             require(balance == 0, "Kassada pul var — əvvəlcə transfer edin");
             auto update = ctx->db().prepare("UPDATE cash_accounts SET active = 0 WHERE id = :id AND active = 1");

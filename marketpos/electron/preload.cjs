@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld('marketOps', {
   status: () => ipcRenderer.invoke('market:ops:status'),
   setHost: (sessionToken, host) => ipcRenderer.invoke('market:ops:setHost', { sessionToken, host }),
   sync: (sessionToken) => ipcRenderer.invoke('market:ops:sync', { sessionToken }),
+  cashSummary: (sessionToken) => ipcRenderer.invoke('market:ops:cashSummary', { sessionToken }),
 });
 
 contextBridge.exposeInMainWorld('marketCore', {

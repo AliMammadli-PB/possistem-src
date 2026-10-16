@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <string_view>
 namespace market::db {
-inline constexpr int kSchemaVersion = 12;
+inline constexpr int kSchemaVersion = 13;
 struct EmbeddedMigration { int version; const char* name; const char* checksum; std::string_view sql; };
 inline constexpr EmbeddedMigration kMigrations[] = {
   {1, "001_initial_schema.sql", "16074141", R"market(-- Market POS initial schema. Money is INTEGER qəpik (int64). Never REAL.
@@ -976,8 +976,16 @@ UPDATE products SET active = 1
 WHERE id NOT LIKE 'ops-%' AND active = 0
   AND id NOT IN (SELECT detail FROM audit_logs WHERE action = 'PRODUCT_DELETE');
 )market"},
+  {13, "013_sale_submission.sql", "0491ac0e", R"market(-- A payment submission commits once, including stock and loyalty effects.
+-- Its response survives a renderer restart or a lost IPC response.
+CREATE TABLE IF NOT EXISTS sale_submissions (
+  request_key TEXT PRIMARY KEY,
+  request_json TEXT NOT NULL,
+  sale_id TEXT NOT NULL REFERENCES sales(id)
+);
+)market"},
 };
-inline constexpr std::size_t kMigrationCount = 12;
+inline constexpr std::size_t kMigrationCount = 13;
 struct EmbeddedSeed { const char* name; std::string_view sql; };
 inline constexpr EmbeddedSeed kSeeds[] = {
 };

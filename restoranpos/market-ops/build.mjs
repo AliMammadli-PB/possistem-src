@@ -11,6 +11,9 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { patchWarehousePerformance } from './warehouse-performance.mjs';
+import { patchRegisterLinking } from './register-linking.mjs';
+import { patchGoodsEditing } from './goods-editing.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -33,6 +36,29 @@ const bridge = template.replaceAll('__APP_VERSION__', version).replace('/*PRELOA
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.cpSync(RENDERER, OUT, { recursive: true, dereference: true });
+// One settings destination per outer Market tab; the restaurant app is untouched.
+let settingsPatched = false;
+for (const file of fs.readdirSync(path.join(OUT, 'assets')).filter((name) => /^index-.*\.js$/.test(name))) {
+  const target = path.join(OUT, 'assets', file);
+  let source = fs.readFileSync(target, 'utf8');
+  const before = 'const picked = psMarketMode() ? (id === "printer" || id === "receipt" ? id : "__market_hidden__") : pickedSection;';
+  if (source.includes(before)) {
+    const hiddenPrinter = '!psMarketMode() && hasPermission("settings.manage") ? jsxRuntimeExports.jsx(PsKitchenStations, {}) : null';
+    if (!source.includes(hiddenPrinter)) throw new Error('Market printer setup component missing');
+    source = source.replace(hiddenPrinter, 'hasPermission("settings.manage") ? jsxRuntimeExports.jsx(PsKitchenStations, {}) : null');
+    source = source.replace('const [settingsSection, setSettingsSection] = reactExports.useState("restaurant");', 'const [settingsSection, setSettingsSection] = reactExports.useState(window.__psMarketSettingsPanel || "restaurant");');
+    const catalogTabs = '].filter((tab) => !(psMarketMode() && (tab.id === "costing" || tab.id === "delivery")));';
+    if (!source.includes(catalogTabs)) throw new Error('Market catalog tabs missing');
+    source = source.replace(catalogTabs, '].filter((tab) => !(psMarketMode() && (tab.id === "costing" || tab.id === "delivery")) && (!window.__psMarketCatalog || tab.id === "goods" || tab.id === "categories"));');
+    source = patchGoodsEditing(source);
+    source = patchWarehousePerformance(source);
+    source = patchRegisterLinking(source);
+    settingsPatched = true;
+    source = source.replace(before, 'const picked = psMarketMode() ? (window.__psMarketSettingsPanel || (id === "printer" || id === "receipt" ? id : "__market_hidden__")) : pickedSection;');
+    fs.writeFileSync(target, source);
+  }
+}
+if (!settingsPatched) throw new Error("Market settings pane selector missing in renderer");
 const name = `bridge-${createHash('sha256').update(bridge).digest('hex').slice(0, 10)}.js`;
 fs.mkdirSync(path.join(OUT, 'market'), { recursive: true });
 fs.writeFileSync(path.join(OUT, 'market', name), bridge);

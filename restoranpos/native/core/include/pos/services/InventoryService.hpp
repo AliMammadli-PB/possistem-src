@@ -52,7 +52,7 @@ public:
     Json move(const std::string& ingredientId, const std::string& warehouseId,
               std::int64_t qtyDeltaMilli, std::string_view kind,
               const std::string& referenceId = "", std::string_view reason = "",
-              const LotSpec& lot = LotSpec{});
+              const LotSpec& lot = LotSpec{}, bool allowArchived = false);
 
     /** Between stores, keeping each lot's dates, number and cost. */
     Json transfer(const std::string& ingredientId, const std::string& fromWarehouse,

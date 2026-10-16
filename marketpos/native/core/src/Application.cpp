@@ -1,3 +1,4 @@
+#include <map>
 #include "market/Application.hpp"
 #include "market/Error.hpp"
 #include "market/Logging.hpp"
@@ -74,10 +75,24 @@ void audit(db::Database& db, const std::string& actorId, const std::string& acti
   sqlite3_finalize(stmt);
 }
 
-nlohmann::json productRowToJson(const nlohmann::json& row, db::Database& db) {
+/** Rows grouped by one of their columns, read in one query instead of one per owner. */
+using RowsBy = std::map<std::string, std::vector<nlohmann::json>>;
+RowsBy rowsBy(db::Database& db, const std::string& sql, const char* key) {
+  RowsBy out;
+  for (auto& row : db.query(sql)) out[row.at(key).get<std::string>()].push_back(std::move(row));
+  return out;
+}
+
+nlohmann::json productRowToJson(const nlohmann::json& row, db::Database& db, const RowsBy* stockCache = nullptr) {
   const std::string id = row.at("id").get<std::string>();
-  auto stocks = db.query(
-      "SELECT warehouse_id, qty FROM stock_levels WHERE product_id = ?", {id}, {});
+  std::vector<nlohmann::json> stocks;
+  if (stockCache) {
+    const auto hit = stockCache->find(id);
+    if (hit != stockCache->end()) stocks = hit->second;
+  } else {
+    stocks = db.query("SELECT warehouse_id, qty FROM stock_levels WHERE product_id = ?", {id}, {})
+                 .get<std::vector<nlohmann::json>>();
+  }
   nlohmann::json warehouseStock = nlohmann::json::object();
   std::int64_t totalStock = 0;
   for (const auto& s : stocks) {
@@ -119,8 +134,11 @@ nlohmann::json listProducts(db::Database& db, bool activeOnly) {
   auto rows = activeOnly
                   ? db.query("SELECT * FROM products WHERE active = 1 ORDER BY category, name_az")
                   : db.query("SELECT * FROM products ORDER BY category, name_az");
+  // One stock query for the whole list: a shop has thousands of products and
+  // the selling screen re-reads this after every write.
+  const auto stocks = rowsBy(db, "SELECT product_id, warehouse_id, qty FROM stock_levels", "product_id");
   nlohmann::json out = nlohmann::json::array();
-  for (const auto& row : rows) out.push_back(productRowToJson(row, db));
+  for (const auto& row : rows) out.push_back(productRowToJson(row, db, &stocks));
   return out;
 }
 
@@ -574,11 +592,23 @@ nlohmann::json syncStatus(db::Database& db) {
           {"bootstrapDone", settingValue(db, "syncBootstrapDone", "false") == "true"}};
 }
 
-nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow) {
+/**
+ * A sale on the wire. `itemCache` / `refundCache` (rows grouped by sale_id)
+ * let a list read every sale's lines in one query; `withRefunds` adds the
+ * partial returns (the warehouse feeder needs them, the selling screen not).
+ */
+nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow, const RowsBy* itemCache = nullptr,
+                          bool withRefunds = false, const RowsBy* refundCache = nullptr) {
   const std::string saleId = saleRow.at("id").get<std::string>();
-  auto items = db.query(
-      "SELECT id, product_id, qty, discount_minor, note, unit_price_minor, line_total_minor FROM sale_items "
-      "WHERE sale_id = ? ORDER BY id", {saleId}, {});
+  std::vector<nlohmann::json> items;
+  if (itemCache) {
+    const auto hit = itemCache->find(saleId);
+    if (hit != itemCache->end()) items = hit->second;
+  } else {
+    items = db.query(
+        "SELECT id, product_id, qty, discount_minor, note, unit_price_minor, line_total_minor FROM sale_items "
+        "WHERE sale_id = ? ORDER BY id", {saleId}, {}).get<std::vector<nlohmann::json>>();
+  }
   nlohmann::json lines = nlohmann::json::array();
   for (const auto& it : items) {
     nlohmann::json line = {{"saleItemId", it.at("id")}, {"productId", it.at("product_id")}, {"qty", it.at("qty")},
@@ -601,10 +631,16 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow) {
   payment["loyaltyMinor"] = saleRow.value("loyalty_redeemed_minor", 0);
   // Partial returns, one entry per return slip (the warehouse system books them).
   nlohmann::json refunds = nlohmann::json::array();
-  {
-    auto rows = db.query(
-        "SELECT refund_id, product_id, qty, amount_minor, created_at FROM refund_lines WHERE sale_id = ? "
-        "ORDER BY created_at, refund_id", {saleId}, {});
+  if (withRefunds) {
+    std::vector<nlohmann::json> rows;
+    if (refundCache) {
+      const auto hit = refundCache->find(saleId);
+      if (hit != refundCache->end()) rows = hit->second;
+    } else {
+      rows = db.query(
+          "SELECT refund_id, product_id, qty, amount_minor, created_at FROM refund_lines WHERE sale_id = ? "
+          "ORDER BY created_at, refund_id", {saleId}, {}).get<std::vector<nlohmann::json>>();
+    }
     for (const auto& r : rows) {
       const auto refundId = r.at("refund_id").get<std::string>();
       if (refunds.empty() || refunds.back().at("refundId") != refundId) {
@@ -638,8 +674,11 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow) {
 nlohmann::json exportState(db::Database& db) {
   nlohmann::json products = listProducts(db, false);
   auto saleRows = db.query("SELECT * FROM sales ORDER BY created_at DESC");
+  const auto saleItems = rowsBy(db,
+      "SELECT sale_id, id, product_id, qty, discount_minor, note, unit_price_minor, line_total_minor "
+      "FROM sale_items ORDER BY id", "sale_id");
   nlohmann::json sales = nlohmann::json::array();
-  for (const auto& row : saleRows) sales.push_back(saleToJson(db, row));
+  for (const auto& row : saleRows) sales.push_back(saleToJson(db, row, &saleItems));
 
   auto wh = db.query("SELECT * FROM warehouses ORDER BY code");
   nlohmann::json warehouses = nlohmann::json::array();
@@ -832,6 +871,21 @@ void importLegacy(db::Database& db, const nlohmann::json& snapshot) {
 }
 
 nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
+  const std::string requestKey = payload.value("idempotencyKey", std::string());
+  if (requestKey.size() > 128) throw PosError("E_VALIDATION", "submission key too long");
+  auto request = payload;
+  for (const auto* key : {"idempotencyKey", "sessionToken", "role", "approverId"}) request.erase(key);
+  const std::string fingerprint = request.dump();
+  if (!requestKey.empty()) {
+    const auto cached = db.query("SELECT request_json, sale_id FROM sale_submissions WHERE request_key = ?", {requestKey});
+    if (!cached.empty()) {
+      if (cached[0].at("request_json").get<std::string>() != fingerprint)
+        throw PosError("E_IDEMPOTENCY_CONFLICT", "Payment submission already used with different data");
+      const auto rows = db.query("SELECT * FROM sales WHERE id = ?", {cached[0].at("sale_id").get<std::string>()});
+      if (rows.empty()) throw PosError("E_DB", "Payment submission has no sale");
+      return saleToJson(db, rows.at(0));
+    }
+  }
   const auto items = payload.at("items");
   if (!items.is_array() || items.empty()) throw PosError("E_VALIDATION", "sale items required");
   const std::string cashierId = requireString(payload, "cashierId");
@@ -1042,6 +1096,9 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
       sqlite3_step(ls); sqlite3_finalize(ls);
     }
 
+    if (!requestKey.empty()) db.execBound(
+      "INSERT INTO sale_submissions(request_key, request_json, sale_id) VALUES (?,?,?)",
+      {requestKey, fingerprint, saleId});
     audit(db, cashierId, "SALE_COMPLETE", receiptNo);
     db.commit();
   } catch (...) {
@@ -1653,10 +1710,21 @@ void Application::registerHandlers(ipc::StdioServer& server) {
     if (rows.empty()) throw PosError("E_NOT_FOUND", "sale not found");
     return saleToJson(db_, rows[0]);
   });
-  server.on("sale.list", [this](const nlohmann::json&) {
-    auto rows = db_.query("SELECT * FROM sales ORDER BY created_at DESC LIMIT 500");
+  // {since, limit, withRefunds}: the warehouse feeder reads only recent sales.
+  server.on("sale.list", [this](const nlohmann::json& p) {
+    const std::int64_t since = p.value("since", std::int64_t{0});
+    const std::int64_t limit = std::clamp<std::int64_t>(p.value("limit", std::int64_t{500}), 1, 5000);
+    auto rows = db_.query("SELECT * FROM sales WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?", {}, {since, limit});
+    const bool withRefunds = p.value("withRefunds", true);
+    const auto items = rowsBy(db_,
+        "SELECT sale_id, id, product_id, qty, discount_minor, note, unit_price_minor, line_total_minor FROM sale_items "
+        "WHERE sale_id IN (SELECT id FROM sales WHERE created_at >= " + std::to_string(since) + ") ORDER BY id", "sale_id");
+    const auto refunds = rowsBy(db_,
+        "SELECT sale_id, refund_id, product_id, qty, amount_minor, created_at FROM refund_lines "
+        "WHERE sale_id IN (SELECT id FROM sales WHERE created_at >= " + std::to_string(since) + ") "
+        "ORDER BY created_at, refund_id", "sale_id");
     nlohmann::json out = nlohmann::json::array();
-    for (const auto& row : rows) out.push_back(saleToJson(db_, row));
+    for (const auto& row : rows) out.push_back(saleToJson(db_, row, &items, withRefunds, &refunds));
     return out;
   });
   server.on("sale.hold", [this](const nlohmann::json& p) {
@@ -1725,11 +1793,35 @@ void Application::registerHandlers(ipc::StdioServer& server) {
     const std::string actor = p.value("actorId", rows[0].at("cashier_id").get<std::string>());
     db_.begin();
     try {
-      auto items = db_.query("SELECT product_id, qty FROM sale_items WHERE sale_id = ?", {saleId}, {});
+      auto items = db_.query("SELECT id, product_id, qty, line_total_minor FROM sale_items WHERE sale_id = ?", {saleId});
+      const auto refundId = newId("ref");
+      const auto at = nowMs();
+      const auto saleTotal = rows[0].at("total_minor").get<std::int64_t>();
+      const auto previousMoney = db_.queryInt("SELECT COALESCE(SUM(amount_minor),0) FROM refund_lines WHERE sale_id=?", {saleId});
+      const auto remainingMoney = std::max<std::int64_t>(0, saleTotal - previousMoney);
+      const auto gross = std::max<std::int64_t>(1, db_.queryInt("SELECT COALESCE(SUM(line_total_minor),0) FROM sale_items WHERE sale_id=?", {saleId}));
+      std::int64_t allocated = 0;
+      std::string lastLine;
       for (const auto& it : items) {
-        applyStockDelta(db_, "SALE_RETURN", it.at("product_id").get<std::string>(), wh,
-                        it.at("qty").get<std::int64_t>(), "sale", saleId, actor, "refund", true);
+        const auto itemId = it.at("id").get<std::int64_t>();
+        const auto returned = db_.queryInt("SELECT COALESCE(SUM(qty),0) FROM refund_lines WHERE sale_id=? AND sale_item_id=" + std::to_string(itemId), {saleId});
+        const auto sold = it.at("qty").get<std::int64_t>();
+        const auto qty = sold - returned;
+        if (qty <= 0) continue;
+        const auto productId = it.at("product_id").get<std::string>();
+        applyStockDelta(db_, "SALE_RETURN", productId, wh, qty, "sale", saleId, actor, "refund", true);
+        const auto grossShare = (it.at("line_total_minor").get<std::int64_t>() * qty + sold / 2) / sold;
+        const auto amount = std::min((grossShare * saleTotal + gross / 2) / gross,
+                                     std::max<std::int64_t>(0, remainingMoney - allocated));
+        allocated += amount;
+        lastLine = newId("rl");
+        db_.execBound("INSERT INTO refund_lines(id,refund_id,sale_id,sale_item_id,product_id,qty,amount_minor,created_at,actor_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                      {lastLine,refundId,saleId,std::to_string(itemId),productId,std::to_string(qty),std::to_string(amount),std::to_string(at),actor});
       }
+      if (!lastLine.empty() && allocated != remainingMoney) {
+        db_.execBound("UPDATE refund_lines SET amount_minor=amount_minor+? WHERE id=?", {std::to_string(remainingMoney-allocated),lastLine});
+      }
+      recordRefundCashOut(db_, rows[0], remainingMoney, refundId, actor);
       db_.execBound("UPDATE sales SET refunded = 1 WHERE id = ?", {saleId});
       audit(db_, actor, "SALE_REFUND", rows[0].at("receipt_no").get<std::string>());
       db_.commit();
@@ -2029,7 +2121,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
   // register.create, staff.save); the handlers that exist are these. Without
   // them opening a shift or paying a debt on one till never refreshed another.
   for (const char* method : {"cash.openSession", "cash.closeSession", "cash.createRegister",
-                             "cash.cashIn", "cash.cashOut", "cash.safeDrop", "treasury.transfer"}) {
+                             "cash.cashIn", "cash.cashOut", "cash.safeDrop", "treasury.transfer", "cash.bridgeRegister", "cash.bridgeWarehouseMoves"}) {
     server.markMutating(method, "cash");
   }
   for (const char* method : {"customer.payDebt", "supplier.pay", "warehouse.update", "auth.saveRole",

@@ -1,9 +1,10 @@
 import type { Product, Role, View } from './types';
 
 /** One stock figure per product. `warehouseStock` is only read for state saved by an older build. */
-export const stockOf = (product: Product): number =>
-  Math.max(0, Number(product.stock ?? 0) ||
-    Object.values(product.warehouseStock ?? {}).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0));
+export const stockOf = (product: Product): number => {
+  if (product.stock != null && Number.isFinite(Number(product.stock))) return Math.max(0, Number(product.stock));
+  return Object.values(product.warehouseStock ?? {}).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+};
 export const cashChange = (totalMinor: number, tenderedMinor: number): number => Math.max(0, Math.round(tenderedMinor) - Math.max(0, Math.round(totalMinor)));
 export const parseMoneyInput = (value: string): number => {
   const parsed = Number(value.trim().replace(/\s/g, '').replace(',', '.'));

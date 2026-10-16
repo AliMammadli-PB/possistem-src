@@ -1,3 +1,4 @@
+#include <limits>
 #include "market/RetailOps.hpp"
 #include "market/Error.hpp"
 #include "market/Warehouse.hpp"
@@ -138,21 +139,25 @@ nlohmann::json buildSessionReport(db::Database& db, const nlohmann::json& sessio
     ++txCount;
     if (refunded) {
       refunds += total;
-      // The cash give-back is NOT deducted here any more. Refunds now post a
-      // `cash_out` movement at refund time (recordRefundCashOut), which the
-      // movement loop below subtracts. Deducting in both places would
-      // double-count a same-session refund.
-      //
-      // ponytail: `refunds` is still flag-based, so this figure counts only
-      // fully returned sales; partial refunds are missing from it (the drawer
-      // math is correct either way). Sum refund_lines by refund time if the
-      // reported refund total needs to be exact too.
-    } else {
-      net += total;
-      if (method == "cash" || method == "mixed") cashSales += cash;
-      if (method == "card" || method == "mixed") cardSales += card;
+      // Refund totals are recomputed below by return time, including partials.
+    }
+    const bool legacyRefund = refunded && db.queryInt(
+        "SELECT COUNT(*) FROM refund_lines WHERE sale_id=?", {s.at("id").get<std::string>()}) == 0;
+    if (!legacyRefund) {
+      // New returns have an explicit cash-out. Keep the original cash receipt
+      // here so that a same-shift return is deducted exactly once.
+      cashSales += cash;
+      cardSales += card;
     }
   }
+  refunds = db.queryInt(
+      "SELECT COALESCE(SUM(r.amount_minor),0) FROM refund_lines r JOIN sales s ON s.id=r.sale_id "
+      "WHERE s.register_id=? AND r.created_at>=? AND r.created_at<=?", {registerId}, {openedAt,closedBound});
+  refunds += db.queryInt(
+      "SELECT COALESCE(SUM(s.total_minor),0) FROM sales s WHERE s.register_id=? AND s.refunded=1 "
+      "AND s.created_at>=? AND s.created_at<=? AND NOT EXISTS(SELECT 1 FROM refund_lines r WHERE r.sale_id=s.id)",
+      {registerId}, {openedAt,closedBound});
+  net = gross - refunds;
 
   auto moves = db.query("SELECT * FROM cash_movements WHERE session_id = ?", {sessionId}, {});
   std::int64_t cashIn = 0, cashOut = 0, safeDrop = 0;
@@ -266,8 +271,12 @@ void recordRefundCashOut(db::Database& db, const nlohmann::json& sale, std::int6
 
   // Cash share of this refund, rounded half-up so a part-cash sale refunded in
   // slices does not lose a qəpik per slice.
-  const auto capped = std::min(refundTotalMinor, saleTotal);
-  const auto cashShare = (capped * saleCash + saleTotal / 2) / saleTotal;
+  const auto before = std::clamp<std::int64_t>(db.queryInt(
+      "SELECT COALESCE(SUM(amount_minor),0) FROM refund_lines WHERE sale_id=? AND refund_id!=?",
+      {sale.at("id").get<std::string>(), refundRef}), 0, saleTotal);
+  const auto capped = std::min(saleTotal, before + refundTotalMinor);
+  const auto cashShare = (capped * saleCash + saleTotal / 2) / saleTotal
+                       - (before * saleCash + saleTotal / 2) / saleTotal;
   if (cashShare <= 0) return;
 
   const auto registerId = columnOr<std::string>(sale, "register_id", "");
@@ -1354,6 +1363,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
                       {saleCustomerId}, {});
     }
     return nlohmann::json{
+        {"saleId", saleId},
         {"storeName", db::columnOr(settingsMap, "storeName", "MarketPos Supermarket")},
         {"receiptNo", s.at("receipt_no")},
         {"createdAt", s.at("created_at")},
@@ -1386,6 +1396,102 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
             [&db](const nlohmann::json& p) { return insertCashMovement(db, p, "cash_out", "CASH_OUT"); });
   server.on("cash.safeDrop",
             [&db](const nlohmann::json& p) { return insertCashMovement(db, p, "safe_drop", "SAFE_DROP"); });
+  // Internal warehouse bridge: identities and the immutable non-sale cash ledger.
+  server.on("cash.bridgeSnapshot", [&db](const nlohmann::json& p) {
+    requirePermission(db, p, "VIEW_REPORTS");
+    auto registers = db.query(
+        "SELECT r.id, r.code, r.name, r.location, r.status, "
+        "COALESCE((SELECT opening_float_minor FROM cash_sessions c WHERE c.register_id=r.id "
+        "ORDER BY opened_at, id LIMIT 1), r.opening_float_minor) AS firstOpeningMinor FROM registers r ORDER BY r.id");
+    auto moves = db.query(
+        "SELECT id, register_id AS registerId, type AS kind, amount_minor AS amountMinor, COALESCE(reason,'') AS reason, "
+        "created_at AS createdAt FROM cash_movements cm "
+        "WHERE type IN ('cash_in','cash_out','safe_drop') AND cm.id NOT LIKE 'ops-cash-move-%' "
+        "AND NOT (cm.type='cash_out' AND EXISTS(SELECT 1 FROM refund_lines r WHERE cm.reason='refund:'||r.refund_id)) "
+        "ORDER BY created_at, id");
+    return nlohmann::json{{"registers", registers}, {"movements", moves},
+                          {"defaultRegisterId", db.queryText("SELECT value FROM settings WHERE key='defaultRegisterId'")}};
+  });
+  // Warehouse cash transfers/expenses belong to the open physical shift too.
+  // Stable source IDs and exclusion from bridgeSnapshot prevent feedback loops.
+  server.on("cash.bridgeWarehouseMoves", [&db](const nlohmann::json& p) {
+    requirePermission(db, p, "MANAGE_SETTINGS");
+    // Additive private checkpoint table: keep older tills' replication schema
+    // compatible, and commit both movement and "included in opening" outcomes
+    // in this same database transaction (including across process restarts).
+    db.exec("CREATE TABLE IF NOT EXISTS warehouse_cash_imports (source_id TEXT PRIMARY KEY, register_id TEXT NOT NULL, "
+            "amount_minor INTEGER NOT NULL, source_at INTEGER NOT NULL, session_id TEXT, applied_at INTEGER NOT NULL)");
+    int inserted = 0;
+    db.begin();
+    try {
+      const bool bootstrapped = db.queryInt("SELECT COUNT(*) FROM warehouse_cash_imports WHERE source_id=''") > 0;
+      for (const auto& m : p.at("movements")) {
+        const auto sourceId = requireString(m, "id");
+        const auto registerId = requireString(m, "registerId");
+        const auto signedAmount = requireInt(m, "amountMinor");
+        if (signedAmount == 0) continue;
+        if (signedAmount == std::numeric_limits<std::int64_t>::min()) throw PosError("E_VALIDATION", "Invalid cash amount");
+        const auto amount = signedAmount > 0 ? signedAmount : -signedAmount;
+        const auto kind = signedAmount > 0 ? "cash_in" : "cash_out";
+        const auto id = "ops-cash-move-" + sourceId;
+        auto checkpoint = db.query("SELECT register_id, amount_minor FROM warehouse_cash_imports WHERE source_id=?", {sourceId});
+        if (!checkpoint.empty()) {
+          if (checkpoint[0].at("register_id") != registerId || checkpoint[0].at("amount_minor") != signedAmount)
+            throw PosError("E_IDEMPOTENCY_CONFLICT", "Warehouse cash movement changed");
+          continue;
+        }
+        const auto at = requireInt(m, "createdAt");
+        auto remember = [&](const std::string& sessionId) {
+          db.execBound("INSERT INTO warehouse_cash_imports(source_id,register_id,amount_minor,source_at,session_id,applied_at) VALUES(?,?,?,?,NULLIF(?,''),?)",
+                       {sourceId,registerId,std::to_string(signedAmount),std::to_string(at),sessionId,std::to_string(nowMs())});
+        };
+        auto seen = db.query("SELECT register_id, type, amount_minor, session_id FROM cash_movements WHERE id=?", {id});
+        if (!seen.empty()) {
+          if (seen[0].at("register_id") != registerId || seen[0].at("type") != kind || seen[0].at("amount_minor") != amount)
+            throw PosError("E_IDEMPOTENCY_CONFLICT", "Warehouse cash movement changed");
+          remember(seen[0].at("session_id").get<std::string>());
+          continue;
+        }
+        auto open = bootstrapped
+          ? db.query("SELECT id FROM cash_sessions WHERE register_id=? AND status='open' ORDER BY opened_at DESC LIMIT 1", {registerId})
+          : db.query("SELECT id FROM cash_sessions WHERE register_id=? AND status='open' AND opened_at<=? ORDER BY opened_at DESC LIMIT 1", {registerId}, {at});
+        if (open.empty()) { remember(""); continue; } // included in the next opening; never replay it into that shift
+        remember(open[0].at("id").get<std::string>());
+        db.execBound("INSERT INTO cash_movements(id,session_id,register_id,type,amount_minor,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                     {id,open[0].at("id").get<std::string>(),registerId,kind,std::to_string(amount),
+                      "Anbar: " + m.value("reason", std::string{}),p.value("actorId", "system"),std::to_string(at)});
+        audit(db, p.value("actorId", "system"), "CASH_WAREHOUSE_MOVE", sourceId);
+        ++inserted;
+      }
+      // After the initial history import, a newly observed transfer belongs to
+      // the current open shift even if the device clock was corrected backwards.
+      db.execBound("INSERT OR IGNORE INTO warehouse_cash_imports(source_id,register_id,amount_minor,source_at,applied_at) VALUES('','',0,?,?)",
+                   {std::to_string(nowMs()),std::to_string(nowMs())});
+      for (const auto& balance : p.value("balances", nlohmann::json::array())) {
+        const auto registerId = requireString(balance, "registerId");
+        const auto amount = requireInt(balance, "balanceMinor");
+        db.execBound("UPDATE registers SET opening_float_minor=? WHERE id=? AND status='closed' AND opening_float_minor!=?",
+                     {std::to_string(amount),registerId,std::to_string(amount)});
+        if (sqlite3_changes(db.raw()) > 0) ++inserted;
+      }
+      db.commit();
+    } catch (...) { db.rollback(); throw; }
+    return nlohmann::json{{"inserted", inserted}};
+  });
+  server.on("cash.bridgeRegister", [&db](const nlohmann::json& p) {
+    requirePermission(db, p, "MANAGE_SETTINGS");
+    const auto id = requireString(p, "id");
+    const auto name = requireString(p, "name");
+    const auto existing = db.query("SELECT id FROM registers WHERE id=?", {id});
+    if (existing.empty() && id.rfind("ops-cash-", 0) != 0)
+      throw PosError("E_VALIDATION", "Invalid warehouse register identity");
+    const auto code = existing.empty() ? requireString(p, "code") : id;
+    db.execBound("INSERT INTO registers(id,code,name,location,status,opening_float_minor) "
+                 "VALUES (?,?,?,'','closed',0) ON CONFLICT(id) DO UPDATE SET name=excluded.name",
+                 {id, code, name});
+    audit(db, p.value("actorId", ""), "REGISTER_WAREHOUSE_LINK", id);
+    return nlohmann::json{{"id", id}, {"name", name}};
+  });
   server.on("cash.movements", [&db](const nlohmann::json& p) {
     requirePermission(db, p, "VIEW_REPORTS");
     return db.query("SELECT id, type AS kind, amount_minor AS amountMinor, reason, "
@@ -1617,6 +1723,8 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
     const auto saleLineTotal = std::max<std::int64_t>(
         1, db.queryInt("SELECT COALESCE(SUM(line_total_minor),0) FROM sale_items WHERE sale_id = ?", {saleId}, {}));
     const auto paidSaleTotal = sales[0].at("total_minor").get<std::int64_t>();
+    const auto paidBack = db.queryInt("SELECT COALESCE(SUM(amount_minor),0) FROM refund_lines WHERE sale_id=?", {saleId});
+    const auto refundBudget = std::max<std::int64_t>(0, paidSaleTotal - paidBack);
     db.begin();
     try {
       for (const auto& line : lines) {
@@ -1639,7 +1747,8 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         // floored twice and refunded a discounted sale short of what was paid.
         // Split in two so neither product overflows on large B2B lines.
         const auto lineShare = (paidLine * qty + soldQty / 2) / soldQty;
-        const auto amount = (lineShare * paidSaleTotal + saleLineTotal / 2) / saleLineTotal;
+        const auto amount = std::min((lineShare * paidSaleTotal + saleLineTotal / 2) / saleLineTotal,
+                                     std::max<std::int64_t>(0, refundBudget - refundTotal));
         refundTotal += amount;
         const std::string productId = items[0].at("product_id").get<std::string>();
         const std::string rid = newId("rl");
@@ -1703,7 +1812,9 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         // Per-line proration can still land a qəpik or two off across many
         // lines; put the residual on the last line so the refund reconciles to
         // the sale instead of quietly short-changing the customer.
-        const auto residual = paidSaleTotal - refundTotal;
+        const auto returnedTotal = db.queryInt(
+            "SELECT COALESCE(SUM(amount_minor),0) FROM refund_lines WHERE sale_id=?", {saleId});
+        const auto residual = std::max<std::int64_t>(0, paidSaleTotal - returnedTotal);
         if (residual != 0 && !lastLineId.empty()) {
           sqlite3_stmt* fix = nullptr;
           sqlite3_prepare_v2(db.raw(), "UPDATE refund_lines SET amount_minor = amount_minor + ? WHERE id = ?", -1,

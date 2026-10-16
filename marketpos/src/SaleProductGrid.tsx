@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Barcode, ChevronLeft, ChevronRight, PackageSearch, TriangleAlert } from 'lucide-react';
 
+import { stockOf } from './domain';
 import { ProductVisual } from './ProductVisual';
 import { categoryLabel, tr, unitLabel } from './i18n';
 import type { Lang, Product } from './types';
@@ -189,7 +190,7 @@ type SaleProductGridProps = {
   onAdd: (product: Product) => void;
 };
 
-export function SaleProductGrid({ products, lang, warehouseId, money, onAdd }: SaleProductGridProps) {
+export const SaleProductGrid = memo(function SaleProductGrid({ products, lang, money, onAdd }: SaleProductGridProps) {
   const catalog = useCatalogPage(products, lang);
   const handleAdd = useCallback((product: Product) => onAdd(product), [onAdd]);
 
@@ -204,13 +205,13 @@ export function SaleProductGrid({ products, lang, warehouseId, money, onAdd }: S
 
   return (
     <div className="product-catalog">
-      <div className="product-grid-page" key={`sale-${catalog.page}-${catalog.filterSig}`}>
+      <div className="product-grid-page">
         {catalog.pageItems.map((product) => (
           <SaleProductCard
             key={product.id}
             product={product}
             lang={lang}
-            stock={product.warehouseStock[warehouseId] ?? 0}
+            stock={stockOf(product)}
             money={money}
             onAdd={handleAdd}
           />
@@ -228,7 +229,7 @@ export function SaleProductGrid({ products, lang, warehouseId, money, onAdd }: S
       />
     </div>
   );
-}
+});
 
 type InventoryProductGridProps = {
   products: Product[];

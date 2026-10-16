@@ -1211,7 +1211,17 @@ function registerIpc() {
       (pin) => verifyManagerPin(String(pin || '')),
       input?.managerPin,
     );
-    return coreSupervisor.invoke(method, payload, Number(input?.timeoutMs) || 15000);
+    if (payload?.role && opsEngine.isHost() && /^cash\.(xReport|zClose|openSession|closeSession|cashIn|cashOut|safeDrop)$/.test(method)) {
+      try {
+        await opsEngine.flushCatalog({ timeoutMs: 20000 });
+        if (method === 'cash.openSession') payload.openingFloatMinor = await opsEngine.cashOpening(String(payload.registerId || ''));
+      } catch (error) { return opsFail('E_SYNC', error?.message || String(error)); }
+    }
+    const result = await coreSupervisor.invoke(method, payload, Number(input?.timeoutMs) || 15000);
+    // Never hold up a completed payment/receipt on the warehouse. Finance reads
+    // join the same barrier before showing balances.
+    if (result.success && /^(sale\.complete|return\.(create|partial)|cash\.(createRegister|bindDeviceRegister|openSession|closeSession|cashIn|cashOut|safeDrop|zClose)|treasury\.transfer)$/.test(method)) opsEngine.scheduleCatalog();
+    return result;
   });
   ipcMain.handle('market:support:request', async (event, input) => {
     assertTrusted(event);
@@ -1267,11 +1277,38 @@ function registerIpc() {
       try { return await opsEngine.session(staff); } catch (error) { return opsFail('E_CORE_DOWN', error instanceof Error ? error.message : String(error)); }
     }
     if (!opsEngine.allowed(method, staff.role)) return opsFail('E_FORBIDDEN', 'Buna icazəniz yoxdur');
-    return opsEngine.invoke(method, input?.payload ?? {}, {
+    if (method === 'cashAccounts.list') {
+      try { await opsEngine.flushCatalog({ timeoutMs: 20000 }); }
+      catch (error) { return opsFail('E_SYNC', error?.message || String(error)); }
+    }
+    const result = await opsEngine.invoke(method, input?.payload ?? {}, {
       terminal: { id: 'market-ops', name: staff.name },
       idempotencyKey: typeof input?.idempotencyKey === 'string' ? input.idempotencyKey : undefined,
       timeoutMs: Math.min(Math.max(Number(input?.timeoutMs) || 15000, 1000), 120000),
     });
+    if (result.success && (require('./ops-engine.cjs').isCatalogWrite(method) || /^cashAccounts\.(save|transfer|deactivate)$/.test(method))) {
+      try { await opsEngine.flushCatalog({ timeoutMs: 5000 }); }
+      catch (error) {
+        // The warehouse write is committed. Never report it as failed and
+        // invite a second stock adjustment; surface synchronization separately.
+        console.error('[ops-sync]', error?.message || error);
+        return { ...result, syncWarning: true };
+      }
+    }
+    if (method === 'cashAccounts.list' && result.success && opsEngine.cashCurrentRegisterId) {
+      const current = `market-${opsEngine.cashCurrentRegisterId}`;
+      return { ...result, data: { ...result.data, currentTerminalId: current,
+        terminals: (result.data.terminals || []).map(t => ({ ...t, current: t.id === current })) } };
+    }
+    return result;
+  });
+  ipcMain.handle('market:ops:cashSummary', async (event, input) => {
+    assertTrusted(event);
+    const staff = requireSession(input?.sessionToken, ['manager', 'head_cashier', 'cashier']);
+    const permission = await coreSupervisor.invoke('auth.checkPermission', { role: staff.role, actorId: staff.id, permission: 'VIEW_REPORTS' });
+    if (!permission.success || !permission.data?.allowed) return opsFail('E_FORBIDDEN', 'Buna icazəniz yoxdur');
+    try { return opsOk(await opsEngine.cashSummary()); }
+    catch (error) { return opsFail('E_SYNC', error?.message || String(error)); }
   });
   ipcMain.handle('market:ops:status', (event) => { assertTrusted(event); return opsEngine.status(); });
   ipcMain.handle('market:ops:setHost', async (event, input) => {
@@ -1285,8 +1322,8 @@ function registerIpc() {
   ipcMain.handle('market:ops:sync', async (event, input) => {
     assertTrusted(event);
     requireSession(input?.sessionToken, ['manager', 'warehouse']);
-    await opsEngine.tick();
-    return opsOk(opsEngine.status());
+    try { await opsEngine.flushCatalog({ timeoutMs: 20000 }); return opsOk(opsEngine.status()); }
+    catch (error) { return opsFail('E_SYNC', error?.message || String(error)); }
   });
 
   printerProvider = registerHardwareIpc({

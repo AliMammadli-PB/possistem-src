@@ -278,6 +278,23 @@ void registerInventory(const ContextPtr& ctx) {
                     put.exec();
                 }
             }
+            // A goods card can receive real stock. Keep the card, movement,
+            // lot and idempotency receipt in the same transaction: retries
+            // cannot create the item without stock or add that stock twice.
+            const auto stockDelta = getOr<std::int64_t>(request.payload, "stockDeltaMilli", 0);
+            if (request.payload.contains("stockDeltaMilli")) {
+                require(request.payload["stockDeltaMilli"].is_number_integer(), "Qalıq düzgün rəqəm olmalıdır");
+                require(stockDelta >= 0 && stockDelta <= 1000000000000LL, "Əlavə qalıq 0–1000000000 aralığında olmalıdır");
+            }
+            if (stockDelta > 0) {
+                ctx->requirePermission("inventory.adjust");
+                require(!key.empty(), "Qalıq əlavə etmək üçün əməliyyat açarı tələb olunur");
+                const auto warehouseId = warehouseFrom(*ctx, request.payload);
+                services::InventoryService(*ctx).move(id, warehouseId, stockDelta, "adjustment", id,
+                                                     "Mal kartından qalıq əlavə edilməsi");
+                ctx->auditRequired("inventory.adjust", "ingredient", id,
+                                   Json{{"qtyDeltaMilli", stockDelta}, {"warehouseId", warehouseId}});
+            }
             ctx->audit("ingredient.save", "ingredient", id, Json{{"name", name}});
             Json response{{"id", id}, {"sku", sku}, {"name", name}, {"unit", unit}};
             idem.complete(key, response, "ingredient", id);

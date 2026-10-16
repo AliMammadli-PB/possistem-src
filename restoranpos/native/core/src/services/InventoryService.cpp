@@ -13,14 +13,14 @@ namespace pos::services {
 Json InventoryService::move(const std::string& ingredientId, const std::string& warehouseId,
                             std::int64_t qtyDeltaMilli, std::string_view kind,
                             const std::string& referenceId, std::string_view reason,
-                            const LotSpec& lot) {
+                            const LotSpec& lot, bool allowArchived) {
     if (qtyDeltaMilli == 0) {
         throw PosError(std::string(protocol::err::kValidation), "Miqdar sıfır ola bilməz");
     }
 
     auto ingredient = ctx_.db().prepare(
-        "SELECT name, unit, cost_minor FROM ingredients WHERE id = :id AND active = 1");
-    ingredient.bind(":id", ingredientId);
+        "SELECT name, unit, cost_minor FROM ingredients WHERE id = :id AND (active = 1 OR :archived = 1)");
+    ingredient.bind(":id", ingredientId).bind(":archived", allowArchived ? 1 : 0);
     if (!ingredient.step()) {
         throw PosError(std::string(protocol::err::kNotFound), "İnqrediyent tapılmadı");
     }
