@@ -74,10 +74,10 @@ export function ReceiptDesignCard({ session }: { session: SessionUser }) {
   }, []);
   return (
     <section className="panel-card settings-card receipt-design-card">
-      <div className="panel-title"><h3>Çek dizaynı</h3></div>
-      <p className="receipt-design-hint">Loqo, QR kod, başlıq, kağız eni və çek önizləməsi — çeklər bu dizaynla çıxır.</p>
+      <div className="panel-title"><h3>Printer və çek dizaynı</h3></div>
+      <p className="receipt-design-hint">Restoran POS ilə eyni: printeri tapın və seçin, loqo, QR kod, başlıq, kağız eni, çek önizləməsi. Burada printer seçilibsə çeklər birbaşa ona çıxır, seçilməyibsə yuxarıdakı printerə.</p>
       {window.marketOps && ready
-        ? <iframe className="ops-frame receipt-frame" title="Çek dizaynı" src="./ops/index.html#/settings" />
+        ? <iframe className="ops-frame receipt-frame" title="Printer və çek dizaynı" src="./ops/index.html#/settings" />
         : <p>Çek sistemi açılır…</p>}
     </section>
   );

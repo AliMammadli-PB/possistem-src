@@ -2303,6 +2303,7 @@ button.ps-period-chip[aria-pressed].is-on, .ps-ops-panel button.ps-period-chip[a
 .ps-count-input { width: 96px; min-height: 36px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--ps-line, #e2e8f0); background: transparent; color: inherit; }
 .ps-count-input:focus { outline: none; border-color: #c9a86a; }
 @media (max-width: 640px) { .ps-count-bar input:first-child { min-width: 100%; } }
+
 /* POS_MARKET_RECEIPT_v1 */
 .ps-market-ops .ps-settings-page nav.category-bar { display: none !important; }
 /* POS_TOUCH_RECEIPT_CSS_START */

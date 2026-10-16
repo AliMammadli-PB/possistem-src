@@ -89,7 +89,8 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
       }
     }
     // Only a failed layout falls back: a printer error must not print twice.
-    if (designed) return printerProvider.printRaw(designed, { kind: 'receipt' });
+    if (designed?.printed) return { ok: true };
+    if (designed) return printerProvider.printRaw(designed.bytes, { kind: 'receipt' });
     return printerProvider.printReceipt(receipt, { widthMm: input?.widthMm || 80, cut: input?.cut !== false });
   });
   // Extra kitchen printers: one preparation ticket per station, to that

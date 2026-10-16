@@ -14911,7 +14911,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.0 · 1952ceb";
+const _PS_BUILD = "1.9.0 · dbe0190";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -23062,8 +23062,8 @@ function SettingsAccordion({ id, title, hint, children, danger = false }) {
   // the accordion below is the fallback for anywhere without a provider.
   /* POS_MARKET_RECEIPT_v1 */
   const pickedSection = reactExports.useContext(SettingsSectionCtx);
-  // Market shows only the receipt section, open.
-  const picked = psMarketMode() ? "receipt" : pickedSection;
+  // Market shows the printer and receipt sections, open - the same screens as Restoran.
+  const picked = psMarketMode() ? (id === "printer" || id === "receipt" ? id : "__market_hidden__") : pickedSection;
   if (picked !== null) {
     if (picked !== id) return null;
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
@@ -28124,7 +28124,7 @@ function SettingsPage() {
   };
 
   const savePrinterProfile = async (patch,notify=true) => {
-    const target = psMarketMode() ? "virtual" : currentPrinterTarget();
+    const target = currentPrinterTarget() || (psMarketMode() ? "virtual" : "");
     if (!target) {
       toast(t.settings.printerIpInvalid, "danger");
       return false;
@@ -28723,7 +28723,7 @@ function SettingsPage() {
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-printer-legacy-hint", children: t.settings.testPrintHint }),
       ] }),
-      hasPermission("settings.manage") ? jsxRuntimeExports.jsx(PsKitchenStations, {}) : null,
+      !psMarketMode() && hasPermission("settings.manage") ? jsxRuntimeExports.jsx(PsKitchenStations, {}) : null,
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsAccordion,{id:"receipt",title:psAdminText("Çek ayarları","Fiş ayarları","Receipt settings"),hint:psAdminText("Loqo, QR kod, başlıq və kağız görünüşü","Logo, QR kod, başlık ve kağıt görünümü","Logo, QR, header and paper layout"),children:
         hasPermission("settings.manage") ? jsxRuntimeExports.jsx(PsReceiptSettingsPanel,{

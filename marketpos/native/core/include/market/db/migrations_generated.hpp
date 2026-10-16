@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <string_view>
 namespace market::db {
-inline constexpr int kSchemaVersion = 11;
+inline constexpr int kSchemaVersion = 12;
 struct EmbeddedMigration { int version; const char* name; const char* checksum; std::string_view sql; };
 inline constexpr EmbeddedMigration kMigrations[] = {
   {1, "001_initial_schema.sql", "16074141", R"market(-- Market POS initial schema. Money is INTEGER qəpik (int64). Never REAL.
@@ -968,8 +968,16 @@ SELECT 'manager', permission FROM permission_catalogue;
 -- shop fills Mallar by Excel import or by hand.
 UPDATE products SET active = 0 WHERE id NOT LIKE 'ops-%';
 )market"},
+  {12, "012_restore_products.sql", "595e00e4", R"market(-- 1.5.2: the products 011 took off the selling screen come back. Only the
+-- ones a person deleted (PRODUCT_DELETE in the audit log) stay hidden. The
+-- warehouse PC then copies them into Əməliyyatlar → Mallar once, linked to
+-- these same products (electron/ops-engine.cjs), so nothing is doubled.
+UPDATE products SET active = 1
+WHERE id NOT LIKE 'ops-%' AND active = 0
+  AND id NOT IN (SELECT detail FROM audit_logs WHERE action = 'PRODUCT_DELETE');
+)market"},
 };
-inline constexpr std::size_t kMigrationCount = 11;
+inline constexpr std::size_t kMigrationCount = 12;
 struct EmbeddedSeed { const char* name; std::string_view sql; };
 inline constexpr EmbeddedSeed kSeeds[] = {
 };

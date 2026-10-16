@@ -29,12 +29,13 @@ const ok = (data) => ({ success: true, data, error: null });
 const fail = (code, message) => ({ success: false, data: null, error: { code, message, retryable: false } });
 
 /** A warehouse good as the Market product the selling screen uses. */
-function marketProduct(good, have) {
+function marketProduct(good, have, productId) {
   const top = String(good.categoryPath || '').split(' / ')[0].trim();
   const name = String(good.name || '');
   return {
-    id: `ops-${good.id}`,
-    sku: `OPS-${good.id}`,
+    id: productId || `ops-${good.id}`,
+    // A Market product brought into Mallar keeps its own id and SKU.
+    sku: productId && have?.sku ? have.sku : `OPS-${good.id}`,
     barcode: String(good.barcode || ''),
     name: { az: name, ru: name, en: name },
     category: top || 'Digər',
@@ -79,10 +80,16 @@ function saleMoney(sale) {
   return { cash, card, credit };
 }
 
-/** The warehouse lines of a sale (products that did not come from Mallar are skipped). */
-function saleLines(items) {
-  return (items || []).filter((item) => String(item.productId || '').startsWith('ops-')).map((item) => ({
-    ingredientId: String(item.productId).slice(4),
+/** The warehouse good behind a Market product: ops-<good>, or a product linked to one. */
+function goodOf(productId, links = {}) {
+  const id = String(productId || '');
+  return id.startsWith('ops-') ? id.slice(4) : (links[id] || '');
+}
+
+/** The warehouse lines of a sale (products with no good in Mallar are skipped). */
+function saleLines(items, links = {}) {
+  return (items || []).filter((item) => goodOf(item.productId, links)).map((item) => ({
+    ingredientId: goodOf(item.productId, links),
     qtyMilli: lineQtyMilli(item),
     unitPriceMinor: Number(item.unitPriceMinor) || 0,
     totalMinor: Math.max(0, Number(item.lineTotalMinor) || 0),
@@ -189,14 +196,14 @@ class OpsEngine {
     return role === 'manager' || WAREHOUSE_METHODS.test(method);
   }
 
-  /** The warehouse core's administrator: every call from Market acts as it. */
+  /**
+   * The warehouse core's administrator: every call from Market acts as it.
+   * The core seeds (and on every start revives) usr-admin; there is no user
+   * list to ask - auth.listUsers is not a core method, which is what left
+   * 1.5.0/1.5.1 with "Anbar sistemi hazır deyil".
+   */
   async actor() {
-    if (this.admin) return this.admin;
-    const res = await this.core.invoke('auth.listUsers', {}, 8000);
-    const users = res?.success && Array.isArray(res.data?.users) ? res.data.users : [];
-    const role = (u) => String(u?.role || u?.roleName || '').toLowerCase();
-    const admin = users.find((u) => role(u) === 'administrator') || users.find((u) => role(u).includes('admin'));
-    if (admin) this.admin = { id: String(admin.id), code: String(admin.code || '') };
+    if (!this.admin) this.admin = { id: 'usr-admin', code: '9001' };
     return this.admin;
   }
 
@@ -224,15 +231,22 @@ class OpsEngine {
 
   async tick() {
     if (!this.isHost() || this.core.state !== 'ready' || this.market.state !== 'ready') return;
+    try { await this.importMarketProducts(); } catch (error) { console.error('[ops-import]', error?.message || error); }
     try { await this.feedSales(); } catch (error) { console.error('[ops-feed]', error?.message || error); }
     try { await this.syncCatalog(); } catch (error) { console.error('[ops-catalog]', error?.message || error); }
   }
 
-  /** Printer bytes for a Market receipt, in this shop's receipt design. */
+  /**
+   * A Market receipt in this shop's receipt design: printed by the warehouse
+   * core when Parametrlər → Printer has a printer chosen ({ printed: true }),
+   * otherwise the printer bytes for Market's own printer ({ bytes }).
+   */
   async renderReceipt(receipt, names) {
-    const res = await this.invoke('receipt.renderExternal', { document: receiptDocument(receipt, names) }, { timeoutMs: 15000 });
-    if (!res.success || !res.data?.bytes) throw new Error(res.error?.message || 'Çek hazırlanmadı');
-    return Buffer.from(String(res.data.bytes), 'base64');
+    const res = await this.invoke('receipt.renderExternal', { document: receiptDocument(receipt, names), deliver: true }, { timeoutMs: 30000 });
+    if (!res.success) throw new Error(res.error?.message || 'Çek hazırlanmadı');
+    if (res.data?.printed) return { printed: true };
+    if (!res.data?.bytes) throw new Error('Çek hazırlanmadı');
+    return { printed: false, bytes: Buffer.from(String(res.data.bytes), 'base64') };
   }
 
   scheduleCatalog() {
@@ -242,19 +256,26 @@ class OpsEngine {
 
   async syncCatalog() {
     if (this.busy.catalog) { this.busy.again = true; return; }
-    if (this.core.state !== 'ready' || this.market.state !== 'ready') return;
+    if (!this.isHost() || this.core.state !== 'ready' || this.market.state !== 'ready') return;
+    // Until Market's own products are in Mallar and linked, a sync would double them.
+    if (!this.settings().legacyImported) return;
     this.busy.catalog = true;
     try {
       const goodsRes = await this.invoke('goods.list', { objectId: await this.branchObject() }, { timeoutMs: 60000 });
       if (!goodsRes.success) return;
       const listRes = await this.market.invoke('product.list', { activeOnly: false }, 60000);
       if (!listRes?.success || !Array.isArray(listRes.data)) return;
-      const existing = new Map(listRes.data.filter((p) => String(p.id).startsWith('ops-')).map((p) => [p.id, p]));
+      const links = this.settings().links || {};
+      const productOf = new Map(Object.entries(links).map(([productId, goodId]) => [goodId, productId]));
+      const all = new Map(listRes.data.map((p) => [p.id, p]));
+      // Products this bridge owns: ops-* and the Market products linked to a good.
+      const existing = new Map(listRes.data.filter((p) => String(p.id).startsWith('ops-') || links[p.id]).map((p) => [p.id, p]));
       const seen = new Set();
       for (const good of goodsRes.data?.goods ?? []) {
-        const want = marketProduct(good, existing.get(`ops-${good.id}`));
+        const productId = productOf.get(String(good.id)) || `ops-${good.id}`;
+        const have = all.get(productId);
+        const want = marketProduct(good, have, productId);
         seen.add(want.id);
-        const have = existing.get(want.id);
         if (have && sameProduct(have, want)) continue;
         const res = await this.market.invoke(have ? 'product.update' : 'product.create', { product: want, actorId: 'system' }, 15000);
         if (!res?.success) console.error('[ops-catalog]', want.sku, res?.error?.message);
@@ -281,6 +302,63 @@ class OpsEngine {
     return till ? String(till.objectId) : '';
   }
 
+  /**
+   * Once, on the warehouse PC: Market's own products (and their stock) go into
+   * Mallar, each linked to the product it came from - the selling screen keeps
+   * the same products, sales history and images, and nothing is doubled.
+   */
+  async importMarketProducts() {
+    if (this.settings().legacyImported || this.busy.importing) return;
+    this.busy.importing = true;
+    try {
+      const listRes = await this.market.invoke('product.list', { activeOnly: true }, 60000);
+      if (!listRes?.success || !Array.isArray(listRes.data)) return;
+      const legacy = listRes.data.filter((p) => !String(p.id).startsWith('ops-') && p.kind !== 'service');
+      const links = { ...(this.settings().links || {}) };
+      if (legacy.length) {
+        const unit = (u) => (u === 'kq' ? 'kg' : u === 'litr' ? 'l' : 'ədəd');
+        const rows = legacy.map((p) => ({
+          name: String(p.name?.az || p.sku || ''), barcode: String(p.barcode || ''), unit: unit(p.unit),
+          costMinor: Math.max(0, Number(p.costMinor) || 0), salePriceMinor: Math.max(0, Number(p.priceMinor) || 0),
+          category: String(p.category || ''),
+        }));
+        for (let i = 0; i < rows.length; i += 500) {
+          const res = await this.invoke('goods.import', { rows: rows.slice(i, i + 500), updateExisting: true }, { timeoutMs: 120000 });
+          if (!res.success) throw new Error(res.error?.message || 'goods.import');
+        }
+        const goodsRes = await this.invoke('goods.list', {}, { timeoutMs: 60000 });
+        if (!goodsRes.success) throw new Error(goodsRes.error?.message || 'goods.list');
+        const goods = goodsRes.data?.goods ?? [];
+        const byBarcode = new Map(goods.filter((g) => g.barcode).map((g) => [String(g.barcode), g]));
+        const byName = new Map(goods.map((g) => [String(g.name).toLocaleLowerCase('az'), g]));
+        const taken = new Set(Object.values(links));
+        for (const p of legacy) {
+          const good = (p.barcode && byBarcode.get(String(p.barcode))) || byName.get(String(p.name?.az || '').toLocaleLowerCase('az'));
+          if (!good || taken.has(String(good.id))) continue;
+          links[p.id] = String(good.id);
+          taken.add(String(good.id));
+          const stock = Math.round((Number(p.stock) || 0) * 1000) - (Number(good.qtyMilli) || 0);
+          if (stock > 0) {
+            await this.invoke('inventory.adjust', { ingredientId: String(good.id), qtyDeltaMilli: stock, reason: 'Market qalığı (köçürmə)' },
+              { idempotencyKey: `mkt-stock-${p.id}`, timeoutMs: 15000 });
+          }
+        }
+      }
+      // The stock imported is today's: sales already made must not come off it again.
+      const fed = new Set(this.settings().fed || []);
+      const sales = await this.market.invoke('sale.list', {}, 60000);
+      for (const sale of Array.isArray(sales?.data) ? sales.data : []) {
+        fed.add(sale.id);
+        fed.add(`r:${sale.id}`);
+        for (const refund of sale.refunds || []) fed.add(`r:${refund.refundId}`);
+      }
+      this.saveSettings({ links, legacyImported: true, fed: [...fed].slice(-4000) });
+      console.log(`[ops-import] ${Object.keys(links).length} Market products linked to Mallar`);
+    } finally {
+      this.busy.importing = false;
+    }
+  }
+
   async registerName(id) {
     if (!this.registers.has(id)) {
       const res = await this.market.invoke('cash.listRegisters', {}, 8000);
@@ -297,11 +375,12 @@ class OpsEngine {
       const res = await this.market.invoke('sale.list', {}, 60000);
       if (!res?.success || !Array.isArray(res.data)) return;
       const fed = new Set(this.settings().fed || []);
+      const links = this.settings().links || {};
       const before = fed.size;
       for (const sale of res.data.slice().reverse()) {
         const terminal = { id: `market-${sale.registerId || 'kassa'}`, name: await this.registerName(String(sale.registerId || '')) };
         if (!fed.has(sale.id)) {
-          if (!(await this.recordSale(sale, terminal))) continue;
+          if (!(await this.recordSale(sale, terminal, links))) continue;
           fed.add(sale.id);
         }
         const money = saleMoney(sale);
@@ -311,13 +390,13 @@ class OpsEngine {
           const key = `r:${refund.refundId}`;
           if (fed.has(key)) continue;
           const amount = (refund.lines || []).reduce((t, l) => t + (Number(l.amountMinor) || 0), 0);
-          const lines = (refund.lines || []).filter((l) => String(l.productId).startsWith('ops-'))
-            .map((l) => ({ ingredientId: String(l.productId).slice(4), qtyMilli: (Number(l.qty) || 0) * 1000 }));
+          const lines = (refund.lines || []).filter((l) => goodOf(l.productId, links))
+            .map((l) => ({ ingredientId: goodOf(l.productId, links), qtyMilli: (Number(l.qty) || 0) * 1000 }));
           if (await this.recordRefund(key, sale.id, lines, refundMoney(amount), refund.createdAt, terminal)) fed.add(key);
         }
         const full = `r:${sale.id}`;
         if (sale.refunded && !(sale.refunds || []).length && !fed.has(full)) {
-          const lines = saleLines(sale.items).map((l) => ({ ingredientId: l.ingredientId, qtyMilli: l.qtyMilli }));
+          const lines = saleLines(sale.items, links).map((l) => ({ ingredientId: l.ingredientId, qtyMilli: l.qtyMilli }));
           if (await this.recordRefund(full, sale.id, lines, { cashMinor: money.cash, cardMinor: money.card, creditMinor: money.credit }, Date.now(), terminal)) fed.add(full);
         }
       }
@@ -327,8 +406,8 @@ class OpsEngine {
     }
   }
 
-  async recordSale(sale, terminal) {
-    const lines = saleLines(sale.items);
+  async recordSale(sale, terminal, links) {
+    const lines = saleLines(sale.items, links);
     if (!lines.length) return true;  // nothing from Mallar on this receipt
     const money = saleMoney(sale);
     const linesTotal = lines.reduce((t, l) => t + l.totalMinor, 0);
@@ -345,9 +424,12 @@ class OpsEngine {
     const res = await this.invoke('sales.recordExternalRefund', {
       externalId, saleExternalId: saleId, lines, at: Number(at) || Date.now(), reason: 'Market qaytarma', ...money,
     }, { terminal, idempotencyKey: `mkt-${externalId}`, timeoutMs: 30000 });
-    if (!res.success && res.error?.code !== 'E_NOT_FOUND') console.error('[ops-feed] refund', externalId, res.error?.message);
+    // E_NOT_FOUND: the sale itself was never booked (nothing from Mallar on it),
+    // so neither is its return.
+    if (!res.success && res.error?.code === 'E_NOT_FOUND') return true;
+    if (!res.success) console.error('[ops-feed] refund', externalId, res.error?.message);
     return res.success;
   }
 }
 
-module.exports = { OpsEngine, marketProduct, sameProduct, lineQtyMilli, saleMoney, saleLines, receiptDocument, ok, fail };
+module.exports = { OpsEngine, marketProduct, sameProduct, lineQtyMilli, saleMoney, saleLines, goodOf, receiptDocument, ok, fail };

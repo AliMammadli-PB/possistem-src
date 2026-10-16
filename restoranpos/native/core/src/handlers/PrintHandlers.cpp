@@ -1475,8 +1475,19 @@ void registerPrinting(const ContextPtr& ctx) {
             payload.lines = printing::formatReceipt(doc);
             payload.text = printing::renderPlainText(payload.lines, doc.charsPerLine);
             payload.qrPayload = doc.printQr ? doc.qrPayload : "";
+            // When this till has its own receipt printer chosen (Parametrlər →
+            // Printer, the same screen as Restoran POS), it prints here, exactly
+            // as a restaurant receipt does; otherwise Market prints the bytes.
+            if (getOr<bool>(request.payload, "deliver", false)) {
+                const auto printer = ctx->setting("printer.receipt", "");
+                if (!isSpoolTarget(printer) && !isAutoTarget(printer) && printer != "offline") {
+                    const auto report = deliver(*ctx, printer, "mkt-" + crypto::uuid4().substr(0, 12), payload, "printer.receipt");
+                    if (report.ok && report.physical) return Json{{"printed", true}, {"text", payload.text}};
+                    logger()->warn("market receipt: {} - Market prints it", report.errorMessage);
+                }
+            }
             const auto built = printing::buildEscPos(payload.lines, escPosOptionsFor(*ctx, payload));
-            return Json{{"bytes", base64Of(built.bytes)},
+            return Json{{"printed", false}, {"bytes", base64Of(built.bytes)},
                         {"text", payload.text},
                         {"html", printing::renderHtml(doc, builder.logoPngBase64())},
                         {"renderMode", printing::renderModeToString(built.usedMode)}};

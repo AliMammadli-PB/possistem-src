@@ -22,8 +22,8 @@ for (const file of [path.join(RENDERER, 'index.html'), PRELOAD]) {
 }
 
 const methods = JSON.parse(fs.readFileSync(path.join(ROOT, 'portal-web', 'remote-methods.json'), 'utf8'));
-// Market only: Parametrlər → Çek dizaynı (the till's receipt settings and preview).
-for (const extra of ['permissions.list', 'settings.getAll', 'settings.set', 'receiptLogo.apply', 'receiptLogo.clear', 'print.previewTest', 'print.setPrinter']) {
+// Market only: Parametrlər → Printer and Çek dizaynı (the till's own printer and receipt screens).
+for (const extra of ['permissions.list', 'settings.getAll', 'settings.set', 'receiptLogo.apply', 'receiptLogo.clear', 'print.previewTest', 'print.setPrinter', 'print.printers', 'print.detect', 'print.enqueue']) {
   if (!methods.includes(extra)) methods.push(extra);
 }
 const template = fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8');
