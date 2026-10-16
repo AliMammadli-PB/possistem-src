@@ -14911,7 +14911,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.0 · eb012c3";
+const _PS_BUILD = "1.9.0 · 1952ceb";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -23060,7 +23060,10 @@ function settingsSections(t) {
 function SettingsAccordion({ id, title, hint, children, danger = false }) {
   // Inside the rail the section is either the open one or not rendered at all;
   // the accordion below is the fallback for anywhere without a provider.
-  const picked = reactExports.useContext(SettingsSectionCtx);
+  /* POS_MARKET_RECEIPT_v1 */
+  const pickedSection = reactExports.useContext(SettingsSectionCtx);
+  // Market shows only the receipt section, open.
+  const picked = psMarketMode() ? "receipt" : pickedSection;
   if (picked !== null) {
     if (picked !== id) return null;
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
@@ -28121,7 +28124,7 @@ function SettingsPage() {
   };
 
   const savePrinterProfile = async (patch,notify=true) => {
-    const target = currentPrinterTarget();
+    const target = psMarketMode() ? "virtual" : currentPrinterTarget();
     if (!target) {
       toast(t.settings.printerIpInvalid, "danger");
       return false;
@@ -28240,7 +28243,7 @@ function SettingsPage() {
     try{const result=await window.pos.receiptLogo.clear();if(!result.success)throw Error(result.error?.message||'Logo could not be removed');setReceiptLogo('');}
     catch(error){toast(error.message,'danger');}finally{setLogoBusy(false);}
   };
-  const printDraft = () => psPrintInput({paperWidth,dpi,printableDots,charsPerLine,renderMode,fontHeightPx,fontWidthPx,sideMarginPx,currencyDisplay,qrOn,qrUrl,brand:receiptBrand});
+  const printDraft = () => ({ ...psPrintInput({paperWidth,dpi,printableDots,charsPerLine,renderMode,fontHeightPx,fontWidthPx,sideMarginPx,currencyDisplay,qrOn,qrUrl,brand:receiptBrand}), ...(psMarketMode() ? { retail: true } : {}) });
   const runPreview = async () => {
     const request=++previewRequest.current;
     setPreviewing(true);setPreviewHtml(null);

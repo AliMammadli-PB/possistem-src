@@ -120,6 +120,11 @@ public:
      * `printer.logoRaster`. Invalid/empty when none is configured.
      */
     MonoBitmap logoBitmap();
+    /**
+     * A receipt made elsewhere (Market POS) dressed as this venue's: header
+     * from the settings (the document's own as a fallback), paper, QR, footer.
+     */
+    void applyVenue(ReceiptDocument& doc, const ReceiptSettings& config);
 
 private:
     /** Reuses the number already issued for this order so reprints stay stable. */

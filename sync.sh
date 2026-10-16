@@ -20,6 +20,7 @@ COMMON=(
 rsync -a --delete --delete-excluded "${COMMON[@]}" \
   --exclude=/control --exclude=/ops/ --exclude=/artifacts/ --exclude='/sayt test/' --exclude=/chat.md \
   --exclude=/control-plane/ --exclude=/control.empty-stub/ \
+  --exclude='/native/snapshots/milioner-80mm-*' \
   --include=/out/ --include='/out/preload/***' --exclude='/out/*' \
   "$SRC/restoranpos/" "$HERE/restoranpos/"
 rsync -a --delete --delete-excluded "${COMMON[@]}" \

@@ -717,3 +717,7 @@ button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .ops-frame { display: block; width: 100%; height: calc(100vh - 110px); min-height: 520px; border: 0; border-radius: 18px; background: #fff; }
 .ops-host-card { display: grid; gap: 14px; align-content: start; }
 .ops-host-card > button { justify-self: start; }
+/* Parametrlər → Çek dizaynı (1.5.1): the receipt settings span the whole row. */
+.receipt-design-card { grid-column: 1 / -1; }
+.receipt-design-hint { margin: 0 0 10px; color: #64748b; font-size: 13px; }
+.receipt-frame { height: 860px; min-height: 0; border: 1px solid rgba(15, 23, 42, 0.08); }

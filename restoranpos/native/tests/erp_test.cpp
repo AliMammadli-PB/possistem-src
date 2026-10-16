@@ -23,6 +23,7 @@ public:
         pos::handlers::registerInventory(fixture_.contextPtr());
         pos::handlers::registerCashAccounts(fixture_.contextPtr());
         pos::handlers::registerSales(fixture_.contextPtr());
+        pos::handlers::registerPrinting(fixture_.contextPtr());
     }
 
     pos::Json call(const std::string& method, pos::Json payload, const std::string& terminal = "") {
@@ -242,4 +243,27 @@ TEST_CASE("a Market sale lands in the store, the till and the partner's tab once
                                                   {"cashMinor", 80}}, "market-1");
     REQUIRE(f.level(water) == 8000);
     REQUIRE(f.balance(till) == 60);
+}
+
+TEST_CASE("a Market receipt prints in this venue's design", "[erp][market][receipt]") {
+    ErpFixture f;
+    auto set = f.base().db().prepare(
+        "INSERT INTO app_settings (key, value, value_type, updated_at) VALUES ('restaurant.name', 'Bravo Market', 'string', 0) "
+        "ON CONFLICT(key) DO UPDATE SET value = 'Bravo Market'");
+    set.exec();
+    const pos::Json document{
+        {"receiptNumber", "M-0001"}, {"orderType", "retail"}, {"paidAt", pos::nowMs()}, {"terminalName", "Kassa 1"}, {"waiterName", "Aysel"},
+        {"restaurant", {{"name", "Ignored when the venue has one"}}},
+        {"items", pos::Json::array({{{"name", "Su 0.5"}, {"quantity", 2}, {"unitBasePriceMinor", 80}, {"baseLineTotalMinor", 160},
+                                     {"itemLineTotalMinor", 160}}})},
+        {"subtotalMinor", 160}, {"grandTotalMinor", 160}, {"amountPaidMinor", 200}, {"changeAmountMinor", 40},
+        {"payments", pos::Json::array({{{"method", "cash"}, {"label", "Nağd"}, {"amountMinor", 160}, {"tenderedMinor", 200}, {"changeMinor", 40}}})}};
+    const auto out = f.call("receipt.renderExternal", pos::Json{{"document", document}});
+    REQUIRE(out.at("bytes").get<std::string>().size() > 100);
+    const auto text = out.at("text").get<std::string>();
+    REQUIRE(text.find("Bravo Market") != std::string::npos);
+    REQUIRE(text.find("Su 0.5") != std::string::npos);
+    REQUIRE(text.find("Kassir:") != std::string::npos);
+    REQUIRE(text.find("Masa:") == std::string::npos);
+    REQUIRE(out.at("html").get<std::string>().find("Bravo Market") != std::string::npos);
 }

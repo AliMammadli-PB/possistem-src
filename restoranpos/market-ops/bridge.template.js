@@ -5,8 +5,8 @@
  * The restaurant preload (inlined below at build time) talks to a fake
  * ipcRenderer; core calls go to the parent window's marketOps.invoke, where
  * Market main checks the signed-in Market user and runs them on the warehouse
- * core. Only the Əməliyyatlar screens are reachable; Kalkulyasiya and
- * Çatdırılma are hidden (window.__psMarketMode).
+ * core. Only the Əməliyyatlar screens and the receipt settings (#/settings)
+ * are reachable; Kalkulyasiya and Çatdırılma are hidden (window.__psMarketMode).
  */
 window.__psMarketMode = true;
 const host = window.parent && window.parent !== window ? window.parent : null;
@@ -59,9 +59,9 @@ const ready = (async () => {
   emit('pos:session:changed', session);
 })();
 
-/** Only the Əməliyyatlar screens: everything else leads back to them. */
+/** Only the Əməliyyatlar screens and the receipt settings: anything else leads back. */
 function guardRoute() {
-  if (!location.hash.startsWith('#/operations')) {
+  if (!location.hash.startsWith('#/operations') && !location.hash.startsWith('#/settings')) {
     const tab = params.get('tab');
     location.replace(`${location.pathname}${location.search}#/operations${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`);
   }

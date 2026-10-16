@@ -47,3 +47,31 @@ describe('sales: a Market receipt as the warehouse books it', () => {
     expect(lines).toEqual([{ ingredientId: 'ing-1', qtyMilli: 2000, unitPriceMinor: 100, totalMinor: 200 }]);
   });
 });
+
+describe('receipts: a Market sale.receipt as the restaurant receipt document', () => {
+  const receipt = {
+    storeName: 'Bravo', receiptNo: 'M-0007', createdAt: 1, registerId: 'reg-1', cashierId: 'u-1',
+    items: [
+      { id: 1, name: 'Su', qty: 2, unit_price_minor: 80, line_total_minor: 160, discount_minor: 0 },
+      { id: 2, name: 'Pomidor', unit: 'kq', qty: 1, unit_price_minor: 250, line_total_minor: 184, discount_minor: 0 },
+    ],
+    subtotalMinor: 344, discountMinor: 44, totalMinor: 300, paymentMethod: 'cash', tenderedMinor: 500, changeMinor: 200, cashMinor: 300, cardMinor: 0,
+  };
+  const doc = ops.receiptDocument(receipt, { cashierName: 'Aysel', registerName: 'Kassa 1' });
+
+  it('is a shop receipt with the till and the cashier', () => {
+    expect(doc).toMatchObject({ orderType: 'retail', receiptNumber: 'M-0007', terminalName: 'Kassa 1', waiterName: 'Aysel', restaurant: { name: 'Bravo' } });
+  });
+
+  it('keeps the lines summing to the subtotal and shows the weight of a scale line', () => {
+    const sum = doc.items.reduce((t: number, i: { itemLineTotalMinor: number }) => t + i.itemLineTotalMinor, 0);
+    expect(sum).toBe(doc.subtotalMinor);
+    expect(doc.items[1].name).toBe('Pomidor 0.736 kq');
+    expect(doc.discountTotalMinor).toBe(44);
+    expect(doc.grandTotalMinor).toBe(300);
+  });
+
+  it('prints the cash paid and the change', () => {
+    expect(doc.payments).toEqual([{ method: 'cash', label: 'Nağd', amountMinor: 300, tenderedMinor: 500, changeMinor: 200 }]);
+  });
+});

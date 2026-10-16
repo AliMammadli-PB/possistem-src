@@ -298,9 +298,12 @@ std::vector<ReceiptLine> formatReceipt(const ReceiptDocument& doc) {
     }
 
     // ------------------------------------------------------------- metadata
-    pushKeyValue(out, "Sifariş:", doc.orderNumber, width);
-
-    if (!doc.tableName.empty()) {
+    // A shop's receipt (Market POS): the till and the cashier, no table or order.
+    const bool retail = doc.orderType == "retail";
+    if (!retail || !doc.orderNumber.empty()) pushKeyValue(out, "Sifariş:", doc.orderNumber, width);
+    if (retail) {
+        if (!doc.terminalName.empty()) pushKeyValue(out, "Kassa:", doc.terminalName, width);
+    } else if (!doc.tableName.empty()) {
         const std::string table =
             doc.areaName.empty() ? doc.tableName : doc.areaName + " / " + doc.tableName;
         pushKeyValue(out, "Masa:", table, width);
@@ -312,7 +315,7 @@ std::vector<ReceiptLine> formatReceipt(const ReceiptDocument& doc) {
         pushKeyValue(out, "Masa:", "Paket sifarişi", width);
     }
 
-    pushKeyValue(out, "Ofisiant:", doc.waiterName, width);
+    pushKeyValue(out, retail ? "Kassir:" : "Ofisiant:", doc.waiterName, width);
     if (doc.guestCount > 0) {
         pushKeyValue(out, "Qonaq:", std::to_string(doc.guestCount), width);
     }
@@ -577,7 +580,10 @@ std::string renderHtml(const ReceiptDocument& doc, std::string_view logoPngBase6
     out << "</header><div class=\"body\">";
 
     if (!doc.orderNumber.empty()) out << row("Sifariş", doc.orderNumber);
-    if (!doc.tableName.empty()) {
+    const bool retail = doc.orderType == "retail";
+    if (retail) {
+        if (!doc.terminalName.empty()) out << row("Kassa", doc.terminalName);
+    } else if (!doc.tableName.empty()) {
         const std::string table =
             doc.areaName.empty() ? doc.tableName : doc.areaName + " / " + doc.tableName;
         out << row("Masa", table);
@@ -586,7 +592,7 @@ std::string renderHtml(const ReceiptDocument& doc, std::string_view logoPngBase6
     } else if (doc.orderType == "takeaway") {
         out << row("Növ", "Paket");
     }
-    if (!doc.waiterName.empty()) out << row("Ofisiant", doc.waiterName);
+    if (!doc.waiterName.empty()) out << row(retail ? "Kassir" : "Ofisiant", doc.waiterName);
     if (doc.guestCount > 0) out << row("Qonaq", std::to_string(doc.guestCount));
     const auto when = formatTimestamp(doc.paidAt > 0 ? doc.paidAt : doc.openedAt);
     if (when != "-") out << row("Tarix", when);

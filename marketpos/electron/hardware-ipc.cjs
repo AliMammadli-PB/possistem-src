@@ -15,7 +15,7 @@ const { MockFiscalProvider } = require('./hardware/fiscal');
 const { ManualTerminalProvider, MockTerminalProvider } = require('./hardware/terminal');
 
 /** Registers the hardware channels and returns the printer provider main uses elsewhere. */
-function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin }) {
+function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin, opsEngine, staffName }) {
   // Printing goes through the core, which owns the device. The file and mock
   // providers stay in hardware/printer.js for tests; wiring one here is what
   // made the till report a printed receipt that never left the machine.
@@ -74,7 +74,23 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   });
   ipcMain.handle('market:printer:receipt', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken);
-    return printerProvider.printReceipt(input?.receipt || {}, { widthMm: input?.widthMm || 80, cut: input?.cut !== false });
+    const receipt = input?.receipt || {};
+    // 1.5.1: the restaurant's receipt design (logo, QR, header from Parametrlər
+    // → Çek dizaynı). The plain text receipt stays as the fallback.
+    let designed = null;
+    if (opsEngine?.core?.state === 'ready') {
+      try {
+        designed = await opsEngine.renderReceipt(receipt, {
+          cashierName: staffName ? staffName(String(receipt.cashierId || '')) : '',
+          registerName: await opsEngine.registerName(String(receipt.registerId || '')),
+        });
+      } catch (error) {
+        console.error('[receipt] designed receipt failed, printing plain:', error instanceof Error ? error.message : error);
+      }
+    }
+    // Only a failed layout falls back: a printer error must not print twice.
+    if (designed) return printerProvider.printRaw(designed, { kind: 'receipt' });
+    return printerProvider.printReceipt(receipt, { widthMm: input?.widthMm || 80, cut: input?.cut !== false });
   });
   // Extra kitchen printers: one preparation ticket per station, to that
   // station's own printer (target), never to the till's receipt printer.

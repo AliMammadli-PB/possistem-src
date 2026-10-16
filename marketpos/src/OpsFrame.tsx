@@ -56,3 +56,29 @@ export function OpsFrame({ session, notify }: { session: SessionUser; notify: (t
   }
   return <iframe className="ops-frame" title="Əməliyyatlar" src="./ops/index.html#/operations?tab=goods" />;
 }
+
+/**
+ * Parametrlər → Çek dizaynı (1.5.1): the restaurant's receipt settings - logo,
+ * QR code, header, paper width, font and the receipt preview. Receipts print
+ * in this design (electron/hardware-ipc.cjs, receipt.renderExternal).
+ */
+export function ReceiptDesignCard({ session }: { session: SessionUser }) {
+  const [ready, setReady] = useState(false);
+  (window as unknown as { __marketOpsToken?: string }).__marketOpsToken = session.sessionToken;
+  useEffect(() => {
+    let alive = true;
+    const check = () => { void window.marketOps?.status().then((s) => { if (alive) setReady(s.state === 'ready'); }).catch(() => undefined); };
+    check();
+    const timer = window.setInterval(check, 3000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, []);
+  return (
+    <section className="panel-card settings-card receipt-design-card">
+      <div className="panel-title"><h3>Çek dizaynı</h3></div>
+      <p className="receipt-design-hint">Loqo, QR kod, başlıq, kağız eni və çek önizləməsi — çeklər bu dizaynla çıxır.</p>
+      {window.marketOps && ready
+        ? <iframe className="ops-frame receipt-frame" title="Çek dizaynı" src="./ops/index.html#/settings" />
+        : <p>Çek sistemi açılır…</p>}
+    </section>
+  );
+}

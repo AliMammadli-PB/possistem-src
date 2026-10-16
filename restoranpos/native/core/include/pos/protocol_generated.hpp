@@ -429,6 +429,7 @@ inline constexpr std::string_view kIncomeSave = "income.save";
 inline constexpr std::string_view kIncomeDelete = "income.delete";
 inline constexpr std::string_view kSalesRecordExternal = "sales.recordExternal";
 inline constexpr std::string_view kSalesRecordExternalRefund = "sales.recordExternalRefund";
+inline constexpr std::string_view kReceiptRenderExternal = "receipt.renderExternal";
 }  // namespace method
 
 namespace event {

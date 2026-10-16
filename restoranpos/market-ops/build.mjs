@@ -22,7 +22,10 @@ for (const file of [path.join(RENDERER, 'index.html'), PRELOAD]) {
 }
 
 const methods = JSON.parse(fs.readFileSync(path.join(ROOT, 'portal-web', 'remote-methods.json'), 'utf8'));
-for (const extra of ['permissions.list']) if (!methods.includes(extra)) methods.push(extra);
+// Market only: Parametrlər → Çek dizaynı (the till's receipt settings and preview).
+for (const extra of ['permissions.list', 'settings.getAll', 'settings.set', 'receiptLogo.apply', 'receiptLogo.clear', 'print.previewTest', 'print.setPrinter']) {
+  if (!methods.includes(extra)) methods.push(extra);
+}
 const template = fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8');
 if (!template.includes('/*PRELOAD*/')) throw new Error('bridge template lost /*PRELOAD*/');
 const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;

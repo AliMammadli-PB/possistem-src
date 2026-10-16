@@ -11,8 +11,11 @@
  *  - sales: every closed Market sale (and return) is written into the
  *    warehouse once, so stock, kassalar and Satışlar follow the till.
  *
- * Runs on the till marked as the warehouse PC (market-ops.json, on by default);
- * the other tills only sell, and receive the products through Market's sync.
+ * The core runs on every till: it also prints Market's receipts in the
+ * restaurant's receipt design (logo, QR, header - receipt.renderExternal).
+ * The two bridges run only on the till marked as the warehouse PC
+ * (market-ops.json, on by default); the other tills only sell, and receive the
+ * products through Market's sync.
  */
 const path = require('node:path');
 const { readFileSync, writeFileSync } = require('node:fs');
@@ -86,6 +89,52 @@ function saleLines(items) {
   }));
 }
 
+/** A Market sale.receipt as the restaurant receipt document (orderType "retail"). */
+function receiptDocument(receipt, { cashierName = '', registerName = '' } = {}) {
+  const items = (receipt.items || []).map((it, index) => {
+    const qty = Math.max(1, Number(it.qty) || 1);
+    const unit = Number(it.unit_price_minor ?? it.unitPriceMinor) || 0;
+    const gross = (Number(it.line_total_minor ?? it.lineTotalMinor) || 0) + (Number(it.discount_minor ?? it.discountMinor) || 0);
+    // A scale line is qty 1 priced by weight: show the weight in the name.
+    const weighed = qty === 1 && unit > 0 && Math.abs(gross - unit) > 1;
+    const name = String(it.name || it.sku || 'Məhsul') + (weighed ? ` ${(gross / unit).toFixed(3)} ${it.unit || 'kq'}` : '');
+    return {
+      id: String(it.id ?? index), name, quantity: weighed ? 1 : qty,
+      unitBasePriceMinor: weighed ? gross : unit, baseLineTotalMinor: gross, itemLineTotalMinor: gross,
+    };
+  });
+  const subtotal = items.reduce((t, i) => t + i.itemLineTotalMinor, 0);
+  const total = Number(receipt.totalMinor) || 0;
+  const loyalty = Math.max(0, Number(receipt.loyaltyRedeemedMinor) || 0);
+  const method = String(receipt.paymentMethod || 'cash');
+  const card = Math.max(0, Number(receipt.cardMinor) || (method === 'card' ? total - loyalty : 0));
+  const cash = Math.max(0, Number(receipt.cashMinor) || (method === 'cash' ? total - loyalty : 0));
+  const credit = Math.max(0, total - cash - card - loyalty);
+  const tendered = Number(receipt.tenderedMinor) || 0;
+  const change = Math.max(0, Number(receipt.changeMinor) || 0);
+  const payments = [];
+  if (cash > 0) payments.push({ method: 'cash', label: 'Nağd', amountMinor: cash, tenderedMinor: Math.max(tendered, cash), changeMinor: change });
+  if (card > 0) payments.push({ method: 'card', label: 'Kart', amountMinor: card });
+  if (loyalty > 0) payments.push({ method: 'complimentary', label: 'Bonusdan', amountMinor: loyalty });
+  if (credit > 0) payments.push({ method: 'complimentary', label: 'Nisyə', amountMinor: credit });
+  const footer = [];
+  const earned = Number(receipt.loyaltyEarnedMinor) || 0;
+  if (receipt.customerName) footer.push(`Müştəri: ${receipt.customerName}`);
+  if (earned > 0) footer.push(`Qazanılan bonus: ${(earned / 100).toFixed(2)} AZN`);
+  if (earned > 0 || loyalty > 0) footer.push(`Bonus balansı: ${((Number(receipt.loyaltyBalanceMinor) || 0) / 100).toFixed(2)} AZN`);
+  if (footer.length) footer.push('Təşəkkür edirik!');
+  const store = String(receipt.storeName || '').replace(/^"|"$/g, '');
+  return {
+    kind: 'payment_receipt', orderType: 'retail',
+    receiptId: String(receipt.receiptNo || ''), receiptNumber: String(receipt.receiptNo || ''),
+    terminalName: registerName || String(receipt.registerId || ''), waiterName: cashierName,
+    openedAt: Number(receipt.createdAt) || Date.now(), paidAt: Number(receipt.createdAt) || Date.now(),
+    restaurant: { name: store },
+    items, subtotalMinor: subtotal, discountTotalMinor: Math.max(0, subtotal - total), discountLabel: 'Endirim',
+    grandTotalMinor: total, amountPaidMinor: total, changeAmountMinor: change, payments, footer,
+  };
+}
+
 class OpsEngine {
   constructor({ market, searchDirs = [] }) {
     this.market = market;
@@ -113,7 +162,7 @@ class OpsEngine {
   isHost() { return this.settings().host !== false; }
 
   async start(customerId) {
-    if (!this.isHost() || this.core.state === 'ready' || this.core.state === 'starting') return;
+    if (this.core.state === 'ready' || this.core.state === 'starting') return;
     this.admin = null;
     await this.core.start(customerId);
     clearInterval(this.timer);
@@ -174,9 +223,16 @@ class OpsEngine {
   }
 
   async tick() {
-    if (this.core.state !== 'ready' || this.market.state !== 'ready') return;
+    if (!this.isHost() || this.core.state !== 'ready' || this.market.state !== 'ready') return;
     try { await this.feedSales(); } catch (error) { console.error('[ops-feed]', error?.message || error); }
     try { await this.syncCatalog(); } catch (error) { console.error('[ops-catalog]', error?.message || error); }
+  }
+
+  /** Printer bytes for a Market receipt, in this shop's receipt design. */
+  async renderReceipt(receipt, names) {
+    const res = await this.invoke('receipt.renderExternal', { document: receiptDocument(receipt, names) }, { timeoutMs: 15000 });
+    if (!res.success || !res.data?.bytes) throw new Error(res.error?.message || 'Çek hazırlanmadı');
+    return Buffer.from(String(res.data.bytes), 'base64');
   }
 
   scheduleCatalog() {
@@ -294,4 +350,4 @@ class OpsEngine {
   }
 }
 
-module.exports = { OpsEngine, marketProduct, sameProduct, lineQtyMilli, saleMoney, saleLines, ok, fail };
+module.exports = { OpsEngine, marketProduct, sameProduct, lineQtyMilli, saleMoney, saleLines, receiptDocument, ok, fail };

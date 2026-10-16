@@ -1540,6 +1540,10 @@
       "auth": true,
       "perm": "sales.edit",
       "idempotent": true
+    },
+    "receipt.renderExternal": {
+      "auth": true,
+      "timeout": 15000
     }
   },
   "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",

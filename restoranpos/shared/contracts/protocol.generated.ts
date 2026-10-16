@@ -418,6 +418,7 @@ export const METHODS = [
   'income.delete',
   'sales.recordExternal',
   'sales.recordExternalRefund',
+  'receipt.renderExternal',
 ] as const;
 export type MethodName = (typeof METHODS)[number];
 
@@ -686,6 +687,7 @@ export const METHOD_META: Record<MethodName, MethodMeta> = {
   'income.delete': { auth: true, perm: 'cash.manage', timeout: 3000, idempotent: false },
   'sales.recordExternal': { auth: true, perm: 'sales.edit', timeout: 3000, idempotent: true },
   'sales.recordExternalRefund': { auth: true, perm: 'sales.edit', timeout: 3000, idempotent: true },
+  'receipt.renderExternal': { auth: true, perm: null, timeout: 15000, idempotent: false },
 };
 
 export const EVENTS = [

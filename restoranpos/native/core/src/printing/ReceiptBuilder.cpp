@@ -387,6 +387,35 @@ std::string ReceiptBuilder::logoPngBase64() {
     return dataUrl.substr(comma + 1);
 }
 
+void ReceiptBuilder::applyVenue(ReceiptDocument& doc, const ReceiptSettings& config) {
+    const auto pick = [this](const char* key, const std::string& fallback) {
+        const std::string value = ctx_.setting(key, "");
+        return value.empty() ? fallback : value;
+    };
+    doc.restaurant.name = pick("restaurant.name", doc.restaurant.name);
+    doc.restaurant.tagline = pick("restaurant.tagline", doc.restaurant.tagline);
+    doc.restaurant.address = pick("restaurant.address", doc.restaurant.address);
+    doc.restaurant.phone = pick("restaurant.phone", doc.restaurant.phone);
+    doc.restaurant.hours = pick("restaurant.hours", doc.restaurant.hours);
+    doc.restaurant.taxId = pick("restaurant.taxId", doc.restaurant.taxId);
+    const std::string branch = ctx_.setting("branch.name", "");
+    if (!branch.empty()) {
+        doc.restaurant.tagline = doc.restaurant.tagline.empty() ? branch : doc.restaurant.tagline + " · " + branch;
+    }
+    doc.locale = ctx_.setting("locale.default", "az-AZ");
+    doc.currencyCode = config.currencyCode;
+    doc.currencyDisplay = config.currencyDisplay;
+    doc.paperWidth = config.paperWidth;
+    doc.charsPerLine = config.charsPerLine;
+    doc.printQr = config.printQr;
+    doc.printItemUnitPrice = config.printItemUnitPrice;
+    doc.printModifierPrice = config.printModifierPrice;
+    if (doc.footer.empty()) doc.footer = {"Təşəkkür edirik!", "Sizi yenidən gözləyirik.", doc.restaurant.name};
+    doc.qrPayload = config.printQr ? buildQrPayload(doc, ctx_.setting("receipt.verifyUrl", ""),
+                                                    ctx_.setting("receipt.qrUrl", ""))
+                                   : "";
+}
+
 MonoBitmap ReceiptBuilder::logoBitmap() {
     const std::string raw = ctx_.setting("printer.logoRaster", "");
     if (raw.empty()) return {};

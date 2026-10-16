@@ -1278,8 +1278,8 @@ function registerIpc() {
     assertTrusted(event);
     requireSession(input?.sessionToken, ['manager']);
     opsEngine.saveSettings({ host: Boolean(input?.host) });
-    if (input?.host) await startOps(loadSecureState().activation?.customerId || '_default');
-    else await opsEngine.stop();
+    // The core keeps running either way: every till prints its receipts with it.
+    await startOps(loadSecureState().activation?.customerId || '_default');
     return opsEngine.status();
   });
   ipcMain.handle('market:ops:sync', async (event, input) => {
@@ -1289,7 +1289,10 @@ function registerIpc() {
     return opsOk(opsEngine.status());
   });
 
-  printerProvider = registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin });
+  printerProvider = registerHardwareIpc({
+    ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin, opsEngine,
+    staffName: (id) => loadSecureState().staff.find((row) => row.id === id)?.name || '',
+  });
 }
 
 function createWindow() {

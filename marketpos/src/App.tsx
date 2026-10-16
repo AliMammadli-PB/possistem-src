@@ -24,7 +24,7 @@ import {
   CustomersPage, FiscalBadge, HardwareSettingsCard, PlatformStubsPage,
   RegistersOpsPage, ReportsOpsPage,
 } from './RetailOpsPanels';
-import { OpsFrame } from './OpsFrame';
+import { OpsFrame, ReceiptDesignCard } from './OpsFrame';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, Register, Role, Sale, SessionUser, StaffProfile, StoreSettings, TenantStatus, UpdateStatus, View } from './types';
 
@@ -1479,6 +1479,7 @@ function SettingsPage({ state, session, lang, coreReady, notify, onSettings }: {
   return (
     <div className="module-page settings-grid">
       <HardwareSettingsCard session={session} lang={lang} notify={notify} />
+      {session.role === 'manager' && <ReceiptDesignCard session={session} />}
       {session.role === 'manager' && <KitchenStationsCard settings={state.settings} products={state.products} session={session} lang={lang} notify={notify}
         onSave={(kitchenStations) => { onSettings({ ...state.settings, kitchenStations }); notify('Yadda saxlanıldı'); }} />}
       <section className="panel-card settings-card">

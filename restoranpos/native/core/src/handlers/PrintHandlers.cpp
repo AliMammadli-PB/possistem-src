@@ -153,6 +153,22 @@ printing::EscPosOptions escPosOptionsFor(Context& ctx, const RenderedPayload& pa
     return opts;
 }
 
+std::string base64Of(const std::vector<std::uint8_t>& bytes) {
+    static const char* kAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve((bytes.size() + 2) / 3 * 4);
+    for (std::size_t i = 0; i < bytes.size(); i += 3) {
+        const std::uint32_t n = (static_cast<std::uint32_t>(bytes[i]) << 16) |
+                                (i + 1 < bytes.size() ? static_cast<std::uint32_t>(bytes[i + 1]) << 8 : 0U) |
+                                (i + 2 < bytes.size() ? static_cast<std::uint32_t>(bytes[i + 2]) : 0U);
+        out += kAlphabet[(n >> 18) & 63];
+        out += kAlphabet[(n >> 12) & 63];
+        out += i + 1 < bytes.size() ? kAlphabet[(n >> 6) & 63] : '=';
+        out += i + 2 < bytes.size() ? kAlphabet[n & 63] : '=';
+    }
+    return out;
+}
+
 void writeSpoolCopy(Context& ctx, const std::string& jobId, const std::string& content) {
     try {
         const auto file = spoolDirectory(ctx) / (jobId + ".txt");
@@ -468,6 +484,17 @@ printing::ReceiptDocument sampleDocument(Context& ctx, const printing::ReceiptSe
     doc.areaName = "Əsas Zal";
     doc.waiterName = "Admin";
     doc.guestCount = 4;
+    // Market POS previews a shop receipt: the till and the cashier, no table.
+    if (overrides.value("retail", false)) {
+        doc.orderType = "retail";
+        doc.orderNumber.clear();
+        doc.tableName.clear();
+        doc.areaName.clear();
+        doc.guestCount = 0;
+        doc.terminalName = "Kassa 1";
+        doc.waiterName = "Kassir";
+        doc.receiptNumber = "M-PREVIEW";
+    }
     doc.openedAt = nowMs();
     doc.paidAt = nowMs();
     doc.paperWidth = config.paperWidth;
@@ -1423,6 +1450,36 @@ void registerPrinting(const ContextPtr& ctx) {
                         {"current", chosen.empty() ? current : chosen},
                         {"chosen", chosen.empty() ? Json(nullptr) : Json(chosen)},
                         {"probed", probed}};
+        });
+
+    // A receipt rung up in Market POS, in this venue's receipt design: the
+    // caller sends the document and gets the printer bytes back (Market owns
+    // its printer and drawer), plus the preview the settings screen shows.
+    server.registerHandler(
+        std::string(protocol::method::kReceiptRenderExternal), [ctx](const ipc::Request& request) {
+            ctx->requireAuth();
+            require(hasField(request.payload, "document") && request.payload["document"].is_object(),
+                    "document tələb olunur");
+            const auto config = settingsForJob(*ctx, Json::object());
+            printing::ReceiptBuilder builder(*ctx);
+            auto doc = printing::documentFromJson(request.payload["document"]);
+            builder.applyVenue(doc, config);
+
+            RenderedPayload payload;
+            payload.paperWidth = config.paperWidth;
+            payload.charsPerLine = config.charsPerLine;
+            payload.renderMode = config.renderMode;
+            payload.fontHeightPx = config.fontHeightPx;
+            payload.fontWidthPx = config.fontWidthPx;
+            payload.sideMarginPx = config.sideMarginPx;
+            payload.lines = printing::formatReceipt(doc);
+            payload.text = printing::renderPlainText(payload.lines, doc.charsPerLine);
+            payload.qrPayload = doc.printQr ? doc.qrPayload : "";
+            const auto built = printing::buildEscPos(payload.lines, escPosOptionsFor(*ctx, payload));
+            return Json{{"bytes", base64Of(built.bytes)},
+                        {"text", payload.text},
+                        {"html", printing::renderHtml(doc, builder.logoPngBase64())},
+                        {"renderMode", printing::renderModeToString(built.usedMode)}};
         });
 
     server.registerHandler(
