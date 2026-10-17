@@ -146,6 +146,8 @@ struct NetworkScanOptions {
     std::vector<int> ports{9100, 9101, 9102};
     int connectTimeoutMs = 400;
     int statusTimeoutMs = 600;
+    /** Label discovery must not send ESC/POS bytes to a TSPL/ZPL interpreter. */
+    bool probeStatus = true;
     int maxConcurrent = 256;
     /** Hard ceiling for the whole sweep, so a print never hangs behind a scan. */
     int budgetMs = 6000;

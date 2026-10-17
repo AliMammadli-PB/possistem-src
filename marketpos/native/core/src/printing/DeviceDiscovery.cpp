@@ -690,7 +690,7 @@ std::vector<PrinterCandidate> discoverNetworkPrinters(const NetworkScanOptions& 
         candidate.macAddress = macForAddress(host);
 
         std::uint8_t status = 0;
-        if (probeEscPosStatus(host, port, options.statusTimeoutMs, status) &&
+        if (options.probeStatus && probeEscPosStatus(host, port, options.statusTimeoutMs, status) &&
             isEscPosStatusByte(status)) {
             candidate.escposConfirmed = true;
             candidate.statusByte = status;

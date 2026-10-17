@@ -137,10 +137,20 @@ std::vector<std::uint8_t> payloadBytes(const Json& payload) {
 void registerPrinterHandlers(ipc::StdioServer& server, db::Database& db) {
     // Local links only. This runs whenever the settings screen opens, and a LAN
     // sweep there would make it feel broken for six seconds.
-    server.on("printer.list", [&db](const Json&) {
+    server.on("printer.list", [&db](const Json& p) {
         Json printers = Json::array();
         for (const auto& candidate : rankPrinterCandidates(currentTarget(db), false)) {
             printers.push_back(candidateToJson(candidate));
+        }
+        // Explicit label search is discovery only: no receipt probe or target mutation.
+        if (p.value("labelScan", false)) {
+            requirePermission(db, p, "MANAGE_SETTINGS");
+            NetworkScanOptions options;
+            options.probeStatus = false;
+            const auto known = p.value("knownTarget", std::string{});
+            if (!known.empty()) options.knownTargets.push_back(known);
+            for (const auto& candidate : discoverNetworkPrinters(options))
+                printers.push_back(candidateToJson(candidate));
         }
         return Json{{"printers", printers}, {"current", currentTarget(db)}};
     });

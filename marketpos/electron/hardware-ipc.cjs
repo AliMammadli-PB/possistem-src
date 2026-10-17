@@ -11,6 +11,7 @@ const { buildStationTicketEscPos, buildXzReportEscPos } = require('./hardware/pr
 const { openDrawerAuthorized } = require('./drawer-auth.cjs');
 const { mockHardwareAllowed, resolveTerminalMode } = require('./hardware-policy.cjs');
 const { createReceiptOnce } = require('./receipt-once.cjs');
+const { createLabelService } = require('./label-printer.cjs');
 const { CorePrinterProvider } = require('./hardware/printer');
 const { MockFiscalProvider } = require('./hardware/fiscal');
 const { ManualTerminalProvider, MockTerminalProvider } = require('./hardware/terminal');
@@ -25,6 +26,7 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
     (method, payload, timeoutMs) => coreSupervisor.invoke(method, payload, timeoutMs),
     printerSession,
   );
+  const labels = createLabelService({ app, coreSupervisor, opsEngine });
   const allowMockHardware = mockHardwareAllowed({ isPackaged: app.isPackaged });
   const fiscalProvider = new MockFiscalProvider();
   let terminalProvider = new ManualTerminalProvider();
@@ -107,13 +109,44 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   });
   ipcMain.handle('market:printer:label', async (event, input) => {
     assertTrusted(event); await requireCorePermission(input?.sessionToken, 'PRINT_LABEL');
-    const product = input?.product || {}; const count = Math.max(1, Math.min(100, Number(input?.count || 1)));
-    const productName = typeof product.name === 'object' ? (product.name.az || product.name.en || product.name.ru || '') : product.name;
-    const title = Buffer.from(`${String(productName || '').slice(0, 32)}\nKod: ${String(product.internalCode || product.sku || '')}\n${product.color ? `Reng: ${product.color} ` : ''}${product.size ? `Olcu: ${product.size}` : ''}\nQiymet: ${(Number(product.priceMinor || 0) / 100).toFixed(2)} AZN\n`, 'utf8');
-    const code = Buffer.from(String(product.barcode || ''), 'ascii');
-    const barcode = code.length ? Buffer.concat([Buffer.from([0x1d, 0x68, 70, 0x1d, 0x77, 2, 0x1d, 0x6b, 73, code.length]), code, Buffer.from('\n\n')]) : Buffer.from('\n');
-    const payload = Buffer.concat(Array.from({ length: count }, () => Buffer.concat([Buffer.from([0x1b, 0x40, 0x1b, 0x61, 1]), title, barcode])));
-    return printerProvider.printRaw(payload, { kind: 'barcode-label', count });
+    // Legacy callers also use the independent label profile and canonical good.
+    return labels.print(input?.product?.id, labels.read(), input?.count ?? 1, input?.operationId, input?.lang || 'az');
+  });
+  ipcMain.handle('market:label:config', (event, input) => {
+    assertTrusted(event); requireSession(input?.sessionToken, ['manager', 'warehouse']);
+    return labels.read();
+  });
+  ipcMain.handle('market:label:save', (event, input) => {
+    assertTrusted(event); requireSession(input?.sessionToken, ['manager']);
+    return labels.save(input?.profile);
+  });
+  ipcMain.handle('market:label:discover', (event, input) => {
+    assertTrusted(event); const user = requireSession(input?.sessionToken, ['manager']);
+    return labels.discover(user, input?.network === true);
+  });
+  ipcMain.handle('market:label:products', (event, input) => {
+    assertTrusted(event); requireSession(input?.sessionToken, ['manager', 'warehouse']);
+    return labels.products();
+  });
+  ipcMain.handle('market:label:generate', async (event, input) => {
+    assertTrusted(event); const user = requireSession(input?.sessionToken, ['manager', 'warehouse']);
+    await requireCorePermission(input?.sessionToken, 'EDIT_PRODUCT');
+    return labels.generate(input?.productId, user, input?.options);
+  });
+  ipcMain.handle('market:label:preview', (event, input) => {
+    assertTrusted(event); requireSession(input?.sessionToken, ['manager', 'warehouse']);
+    return labels.preview(input?.productId, input?.profile, input?.lang);
+  });
+  ipcMain.handle('market:label:print', async (event, input) => {
+    assertTrusted(event); await requireCorePermission(input?.sessionToken, 'PRINT_LABEL');
+    if (input?.test) requireSession(input?.sessionToken, ['manager']);
+    return labels.print(input?.productId, input?.profile, input?.count, input?.operationId, input?.lang, input?.test === true);
+  });
+  ipcMain.handle('market:label:driver', async (event, input) => {
+    assertTrusted(event); requireSession(input?.sessionToken, ['manager']);
+    // Manufacturer pages only. No renderer-supplied URL, binary or shell command.
+    await require('electron').shell.openExternal(labels.driverUrl(input?.vendor));
+    return { ok: true };
   });
   // Identity from the session, approval from main's own PIN check, hardware only
   // after the core granted and logged OPEN_DRAWER - see drawer-auth.cjs.

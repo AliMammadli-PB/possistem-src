@@ -38,6 +38,7 @@ declare global {
         onChanged?(callback: (status: MarketSyncStatus) => void): () => void;
         push(sessionToken: string, snapshot: Record<string, unknown>, books?: Record<string, unknown>): Promise<{ connected: boolean; status?: number; reason?: string; inventory?: boolean; access?: string[] | null; device?: { station?: string } | null; commands?: Array<{ id: string; kind: string; body?: Record<string, unknown> }> }> };
       app: { info(): Promise<{ version: string; updateUrl: string; controlUrl: string; packaged: boolean }> };
+      labels?: import('./labelTypes').LabelApi;
       printer?: {
         list(): Promise<Array<{
           id: string; name: string; widthMm: number;

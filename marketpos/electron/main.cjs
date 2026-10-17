@@ -1211,12 +1211,6 @@ function registerIpc() {
       (pin) => verifyManagerPin(String(pin || '')),
       input?.managerPin,
     );
-    // Mallar qty lives in the warehouse core. Copy it onto the till before the
-    // sale checks stock, or payment reports "qalıq 0" for a product that shows 500.
-    if (method === 'sale.complete' && opsEngine.isHost() && opsEngine.status().state === 'ready' && coreSupervisor.state === 'ready') {
-      try { await opsEngine.flushCatalog({ timeoutMs: 20000 }); }
-      catch (error) { console.error('[ops-sync] before sale', error?.message || error); }
-    }
     if (payload?.role && opsEngine.isHost() && /^cash\.(xReport|zClose|openSession|closeSession|cashIn|cashOut|safeDrop)$/.test(method)) {
       try {
         await opsEngine.flushCatalog({ timeoutMs: 20000 });

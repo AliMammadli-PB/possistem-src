@@ -132,6 +132,55 @@ void registerInventory(const ContextPtr& ctx) {
         std::string(protocol::method::kIngredientsSave), [ctx](const ipc::Request& request) {
             ctx->requirePermission("inventory.manage");
 
+            // A label may need a code without editing the good's stock, prices,
+            // category or minimum. The transaction also serializes concurrent requests.
+            if (getOr<bool>(request.payload, "generateBarcodeOnly", false)) {
+                const auto goodId = getOr<std::string>(request.payload, "id", "");
+                db::Transaction txn(ctx->db());
+                auto current = ctx->db().prepare("SELECT barcode FROM ingredients WHERE id = :id AND active = 1");
+                current.bind(":id", goodId);
+                require(current.step(), "Mal tapılmadı və ya silinib");
+                auto code = current.columnText(0);
+                const auto requested = getOr<std::string>(request.payload, "barcode", "");
+                const auto previous = getOr<std::string>(request.payload, "previousBarcode", "");
+                const bool replace = getOr<bool>(request.payload, "replaceBarcode", false);
+                const auto valid13 = [](const std::string& value) {
+                    if (value.size() != 13 || !std::all_of(value.begin(), value.end(), [](char c) { return c >= '0' && c <= '9'; })) return false;
+                    int sum = 0;
+                    for (int i = 0; i < 12; ++i) sum += (value[i] - '0') * (i % 2 ? 3 : 1);
+                    return (10 - sum % 10) % 10 == value[12] - '0';
+                };
+                require(requested.empty() || valid13(requested), "Barkod 13 rəqəmli olmalıdır və yoxlama rəqəmi düzgün olmalıdır");
+                // A repeated automatic request after replacement returns the committed code.
+                const bool replay = replace && requested.empty() && code != previous && valid13(code);
+                if (!replay && (code.empty() || (replace && (requested.empty() || requested != code)))) {
+                    require(code.empty() || code == previous, "Malın barkodu dəyişib. Siyahını yeniləyin");
+                    const auto oldCode = code;
+                    bool found = false;
+                    for (int attempt = 0; attempt < 32; ++attempt) {
+                        if (!requested.empty()) code = requested;
+                        else {
+                            // Internal numeric identifier. This is not a GS1 company registration.
+                            auto random = ctx->db().prepare("SELECT '200' || printf('%09d', abs(random() % 1000000000))");
+                            random.step(); code = random.columnText(0);
+                            int sum = 0;
+                            for (int i = 0; i < 12; ++i) sum += (code[i] - '0') * (i % 2 ? 3 : 1);
+                            code += static_cast<char>('0' + (10 - sum % 10) % 10);
+                        }
+                        auto used = ctx->db().prepare("SELECT 1 FROM ingredients WHERE active = 1 AND id != :id AND (barcode = :code OR sku = :code) LIMIT 1");
+                        used.bind(":code", code).bind(":id", goodId);
+                        if (!used.step()) { found = true; break; }
+                        if (!requested.empty()) break;
+                    }
+                    require(found, "Bu barkod başqa mala aiddir və ya yeni barkod yaradıla bilmədi");
+                    auto update = ctx->db().prepare("UPDATE ingredients SET barcode = :code, updated_at = :now WHERE id = :id AND active = 1");
+                    update.bind(":code", code).bind(":now", nowMs()).bind(":id", goodId); update.exec();
+                    ctx->audit("ingredient.barcode", "ingredient", goodId, Json{{"barcode", code}, {"previousBarcode", oldCode}});
+                }
+                txn.commit();
+                return Json{{"id", goodId}, {"barcode", code}};
+            }
+
             const auto name = getOr<std::string>(request.payload, "name", "");
             require(!name.empty(), "Ad tələb olunur");
             const auto unit = getOr<std::string>(request.payload, "unit", "kg");

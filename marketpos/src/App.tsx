@@ -642,7 +642,7 @@ export default function App() {
           {view === 'platform' && <PlatformStubsPage coreReady={coreReady} notify={setNotice} />}
           {view === 'staff' && <><StaffPage staff={staff} lang={lang} onAdd={() => setStaffModal(true)} /><RolePermissionsPanel actorRole={session.role} /></>}
           {view === 'mobile' && <MobilePage state={state} staff={staff} lang={lang} cloudConnected={cloudConnected} />}
-          {view === 'settings' && <SettingsPage state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={async (settings) => {
+          {view === 'settings' && <SettingsPage onBarcodeProduct={(product) => setState(previous => ({ ...previous, products: previous.products.map(p => p.id === product.id ? product : p) }))} state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={async (settings) => {
                 if (coreReady && marketCoreClient.available()) {
                   await marketCoreClient.settings.set(settings, session.id);
                   await refreshFromCore();
@@ -1231,6 +1231,12 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
           // Close and clear before optional integrations/refresh. A refresh
           // failure must never leave a paid cart available for another charge.
           setCart([]); setDiscount('0'); setPaymentOpen(false);
+          const warnings: string[] = [];
+          try {
+            const receipt = await marketCoreClient.sales.receipt(sale.id);
+            const printed = await window.marketSystem?.printer?.receipt(session.sessionToken, receipt, 80);
+            if (!printed || printed.ok === false) throw new Error('Receipt was not accepted');
+          } catch { warnings.push(tr(lang, 'salePrintFailed')); }
           try {
             await marketCoreClient.fiscal.enqueue({
               saleId: sale.id,
@@ -1240,12 +1246,6 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
             });
             await window.marketSystem?.fiscal?.processPending(session.sessionToken);
           } catch { /* fiscal mock optional */ }
-          const warnings: string[] = [];
-          try {
-            const receipt = await marketCoreClient.sales.receipt(sale.id);
-            const printed = await window.marketSystem?.printer?.receipt(session.sessionToken, receipt, 80);
-            if (!printed || printed.ok === false) throw new Error('Receipt was not accepted');
-          } catch { warnings.push(tr(lang, 'salePrintFailed')); }
           // Extra kitchen printers get their own preparation ticket.
           const missedStations = await printStationTickets(state.settings, state.products, cart, sale.receiptNo, session.sessionToken);
           if (missedStations.length) warnings.push(`${tr(lang, 'checkoutStationFailed')}: ${missedStations.join(', ')}`);

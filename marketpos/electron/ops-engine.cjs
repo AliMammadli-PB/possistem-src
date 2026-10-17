@@ -283,7 +283,9 @@ class OpsEngine {
    * otherwise the printer bytes for Market's own printer ({ bytes }).
    */
   async renderReceipt(receipt, names) {
-    const res = await this.invoke('receipt.renderExternal', { document: receiptDocument(receipt, names), deliver: true }, { timeoutMs: 30000 });
+    // Bytes only. The till printer prints them. deliver:true made the cashier
+    // wait on the warehouse core's own printer, which stalled the receipt.
+    const res = await this.invoke('receipt.renderExternal', { document: receiptDocument(receipt, names), deliver: false }, { timeoutMs: 4000 });
     if (!res.success) throw new Error(res.error?.message || 'Çek hazırlanmadı');
     if (res.data?.printed) return { printed: true };
     if (!res.data?.bytes) throw new Error('Çek hazırlanmadı');

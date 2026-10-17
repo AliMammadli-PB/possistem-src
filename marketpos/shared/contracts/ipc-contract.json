@@ -86,7 +86,7 @@
     },
     "market:ops:status": {
       "auth": "none",
-      "why": "Whether this till runs the warehouse system and its core state, shown before the Əməliyyatlar frame opens."
+      "why": "Whether this till runs the warehouse system and its core state, shown before the \u018fm\u0259liyyatlar frame opens."
     },
     "market:ops:sync": {
       "auth": "roles:manager,warehouse"
@@ -177,6 +177,30 @@
     "market:ops:cashSummary": {
       "auth": "roles:manager,head_cashier,cashier",
       "why": "Read shared cash balances only after a trusted session and native VIEW_REPORTS permission check."
+    },
+    "market:label:config": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:label:save": {
+      "auth": "roles:manager"
+    },
+    "market:label:discover": {
+      "auth": "roles:manager"
+    },
+    "market:label:products": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:label:generate": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:label:preview": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:label:print": {
+      "auth": "core:PRINT_LABEL"
+    },
+    "market:label:driver": {
+      "auth": "roles:manager"
     }
   }
 }
