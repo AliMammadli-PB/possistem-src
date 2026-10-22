@@ -108,6 +108,7 @@ struct ReceiptDocument {
 
     std::string receiptId;
     std::string receiptNumber;
+    std::string returnLookupCode; // optional short lookup; receipt identity remains intact
     std::string orderNumber;
     std::string orderType;  // dine_in | takeaway | delivery
     std::string tableName;

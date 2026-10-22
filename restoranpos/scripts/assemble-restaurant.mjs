@@ -109,6 +109,15 @@ export const PATCH_ORDER = [
   'apply-restaurant-erp-v2.mjs',
   'apply-restaurant-market-receipt.mjs',
   'apply-restaurant-sold-profit.mjs',
+  'apply-restaurant-business-links.mjs',
+  'apply-restaurant-touch-nav.mjs',
+  'apply-restaurant-cloud-branches.mjs',
+  'apply-restaurant-object-management.mjs',
+  'apply-restaurant-object-login.mjs',
+  'apply-restaurant-documents-access.mjs',
+  'apply-restaurant-bootstrap-login.mjs',
+  'apply-restaurant-platform-auth.mjs',
+  'apply-restaurant-platform-pin.mjs',
   'apply-restaurant-buildstamp.mjs',
 ];
 
@@ -141,6 +150,7 @@ function copy(from, to) {
 }
 
 function stageRenderer() {
+  fs.cpSync(path.join(ROOT, 'assets/nav'), path.join(STAGE, 'assets/nav'), {recursive:true});
   copy('index.js', path.join(STAGE, 'index.js'));
   copy('index.html', path.join(STAGE, 'index.html'));
   copy('possistem-system.css', path.join(STAGE, 'possistem-system.css'));
@@ -151,6 +161,9 @@ function stageRenderer() {
 }
 
 function buildOut() {
+  copy('cloud-branches/object-selection.cjs', path.join(OUT,'main','object-selection.cjs'));
+  copy('cloud-branches/client.cjs', path.join(OUT, 'main', 'cloud-branches.cjs'));
+  copy('cloud-branches/methods.json', path.join(OUT, 'main', 'cloud-branches-methods.json'));
   copy('index.js', path.join(OUT, 'main', 'index.js'));
   const renderer = path.join(OUT, 'renderer');
   fs.rmSync(renderer, { recursive: true, force: true });
@@ -171,3 +184,4 @@ function buildOut() {
 applyPatches();
 stageRenderer();
 buildOut();
+{const cloud=spawnSync(process.execPath,[path.join(ROOT,"cloud-branches/build.mjs"),path.join(OUT,"renderer/cloud-branches")],{cwd:ROOT,stdio:"inherit"});if(cloud.status!==0)process.exit(1);}

@@ -41,6 +41,7 @@ void registerInventory(const ContextPtr& ctx);
 void registerGuests(const ContextPtr& ctx);
 /** Kassalar: tills, treasury, bank, branches, transfers (CashAccountHandlers.cpp). */
 void registerCashAccounts(const ContextPtr& ctx);
+void registerBusiness(const ContextPtr& ctx);
 void registerSales(const ContextPtr& ctx);
 /** Alışlar (purchase orders, receiving, returns); registered by registerInventory. */
 void registerPurchases(const ContextPtr& ctx);

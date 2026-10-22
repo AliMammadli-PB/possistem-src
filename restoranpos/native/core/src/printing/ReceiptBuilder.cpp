@@ -173,7 +173,7 @@ ReceiptSettings ReceiptBuilder::settings(PaperWidth width) {
     config.printItemUnitPrice = ctx_.settingInt("printer.printItemUnitPrice", 0) != 0;
     config.printModifierPrice = ctx_.settingInt("printer.printModifierPrice", 1) != 0;
     config.cutAfterPrint = ctx_.settingInt("printer.cut", 1) != 0;
-    config.openCashDrawer = ctx_.settingInt("printer.openCashDrawer", 0) != 0;
+    config.openCashDrawer = ctx_.settingInt("printer.openCashDrawer", 1) != 0;
     config.density = static_cast<int>(ctx_.settingInt("printer.density", 5));
     config.bottomFeedLines = static_cast<int>(ctx_.settingInt("printer.bottomFeedLines", 4));
     config.codePage = static_cast<int>(ctx_.settingInt("printer.codePage", 13));

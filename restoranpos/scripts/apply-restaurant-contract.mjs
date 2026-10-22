@@ -27,6 +27,13 @@ const PROTOCOL = path.join(ROOT, 'shared/contracts/protocol.json');
 
 /** Main-only methods: handled in main's own switch, never forwarded to the core. */
 const MAIN_ONLY = {
+  // These methods terminate in main's authenticated branch handlers. They
+  // must pass the IPC registry before Is() can project or manage an object.
+  'branches.cloudSelection': { auth: true, perm: null, timeout: 30000, idempotent: false },
+  'branches.cloudList': { auth: true, perm: null, timeout: 30000, idempotent: false },
+  'branches.cloudAssign': { auth: true, perm: null, timeout: 60000, idempotent: false },
+  'branches.cloudRpc': { auth: true, perm: null, timeout: 60000, idempotent: false },
+  'branches.cloudObject': { auth: true, perm: null, timeout: 60000, idempotent: false },
   'files.saveText': { auth: true, perm: null, timeout: 30000, idempotent: false },
   'files.savePdf': { auth: true, perm: null, timeout: 60000, idempotent: false },
 };

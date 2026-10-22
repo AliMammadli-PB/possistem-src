@@ -2,6 +2,8 @@
 
 #include "ServiceFixture.hpp"
 #include "pos/Common.hpp"
+#include "pos/StockValue.hpp"
+#include <limits>
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
 #include "pos/handlers/Handlers.hpp"
@@ -266,4 +268,41 @@ TEST_CASE("a Market receipt prints in this venue's design", "[erp][market][recei
     REQUIRE(text.find("Kassir:") != std::string::npos);
     REQUIRE(text.find("Masa:") == std::string::npos);
     REQUIRE(out.at("html").get<std::string>().find("Bravo Market") != std::string::npos);
+    auto shortDocument = document;
+    shortDocument["returnLookupCode"] = "0042";
+    const auto shortCode = f.call("receipt.renderExternal", pos::Json{{"document", shortDocument}});
+    const auto shortText = shortCode.at("text").get<std::string>();
+    REQUIRE(shortText.find("0042") != std::string::npos);
+    REQUIRE(shortText.find(document.at("receiptNumber").get<std::string>()) != std::string::npos); // original number remains
+
+}
+
+TEST_CASE("weighed stock values round once, retain negative balances and reconcile profit", "[erp][goods][money]") {
+    ErpFixture f;
+    const auto id = f.good("Çəkili test", "299990001", 347, 800);
+    pos::services::InventoryService inventory(f.base().ctx());
+    inventory.move(id, "wh-main", 310, "receipt");
+    auto result = f.goods(pos::Json{{"search", "299990001"}});
+    REQUIRE(result["goods"][0]["costValueMinor"] == 108);
+    REQUIRE(result["goods"][0]["saleValueMinor"] == 248);
+    REQUIRE(result["goods"][0]["profitMinor"] == 140);
+    REQUIRE(result["totals"]["profitMinor"] == 140);
+    inventory.move(id, "wh-main", -620, "adjustment");
+    result = f.goods(pos::Json{{"search", "299990001"}});
+    REQUIRE(result["goods"][0]["qtyMilli"] == -310);
+    REQUIRE(result["goods"][0]["costValueMinor"] == -108);
+    REQUIRE(result["goods"][0]["saleValueMinor"] == -248);
+    REQUIRE(result["goods"][0]["profitMinor"] == -140);
+    REQUIRE(result["totals"]["profitMinor"] == -140);
+    REQUIRE(f.goods(pos::Json{{"search", "299990001"}, {"inStockOnly", true}})["goods"].empty());
+}
+TEST_CASE("stock value arithmetic is symmetric at half cents and rejects overflow", "[erp][goods][money]") {
+    REQUIRE(pos::stockValueMinor(5, 100) == 1);
+    REQUIRE(pos::stockValueMinor(-5, 100) == -1);
+    REQUIRE(pos::stockValueMinor(310, 800) == 248);
+    REQUIRE(pos::stockValueMinor(0, 800) == 0);
+    REQUIRE(pos::stockValueMinor(std::numeric_limits<pos::Money>::min(), 0) == 0);
+    REQUIRE(pos::stockValueMinor(std::numeric_limits<pos::Money>::min(), 1000) == std::numeric_limits<pos::Money>::min());
+    REQUIRE_THROWS_AS(pos::stockValueMinor(std::numeric_limits<pos::Money>::max(), 1001), pos::PosError);
+    REQUIRE_THROWS_AS(pos::stockValueSum(std::numeric_limits<pos::Money>::max(), 1), pos::PosError);
 }

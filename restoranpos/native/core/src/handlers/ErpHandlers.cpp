@@ -15,6 +15,7 @@
 
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
+#include "pos/StockValue.hpp"
 #include "pos/db/Database.hpp"
 #include "pos/handlers/Handlers.hpp"
 #include "pos/protocol_generated.hpp"
@@ -210,7 +211,7 @@ void registerErp(const ContextPtr& ctx) {
         const auto method = inventory.costingMethod();
         auto stmt = ctx->db().prepare(
             "SELECT i.id, i.sku, i.name, i.unit, i.barcode, COALESCE(i.category_id, '') AS categoryId, i.plu, i.weighted, "
-            "       i.cost_minor AS lastCostMinor, " + services::InventoryService::unitCostSql(method) + " AS costMinor, "
+            "       i.cost_minor AS lastCostMinor, " + services::InventoryService::unitCostSql(method, ":warehouse") + " AS costMinor, "
             "       i.min_qty_milli AS minQtyMilli, "
             "       CASE WHEN i.sku LIKE 'MENU-%' THEN COALESCE((SELECT m.price_minor FROM menu_items m "
             "         WHERE m.id = substr(i.sku, 6)), i.sale_price_minor) ELSE i.sale_price_minor END AS basePriceMinor, "
@@ -302,31 +303,32 @@ void registerErp(const ContextPtr& ctx) {
             row["categoryPath"] = path == paths.end() ? std::string{} : path->second;
             row["salePriceMinor"] = price;
             row["prices"] = prices.count(row.value("id", std::string{})) ? prices[row.value("id", std::string{})] : Json::array();
-            const Money positive = std::max<std::int64_t>(0, qty);
-            row["costValueMinor"] = positive * cost / 1000;
-            row["saleValueMinor"] = positive * price / 1000;
-            row["profitMinor"] = positive * (price - cost) / 1000;
+            const Money costValue = stockValueMinor(qty, cost);
+            const Money saleValue = stockValueMinor(qty, price);
+            row["costValueMinor"] = costValue;
+            row["saleValueMinor"] = saleValue;
+            row["profitMinor"] = stockValueDifference(saleValue, costValue);
+            costTotal = stockValueSum(costTotal, costValue);
+            saleTotal = stockValueSum(saleTotal, saleValue);
             const auto soldIt = sold.find(row.value("id", std::string{}));
             const std::int64_t soldQty = soldIt == sold.end() ? 0 : std::max<std::int64_t>(0, soldIt->second.first);
             const Money soldMinor = soldIt == sold.end() ? 0 : std::max<Money>(0, soldIt->second.second);
-            const Money soldCost = soldQty * cost / 1000;
+            const Money soldCost = stockValueMinor(soldQty, cost);
             row["soldQtyMilli"] = soldQty;
             row["soldMinor"] = soldMinor;
             row["soldCostMinor"] = soldCost;
-            row["soldProfitMinor"] = soldMinor - soldCost;
-            costTotal += positive * cost / 1000;
-            saleTotal += positive * price / 1000;
+            row["soldProfitMinor"] = stockValueDifference(soldMinor, soldCost);
             qtyTotal += qty;
             soldQtyTotal += soldQty;
-            soldTotal += soldMinor;
-            soldCostTotal += soldCost;
+            soldTotal = stockValueSum(soldTotal, soldMinor);
+            soldCostTotal = stockValueSum(soldCostTotal, soldCost);
             out.push_back(row);
         }
         return Json{{"goods", out}, {"method", method},
                     {"totals", Json{{"count", out.size()}, {"qtyMilli", qtyTotal}, {"costMinor", costTotal},
-                                    {"saleMinor", saleTotal}, {"profitMinor", saleTotal - costTotal},
+                                    {"saleMinor", saleTotal}, {"profitMinor", stockValueDifference(saleTotal, costTotal)},
                                     {"soldQtyMilli", soldQtyTotal}, {"soldMinor", soldTotal},
-                                    {"soldCostMinor", soldCostTotal}, {"soldProfitMinor", soldTotal - soldCostTotal}}}};
+                                    {"soldCostMinor", soldCostTotal}, {"soldProfitMinor", stockValueDifference(soldTotal, soldCostTotal)}}}};
     });
 
     // A good's own price, plus a price in each branch where it differs.

@@ -105,6 +105,7 @@ struct RenderedPayload {
     int charsPerLine = 48;
     int fontHeightPx = 32, fontWidthPx = 14, sideMarginPx = 2;
     printing::RenderMode renderMode = printing::RenderMode::Auto;
+    bool openCashDrawer = false;
     int itemCount = 0;
     Money subtotalMinor = 0;
     Money taxMinor = 0;
@@ -138,7 +139,7 @@ printing::EscPosOptions escPosOptionsFor(Context& ctx, const RenderedPayload& pa
     opts.density = static_cast<int>(ctx.settingInt("printer.density", 5));
     opts.cut = ctx.settingInt("printer.cut", 1) != 0;
     opts.beep = ctx.settingInt("printer.beep", 0) != 0;
-    opts.openCashDrawer = ctx.settingInt("printer.openCashDrawer", 0) != 0;
+    opts.openCashDrawer = payload.openCashDrawer && ctx.settingInt("printer.openCashDrawer", 1) != 0;
     opts.feedLines = static_cast<int>(ctx.settingInt("printer.bottomFeedLines", 4));
     opts.codePage = static_cast<int>(ctx.settingInt("printer.codePage", 13));
     opts.renderMode = payload.renderMode;
@@ -577,6 +578,7 @@ int drainQueue(Context& ctx) {
         if (!overrides.is_object()) overrides = Json::object();
 
         const bool isReprint = overrides.value("reprint", false);
+        payload.openCashDrawer = printing::receiptOpensCashDrawer(job.kind, isReprint);
 
         try {
             const auto config = settingsForJob(ctx, overrides);
@@ -1463,9 +1465,11 @@ void registerPrinting(const ContextPtr& ctx) {
             const auto config = settingsForJob(*ctx, Json::object());
             printing::ReceiptBuilder builder(*ctx);
             auto doc = printing::documentFromJson(request.payload["document"]);
+            const bool reprint = doc.isReprint;
             builder.applyVenue(doc, config);
 
             RenderedPayload payload;
+            payload.openCashDrawer = printing::receiptOpensCashDrawer("customer_receipt", reprint);
             payload.paperWidth = config.paperWidth;
             payload.charsPerLine = config.charsPerLine;
             payload.renderMode = config.renderMode;

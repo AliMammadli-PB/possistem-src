@@ -1,4 +1,5 @@
 #include "catch_amalgamated.hpp"
+#include <algorithm>
 
 #include "ServiceFixture.hpp"
 #include "pos/Common.hpp"
@@ -194,4 +195,32 @@ TEST_CASE("a bank tied to a branch takes only that branch's card money", "[kassa
     f.cardPaid(f.order(1000), 1000, "pc-2");
     f.cardPaid(f.order(700), 700, "pc-1");  // another branch's sale
     REQUIRE(f.balance(bank2) == 1000);
+}
+
+TEST_CASE("object editing validates identity and archives empty objects without deleting history", "[kassa][objects]") {
+    KassaFixture f;
+    const auto object = f.call("cashObjects.save", pos::Json{{"name", "Nərimanov"}});
+    const auto id = object.at("id").get<std::string>();
+    f.call("cashObjects.save", pos::Json{{"id", id}, {"name", "Gənclik"}});
+    REQUIRE_THROWS_AS(f.call("cashObjects.save", pos::Json{{"id", "missing"}, {"name", "Unknown"}}), pos::PosError);
+    const auto account = f.kassa("Empty till", "till", 0, "", id);
+    REQUIRE_THROWS_AS(f.call("cashObjects.save", pos::Json{{"id", id}, {"active", false}}), pos::PosError);
+    f.call("cashAccounts.deactivate", pos::Json{{"accountId", account}});
+    f.call("cashObjects.save", pos::Json{{"id", id}, {"active", false}});
+    auto list = f.call("cashAccounts.list", pos::Json::object());
+    for (const auto& o : list.at("objects")) REQUIRE(o.at("id") != id);
+    auto audit = f.fixture().db().prepare("SELECT COUNT(*) FROM audit_logs WHERE action='cash.object.deactivate' AND entity_id=:id");
+    audit.bind(":id", id); REQUIRE(audit.step()); REQUIRE(audit.columnInt(0) == 1);
+    REQUIRE_THROWS_AS(f.call("cashObjects.save", pos::Json{{"id", id}, {"name", "Revive"}}), pos::PosError);
+}
+
+TEST_CASE("object with remaining warehouse stock cannot be archived", "[kassa][objects]") {
+    KassaFixture f;
+    auto object = f.call("cashObjects.save", pos::Json{{"name", "Stock location"}});
+    const auto id=object.at("id").get<std::string>(),warehouse=object.at("warehouseId").get<std::string>();
+    const auto good=f.call("ingredients.save",pos::Json{{"name","Stock good"},{"unit","ədəd"}}).at("id").get<std::string>();
+    f.call("inventory.adjust",pos::Json{{"ingredientId",good},{"warehouseId",warehouse},{"qtyDeltaMilli",1000},{"reason","opening"}});
+    REQUIRE_THROWS_AS(f.call("cashObjects.save",pos::Json{{"id",id},{"active",false}}),pos::PosError);
+    auto list=f.call("cashAccounts.list",pos::Json::object());
+    REQUIRE(std::any_of(list.at("objects").begin(),list.at("objects").end(),[&](const auto& o){return o.at("id")==id;}));
 }

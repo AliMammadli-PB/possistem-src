@@ -71,7 +71,7 @@ void registerGuests(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT id, name, phone, email, address, note, "
                 "       loyalty_points AS loyaltyPoints, debt_minor AS debtMinor, "
-                "       kind, salary_minor AS salaryMinor, COALESCE(object_id, '') AS objectId "
+                "       partner_origin AS partnerOrigin, kind, credit_allowed AS creditAllowed,credit_limit_minor AS creditLimitMinor, salary_minor AS salaryMinor, COALESCE(object_id, '') AS objectId "
                 "FROM customers "
                 // Parenthesised: without it the AND binds tighter than the ORs
                 // and an inactive customer would surface on any search.
@@ -92,7 +92,7 @@ void registerGuests(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT id, name, phone, email, address, note, "
                 "       loyalty_points AS loyaltyPoints, debt_minor AS debtMinor, active, "
-                "       kind, salary_minor AS salaryMinor "
+                "       kind,credit_allowed AS creditAllowed,credit_limit_minor AS creditLimitMinor, salary_minor AS salaryMinor "
                 "FROM customers WHERE id = :id");
             stmt.bind(":id", id);
             if (!stmt.step()) {
@@ -120,6 +120,7 @@ void registerGuests(const ContextPtr& ctx) {
             const auto now = nowMs();
 
             db::Transaction txn(ctx->db());
+            require(!request.payload.value("_marketStaff",false), "Giriş istifadəçilərini İstifadəçilər bölməsindən yaradın");
             if (id.empty()) {
                 id = "cus-" + crypto::uuid4().substr(0, 8);
                 auto insert = ctx->db().prepare(
@@ -151,6 +152,11 @@ void registerGuests(const ContextPtr& ctx) {
                 auto branch = ctx->db().prepare("UPDATE customers SET object_id = :object WHERE id = :id");
                 branch.bindOptional(":object", getOr<std::string>(request.payload, "objectId", "")).bind(":id", id);
                 branch.exec();
+            }
+            if(request.payload.contains("creditAllowed")||request.payload.contains("creditLimitMinor")){ctx->requirePermission("customers.credit");const auto limit=request.payload.value("creditLimitMinor",Money{0});require(limit>=0&&limit<=1000000000000LL,"Kredit limiti düzgün deyil");auto u=ctx->db().prepare("UPDATE customers SET credit_allowed=:a,credit_limit_minor=:l WHERE id=:id");u.bind(":a",request.payload.value("creditAllowed",false)?1:0).bind(":l",limit).bind(":id",id);u.exec();}
+            if (request.payload.value("partnerManaged",false)) {
+                auto origin = ctx->db().prepare("UPDATE customers SET partner_origin='partner' WHERE id=:id");
+                origin.bind(":id",id);origin.exec();
             }
             ctx->audit("customer.save", "customer", id, Json{{"name", name}});
             txn.commit();
@@ -227,11 +233,13 @@ void registerGuests(const ContextPtr& ctx) {
             const std::string name = who.columnText(0);
             const auto now = nowMs();
 
+            const auto paymentId = crypto::uuid4();
+            std::string cashMovementId;
             auto insert = ctx->db().prepare(
                 "INSERT INTO salary_payments (id, customer_id, month, kind, amount_minor, note, "
                 "                             actor_user_id, created_at) "
                 "VALUES (:id, :customer, :month, :kind, :amount, :note, :actor, :now)");
-            insert.bind(":id", crypto::uuid4()).bind(":customer", customerId).bind(":month", month)
+            insert.bind(":id", paymentId).bind(":customer", customerId).bind(":month", month)
                 .bind(":kind", kind).bind(":amount", kind == "note" ? Money{0} : amount)
                 .bind(":note", note).bindOptional(":actor", ctx->session().userId).bind(":now", now);
             insert.exec();
@@ -259,9 +267,12 @@ void registerGuests(const ContextPtr& ctx) {
                 // Listed under Xərclər, and taken out of the kassa or treasury picked.
                 const auto label = name + (kind == "advance" ? " · avans" : " · maaş");
                 const auto row = services::CashService(*ctx).recordMovement("expense", amount, "Maaş", label);
+                cashMovementId = row.value("id", std::string{});
                 services::CashService(*ctx).accountMove(accountId, -amount, "salary", "cash_movement",
                                                         row.value("id", std::string{}), "Maaş: " + label);
             }
+            auto link = ctx->db().prepare("INSERT INTO document_cash_links(doc_type,doc_id,account_id,cash_movement_id) VALUES('salary',:id,:a,:c)");
+            link.bind(":id",paymentId).bind(":a",cashMovementId.empty()?std::string{}:services::CashService(*ctx).resolveAccount(accountId)).bind(":c",cashMovementId);link.exec();
             ctx->auditRequired("salary.pay", "customer", customerId,
                                Json{{"kind", kind}, {"amountMinor", amount}, {"month", month}});
             Json response{{"ok", true}, {"customerId", customerId}, {"month", month}};
@@ -302,11 +313,20 @@ void registerGuests(const ContextPtr& ctx) {
             auto entries = ctx->db().prepare(
                 "SELECT l.id, l.order_id AS orderId, o.order_number AS orderNumber, "
                 "       l.amount_minor AS amountMinor, l.kind, l.note, "
-                "       u.full_name AS actorName, l.created_at AS createdAt "
+                "       COALESCE(ma.actor_name,u.full_name) AS actorName, l.created_at AS createdAt, "
+                "       COALESCE(a.id,'') AS accountId, COALESCE(a.name,'') AS accountName, "
+                "       COALESCE(co.id,'') AS objectId, COALESCE(co.name,'') AS objectName, "
+                "       COALESCE(ev.ref_type,'') AS refType, COALESCE(ev.ref_id,'') AS refId, "
+                "       (SELECT COUNT(*) FROM document_voids v WHERE v.doc_type='customer' AND v.doc_id=l.id) AS cancelled "
                 "FROM customer_ledger l "
                 "LEFT JOIN orders o ON o.id = l.order_id "
                 "LEFT JOIN users u ON u.id = l.actor_user_id "
-                "WHERE l.customer_id = :id ORDER BY l.created_at DESC LIMIT 200");
+                "LEFT JOIN market_document_actors ma ON ma.doc_type='customer' AND ma.doc_id=l.id "
+                "LEFT JOIN document_cash_links dl ON dl.doc_type='customer' AND dl.doc_id=l.id "
+                "LEFT JOIN cash_accounts a ON a.id=dl.account_id "
+                "LEFT JOIN cash_objects co ON co.id=a.object_id "
+                "LEFT JOIN market_customer_events ev ON l.id='market-'||ev.id "
+                "WHERE l.customer_id = :id ORDER BY l.created_at DESC,l.rowid DESC");
             entries.bind(":id", id);
 
             auto head = ctx->db().prepare(
@@ -364,22 +384,39 @@ void registerGuests(const ContextPtr& ctx) {
             services::Idempotency idem(*ctx);
             const auto key = getOr<std::string>(request.payload, "idempotencyKey", "");
             if (auto replay = idem.begin(key, "customers.payDebt", request.payload)) return *replay;
-            if (key.rfind("portal-", 0) == 0) {
+            if (key.rfind("portal-", 0) == 0 || request.payload.contains("_marketScope")) {
                 auto due = ctx->db().prepare("SELECT debt_minor FROM customers WHERE id = :id");
                 due.bind(":id", customerId);
                 require(due.step() && due.columnInt(0) >= amount,
                         "Ödəniş müştəri borcunu aşa bilməz");
             }
+            const auto at=getOr<Timestamp>(request.payload,"docAt",nowMs());
+            require(at>0,"Tarix düzgün deyil");
+            const auto accountId=getOr<std::string>(request.payload,"accountId","");
+            if(request.payload.contains("_marketScope")) {
+                require(!accountId.empty(),"Kassanı seçin");
+                auto account=ctx->db().prepare("SELECT object_id FROM cash_accounts WHERE id=:id AND active=1");account.bind(":id",accountId);
+                require(account.step(),"Kassa tapılmadı");
+                require(account.columnText(0)==request.payload.value("objectId",std::string{}),"Kassa seçilmiş obyektə aid deyil");
+            }
+            const auto paymentId = crypto::uuid4();
             auto insert = ctx->db().prepare(
                 "INSERT INTO customer_ledger (id, customer_id, amount_minor, kind, note, "
                 "                             actor_user_id, created_at) "
                 "VALUES (:id, :customer, :amount, 'payment', :note, :actor, :now)");
-            insert.bind(":id", crypto::uuid4()).bind(":customer", customerId)
+            insert.bind(":id", paymentId).bind(":customer", customerId)
                 .bind(":amount", amount)
                 .bind(":note", getOr<std::string>(request.payload, "note", ""))
-                .bindOptional(":actor", ctx->session().userId).bind(":now", nowMs());
+                .bindOptional(":actor", ctx->session().userId).bind(":now", at);
             insert.exec();
 
+            auto link = ctx->db().prepare("INSERT INTO document_cash_links(doc_type,doc_id,account_id) VALUES('customer',:id,:a)");
+            link.bind(":id",paymentId).bind(":a",services::CashService(*ctx).resolveAccount(getOr<std::string>(request.payload,"accountId","")));link.exec();
+            if(request.payload.contains("_marketScope")) {
+                const auto scope=request.payload["_marketScope"];
+                auto meta=ctx->db().prepare("INSERT INTO market_document_actors VALUES('customer',:id,:actor,:name)");
+                meta.bind(":id",paymentId).bind(":actor",scope.value("id",std::string{})).bind(":name",scope.value("name",std::string{}));meta.exec();
+            }
             const Money debt = refreshDebt(*ctx, customerId);
             // The money comes into the kassa the cashier picked.
             {
@@ -391,7 +428,7 @@ void registerGuests(const ContextPtr& ctx) {
             }
             ctx->auditRequired("customer.payDebt", "customer", customerId,
                                Json{{"amountMinor", amount}, {"debtMinor", debt}});
-            Json response{{"customerId", customerId}, {"debtMinor", debt}};
+            Json response{{"id",paymentId},{"number","PAY-"+paymentId.substr(0,8)},{"customerId", customerId}, {"debtMinor", debt}};
             idem.complete(key, response, "customer", customerId);
             txn.commit();
             return response;

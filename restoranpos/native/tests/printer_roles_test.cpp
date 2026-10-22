@@ -6,6 +6,8 @@
 #include "pos/Error.hpp"
 #include "pos/handlers/Handlers.hpp"
 #include "pos/printing/ReceiptBuilder.hpp"
+#include "pos/printing/EscPos.hpp"
+#include <algorithm>
 
 /**
  * Three printers, and which document goes to which.
@@ -200,4 +202,33 @@ TEST_CASE("a delivery note needs a delivery", "[printer][warehouse]") {
 
     pos::printing::ReceiptBuilder builder(f.fixture().ctx());
     REQUIRE_THROWS_AS(builder.warehouseSlip(pos::crypto::uuid4()), pos::PosError);
+}
+
+TEST_CASE("automatic drawer belongs to original financial receipts only", "[printer][drawer]") {
+    using pos::printing::receiptOpensCashDrawer;
+    CHECK(receiptOpensCashDrawer("customer_receipt"));
+    CHECK(receiptOpensCashDrawer("refund_receipt"));
+    for (const auto* kind : {"customer_receipt", "refund_receipt"})
+        CHECK_FALSE(receiptOpensCashDrawer(kind, true));
+    for (const auto* kind : {"customer_bill", "test_page", "kitchen_ticket", "warehouse_slip", "x_report", "z_report", "period_report", "unknown"})
+        CHECK_FALSE(receiptOpensCashDrawer(kind));
+}
+
+TEST_CASE("drawer pulse follows receipt and cutter once in text and raster", "[printer][drawer]") {
+    const std::vector<std::uint8_t> pulse{0x1b,0x70,0,0x19,0xfa};
+    const std::vector<std::uint8_t> cut{0x1d,0x56,0};
+    for (auto mode : {pos::printing::RenderMode::Text, pos::printing::RenderMode::Raster}) {
+        pos::printing::EscPosOptions opts;
+        opts.renderMode=mode; opts.qr=false; opts.openCashDrawer=true;
+        auto bytes=pos::printing::buildEscPosText("SALE 10.00",opts).bytes;
+        auto drawer=std::search(bytes.begin(),bytes.end(),pulse.begin(),pulse.end());
+        auto cutter=std::search(bytes.begin(),bytes.end(),cut.begin(),cut.end());
+        REQUIRE(drawer!=bytes.end()); REQUIRE(cutter!=bytes.end()); CHECK(drawer>cutter);
+        CHECK(std::search(drawer+1,bytes.end(),pulse.begin(),pulse.end())==bytes.end());
+        opts.openCashDrawer=false;
+        bytes=pos::printing::buildEscPosText("SALE 10.00",opts).bytes;
+        CHECK(std::search(bytes.begin(),bytes.end(),pulse.begin(),pulse.end())==bytes.end());
+    }
+    PrinterRoleFixture f;
+    CHECK(f.setting("printer.openCashDrawer")=="1");
 }

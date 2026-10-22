@@ -189,6 +189,7 @@ void registerInventory(const ContextPtr& ctx) {
 
             auto id = getOr<std::string>(request.payload, "id", "");
             auto sku = getOr<std::string>(request.payload, "sku", "");
+            if(sku.empty() && !id.empty()) {auto stored=ctx->db().prepare("SELECT sku FROM ingredients WHERE id=:id");stored.bind(":id",id);if(stored.step())sku=stored.columnText(0);}
             const auto costMinor = getOr<std::int64_t>(request.payload, "costMinor", 0);
             const auto minQty = getOr<std::int64_t>(request.payload, "minQtyMilli", 0);
             const auto barcode = getOr<std::string>(request.payload, "barcode", "");
@@ -760,7 +761,7 @@ void registerInventory(const ContextPtr& ctx) {
         std::string(protocol::method::kSuppliersList), [ctx](const ipc::Request&) {
             ctx->requirePermission("suppliers.view");
             auto stmt = ctx->db().prepare(
-                "SELECT s.id, s.name, s.contact, s.phone, s.tax_id AS taxId, s.note, s.active, "
+                "SELECT s.id, s.name, s.contact, s.phone, s.tax_id AS taxId, s.note, s.active, s.company_name AS companyName, s.address, "
                 "       COALESCE((SELECT SUM(CASE WHEN l.kind = 'charge' THEN l.amount_minor "
                 "                                 ELSE -l.amount_minor END) "
                 "                 FROM supplier_ledger l WHERE l.supplier_id = s.id), 0) AS dueMinor "
@@ -801,6 +802,12 @@ void registerInventory(const ContextPtr& ctx) {
                     .bind(":tax", taxId).bind(":note", note).bind(":now", now).bind(":id", id);
                 update.exec();
                 require(ctx->db().changes() == 1, "Təchizatçı tapılmadı");
+            }
+            for(const auto& field: {std::pair{"companyName","company_name"},std::pair{"address","address"}}) {
+                if(request.payload.contains(field.first)) {
+                    auto extra=ctx->db().prepare(std::string("UPDATE suppliers SET ")+field.second+"=:v WHERE id=:id");
+                    extra.bind(":v",getOr<std::string>(request.payload,field.first,"")).bind(":id",id);extra.exec();
+                }
             }
             if (request.payload.contains("active")) {
                 // Partnyorlar → Sil: hidden from lists, its history kept.
@@ -860,16 +867,19 @@ void registerInventory(const ContextPtr& ctx) {
                 due.step();
                 require(due.columnInt(0) >= amount, "Ödəniş təchizatçı borcunu aşa bilməz");
             }
+            const auto paymentId = crypto::uuid4();
             auto insert = ctx->db().prepare(
                 "INSERT INTO supplier_ledger (id, supplier_id, purchase_id, amount_minor, kind, "
                 "                             note, actor_user_id, created_at) "
                 "VALUES (:id, :supplier, :purchase, :amount, 'payment', :note, :actor, :now)");
-            insert.bind(":id", crypto::uuid4()).bind(":supplier", supplierId)
+            insert.bind(":id", paymentId).bind(":supplier", supplierId)
                 .bindOptional(":purchase", getOr<std::string>(request.payload, "purchaseId", ""))
                 .bind(":amount", amount)
                 .bind(":note", getOr<std::string>(request.payload, "note", ""))
                 .bindOptional(":actor", ctx->session().userId).bind(":now", nowMs());
             insert.exec();
+            auto link = ctx->db().prepare("INSERT INTO document_cash_links(doc_type,doc_id,account_id) VALUES('supplier',:id,:a)");
+            link.bind(":id",paymentId).bind(":a",services::CashService(*ctx).resolveAccount(getOr<std::string>(request.payload,"accountId","")));link.exec();
             if (const auto paidFor = getOr<std::string>(request.payload, "purchaseId", ""); !paidFor.empty())
                 refreshPurchase(*ctx, paidFor);
 

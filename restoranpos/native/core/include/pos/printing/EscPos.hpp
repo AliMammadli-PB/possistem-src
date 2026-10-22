@@ -10,6 +10,11 @@
 
 namespace pos::printing {
 
+/** Financial receipt only: previews, kitchen tickets and duplicates never kick the till. */
+inline bool receiptOpensCashDrawer(std::string_view kind, bool reprint = false) {
+    return !reprint && (kind == "customer_receipt" || kind == "refund_receipt");
+}
+
 struct EscPosOptions {
     int density = 5;       // 0–8 (printer max 8)
     bool cut = true;       // full cut after receipt

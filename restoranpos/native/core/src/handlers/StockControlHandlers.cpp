@@ -505,6 +505,9 @@ void registerStockControl(const ContextPtr& ctx) {
             "       " + unit + " AS unitCostMinor "
             "FROM stock_movements m JOIN ingredients i ON i.id = m.ingredient_id JOIN warehouses w ON w.id = m.warehouse_id "
             "WHERE m.created_at >= :from AND m.created_at < :to AND (:w = '' OR m.warehouse_id = :w) "
+            // Zay documents (1.5.47) count by their live lines below: an edited or
+            // cancelled document's old movements must not count.
+            "  AND NOT (m.kind = 'waste' AND m.reference_id IN (SELECT id FROM waste_documents)) "
             "  AND ((m.qty_delta_milli < 0 AND (m.kind IN ('waste','stocktake') OR (m.kind = 'adjustment' AND m.reference_id = ''))) "
             // A wrong expiry date corrected gives the blocked goods back.
             "       OR (m.qty_delta_milli > 0 AND m.kind = 'adjustment' AND m.reason = 'Son istifadə tarixi düzəldildi')) "
@@ -525,6 +528,22 @@ void registerStockControl(const ContextPtr& ctx) {
             (category == "expired" ? expired : category == "waste" ? waste : lost) += value;
             row["valueMinor"] = value;
             row["category"] = category;
+            rows.push_back(row);
+        }
+        auto docs = ctx->db().prepare(
+            "SELECT x.id, 'waste' AS kind, d.note AS reason, x.qty_milli AS qtyMilli, d.created_at AS createdAt, "
+            "       i.id AS ingredientId, i.name, i.unit, w.name AS warehouseName, x.total_minor AS valueMinor, "
+            "       d.number AS documentNumber "
+            "FROM waste_document_items x JOIN waste_documents d ON d.id = x.document_id "
+            "JOIN ingredients i ON i.id = x.ingredient_id JOIN warehouses w ON w.id = d.warehouse_id "
+            "WHERE d.cancelled_at IS NULL AND d.created_at >= :from AND d.created_at < :to "
+            "  AND (:w = '' OR d.warehouse_id = :w) ORDER BY d.created_at DESC LIMIT 3000");
+        docs.bind(":from", from).bind(":to", to).bind(":w", warehouseId);
+        while (docs.step()) {
+            Json row = docs.row();
+            const bool old = row.value("reason", std::string{}).rfind("Vaxtı keçib", 0) == 0;
+            (old ? expired : waste) += row.value("valueMinor", Money{0});
+            row["category"] = old ? "expired" : "waste";
             rows.push_back(row);
         }
 

@@ -72,6 +72,7 @@ void registerAll(ipc::StdioServer& server, db::Database& database) {
     registerDelivery(ctx);
     registerExport(ctx);
     registerSystem(ctx);
+    registerBusiness(ctx);
 }
 
 void sweepPendingPayments(ipc::StdioServer& server, db::Database& database) {

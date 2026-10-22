@@ -97,5 +97,8 @@
   "stocktake.cancel",
   "income.list",
   "income.save",
-  "income.delete"
+  "income.delete",
+  "business.call",
+  "orders.get",
+  "print.enqueue"
 ]

@@ -11,17 +11,8 @@ import './scale1561.css';
  * The LAN part sends goods (and the scale's print format per PLU) to a Dahua TM-A / TM-F.
  */
 const LABEL_FORMATS: Array<[number, string, string, string]> = [
-  [0, 'Tərəzinin öz formatı (Spec000)', 'Формат весов (Spec000)', 'Scale default (Spec000)'],
-  [1, '1 · Mal etiketi 58×40', '1 · Этикетка 58×40', '1 · Item label 58×40'],
-  [2, '2 · Mal etiketi 40×30', '2 · Этикетка 40×30', '2 · Item label 40×30'],
-  [3, '3 · Mal etiketi 58×30', '3 · Этикетка 58×30', '3 · Item label 58×30'],
-  [4, '4 · Cəm etiketi 58×40', '4 · Итоговая 58×40', '4 · Total label 58×40'],
-  [5, '5 · Cəm etiketi 40×30', '5 · Итоговая 40×30', '5 · Total label 40×30'],
-  [6, '6 · Cəm etiketi 58×30', '6 · Итоговая 58×30', '6 · Total label 58×30'],
-  [7, '7 · Çek 58 mm', '7 · Чек 58 мм', '7 · Receipt 58 mm'],
-  [8, '8 · Çek 40 mm', '8 · Чек 40 мм', '8 · Receipt 40 mm'],
-  [9, '9 · Çek 48 mm', '9 · Чек 48 мм', '9 · Receipt 48 mm'],
-  ...Array.from({ length: 30 }, (_, i): [number, string, string, string] => [10 + i, `${10 + i} · Öz dizaynınız`, `${10 + i} · Ваш формат`, `${10 + i} · Your own format`]),
+  [0, 'Tərəzinin öz formatı', 'Текущий формат весов', 'Current scale format'],
+  ...Array.from({length:39},(_,i):[number,string,string,string]=>[i+1,`${i+1} · Tərəzidəki format`,`${i+1} · Формат весов`,`${i+1} · Scale format`]),
 ];
 
 const money = (minor?: number) => (minor === undefined ? '—' : `${(minor / 100).toFixed(2)} AZN`);
@@ -42,7 +33,7 @@ export function ScaleSettings({ session, lang, products, notify }: { session: Se
   useEffect(() => {
     let live = true;
     if (marketCoreClient.available()) void marketCoreClient.scale.rules().then((r) => { const l = layoutFromRules(r.rules); if (!live) return; if (l) { setLayout(l); setCustom(!presetOf(l)); } setSaved(JSON.stringify(l ? rulesFromLayout(l) : r.rules)); }).catch((e) => { if (live) setError(String(e?.message || e)); });
-    if (scale) void scale.get(token).then((c) => { if (live) setLan({ ...c, labelNo: Number(c.labelNo) || 0 }); }).catch(() => {});
+    if (scale) void scale.get(token).then((c) => { if (live) setLan({ ...c, labelNo: Number(c.labelNo) || 0 }); }).catch(e=>{if(live)setError(String(e?.message||e));});
     return () => { live = false; };
   }, [token]);
 
@@ -69,7 +60,7 @@ export function ScaleSettings({ session, lang, products, notify }: { session: Se
   const detect = () => {
     const n = Number(shownValue.replace(',', '.'));
     const shown = shownValue && Number.isFinite(n) ? (shownKind === 'kg' ? { kg: n } : { totalMinor: Math.round(n * 100) }) : undefined;
-    setCandidates(detectLayout(sample, goods, shown));
+    setCandidates(detectLayout(sample, goods, shown).filter(c => c.reading.checksumOk));
   };
   const pick = (c: Candidate) => { setLayout((l) => ({ ...c.preset.layout, prefixes: l.prefixes.includes(c.reading.prefix) ? l.prefixes : [...l.prefixes, c.reading.prefix] })); setCustom(false); setCandidates(null); };
   const setPlu = (pluLen: number) => setLayout((l) => ({ ...l, pluLen, valueLen: 10 - pluLen }));
@@ -93,7 +84,7 @@ export function ScaleSettings({ session, lang, products, notify }: { session: Se
         <button type="button" role="radio" aria-checked={custom} className={custom ? 'active' : ''} onClick={() => setCustom(true)}>{t('Öz dizaynım', 'Свой формат', 'My own layout')}</button>
       </div>
       {custom && <div className="scale-custom">
-        <label>{t('PLU uzunluğu', 'Длина PLU', 'PLU length')}<select value={layout.pluLen} onChange={(e) => setPlu(Number(e.target.value))}>{[3, 4, 5, 6].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+        <label>{t('PLU uzunluğu', 'Длина PLU', 'PLU length')}<select value={layout.pluLen} onChange={(e) => setPlu(Number(e.target.value))}>{[4, 5, 6].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
         <label>{t('Son rəqəmlər', 'Последние цифры', 'Last digits')}<select value={layout.mode} onChange={(e) => setLayout((l) => ({ ...l, mode: e.target.value as ScaleLayout['mode'], decimals: e.target.value === 'PRICE' ? 2 : 3 }))}><option value="WEIGHT">{t('Çəki', 'Вес', 'Weight')}</option><option value="PRICE">{t('Məbləğ', 'Сумма', 'Total price')}</option></select></label>
         <label>{t('Onluq rəqəm', 'Знаков после запятой', 'Decimals')}<select value={layout.decimals} onChange={(e) => setLayout((l) => ({ ...l, decimals: Number(e.target.value) }))}>{[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}{layout.mode === 'WEIGHT' && n === 3 ? ' (qram)' : layout.mode === 'PRICE' && n === 2 ? ' (qəpik)' : ''}</option>)}</select></label>
       </div>}
@@ -101,9 +92,10 @@ export function ScaleSettings({ session, lang, products, notify }: { session: Se
         {ALL_PREFIXES.map((p) => <label key={p}><input type="checkbox" checked={layout.prefixes.includes(p)} onChange={(e) => setLayout((l) => ({ ...l, prefixes: e.target.checked ? [...l.prefixes, p].sort() : l.prefixes.filter((x) => x !== p) }))}/>{p}</label>)}
       </fieldset>
       <div className="scale-strip" aria-label={t('Nümunə barkod', 'Пример', 'Sample')}>{segments.map((s) => <span key={s.cls} className={`seg ${s.cls}`}><b>{s.text}</b><small>{s.label}</small></span>)}</div>
+      {layout.mode === 'PRICE' && <p className="hint">{t('Məbləğ barkodunda çəki cari qiymətdən hesablanır. Dəqiq anbar uçotu üçün çəki barkodunu seçin və tərəzidəki qiyməti yeniləyin.', 'В коде суммы вес вычисляется по текущей цене. Для точного складского учёта используйте код веса и обновите цену весов.', 'Price barcodes derive weight from the current price. For exact stock tracking use weight barcodes and keep scale prices current.')}</p>}
       <p className="scale-sample">{t('Nümunə', 'Пример', 'Sample')}: <code>{code}</code> → PLU {Number(code.slice(2, 2 + layout.pluLen))} · {layout.mode === 'PRICE' ? money(Math.round(Number(code.slice(2 + layout.pluLen, 12)) * 10 ** (2 - layout.decimals))) : kgText(Number(code.slice(2 + layout.pluLen, 12)) / 10 ** layout.decimals)}</p>
-      <div className="scale-dahua"><span>{t('Dahua TM-30F-də barkod təsviri (P25 · BAR · Des)', 'Описание штрихкода в Dahua (P25 · BAR · Des)', 'Dahua barcode description (P25 · BAR · Des)')}</span><code>{dahuaDescription(layout)}</code>
-        <small>{layout.mode === 'PRICE' ? t('Tərəzidə Spec209 (barkodda pulun onluğu) = ', 'В весах Spec209 = ', 'On the scale Spec209 = ') + layout.decimals : t('Tərəzidə Spec208 (barkodda çəkinin onluğu) = ', 'В весах Spec208 = ', 'On the scale Spec208 = ') + layout.decimals}</small></div>
+      <div className="scale-dahua"><span>{t('Dahua barkod təsviri · uyğun firmware üçün', 'Описание штрихкода Dahua · для совместимой прошивки', 'Dahua barcode description · compatible firmware')}</span><code>{dahuaDescription(layout)}</code>
+        <small>{t('Bu təsviri tətbiq etməzdən əvvəl tərəzinin öz təlimatında formatı yoxlayın. Bu ayar yalnız kassanın oxuma qaydasını saxlayır.', 'Перед применением проверьте формат в инструкции весов. Здесь сохраняются правила чтения кассы.', 'Verify this format against the scale manual before applying it. This setting saves the till reading rules only.')}</small></div>
       {invalid && <p className="label-warning" role="alert">{invalid === 'prefix' ? t('Ən azı bir prefiks seçin', 'Выберите префикс', 'Pick at least one prefix') : t('Prefiks + PLU + son rəqəmlər 12 rəqəm olmalıdır', 'Сумма полей должна быть 12', 'Fields must add up to 12 digits')}</p>}
       <div className="button-row"><button type="button" className="primary-action" disabled={Boolean(busy) || Boolean(invalid) || !dirty || !marketCoreClient.available()} onClick={() => void save()}>{busy === 'save' ? <LoaderCircle className="spin"/> : <Check/>}{t('Yadda saxla', 'Сохранить', 'Save')}</button>{dirty && <span className="label-dirty">{t('Saxlanmamış dəyişiklik var', 'Есть несохранённые изменения', 'Unsaved changes')}</span>}</div>
       <div className="scale-try"><label>{t('Tərəzi etiketini oxudun', 'Отсканируйте этикетку', 'Scan a scale label')}<input inputMode="numeric" value={testCode} onChange={(e) => setTestCode(e.target.value.replace(/\D/g, '').slice(0, 13))} placeholder="2000012008508"/></label><button type="button" disabled={testCode.length !== 13 || Boolean(busy)} onClick={() => void tryCode()}>{t('Yoxla', 'Проверить', 'Check')}</button>{testResult && <p role="status">{testResult}</p>}</div>
@@ -142,17 +134,15 @@ export function ScaleSettings({ session, lang, products, notify }: { session: Se
     </section>}
 
     <section className="panel-card settings-card scale-card">
+      <p className="hint">{t('Kağız: 45 × 25 mm. Etiket formatının nömrəsi tərəzidə əvvəlcədən hazırlanmış şablonu seçir; bu seçim yeni şablon yükləmir.', 'Бумага: 45 × 25 мм. Номер выбирает заранее подготовленный шаблон весов; он не загружает новый шаблон.', 'Paper: 45 × 25 mm. The format number selects an existing scale template; it does not upload a new template.')}</p>
       <div className="panel-title"><div><p>TM-30F</p><h3>{t('Etiketdə 0.80 AZN əvəzinə "80" çıxırsa', 'Если на этикетке «80» вместо 0.80', 'If the label prints "80" instead of 0.80')}</h3></div></div>
-      <p className="hint">{t('Kassa qiyməti tərəziyə qəpiklə göndərir (80 = 0.80 AZN, 800 = 8.00 AZN) — Dahua protokolu belə tələb edir. Nöqtəni tərəzinin özü qoyur. Etiketdə "80" və ya "800" görünürsə, tərəzinin sistem parametrlərində onluq nöqtə 0-a dəyişdirilib. Tərəzidə F-Prog → Spec ilə bunları qurun:', 'Касса передаёт цену в копейках (80 = 0.80). Точку ставят весы. Если печатается «80», в параметрах весов знаков после запятой 0. Установите:', 'The till sends the price in qəpik (80 = 0.80 AZN); the scale places the point. If labels show "80", its decimal settings were changed. Set:')}</p>
-      <table className="scale-spec"><thead><tr><th>Spec</th><th>{t('Mənası', 'Значение', 'Meaning')}</th><th>{t('Dəyər', 'Значение', 'Value')}</th></tr></thead><tbody>
-        <tr><td>202</td><td>{t('Vahid qiymətin onluğu', 'Знаки цены за кг', 'Unit price decimals')}</td><td><b>2</b></td></tr>
-        <tr><td>203</td><td>{t('Məbləğin onluğu', 'Знаки суммы', 'Total price decimals')}</td><td><b>2</b></td></tr>
-        <tr><td>206</td><td>{t('Vahid qiymətdə nöqtəni sabitlə', 'Фиксировать точку цены', 'Fix unit price point')}</td><td><b>3</b></td></tr>
-        <tr><td>207</td><td>{t('Məbləğdə nöqtəni sabitlə', 'Фиксировать точку суммы', 'Fix total point')}</td><td><b>1</b></td></tr>
-        <tr><td>100 / 101</td><td>{t('Yuvarlaqlaşdırma (qəpik gizlənməsin)', 'Округление (без скрытия копеек)', 'Rounding (keep qəpik)')}</td><td><b>0</b></td></tr>
-        <tr><td>208 / 209</td><td>{t('Barkodda çəki / pul onluğu', 'Знаки веса / суммы в штрихкоде', 'Weight / money decimals in barcode')}</td><td><b>3 / 2</b></td></tr>
-      </tbody></table>
-      <p className="hint">{t('Sonra yuxarıdakı "Test etiketi" ilə yoxlayın: etiketdə 8.00 AZN/kq görünməlidir.', 'Затем проверьте «Тестовой этикеткой»: 8.00 AZN/кг.', 'Then print the test label: it must read 8.00 AZN/kg.')}</p>
+      <p className="hint">{t('Qiymət qəpiklə göndərilir: 80 = 0.80 AZN, 800 = 8.00 AZN. Göndərilən qiyməti 100-ə bölməyin. Nöqtənin və valyutanın çapı tərəzinin firmware və etiket şablonu ilə idarə olunur.', 'Цена отправляется в копейках: 80 = 0.80 AZN, 800 = 8.00 AZN. Не делите её на 100. Точку и валюту печатают прошивка и шаблон весов.', 'Prices are sent in minor units: 80 = 0.80 AZN, 800 = 8.00 AZN. Do not divide them by 100. Scale firmware and its label template control the decimal point and currency.')}</p>
+      <ol className="hint">
+        <li>{t('Dahua TM-F təlimatı: Funksiya → 39706 → Təsdiq → Dara ilə P30 → 02 → Təsdiq. Parametrin adının qiymətin pul vahidi olduğunu yoxlayın; firmware menyuları fərqlənir.', 'Инструкция TM-F: Функция → 39706 → Подтвердить → Тара до P30 → 02 → Подтвердить. Проверьте название: единица цены; меню прошивок различаются.', 'TM-F manual: Function → 39706 → Confirm → Tare to P30 → 02 → Confirm. Verify the parameter name is unit-price denomination; firmware menus differ.')}</li>
+        <li>{t('Dahua etiket proqramında kağızı 45 × 25 mm, qiymət və məbləğ sahələrini iki onluq rəqəm, valyutanı AZN seçin. ₼ yalnız tərəzinin şrifti dəstəkləyirsə çap edilir.', 'В программе этикеток Dahua выберите 45 × 25 мм, два знака цены и суммы, валюту AZN. Символ ₼ зависит от шрифта весов.', 'In the Dahua label software use 45 × 25 mm paper, two decimal places for price and total, and AZN currency. The ₼ symbol needs scale font support.')}</li>
+        <li>{t('Test: 8.00 AZN/kq × 0.310 kq = 2.48 AZN. Göndərilmə cavabı çapın görünüşünü yoxlamır — çıxan etiketi yoxlayın.', 'Тест: 8.00 AZN/кг × 0.310 кг = 2.48 AZN. Ответ весов не проверяет вид печати — проверьте этикетку.', 'Test: 8.00 AZN/kg × 0.310 kg = 2.48 AZN. A transfer acknowledgement does not verify print appearance; inspect the label.')}</li>
+      </ol>
+      <p className="hint">{t('İstehsalçının təlimatı və etiket proqramı: www.dahuazm.com', 'Инструкция и программа производителя: www.dahuazm.com', 'Manufacturer manual and label software: www.dahuazm.com')}</p>
     </section>
   </div>;
 }

@@ -499,7 +499,10 @@ void registerSales(const ContextPtr& ctx) {
             item.exec();
             // This sale is already paid in Market. Archiving its goods before
             // the asynchronous feed must not block the stock/finance ledger.
-            inventory.move(ingredientId, warehouseId, -qty, "sale", orderId, "Market satışı", {}, true);
+            // noStock: the good came into Mallar after this sale, with the till's
+            // quantity that already had it taken off - book the bill, not the stock.
+            if (!getOr<bool>(line, "noStock", false))
+                inventory.move(ingredientId, warehouseId, -qty, "sale", orderId, "Market satışı", {}, true);
             subtotal += total;
         }
         const Money totalMinor = std::max<Money>(0, subtotal - discount);
@@ -518,7 +521,7 @@ void registerSales(const ContextPtr& ctx) {
                 .bind(":amount", amount).bind(":user", userId).bind(":t", terminal).bind(":at", at);
             pay.exec();
         }
-        chargeTab(*ctx, customerId, orderId, credit, "Market " + number);
+        if(!request.payload.value("creditInMarketLedger",false))chargeTab(*ctx, customerId, orderId, credit, "Market " + number);
         auto mark = ctx->db().prepare(
             "INSERT INTO external_sales (external_id, order_id, kind, created_at) VALUES (:e, :o, 'sale', :now)");
         mark.bind(":e", externalId).bind(":o", orderId).bind(":now", nowMs());
@@ -552,13 +555,27 @@ void registerSales(const ContextPtr& ctx) {
         moved.bind(":o", orderId);
         std::string warehouseId;
         if (moved.step()) warehouseId = moved.columnText(0);
+        if (warehouseId.empty()) {
+            // A sale booked without stock (noStock: before its goods were in Mallar)
+            // still returns its goods to this PC's branch store.
+            auto branch = ctx->db().prepare(
+                "SELECT o.warehouse_id FROM cash_accounts a JOIN cash_objects o ON o.id = a.object_id "
+                "JOIN warehouses w ON w.id = o.warehouse_id AND w.active = 1 "
+                "WHERE a.terminal_id = :t AND a.terminal_id != '' AND a.kind = 'till' AND a.active = 1 LIMIT 1");
+            branch.bind(":t", ctx->saleTerminalId());
+            if (branch.step()) warehouseId = branch.columnText(0);
+            else {
+                auto store = ctx->db().prepare("SELECT id FROM warehouses WHERE active = 1 ORDER BY sort_order, id LIMIT 1");
+                if (store.step()) warehouseId = store.columnText(0);
+            }
+        }
         const auto reason = getOr<std::string>(request.payload, "reason", "Market qaytarma");
         services::InventoryService inventory(*ctx);
         if (request.payload.contains("lines") && request.payload["lines"].is_array() && !warehouseId.empty()) {
             for (const auto& line : request.payload["lines"]) {
                 const auto ingredientId = getOr<std::string>(line, "ingredientId", "");
                 const auto qty = getOr<std::int64_t>(line, "qtyMilli", 0);
-                if (ingredientId.empty() || qty <= 0) continue;
+                if (ingredientId.empty() || qty <= 0 || getOr<bool>(line, "noStock", false)) continue;
                 inventory.move(ingredientId, warehouseId, qty, "sale", orderId, reason, {}, true);
             }
         }
@@ -580,7 +597,7 @@ void registerSales(const ContextPtr& ctx) {
                 .bind(":t", ctx->saleTerminalId()).bind(":at", now);
             refund.exec();
         }
-        chargeTab(*ctx, customerId, orderId, -getOr<Money>(request.payload, "creditMinor", 0), "Market qaytarma");
+        if(!request.payload.value("creditInMarketLedger",false))chargeTab(*ctx, customerId, orderId, -getOr<Money>(request.payload, "creditMinor", 0), "Market qaytarma");
         auto mark = ctx->db().prepare(
             "INSERT INTO external_sales (external_id, order_id, kind, created_at) VALUES (:e, :o, 'refund', :now)");
         mark.bind(":e", externalId).bind(":o", orderId).bind(":now", nowMs());

@@ -53,6 +53,34 @@ std::string ensureObjectWarehouse(Context& ctx, const std::string& objectId) {
 void registerCashAccounts(const ContextPtr& ctx) {
     auto& server = ctx->server();
 
+    // Owner metadata is mirrored locally; this creates no cloud branch and never moves stock.
+    // Not in the public/remote method list: only the trusted Market bridge invokes it.
+    server.registerHandler("cashObjects.ensureMarket",[ctx](const ipc::Request& r){
+        ctx->requirePermission("cash.accounts");
+        const auto branch=r.payload.value("branchId",std::string{}),name=r.payload.value("name",std::string{}),terminal=r.payload.value("terminalId",std::string{}),warehouse=r.payload.value("warehouseId",std::string{});
+        require(!branch.empty()&&!name.empty(),"Obyekt məlumatı natamamdır");
+        db::Transaction tx(ctx->db());
+        const auto key="market.cloudObject."+branch;
+        std::string id=ctx->setting(key,"");
+        auto valid=[&](const std::string& value){auto q=ctx->db().prepare("SELECT 1 FROM cash_objects WHERE id=:id AND active=1");q.bind(":id",value);return q.step();};
+        if(!valid(id))id.clear();
+        if(id.empty()&&valid(branch))id=branch;
+        if(id.empty()){
+            auto q=ctx->db().prepare("SELECT id FROM cash_objects WHERE active=1 AND name=:name");q.bind(":name",name);auto rows=q.rows();if(rows.size()==1)id=rows[0].at("id").get<std::string>();
+        }
+        if(id.empty()){
+            auto current=ctx->db().prepare("SELECT o.id FROM cash_accounts a JOIN cash_objects o ON o.id=a.object_id AND o.active=1 WHERE a.terminal_id=:t AND NOT EXISTS(SELECT 1 FROM app_settings WHERE key LIKE 'market.cloudObject.%' AND value=o.id) LIMIT 1");current.bind(":t",terminal);if(current.step())id=current.columnText(0);
+        }
+        if(id.empty()){
+            auto wh=ctx->db().prepare("SELECT 1 FROM warehouses WHERE id=:id AND active=1");wh.bind(":id",warehouse);require(wh.step(),"Əsas anbar tapılmadı");
+            id=branch;auto insert=ctx->db().prepare("INSERT INTO cash_objects(id,name,warehouse_id,created_at) VALUES(:id,:name,:wh,:at)");insert.bind(":id",id).bind(":name",name).bind(":wh",warehouse).bind(":at",nowMs());insert.exec();
+        }
+        auto rename=ctx->db().prepare("UPDATE cash_objects SET name=:name WHERE id=:id AND name!=:name");rename.bind(":id",id).bind(":name",name);rename.exec();
+        auto link=ctx->db().prepare("INSERT INTO app_settings(key,value,updated_at) VALUES(:key,:id,:at) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at");link.bind(":key",key).bind(":id",id).bind(":at",nowMs());link.exec();
+        auto account=ctx->db().prepare("UPDATE cash_accounts SET object_id=:id WHERE kind='till' AND terminal_id=:t AND active=1 AND (object_id IS NULL OR object_id='')");account.bind(":id",id).bind(":t",terminal);account.exec();
+        tx.commit();return Json{{"id",id},{"branchId",branch},{"name",name}};
+    });
+
     // Private desktop bridge. A physical Market register has one stable terminal
     // identity in the warehouse ledger; only newly-created accounts include the
     // full imported history. Existing opening balances and cutoffs stay intact.
@@ -336,10 +364,20 @@ void registerCashAccounts(const ContextPtr& ctx) {
             const auto id = getOr<std::string>(request.payload, "accountId", "");
             require(!id.empty(), "accountId is required");
             db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            const Json identity{{"accountId", id}};
+            if (auto replay = idem.begin(request.idempotencyKey, "cashAccounts.deactivate", identity)) return *replay;
             auto linked = ctx->db().prepare("SELECT terminal_id FROM cash_accounts WHERE id=:id");
             linked.bind(":id", id);
-            require(!linked.step() || linked.columnText(0).rfind("market-", 0) != 0,
-                    "Bu hesab satış kassasına bağlıdır; onu ayrıca silmək olmaz");
+            require(linked.step(), "Kassa tapılmadı");
+            const auto terminal = linked.columnText(0);
+            require(terminal.rfind("market-", 0) != 0 || getOr<bool>(request.payload, "marketArchived", false),
+                    "Satış kassasını əlaqəli POS vasitəsilə silin");
+            if (!terminal.empty()) {
+                auto shift = ctx->db().prepare("SELECT 1 FROM shifts WHERE terminal_id=:terminal AND status='open'");
+                shift.bind(":terminal", terminal);
+                require(!shift.step(), "Kassanın açıq növbəsi var — əvvəlcə növbəni bağlayın");
+            }
             const Money balance = services::CashService(*ctx).accountBalance(id);
             require(balance == 0, "Kassada pul var — əvvəlcə transfer edin");
             auto update = ctx->db().prepare("UPDATE cash_accounts SET active = 0 WHERE id = :id AND active = 1");
@@ -347,8 +385,10 @@ void registerCashAccounts(const ContextPtr& ctx) {
             update.exec();
             require(ctx->db().changes() == 1, "Kassa tapılmadı");
             ctx->auditRequired("cash.account.deactivate", "cash_account", id, Json::object());
+            const Json response{{"ok", true}};
+            idem.complete(request.idempotencyKey, response, "cash_account", id);
             txn.commit();
-            return Json{{"ok", true}};
+            return response;
         });
 
     server.registerHandler(
@@ -405,7 +445,34 @@ void registerCashAccounts(const ContextPtr& ctx) {
             ctx->requirePermission("cash.accounts");
             auto id = getOr<std::string>(request.payload, "id", "");
             const auto name = getOr<std::string>(request.payload, "name", "");
-            require(!name.empty(), "Obyektin adını yazın");
+            const bool active = getOr<bool>(request.payload, "active", true);
+            require(!active || !name.empty(), "Obyektin adını yazın");
+            require(active || !id.empty(), "Obyekt seçilməyib");
+            db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            if (auto replay = idem.begin(request.idempotencyKey, "cashObjects.save", request.payload)) return *replay;
+            if (!active) {
+                auto current = ctx->db().prepare("SELECT COALESCE(warehouse_id,'') FROM cash_objects WHERE id=:id AND active=1");
+                current.bind(":id", id);
+                require(current.step(), "Obyekt tapılmadı");
+                const auto warehouse = current.columnText(0);
+                auto accounts = ctx->db().prepare("SELECT 1 FROM cash_accounts WHERE object_id=:id AND active=1 LIMIT 1");
+                accounts.bind(":id", id);
+                require(!accounts.step(), "Obyektə bağlı kassalar var — əvvəlcə onları köçürün və ya silin");
+                auto stock = ctx->db().prepare("SELECT 1 FROM stock_levels WHERE warehouse_id=:id AND qty_milli!=0 LIMIT 1");
+                stock.bind(":id", warehouse);
+                require(!stock.step(), "Obyektin anbarında qalıq var — əvvəlcə qalığı köçürün");
+                auto lots = ctx->db().prepare("SELECT 1 FROM stock_lots WHERE warehouse_id=:id AND qty_milli!=0 LIMIT 1");
+                lots.bind(":id", warehouse);
+                require(!lots.step(), "Obyektin anbarında partiya qalığı var");
+                auto close = ctx->db().prepare("UPDATE cash_objects SET active=0 WHERE id=:id");
+                close.bind(":id", id); close.exec();
+                ctx->auditRequired("cash.object.deactivate", "cash_object", id, Json::object());
+                Json response{{"id", id}, {"active", false}};
+                idem.complete(request.idempotencyKey, response, "cash_object", id);
+                txn.commit();
+                return response;
+            }
             if (id.empty()) {
                 id = "obj-" + crypto::uuid4().substr(0, 8);
                 auto insert = ctx->db().prepare(
@@ -414,14 +481,22 @@ void registerCashAccounts(const ContextPtr& ctx) {
                 insert.exec();
                 ensureObjectWarehouse(*ctx, id);
             } else {
-                auto update = ctx->db().prepare("UPDATE cash_objects SET name = :name WHERE id = :id");
+                auto update = ctx->db().prepare("UPDATE cash_objects SET name = :name WHERE id = :id AND active=1");
                 update.bind(":name", name).bind(":id", id);
                 update.exec();
+                require(ctx->db().changes() == 1, "Obyekt tapılmadı");
+                auto warehouse = ctx->db().prepare(
+                    "UPDATE warehouses SET name=:name,updated_at=:now WHERE id=(SELECT warehouse_id FROM cash_objects WHERE id=:id) "
+                    "AND NOT EXISTS(SELECT 1 FROM cash_objects o WHERE o.warehouse_id=warehouses.id AND o.id!=:id AND o.active=1)");
+                warehouse.bind(":name", name).bind(":now", nowMs()).bind(":id", id); warehouse.exec();
             }
-            ctx->audit("cash.object.save", "cash_object", id, Json{{"name", name}});
+            ctx->auditRequired("cash.object.save", "cash_object", id, Json{{"name", name}});
             auto wh = ctx->db().prepare("SELECT COALESCE(warehouse_id, '') FROM cash_objects WHERE id = :id");
             wh.bind(":id", id);
-            return Json{{"id", id}, {"name", name}, {"warehouseId", wh.step() ? wh.columnText(0) : std::string{}}};
+            Json response{{"id", id}, {"name", name}, {"warehouseId", wh.step() ? wh.columnText(0) : std::string{}}};
+            idem.complete(request.idempotencyKey, response, "cash_object", id);
+            txn.commit();
+            return response;
         });
 }
 

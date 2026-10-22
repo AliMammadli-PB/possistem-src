@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="az">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Filiallar</title><link rel="stylesheet" href="./hub.css">
+</head>
+<body>
+<header id="home-header" class="home-header"><div><p class="eyebrow">POSSİSTEM / <span id="home-kicker">FİLİALLAR</span></p><h1 id="title"></h1><p id="lead"></p></div><div class="header-actions"><button id="selection-back" hidden></button><button id="new-object" class="primary"></button><button id="refresh"></button></div></header>
+<div id="error" class="error" role="alert"></div>
+<main id="home"><div id="cards" aria-live="polite"></div></main>
+<section id="remote" aria-label="Filialın idarəsi">
+ <header id="context" class="branch-context">
+  <button id="back" class="back-button"></button>
+  <div class="branch-identity"><p class="eyebrow" id="workspace-label">FİLİALIN İDARƏSİ</p><strong id="branch"></strong><p id="contextNote"></p></div>
+  <div class="context-switch"><label><span id="object-select-label"></span><select id="object-select" aria-label="Filial"></select></label><label><span id="device-select-label"></span><select id="device-select" aria-label="Kassa"></select></label></div>
+  <span id="pending" role="status" aria-live="polite"></span>
+ </header>
+ <div class="branch-workspace">
+  <nav id="tabs" aria-label="Filial bölmələri"></nav>
+  <div class="branch-content">
+   <section id="overview" class="branch-overview" hidden>
+    <div class="overview-heading"><div><p class="eyebrow" id="overview-kicker">SEÇİLMİŞ FİLİAL</p><h2 id="overview-title">İcmal</h2><p id="overview-description">Satışları və xərcləri seçdiyiniz dövr üzrə izləyin.</p></div></div>
+    <div id="range"><label><span id="fromLabel"></span><input id="from" type="date"></label><label><span id="toLabel"></span><input id="to" type="date"></label><button id="report" class="primary"></button></div>
+    <div id="summary" aria-live="polite"></div><p id="hint" class="report-hint"></p>
+    <details id="report-detail" open><summary id="report-title"></summary><div id="report-data"></div></details>
+   </section>
+   <div id="page-loading" class="page-loading" role="status" hidden><span class="loading-spinner" aria-hidden="true"></span><span id="loading-label">Filial məlumatları yüklənir…</span></div>
+   <iframe id="frame" title="Filialın idarəsi" hidden></iframe>
+  </div>
+ </div>
+</section>
+<dialog id="location"><form id="location-form"><h2 id="location-title"></h2><p id="location-note"></p><select id="location-object" hidden aria-label="Filial"></select><input id="location-name" required minlength="2" maxlength="120"><div class="dialog-actions"><button id="location-save" type="submit" class="primary"></button><button id="location-cancel" type="button"></button></div></form></dialog>
+<script src="./presence.js"></script><script src="./hub.js"></script>
+</body></html>

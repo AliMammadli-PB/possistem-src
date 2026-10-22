@@ -72,7 +72,7 @@ const api = {
     onStatus: (cb) => subscribe(IPC.coreStatus, cb),
     onEvent: (cb) => subscribe(IPC.coreEvent, cb)
   },
-  auth: {
+  auth: {adminPrefix:(digits)=>call("auth.adminPrefix",{digits}),
     /**
      * `userId` is null for the normal floor sign-in: the PIN identifies the
      * member of staff on its own. Pass an id only where one is already known.
@@ -174,6 +174,7 @@ const api = {
     remove: (input) => call("sales.delete", input)
   },
 
+  business: {cloudSelection:()=>call("branches.cloudSelection",{}),cloudObject:(input)=>call("branches.cloudObject",input),cloudAssign:(deviceId,name)=>call("branches.cloudAssign",{deviceId,name}),cloudList:()=>call("branches.cloudList",{}),cloudRpc:(deviceId,calls)=>call("branches.cloudRpc",{deviceId,calls}),call: (action,payload={},options) => call("business.call",{...payload,action},options), branches: () => call("branches.list",{})},
   cashAccounts: {
     list: (from, to) => call("cashAccounts.list", { from, to }),
     save: (input, options) => call("cashAccounts.save", input, options),

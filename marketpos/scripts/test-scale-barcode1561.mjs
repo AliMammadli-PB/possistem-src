@@ -64,6 +64,16 @@ try {
   r = ok(await ask('scale.tryBarcode', { barcode: ean('200012001234') }));
   assert.equal(r.qtyMilli, 1543); assert.equal(r.lineTotalMinor, 1234);
 
+  // Prices with finer precision round to qəpik just like the preview; zero labels
+  // and totals which cannot be represented by whole grams must not become pieces.
+  ok(await ask('settings.setValue', { key: 'scaleBarcodeRules', value: rules(5, 5, 'PRICE', 3) }));
+  r = ok(await ask('barcode.resolve', { barcode: ean('200001200805') }));
+  assert.equal(r.embeddedPriceMinor, 81);
+  assert.equal(r.unitPriceMinor, 800);
+  ok(await ask('settings.setValue', { key: 'scaleBarcodeRules', value: rules(5, 5, 'PRICE', 2) }));
+  assert.equal((await ask('barcode.resolve', { barcode: ean('200001200000') })).success, false);
+  assert.equal((await ask('barcode.resolve', { barcode: ean('200001300149') })).success, false);
+  ok(await ask('settings.setValue', { key: 'scaleBarcodeRules', value: rules(4, 6, 'PRICE', 2) }));
   // Bad rules never reach the scan path.
   for (const value of [[], [{ prefix: '2a', pluStart: 2, pluLen: 5, valueStart: 7, valueLen: 5, decimals: 3, mode: 'WEIGHT' }], rules(5, 6, 'WEIGHT', 3), rules(5, 5, 'PIECE', 3)]) {
     const bad = await ask('settings.setValue', { key: 'scaleBarcodeRules', value });

@@ -1,0 +1,12 @@
+import fs from 'node:fs';import path from 'node:path';import vm from 'node:vm';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url),{parse}=require('acorn'),dir=path.resolve('marketpos/dist/ops/assets');const file=fs.readdirSync(dir).find(n=>/^index-.*\.js$/.test(n));const source=fs.readFileSync(path.join(dir,file),'utf8');
+const ast=parse(source,{ecmaVersion:'latest',sourceType:'module'}),names=new Set(['psMarketStockValue','psStockTotals','psXlsx','psXmlEsc','psColName']);
+const code=ast.body.filter(n=>n.type==='FunctionDeclaration'&&names.has(n.id.name)).map(n=>source.slice(n.start,n.end)).join('\n');
+const ctx=vm.createContext({opsQty:q=>String(q/1000),psZip:files=>files});vm.runInContext(code,ctx);
+assert.equal(ctx.psMarketStockValue(-5,100),-1);assert.equal(ctx.psMarketStockValue(310,800),248);
+let result=ctx.psStockTotals([{ingredientId:'a',warehouseId:'w1',unit:'kg',qtyMilli:5,costMinor:100,salePriceMinor:300},{ingredientId:'a',warehouseId:'w2',unit:'kg',qtyMilli:5,costMinor:100,salePriceMinor:300}]);
+assert.equal(result.buy,1);assert.equal(result.sell,3);assert.equal(result.profit,2);
+result=ctx.psStockTotals([{ingredientId:'a',unit:'kg',qtyMilli:-5,costMinor:100,salePriceMinor:0}]);assert.equal(result.buy,-1);assert.equal(result.profit,1,'Zero-priced stock still includes cost');
+const files=ctx.psXlsx('Mallar',[['Barkod','Satış (₼)','Miqdar'],['0012345678901',8,0.31]]),sheet=files.find(f=>f.name==='xl/worksheets/sheet1.xml').data,styles=files.find(f=>f.name==='xl/styles.xml').data;
+assert.match(sheet,/<c r="A2" t="inlineStr">.*0012345678901/);assert.match(sheet,/<c r="B2" s="2"><v>8<\/v>/);assert.match(sheet,/<c r="C2"><v>0.31<\/v>/);assert.match(styles,/formatCode="#,##0.00 &quot;₼&quot;"/);
+console.log('PASS shipped warehouse: signed half-qəpik rounding, combined warehouses, zero-price cost, Excel two-decimal currency with numeric amounts and intact leading-zero barcode.');

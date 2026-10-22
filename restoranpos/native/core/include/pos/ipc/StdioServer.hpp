@@ -78,6 +78,9 @@ public:
     void registerHandler(std::string method, Handler handler);
 
     void setRequestScope(RequestScope scope) { scope_ = std::move(scope); }
+    void setRequestFilter(std::function<void(Request&)> before, std::function<void(const Request&, Json&)> after) {
+        requestFilter_ = std::move(before); responseFilter_ = std::move(after);
+    }
 
     /** The terminal of the call being handled right now ("" when none was sent). */
     const std::string& currentTerminalId() const { return currentTerminalId_; }
@@ -153,6 +156,8 @@ private:
     std::atomic<std::size_t> handled_{0};
     std::function<void()> shutdownHook_;
     RequestScope scope_;
+    std::function<void(Request&)> requestFilter_;
+    std::function<void(const Request&, Json&)> responseFilter_;
     std::string currentTerminalId_;
     std::string currentTerminalName_;
 };

@@ -11,8 +11,12 @@
 window.__psMarketMode = true;
 const host = window.parent && window.parent !== window ? window.parent : null;
 const params = new URLSearchParams(location.search);
+window.__psMarketLang=params.get('lang')||'az';
+window.__psMarketCashLedger=params.get('panel')==='ledger';
 window.__psMarketCatalog = params.get('panel') === 'catalog';
 if (window.__psMarketCatalog) document.documentElement.classList.add('ps-market-catalog');
+// Market's Əməliyyatlar row picks the tab (#/operations?tab=); the frame shows only the page.
+if (params.get('embed') === '1') document.documentElement.classList.add('ps-market-embed');
 window.__psMarketSettingsPanel = ['printer', 'receipt'].includes(params.get('panel')) ? params.get('panel') : null;
 
 const listeners = new Map();
@@ -54,7 +58,7 @@ const ready = (async () => {
   try {
     const res = await call('__session', {});
     if (!res.success) throw new Error(res.error?.message || 'Anbar sistemi cavab vermədi');
-    session = res.data;
+    session = res.data;window.__psMarketRights=res.data;
     coreStatus = { ...coreStatus, state: 'ready', seq: 2, coreVersion: '__APP_VERSION__', stage: { key: 'ready', message: 'Hazırdır', progress: 100 } };
   } catch (err) {
     coreStatus = { ...coreStatus, state: 'crash_loop', lastError: { message: String(err?.message ?? err) } };
@@ -62,6 +66,28 @@ const ready = (async () => {
   emit('pos:coreStatus', coreStatus);
   emit('pos:session:changed', session);
 })();
+
+// The catalogue is owner-scoped in main; importing only creates a card, never foreign stock.
+let branchProductsRead = null, branchProductsReadAt = 0;
+window.__psBranchProductStock = () => {
+  if (!session?.canBranchCatalog || !host?.marketSystem?.branches?.stock) return Promise.resolve({own:null,branches:[]});
+  if (!branchProductsRead || Date.now() - branchProductsReadAt > 10000) {
+    branchProductsReadAt = Date.now();
+    branchProductsRead = host.marketSystem.branches.stock(host.__marketOpsToken || '').catch(error => { branchProductsRead = null; throw error; });
+  }
+  return branchProductsRead;
+};
+window.__psImportBranchProduct = reference => call('__importBranchProduct', reference);
+
+// Rights changed on the website reach the open screens: a button taken away disappears.
+setInterval(async () => {
+  if (!session) return;
+  const res = await call('__session', {});
+  if (!res.success || JSON.stringify(res.data?.permissions) === JSON.stringify(session.permissions)) return;
+  session = res.data; window.__psMarketRights = res.data;
+  emit('pos:session:changed', session);
+  window.dispatchEvent(new Event('ps:access'));
+}, 20000);
 
 /** Only the Əməliyyatlar screens and the receipt settings: anything else leads back. */
 function guardRoute() {
@@ -90,6 +116,12 @@ document.addEventListener('DOMContentLoaded', () => {
     html.ps-market-ops .ps-admin-workspace[data-page="/settings"] input:not([type=checkbox]):not([type=radio]),
     html.ps-market-ops .ps-admin-workspace[data-page="/settings"] select { min-height:52px!important; font-size:16px!important; }
     html.ps-market-ops .ps-admin-workspace[data-page="/settings"] button { min-height:48px; touch-action:manipulation; }
+    /* A control the user has no right to is not shown at all (1.5.33). */
+    html.ps-market-ops [aria-disabled="true"] { display:none!important; }
+    html.ps-market-embed .ps-ops-tabs,
+    html.ps-market-embed .ps-admin-breadcrumb,
+    html.ps-market-embed .ps-operations-page > header { display:none!important; }
+    html.ps-market-embed .ps-operations-page { padding:16px!important; }
     html.ps-market-catalog .ps-admin-breadcrumb,
     html.ps-market-catalog .ps-operations-page > header { display:none!important; }
     html.ps-market-catalog .ps-operations-page { padding:0!important; }
@@ -193,3 +225,11 @@ const electron = {
 (function (require) {
 /*PRELOAD*/
 })(() => electron);
+
+const workflowStyle=document.createElement('style');workflowStyle.textContent=`
+.ps-market-ops button,.ps-market-ops input:not([type=checkbox]):not([type=radio]),.ps-market-ops select{min-height:48px}
+.ps-partners1535 input,.ps-partners1535 select{min-width:0;background:#fff;color:#183858;border:1px solid #c4d5e6;border-radius:10px;padding:12px}
+.ps-partners1535 small{color:#60788e}.ps-market-ops label{display:block}
+.ps-market-linked-registers .ps-kassa-card{border-radius:18px;padding:20px;gap:12px}
+.ps-market-linked-registers .ps-kassa-card button{min-height:48px;padding:12px 16px}
+`;document.head.appendChild(workflowStyle);

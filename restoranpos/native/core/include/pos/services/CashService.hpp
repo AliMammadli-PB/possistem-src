@@ -30,6 +30,7 @@ public:
     /** Opening + moves + (till) its PC's cash sales or (bank) card sales, now. */
     Money accountBalance(const std::string& accountId);
     /** SQL scope (over payments `p`) of the PCs a bank receives card money from; binds :terminal. */
+    std::string resolveAccount(const std::string& accountId);
     static std::string bankScope(const std::string& objectId);
     /** Net takings by method on the PCs in `terminalsSql` (binds :terminal = bindValue) in [from, to). */
     Money takingsFor(const std::string& method, const std::string& terminalsSql,

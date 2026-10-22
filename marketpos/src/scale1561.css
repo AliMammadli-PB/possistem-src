@@ -7,11 +7,11 @@
 .scale-presets button.active{border-color:var(--primary);background:#eef4ff;color:var(--primary)}
 .scale-custom,.scale-detect{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end}
 .scale-custom label,.scale-detect label,.scale-try label{display:grid;gap:5px;color:#475569;font-size:11px;font-weight:700}
-.scale-custom input,.scale-custom select,.scale-detect input,.scale-detect select,.scale-try input{min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;min-width:0}
-.scale-detect button,.scale-try button,.scale-candidates button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:#fff;font-weight:800;font-size:12px}
+.scale-custom input,.scale-custom select,.scale-detect input,.scale-detect select,.scale-try input{min-height:48px;padding:0 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;min-width:0}
+.scale-detect button,.scale-try button,.scale-candidates button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:#fff;font-weight:800;font-size:12px}
 .scale-prefixes{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:10px;border:1px solid var(--line);border-radius:12px}
 .scale-prefixes legend{padding:0 6px;color:#475569;font-size:11px;font-weight:700}
-.scale-prefixes label{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:0 10px;border-radius:9px;background:#f5f8fc;font-weight:700;font-size:13px}
+.scale-prefixes label{display:inline-flex;align-items:center;gap:5px;min-height:48px;padding:0 10px;border-radius:9px;background:#f5f8fc;font-weight:700;font-size:13px}
 .scale-strip{display:flex;flex-wrap:wrap;gap:4px;font-family:ui-monospace,Consolas,monospace}
 .scale-strip .seg{display:grid;justify-items:center;gap:2px;padding:6px 8px;border-radius:9px;min-width:0}
 .scale-strip .seg b{font-size:20px;letter-spacing:.12em;overflow-wrap:anywhere}

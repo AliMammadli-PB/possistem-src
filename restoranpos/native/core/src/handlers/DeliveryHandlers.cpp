@@ -134,6 +134,7 @@ void registerDelivery(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kDeliveryList), [ctx](const ipc::Request& request) {
             ctx->requirePermission("delivery.view");
+            const auto objectId = getOr<std::string>(request.payload,"objectId","");
             const auto status = getOr<std::string>(request.payload, "status", "");
             const auto from = getOr<Timestamp>(request.payload, "from", 0);
             const auto to = getOr<Timestamp>(request.payload, "to", nowMs() + 86400000LL);
@@ -145,7 +146,7 @@ void registerDelivery(const ContextPtr& ctx) {
                 "SELECT d.id, d.order_id AS orderId, o.order_number AS orderNumber, "
                 "       o.total_minor AS totalMinor, o.paid_minor AS paidMinor, o.account_minor AS accountMinor, "
                 "       o.status AS orderStatus, o.closed_at AS closedAt, o.table_id AS tableId, "
-                "       COALESCE(t.label, '') AS tableLabel, "
+                "       COALESCE(t.label, '') AS tableLabel, COALESCE(ob.id,'') AS objectId, COALESCE(ob.name,'') AS objectName, "
                 "       d.customer_id AS customerId, COALESCE(c.name, d.customer_name) AS customerName, "
                 "       d.courier_id AS courierId, cu.name AS courierName, "
                 "       d.address, d.phone, d.note, d.fee_minor AS feeMinor, d.status, d.pay_mode AS payMode, "
@@ -161,18 +162,22 @@ void registerDelivery(const ContextPtr& ctx) {
                 "FROM delivery_orders d "
                 "JOIN orders o ON o.id = d.order_id "
                 "LEFT JOIN restaurant_tables t ON t.id = o.table_id "
+                "LEFT JOIN cash_accounts ca ON ca.terminal_id=COALESCE(NULLIF(d.terminal_id,''),(SELECT p.terminal_id FROM payments p WHERE p.order_id=o.id ORDER BY p.created_at DESC LIMIT 1),(SELECT value FROM app_settings WHERE key='terminal.id')) AND ca.kind='till' AND ca.active=1 "
+                "LEFT JOIN cash_objects ob ON ob.id=ca.object_id "
                 "LEFT JOIN customers c ON c.id = d.customer_id "
                 "LEFT JOIN couriers cu ON cu.id = d.courier_id "
                 // Parenthesised: an empty filter must mean "all", not "every
                 // row joined to the last branch".
-                "WHERE (:status = '' OR d.status = :status) AND (:courier = '' OR d.courier_id = :courier) "
+                "WHERE (:object = '' OR ob.id = :object) AND (:status = '' OR d.status = :status) AND (:courier = '' OR d.courier_id = :courier) "
                 // An unpaid bill stays on the list whatever the period: it is still owed.
                 "  AND ((d.created_at >= :from AND d.created_at < :to) "
                 "       OR (d.pay_mode = 'courier' AND d.settled_at IS NULL AND o.account_minor > 0 "
                 "           AND o.status IN ('paid','closed'))) "
                 "ORDER BY d.created_at DESC LIMIT 1000");
             stmt.bind(":status", status).bind(":courier", courierId).bind(":from", from).bind(":to", to);
-            return Json{{"deliveries", stmt.rows()}};
+            stmt.bind(":object",objectId);
+            auto objects=ctx->db().prepare("SELECT id,name FROM cash_objects WHERE active=1 ORDER BY name");
+            return Json{{"deliveries", stmt.rows()},{"objects",objects.rows()}};
         });
 
     server.registerHandler(
@@ -218,6 +223,8 @@ void registerDelivery(const ContextPtr& ctx) {
 
             logDeliveryEvent(*ctx, id, "pending", "", "yaradıldı");
             ctx->audit("delivery.create", "delivery", id, Json{{"orderId", orderId}});
+            auto origin=ctx->db().prepare("UPDATE delivery_orders SET terminal_id=:t WHERE id=:id");
+            origin.bind(":t",ctx->saleTerminalId()).bind(":id",id);origin.exec();
             txn.commit();
 
             return Json{{"id", id}, {"orderId", orderId}, {"status", "pending"},
@@ -303,6 +310,8 @@ void registerDelivery(const ContextPtr& ctx) {
             }
             logDeliveryEvent(*ctx, id, "pending", "", "yaradıldı");
             ctx->audit("delivery.start", "delivery", id, Json{{"orderId", orderId}, {"tableId", tableId}});
+            auto origin=ctx->db().prepare("UPDATE delivery_orders SET terminal_id=:t WHERE id=:id");
+            origin.bind(":t",ctx->saleTerminalId()).bind(":id",id);origin.exec();
             txn.commit();
             return Json{{"id", id}, {"orderId", orderId}, {"tableId", tableId}};
         });

@@ -393,15 +393,15 @@ std::vector<ReceiptLine> formatReceipt(const ReceiptDocument& doc) {
     // ------------------------------------------------- how to get money back
     //
     // Printed only on a paid receipt, never on a preliminary bill: a bill is
-    // not proof of anything yet. The number is the same one shown as "Qəbz:"
-    // above - repeated here under a label that says what it is for, because a
+    // not proof of anything yet. A retail receipt may offer a short lookup
+    // code; other receipts repeat the full "Qəbz:" number here, because a
     // guest who does not know the paper matters throws it away on the way out,
     // and then there is nothing to look the sale up by.
     if (doc.kind == ReceiptKind::PaymentReceipt && !doc.receiptNumber.empty()) {
         out.push_back({""});
         out.push_back({renderSeparator('-', width)});
         out.push_back({"GERİ QAYTARMA KODU", LineAlign::Center});
-        out.push_back({doc.receiptNumber, LineAlign::Center, true});
+        out.push_back({doc.returnLookupCode.empty() ? doc.receiptNumber : doc.returnLookupCode, LineAlign::Center, true});
         for (const auto& wrapped :
              wrapText("Qaytarma üçün bu çeki və kodu kassaya təqdim edin.", width)) {
             out.push_back({wrapped, LineAlign::Center});

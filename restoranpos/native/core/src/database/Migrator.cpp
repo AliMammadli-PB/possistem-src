@@ -44,7 +44,7 @@ struct DemoUser {
 // before the system handles real money.
 // Only the local administrator is seeded. Waiters are created by admin in-app.
 constexpr DemoUser kDemoUsers[] = {
-    {"usr-admin", "9001", "Admin", "role-administrator", "9001", "#B07FC7"},
+    {"usr-admin", "9001", "Super Admin", "role-administrator", "1234", "#B07FC7"},
 };
 
 using SchemaDefinition = std::map<std::string, std::string>;
@@ -164,6 +164,9 @@ std::string createPreMigrationBackup(Database& database, int fromVersion, int ta
 }  // namespace
 
 bool isShippedDefaultPin(const std::string& userId, const std::string& pinHash) {
+    // Preserve the upgrade path for tills shipped before 1.9.8. A changed
+    // administrator PIN must never be reset or accepted through this path.
+    if (userId == "usr-admin" && crypto::verifyPin("9001", pinHash)) return true;
     for (const auto& user : kDemoUsers) {
         if (userId == user.id && crypto::verifyPin(user.pin, pinHash)) return true;
     }
@@ -703,7 +706,7 @@ void Migrator::ensurePrinterSettings() {
         {"printer.renderMode", "auto", "string"},
         {"printer.codePage", "13", "int"},
         {"printer.bottomFeedLines", "4", "int"},
-        {"printer.openCashDrawer", "0", "string"},
+        {"printer.openCashDrawer", "1", "string"},
         {"printer.printItemUnitPrice", "1", "string"},
         {"printer.printModifierPrice", "1", "string"},
         {"locale.currencyDisplay", "symbol", "string"},

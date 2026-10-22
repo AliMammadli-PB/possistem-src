@@ -22,7 +22,7 @@ export function ManagerApprovalModal({ title = 'Müdir təsdiqi', onClose, onApp
   const submit = async () => {
     if(busy)return;
     setError('');
-    if (!(superAdminOnly ? /^\d{10}$/ : /^\d{4,10}$/).test(pin)) {
+    if (!(superAdminOnly ? /^\d{10}$/ : /^(?:\d{4,8}|\d{10})$/).test(pin)) {
       setError(t('Kod yanlışdır','Неверный код','Wrong code'));
       return;
     }

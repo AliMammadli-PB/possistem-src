@@ -75,15 +75,15 @@ Json StdioServer::invoke(const Handler& handler, const Request& request) {
     // services it reaches (PaymentService credits the sales point's kassa).
     currentTerminalId_ = request.terminalId;
     currentTerminalName_ = request.terminalName;
-    if (!request.scoped || !scope_) return handler(request);
-    // The worker is the only thread running handlers, so swapping the session
-    // for exactly one call cannot leak into another. The guard restores it
-    // however the handler leaves.
     struct Restore {
         std::function<void()> fn;
         ~Restore() { if (fn) fn(); }
-    } restore{scope_(request)};
-    return handler(request);
+    } restore{request.scoped && scope_ ? scope_(request) : std::function<void()>{}};
+    Request filtered = request;
+    if (requestFilter_) requestFilter_(filtered);
+    Json data = handler(filtered);
+    if (responseFilter_) responseFilter_(filtered, data);
+    return data;
 }
 
 void StdioServer::enqueueOutbound(std::string frame) {

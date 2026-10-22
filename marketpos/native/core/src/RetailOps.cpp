@@ -448,7 +448,11 @@ nlohmann::json resolveScaleBarcode(db::Database& db, const std::string& barcodeI
       // `decimals` is the money precision there; qəpik are 2 decimals.
       std::int64_t priceMinor = raw;
       for (int i = decimals; i < 2; ++i) priceMinor *= 10;
-      for (int i = 2; i < decimals; ++i) priceMinor /= 10;
+      if (decimals > 2) {
+        std::int64_t divisor = 1;
+        for (int i = 2; i < decimals; ++i) divisor *= 10;
+        priceMinor = (raw + divisor / 2) / divisor;
+      }
       out["embeddedPriceMinor"] = priceMinor;
       out["qty"] = 1;
       out["unitPriceMinor"] = priceMinor;
@@ -465,12 +469,18 @@ nlohmann::json resolveScaleBarcode(db::Database& db, const std::string& barcodeI
           const auto gap = std::llabs(roundedMoneyValue(unitPrice, q) - priceMinor);
           if (gap < bestGap) { best = q; bestGap = gap; }
         }
+        if (bestGap != 0) throw PosError("SCALE_BARCODE_INVALID", "Etiket məbləği cari qiymətlə uyğun çəki vermir. Çəki barkodu istifadə edin və ya tərəzidə qiyməti yeniləyin.");
         out["qtyMilli"] = best;
-        out["lineTotalMinor"] = roundedMoneyValue(unitPrice, best);
+        out["unitPriceMinor"] = unitPrice;
+        out["lineTotalMinor"] = priceMinor;
+        out["weightDerivedFromPrice"] = true;
+      } else if (unit == "kq" || unit == "kg" || priceMinor != unitPrice) {
+        throw PosError("SCALE_BARCODE_INVALID", "Etiket qiyməti məhsulla uyğun deyil. Tərəzidə qiyməti yeniləyin.");
       }
     } else {
       // WEIGHT: raw / scale = kg; express qty as milli-units (×1000)
       out["qtyMilli"] = (raw * 1000) / scale;
+      if (out["qtyMilli"].get<std::int64_t>() <= 0) throw PosError("SCALE_BARCODE_INVALID", "Etiketdə çəki sıfırdır və ya bir qramdan azdır");
       out["qty"] = 1;  // UI uses qtyMilli when present
       const auto unitPrice = product.at("price_minor").get<std::int64_t>();
       out["lineTotalMinor"] = roundedMoneyValue(unitPrice, out["qtyMilli"].get<std::int64_t>());

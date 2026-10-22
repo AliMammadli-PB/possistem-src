@@ -79,6 +79,7 @@ ReceiptDocument documentFromJson(const Json& json) {
 
     doc.receiptId = getOr<std::string>(json, "receiptId", "");
     doc.receiptNumber = getOr<std::string>(json, "receiptNumber", "");
+    doc.returnLookupCode = getOr<std::string>(json, "returnLookupCode", "");
     doc.orderNumber = getOr<std::string>(json, "orderNumber", "");
     doc.orderType = getOr<std::string>(json, "orderType", "");
     doc.tableName = getOr<std::string>(json, "tableName", "");
@@ -244,6 +245,7 @@ Json ReceiptDocument::toJson() const {
         {"kind", kindName},
         {"receiptId", receiptId},
         {"receiptNumber", receiptNumber},
+        {"returnLookupCode", returnLookupCode},
         {"orderNumber", orderNumber},
         {"orderType", orderType},
         {"tableName", tableName},

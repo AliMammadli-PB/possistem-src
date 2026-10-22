@@ -1,0 +1,26 @@
+
+/* POS_PLATFORM_AUTH_199 */
+let _psPlatformAuthInstance=null;
+function _psPlatformAuth(){
+ if(_psPlatformAuthInstance)return _psPlatformAuthInstance;
+ const proof=require('./superadmin-record.cjs');
+ const file=ctx=>m.join(Fn('platform-access'),String(ctx.deviceId).replace(/[^a-zA-Z0-9-]/g,'')+'.bin');
+ _psPlatformAuthInstance=require('./platform-superadmin.cjs').createPlatformAuth({
+  ...proof,keys:()=>[..._PS_TRUSTED_LICENSE_KEYS.values()],fail:d,
+  context:async()=>{const owner=ft(),device=await J(),license=await G();return owner&&device&&owner.customerId===device.customerId&&license.success&&ln(license.data?.status)?device:null;},
+  load:ctx=>{const data=p.readFileSync(file(ctx));if(data.toString('utf8')==='null')return null;const raw=c.safeStorage.isEncryptionAvailable()?c.safeStorage.decryptString(data):!_psSecureRequired()?data.toString('utf8'):'';return raw?JSON.parse(raw):null;},
+  save:(ctx,blob)=>{const target=file(ctx);if(blob===null){p.writeFileSync(target,'null',{mode:384});return;}const raw=JSON.stringify(blob);if(c.safeStorage.isEncryptionAvailable())p.writeFileSync(target,c.safeStorage.encryptString(raw),{mode:384});else if(!_psSecureRequired())p.writeFileSync(target,raw,{mode:384});},
+  fetch:async ctx=>{const signed=le({deviceId:ctx.deviceId,deviceFingerprint:ctx.fingerprint});const response=await fetch(ctx.baseUrl.replace(/\/$/,'')+'/owner/device/roles',{method:'POST',headers:{accept:'application/json','content-type':'application/json',...(signed.token?{authorization:'Bearer '+signed.token}:{})},body:JSON.stringify(signed.body),signal:AbortSignal.timeout(8000)});if(!response.ok)throw Error('Platform authentication service unavailable');const data=await response.json();if(!Object.prototype.hasOwnProperty.call(data||{},'superAdmin'))throw Error('Platform authentication response unavailable');return data.superAdmin;},
+  invoke:(method,payload,options={})=>et.invoke(method,payload,{timeoutMs:8000,...options}),
+  session:ce,authenticated:session=>Yt(ss(session)),
+  logout:async()=>{await b('auth.logout',{});Ne();}
+ });
+ return _psPlatformAuthInstance;
+}
+async function _psPlatformLogin(payload){
+ const pin=String(payload?.pin||'');
+ if(String(payload?.userId||'')==='possistem-admin')return d('E_FORBIDDEN','POSSISTEM girişi üçün 10 rəqəmli PIN yazın');
+ if(/^\d{10}$/.test(pin))return _psPlatformAuth().login(pin);
+ if(!/^\d{4}$/.test(pin))return d('E_VALIDATION','Yerli PIN 4, POSSISTEM PIN-i 10 rəqəm olmalıdır');
+ return null;
+}

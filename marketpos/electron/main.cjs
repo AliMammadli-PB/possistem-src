@@ -1606,7 +1606,7 @@ function registerIpc() {
       // A manager PIN typed into the override dialog is verified here, never in
       // the renderer, and only a match produces an approverId.
       (pin) => verifyManagerPin(String(pin || '')),
-      input?.managerPin,
+      require('./operation-access.cjs').isDestructive(method, input?.payload) ? undefined : input?.managerPin,
     );
     if (require('./operation-access.cjs').isDestructive(method, input?.payload)) {
       let actor; try { actor = requireSession(input?.sessionToken || input?.payload?.sessionToken || currentSessionToken); } catch { return opsFail('E_FORBIDDEN', 'Giriş tələb olunur'); }

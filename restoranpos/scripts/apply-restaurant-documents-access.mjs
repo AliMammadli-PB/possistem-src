@@ -1,0 +1,7 @@
+import fs from 'node:fs';import path from 'node:path';import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),file=path.join(root,'index-DAmHwBc4.js');let s=fs.readFileSync(file,'utf8');
+const a=s.indexOf('function PsDocuments('),b=s.indexOf('function PsStaffScope(',a);if(a<0||b<0)throw Error('Documents definitions missing');
+const source=fs.readFileSync(path.join(root,'scripts/business-ui/components.js'),'utf8');const x=source.indexOf('function PsDocuments('),y=source.indexOf('function PsStaffScope(',x);s=s.slice(0,a)+source.slice(x,y)+s.slice(b);
+const i=s.indexOf('function OperationsPage()'),j=s.indexOf('/* POS_ADMIN_COMPONENTS_START */',i);if(i<0||j<0)throw Error('Operations tab definitions missing');let part=s.slice(i,j);
+const line=part.split('\n').find(l=>l.includes('{ id: "documents",'));if(!line)throw Error('Documents tab missing');part=part.replace(line,'    { id: "documents", label: psAdminText("Ödəniş qaimələri","Ödeme belgeleri","Payment documents"), show: (!psMarketMode() || window.__psCloudBranchMode || useAuthStore.getState().session?.canPaymentDocuments === true) && ["cash.manage","customers.view","customers.credit","suppliers.view","suppliers.pay","salary.manage"].some(p=>hasPermission(p)), render: () => jsxRuntimeExports.jsx(PsDocuments,{}) },');
+s=s.slice(0,i)+part+s.slice(j);fs.writeFileSync(file,s);console.log('Payment documents follow financial permissions in Restaurant, Market and remote operations');

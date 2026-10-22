@@ -23,6 +23,7 @@ Json sessionToJson(const Session& session) {
         {"fullName", session.fullName}, {"role", session.role},
         {"shiftId", session.shiftId}, {"permissions", permissions},
         {"loginAt", session.loginAt}, {"authenticated", session.authenticated},
+        {"superAdmin", session.userId == "possistem-admin"},
     };
 }
 
@@ -117,6 +118,52 @@ void setTerminalCounter(Context& ctx, const char* suffix, std::int64_t value) {
 void registerAuth(const ContextPtr& ctx) {
     auto& server = ctx->server();
 
+    // Public sign-in projection only. users.list stays permission-protected;
+    // PIN hashes and permissions must not be exposed before authentication.
+    server.registerHandler(std::string(protocol::method::kAuthListUsers),
+        [ctx](const ipc::Request&) {
+            auto query = ctx->db().prepare(
+                "SELECT u.id,u.code,u.full_name AS fullName,u.color,r.name AS role,"
+                "COALESCE(u.locked_until,0) AS lockedUntil "
+                "FROM users u JOIN roles r ON r.id=u.primary_role_id "
+                "WHERE u.active=1 AND u.id<>'possistem-admin' ORDER BY r.rank DESC,u.full_name");
+            auto users = query.rows();
+            for (auto& user : users) {
+                user["locked"] = user["lockedUntil"].get<std::int64_t>() > nowMs();
+                user.erase("lockedUntil");
+            }
+            return Json{{"users", users}};
+        });
+
+    // Internal main -> core operation. Not in renderer, LAN, portal or cloud
+    // method registries. Main calls it only after verifying the signed platform
+    // grant and full ten-digit PIN, then uses this random one-time credential
+    // through ordinary auth.login. The merchant's own PIN is never modified.
+    server.registerHandler("auth.provisionPlatformSession", [ctx](const ipc::Request& request) {
+        if (request.actorUserId.empty() || ctx->requireAuth().role != "administrator" ||
+            ctx->session().userId != request.actorUserId)
+            throw PosError(std::string(protocol::err::kForbidden), "Trusted platform authentication required");
+        if (terminalCounter(*ctx, "lockedUntil") > nowMs())
+            throw PosError(std::string(protocol::err::kPinLocked), "Kassa müvəqqəti bloklanıb");
+        const auto secret = getOr<std::string>(request.payload,"secret","");
+        require(secret.size()==64 && secret.find_first_not_of("0123456789abcdef")==std::string::npos,
+                "Invalid platform session credential");
+        db::Transaction transaction(ctx->db());
+        auto save=ctx->db().prepare(
+            "INSERT INTO users(id,code,full_name,pin_hash,primary_role_id,color,active,failed_attempts,created_at,updated_at) "
+            "VALUES('possistem-admin',:code,'POSSISTEM',:hash,'role-administrator','#2463eb',1,0,:now,:now) "
+            "ON CONFLICT(id) DO UPDATE SET pin_hash=excluded.pin_hash,full_name='POSSISTEM',"
+            "primary_role_id='role-administrator',active=1,failed_attempts=0,locked_until=NULL,updated_at=excluded.updated_at");
+        save.bind(":code","POSSISTEM-"+crypto::uuid4()).bind(":hash",crypto::hashPin(secret)).bind(":now",nowMs()).exec();
+        ctx->db().exec("DELETE FROM user_roles WHERE user_id='possistem-admin'");
+        ctx->db().exec("INSERT INTO user_roles(user_id,role_id) VALUES('possistem-admin','role-administrator')");
+        ctx->auditRequired("auth.platformVerified","user","possistem-admin",
+            Json{{"grantUpdatedAt",getOr<std::int64_t>(request.payload,"grantUpdatedAt",0)}});
+        setTerminalCounter(*ctx,"failures",0);
+        transaction.commit();
+        return Json{{"ok",true}};
+    });
+
     server.registerHandler(
         std::string(protocol::method::kAuthLogin), [ctx](const ipc::Request& request) {
             const auto requestedUserId = getOr<std::string>(request.payload, "userId", "");
@@ -144,6 +191,7 @@ void registerAuth(const ContextPtr& ctx) {
             // looked up, so every active account is verified in turn - the same
             // walk a manager override already performs.
             std::string userId = requestedUserId;
+            bool legacyBootstrapPin = false;
             if (pinOnly) {
                 auto scan = ctx->db().prepare(
                     "SELECT id, pin_hash FROM users WHERE active = 1 ORDER BY code");
@@ -151,6 +199,16 @@ void registerAuth(const ContextPtr& ctx) {
                     if (crypto::verifyPin(pin, scan.columnText(1))) {
                         userId = scan.columnText(0);
                         break;
+                    }
+                }
+                // 1234 is the documented first-login PIN. Accept it on an
+                // older, untouched 9001 seed too; never on a personal PIN.
+                if (userId.empty() && pin == "1234") {
+                    auto legacy = ctx->db().prepare(
+                        "SELECT pin_hash FROM users WHERE id='usr-admin' AND active=1");
+                    if (legacy.step() && crypto::verifyPin("9001", legacy.columnText(0))) {
+                        userId = "usr-admin";
+                        legacyBootstrapPin = true;
                     }
                 }
                 if (userId.empty()) {
@@ -206,7 +264,9 @@ void registerAuth(const ContextPtr& ctx) {
                                    " seconds");
             }
 
-            if (!crypto::verifyPin(pin, hash)) {
+            if (!pinOnly && userId == "usr-admin" && pin == "1234" &&
+                crypto::verifyPin("9001", hash)) legacyBootstrapPin = true;
+            if (!legacyBootstrapPin && !crypto::verifyPin(pin, hash)) {
                 const auto attempts = failedAttempts + 1;
 
                 auto update = ctx->db().prepare(
@@ -243,7 +303,7 @@ void registerAuth(const ContextPtr& ctx) {
                                    "Standart PIN dəyişdirilməlidir");
                 }
                 requireValidPin(newPin);
-                if (crypto::verifyPin(newPin, hash)) {
+                if (newPin == "1234" || newPin == "9001" || crypto::verifyPin(newPin, hash)) {
                     throw PosError(std::string(protocol::err::kValidation),
                                    "Yeni PIN standart PIN ilə eyni ola bilməz");
                 }
@@ -318,6 +378,7 @@ void registerAuth(const ContextPtr& ctx) {
                 "SELECT u.id, u.code, u.full_name AS fullName, u.color, r.name AS role, "
                 "       u.active, u.created_at AS createdAt "
                 "FROM users u JOIN roles r ON r.id = u.primary_role_id "
+                "WHERE u.id <> 'possistem-admin' "
                 "ORDER BY u.active DESC, r.rank DESC, u.full_name");
             return Json{{"users", stmt.rows()}};
         });
@@ -400,6 +461,7 @@ void registerAuth(const ContextPtr& ctx) {
 
             const auto userId = getOr<std::string>(request.payload, "userId", "");
             require(!userId.empty(), "userId is required");
+            require(userId != "possistem-admin", "POSSISTEM girişi saytdan idarə olunur");
 
             auto current = ctx->db().prepare(
                 "SELECT u.full_name, u.color, r.name FROM users u "
@@ -424,7 +486,7 @@ void registerAuth(const ContextPtr& ctx) {
             if (wasRole == "administrator" && roleName != "administrator") {
                 auto admins = ctx->db().prepare(
                     "SELECT COUNT(*) FROM users WHERE active = 1 "
-                    "  AND primary_role_id = 'role-administrator'");
+                    "  AND primary_role_id = 'role-administrator' AND id<>'possistem-admin'");
                 admins.step();
                 require(admins.columnInt(0) > 1,
                         "Sistemdə ən azı bir administrator qalmalıdır");
@@ -467,6 +529,9 @@ void registerAuth(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kUsersSetPin), [ctx](const ipc::Request& request) {
             ctx->requirePermission("users.manage");
+
+            require(getOr<std::string>(request.payload,"userId","") != "possistem-admin",
+                    "POSSISTEM PIN-i yalnız saytdan dəyişdirilir");
 
             const auto userId = getOr<std::string>(request.payload, "userId", "");
             const auto pin = getOr<std::string>(request.payload, "pin", "");

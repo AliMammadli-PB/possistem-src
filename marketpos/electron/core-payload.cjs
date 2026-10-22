@@ -23,7 +23,7 @@
  * from the control plane rather than from a window script. Stripping it is what
  * stops any code in the renderer from rewriting every grant in the shop.
  */
-const ASSERTED = ['role', 'actorId', 'approverId', 'approverRole', 'policySource', 'requireCartApproval', 'cartId', 'superAdmin', 'superAdminPin', 'superAdminApproved', '_marketScope'];
+const ASSERTED = ['role', 'actorId', 'approverId', 'approverRole', 'policySource', 'requireCartApproval', 'cartId', 'managerPin', 'superAdmin', 'superAdminPin', 'superAdminApproved', '_marketScope'];
 
 /**
  * @param rawPayload what the renderer sent

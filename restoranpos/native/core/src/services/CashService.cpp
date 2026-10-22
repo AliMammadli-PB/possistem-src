@@ -72,10 +72,10 @@ Json CashService::listMovements(const std::string& businessDayId) {
         "       m.created_at AS createdAt, COALESCE(a.id, '') AS accountId, COALESCE(a.name, '') AS accountName, "
         "       COALESCE(o.id, '') AS objectId, COALESCE(o.name, '') AS objectName "
         "FROM cash_movements m "
-        "LEFT JOIN cash_account_moves am ON am.ref_type = 'cash_movement' AND am.ref_id = m.id "
-        "LEFT JOIN cash_accounts a ON a.id = am.account_id "
+        "LEFT JOIN cash_account_moves am ON am.rowid = (SELECT x.rowid FROM cash_account_moves x WHERE x.ref_type = 'cash_movement' AND x.ref_id = m.id ORDER BY x.created_at DESC,x.rowid DESC LIMIT 1) "
+        "LEFT JOIN cash_accounts a ON a.id = COALESCE((SELECT l.account_id FROM document_cash_links l WHERE l.doc_type='salary' AND l.cash_movement_id=m.id LIMIT 1),am.account_id) "
         "LEFT JOIN cash_objects o ON o.id = a.object_id "
-        "WHERE (:day = '' OR m.business_day_id = :day) "
+        "WHERE m.deleted_at IS NULL AND (:day = '' OR m.business_day_id = :day) "
         "ORDER BY m.created_at DESC LIMIT 5000");
     stmt.bind(":day", businessDayId);
     return Json{{"movements", stmt.rows()}};
@@ -155,12 +155,19 @@ Money takings(handlers::Context& ctx, const std::string& method, const std::stri
 
 }  // namespace
 
+std::string CashService::resolveAccount(const std::string& accountId) {
+    if(!accountId.empty()) return accountId;
+    auto q=ctx_.db().prepare("SELECT id FROM cash_accounts WHERE kind='till' AND active=1 AND terminal_id=:t LIMIT 1");
+    q.bind(":t",ctx_.saleTerminalId());return q.step()?q.columnText(0):std::string{};
+}
+
 void CashService::accountMove(const std::string& accountId, Money amountMinor, std::string_view kind,
                               std::string_view refType, std::string_view refId,
                               std::string_view note) {
-    if (accountId.empty() || amountMinor == 0) return;
+    const auto resolved = resolveAccount(accountId);
+    if (resolved.empty() || amountMinor == 0) return;
     auto account = ctx_.db().prepare("SELECT 1 FROM cash_accounts WHERE id = :id AND active = 1");
-    account.bind(":id", accountId);
+    account.bind(":id", resolved);
     if (!account.step()) {
         throw PosError(std::string(protocol::err::kNotFound), "Kassa tapılmadı");
     }
@@ -168,7 +175,7 @@ void CashService::accountMove(const std::string& accountId, Money amountMinor, s
         "INSERT INTO cash_account_moves (id, account_id, amount_minor, kind, ref_type, ref_id, note, "
         "                                actor_user_id, created_at) "
         "VALUES (:id, :account, :amount, :kind, :refType, :refId, :note, :actor, :now)");
-    insert.bind(":id", crypto::uuid4()).bind(":account", accountId).bind(":amount", amountMinor)
+    insert.bind(":id", crypto::uuid4()).bind(":account", resolved).bind(":amount", amountMinor)
         .bind(":kind", std::string(kind)).bind(":refType", std::string(refType))
         .bind(":refId", std::string(refId)).bind(":note", std::string(note))
         .bindOptional(":actor", ctx_.session().userId).bind(":now", nowMs());

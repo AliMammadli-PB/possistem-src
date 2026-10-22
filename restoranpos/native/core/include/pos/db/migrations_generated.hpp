@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 52;
+inline constexpr int kSchemaVersion = 61;
 
 namespace detail {
 
@@ -3944,6 +3944,297 @@ CREATE TABLE IF NOT EXISTS external_sales (
     return sql;
 }
 
+inline const std::string& migrationSql52() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(6704);
+        s += R"MIGSQL(-- Identity links preserve the original ledger/customer IDs.
+ALTER TABLE customers ADD COLUMN user_id TEXT REFERENCES users(id);
+CREATE UNIQUE INDEX idx_customer_user ON customers(user_id) WHERE user_id IS NOT NULL;
+UPDATE customers SET user_id=(SELECT u.id FROM users u WHERE u.full_name=customers.name)
+WHERE kind='employee' AND (SELECT COUNT(*) FROM users u WHERE u.full_name=customers.name)=1
+AND (SELECT COUNT(*) FROM customers c WHERE c.kind='employee' AND c.name=customers.name)=1;
+INSERT INTO customers(id,name,kind,user_id,active,created_at,updated_at)
+SELECT 'staff-'||u.id,u.full_name,'employee',u.id,u.active,u.created_at,u.updated_at FROM users u
+WHERE NOT EXISTS(SELECT 1 FROM customers c WHERE c.user_id=u.id);
+CREATE TRIGGER staff_partner_insert AFTER INSERT ON users BEGIN
+ INSERT INTO customers(id,name,kind,user_id,active,created_at,updated_at)
+ VALUES('staff-'||NEW.id,NEW.full_name,'employee',NEW.id,NEW.active,NEW.created_at,NEW.updated_at);
+END;
+CREATE TRIGGER staff_partner_update AFTER UPDATE OF full_name,active ON users BEGIN
+ UPDATE customers SET name=NEW.full_name,active=NEW.active,updated_at=NEW.updated_at WHERE user_id=NEW.id;
+END;
+CREATE TRIGGER partner_staff_name AFTER UPDATE OF name ON customers WHEN NEW.user_id IS NOT NULL AND NEW.name!=OLD.name BEGIN
+ UPDATE users SET full_name=NEW.name,updated_at=NEW.updated_at WHERE id=NEW.user_id;
+END;
+CREATE TABLE user_warehouse_access(
+ user_id TEXT NOT NULL REFERENCES users(id), warehouse_id TEXT NOT NULL REFERENCES warehouses(id),
+ PRIMARY KEY(user_id,warehouse_id)
+);
+-- Exact links, rather than trying to identify payments later by their amounts.
+CREATE TABLE document_cash_links(
+ doc_type TEXT NOT NULL,doc_id TEXT NOT NULL,account_id TEXT NOT NULL DEFAULT '',
+ cash_movement_id TEXT NOT NULL DEFAULT '',PRIMARY KEY(doc_type,doc_id)
+);
+-- Recover only unambiguous old links. Ambiguous history must never debit a guessed till.
+INSERT INTO document_cash_links(doc_type,doc_id,account_id)
+SELECT 'customer',l.id,MIN(m.account_id) FROM customer_ledger l JOIN cash_account_moves m
+ ON m.ref_type='customer' AND m.ref_id=l.customer_id AND m.amount_minor=l.amount_minor
+ AND m.created_at=l.created_at WHERE l.kind='payment' GROUP BY l.id HAVING COUNT(*)=1;
+INSERT INTO document_cash_links(doc_type,doc_id,account_id)
+SELECT 'supplier',l.id,MIN(m.account_id) FROM supplier_ledger l JOIN cash_account_moves m
+ ON m.ref_type='supplier' AND m.ref_id=l.supplier_id AND m.amount_minor=-l.amount_minor
+ AND m.created_at=l.created_at WHERE l.kind='payment' GROUP BY l.id HAVING COUNT(*)=1;
+-- Historic writes used separate clock reads for the document and its cash move.
+-- Recover a pair only if BOTH sides have exactly one candidate in the small window.
+INSERT OR IGNORE INTO document_cash_links(doc_type,doc_id,account_id)
+SELECT 'customer',l.id,m.account_id FROM customer_ledger l JOIN cash_account_moves m
+ ON m.ref_type='customer' AND m.ref_id=l.customer_id AND m.amount_minor=l.amount_minor
+ AND m.created_at BETWEEN l.created_at AND l.created_at+5000
+WHERE l.kind='payment'
+ AND (SELECT COUNT(*) FROM cash_account_moves x WHERE x.ref_type='customer' AND x.ref_id=l.customer_id AND x.amount_minor=l.amount_minor AND x.created_at BETWEEN l.created_at AND l.created_at+5000)=1
+ AND (SELECT COUNT(*) FROM customer_ledger x WHERE x.kind='payment' AND x.customer_id=l.customer_id AND x.amount_minor=l.amount_minor AND m.created_at BETWEEN x.created_at AND x.created_at+5000)=1;
+INSERT OR IGNORE INTO document_cash_links(doc_type,doc_id,account_id)
+SELECT 'supplier',l.id,m.account_id FROM supplier_ledger l JOIN cash_account_moves m
+ ON m.ref_type='supplier' AND m.ref_id=l.supplier_id AND m.amount_minor=-l.amount_minor
+ AND m.created_at BETWEEN l.created_at AND l.created_at+5000
+WHERE l.kind='payment'
+ AND (SELECT COUNT(*) FROM cash_account_moves x WHERE x.ref_type='supplier' AND x.ref_id=l.supplier_id AND x.amount_minor=-l.amount_minor AND x.created_at BETWEEN l.created_at AND l.created_at+5000)=1
+ AND (SELECT COUNT(*) FROM supplier_ledger x WHERE x.kind='payment' AND x.supplier_id=l.supplier_id AND x.amount_minor=l.amount_minor AND m.created_at BETWEEN x.created_at AND x.created_at+5000)=1;
+-- Shared catalogue metadata. Recipes remain separate from saleable goods.
+CREATE TRIGGER menu_goods_update AFTER UPDATE OF name_az,price_minor ON menu_items BEGIN
+ UPDATE ingredients SET name=NEW.name_az,sale_price_minor=NEW.price_minor,updated_at=NEW.updated_at
+ WHERE sku='MENU-'||NEW.id AND (name!=NEW.name_az OR sale_price_minor!=NEW.price_minor);
+END;
+CREATE TRIGGER goods_menu_update AFTER UPDATE OF name,sale_price_minor ON ingredients WHEN NEW.sku LIKE 'MENU-%' BEGIN
+ UPDATE menu_items SET name_az=NEW.name,updated_at=NEW.updated_at
+ WHERE id=substr(NEW.sku,6) AND name_az!=NEW.name;
+END;
+
+ALTER TABLE delivery_orders ADD COLUMN terminal_id TEXT NOT NULL DEFAULT '';
+CREATE TRIGGER delivery_terminal AFTER INSERT ON delivery_orders WHEN NEW.terminal_id='' BEGIN
+ UPDATE delivery_orders SET terminal_id=COALESCE((SELECT value FROM app_settings WHERE key='terminal.id'),'') WHERE id=NEW.id;
+END;
+
+CREATE TABLE catalog_goods_links(
+ menu_id TEXT PRIMARY KEY REFERENCES menu_items(id),
+ ingredient_id TEXT NOT NULL UNIQUE REFERENCES ingredients(id)
+);
+INSERT OR IGNORE INTO catalog_goods_links(menu_id,ingredient_id)
+SELECT m.id,i.id FROM menu_items m JOIN ingredients i ON i.sku='MENU-'||m.id;
+CREATE TRIGGER catalog_goods_insert AFTER INSERT ON ingredients WHEN NEW.sku LIKE 'MENU-%' BEGIN
+ INSERT OR IGNORE INTO catalog_goods_links(menu_id,ingredient_id)
+ SELECT id,NEW.id FROM menu_items WHERE id=substr(NEW.sku,6);
+END;
+CREATE TRIGGER catalog_link_menu AFTER UPDATE OF name_az,price_minor ON menu_items BEGIN
+ UPDATE ingredients SET name=NEW.name_az,sale_price_minor=NEW.price_minor,updated_at=NEW.updated_at
+ WHERE id IN(SELECT ingredient_id FROM catalog_goods_links WHERE menu_id=NEW.id)
+ AND (name!=NEW.name_az OR sale_price_minor!=NEW.price_minor);
+END;
+CREATE TRIGGER catalog_link_goods AFTER UPDATE OF name,sale_price_minor ON ingredients BEGIN
+ INSERT INTO menu_item_price_history(id,item_id,old_price_minor,new_price_minor,reason,created_at)
+ SELECT lower(hex(randomblob(16))),m.id,m.price_minor,NEW.sale_price_minor,'Vahid kataloq',NEW.updated_at
+ FROM menu_items m JOIN catalog_goods_links l ON l.menu_id=m.id
+ WHERE l.ingredient_id=NEW.id AND m.price_minor!=NEW.sale_price_minor;
+ UPDATE menu_items SET name_az=NEW.name,price_minor=NEW.sale_price_minor,updated_at=NEW.updated_at
+ WHERE id IN(SELECT menu_id FROM catalog_goods_links WHERE ingredient_id=NEW.id)
+ AND (name_az!=NEW.name OR price_minor!=NEW.sale_price_minor);
+END;
+ALTER TABLE cash_movements ADD COLUMN deleted_at INTEGER;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql53() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(2432);
+        s += R"MIGSQL(-- Immutable cancellation evidence. The live amount becomes zero, so existing
+-- debt/payroll readers cannot accidentally count a cancelled payment.
+CREATE TABLE IF NOT EXISTS document_voids (
+ doc_type TEXT NOT NULL, doc_id TEXT NOT NULL, before_json TEXT NOT NULL,
+ original_amount_minor INTEGER NOT NULL, reason TEXT NOT NULL,
+ actor_id TEXT, voided_at INTEGER NOT NULL, PRIMARY KEY(doc_type,doc_id)
+);
+CREATE TABLE IF NOT EXISTS transfer_docs (
+ id TEXT PRIMARY KEY, number TEXT NOT NULL UNIQUE,
+ from_warehouse_id TEXT NOT NULL, to_warehouse_id TEXT NOT NULL,
+ from_device_id TEXT NOT NULL DEFAULT '', to_device_id TEXT NOT NULL DEFAULT '',
+ from_name TEXT NOT NULL DEFAULT '', to_name TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN('draft','dispatched','received','return_pending','closed','cancelled')),
+ note TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL DEFAULT 1,
+ actor_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+ dispatched_at INTEGER, received_at INTEGER, returned_at INTEGER,
+ source_copy INTEGER NOT NULL DEFAULT 1,
+ reversal_of TEXT, correction_id TEXT
+);
+CREATE TABLE IF NOT EXISTS transfer_lines (
+ id TEXT PRIMARY KEY, transfer_id TEXT NOT NULL REFERENCES transfer_docs(id),
+ ingredient_id TEXT NOT NULL, product_json TEXT NOT NULL,
+ qty_milli INTEGER NOT NULL CHECK(qty_milli>0),
+ accepted_milli INTEGER NOT NULL DEFAULT 0 CHECK(accepted_milli>=0),
+ rejected_milli INTEGER NOT NULL DEFAULT 0 CHECK(rejected_milli>=0),
+ rejection_reason TEXT NOT NULL DEFAULT '', lots_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS transfer_docs_order ON transfer_docs(created_at DESC,id);
+CREATE INDEX IF NOT EXISTS transfer_lines_document ON transfer_lines(transfer_id);
+CREATE TABLE IF NOT EXISTS transfer_outbox (
+ id TEXT PRIMARY KEY, transfer_id TEXT NOT NULL, to_device_id TEXT NOT NULL,
+ payload_json TEXT NOT NULL, created_at INTEGER NOT NULL, delivered_at INTEGER,
+ attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS transfer_inbox (id TEXT PRIMARY KEY, received_at INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS transfer_returns (
+ id TEXT PRIMARY KEY, transfer_id TEXT NOT NULL UNIQUE REFERENCES transfer_docs(id),
+ number TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'return_pending',
+ lines_json TEXT NOT NULL, created_at INTEGER NOT NULL, confirmed_at INTEGER
+);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql54() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(377);
+        s += R"MIGSQL(ALTER TABLE customers ADD COLUMN credit_allowed INTEGER NOT NULL DEFAULT 0 CHECK(credit_allowed IN(0,1));
+ALTER TABLE customers ADD COLUMN credit_limit_minor INTEGER NOT NULL DEFAULT 0 CHECK(credit_limit_minor>=0);
+CREATE TABLE market_customer_events (id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, amount_minor INTEGER NOT NULL, created_at INTEGER NOT NULL);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql55() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(483);
+        s += R"MIGSQL(ALTER TABLE suppliers ADD COLUMN company_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE suppliers ADD COLUMN address TEXT NOT NULL DEFAULT '';
+ALTER TABLE market_customer_events ADD COLUMN ref_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE market_customer_events ADD COLUMN ref_id TEXT NOT NULL DEFAULT '';
+CREATE TABLE market_document_actors (
+ doc_type TEXT NOT NULL, doc_id TEXT NOT NULL, actor_id TEXT NOT NULL, actor_name TEXT NOT NULL,
+ PRIMARY KEY(doc_type,doc_id)
+);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql56() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(460);
+        s += R"MIGSQL(-- Login-only artifacts are hidden; real payroll and every financial history remain partners.
+ALTER TABLE customers ADD COLUMN partner_origin TEXT NOT NULL DEFAULT 'partner';
+UPDATE customers SET partner_origin='market_login'
+WHERE id LIKE 'mstaff-%' AND salary_minor=0 AND debt_minor=0
+AND NOT EXISTS (SELECT 1 FROM salary_payments WHERE customer_id=customers.id)
+AND NOT EXISTS (SELECT 1 FROM customer_ledger WHERE customer_id=customers.id);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql57() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(724);
+        s += R"MIGSQL(-- Platform support is a login/audit identity, never a merchant payroll card.
+-- Existing employees and their ledgers are unchanged.
+DROP TRIGGER staff_partner_insert;
+CREATE TRIGGER staff_partner_insert AFTER INSERT ON users
+WHEN NEW.id <> 'possistem-admin' BEGIN
+ INSERT INTO customers(id,name,kind,user_id,active,created_at,updated_at)
+ VALUES('staff-'||NEW.id,NEW.full_name,'employee',NEW.id,NEW.active,NEW.created_at,NEW.updated_at);
+END;
+DROP TRIGGER staff_partner_update;
+CREATE TRIGGER staff_partner_update AFTER UPDATE OF full_name,active ON users
+WHEN NEW.id <> 'possistem-admin' BEGIN
+ UPDATE customers SET name=NEW.full_name,active=NEW.active,updated_at=NEW.updated_at WHERE user_id=NEW.id;
+END;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql58() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(295);
+        s += R"MIGSQL(-- Enable the newly connected receipt drawer flow once on upgrade.
+-- Later explicit setting changes survive subsequent startups.
+INSERT INTO app_settings(key,value,value_type,updated_at)
+VALUES ('printer.openCashDrawer','1','string',0)
+ON CONFLICT(key) DO UPDATE SET value='1';
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql59() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(244);
+        s += R"MIGSQL(-- A recipient that definitively refused a dispatch (validation error, nothing
+-- applied there) marks it, so the sender may recall the goods (1.5.46).
+ALTER TABLE transfer_outbox ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql60() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1223);
+        s += R"MIGSQL(-- 1.5.47. A dispatched transfer the sender takes back before the recipient
+-- confirms it: the goods are already back on the sender's shelf, the recipient
+-- has not answered yet (document() reports status 'revoke_pending').
+ALTER TABLE transfer_docs ADD COLUMN revoking INTEGER NOT NULL DEFAULT 0;
+
+-- Zay (waste) as a document: Z-00001, its lines, editable and cancellable. Stock
+-- leaves through 'waste' movements referencing the document id.
+CREATE TABLE IF NOT EXISTS waste_documents (
+ id TEXT PRIMARY KEY, number TEXT NOT NULL UNIQUE, warehouse_id TEXT NOT NULL,
+ total_minor INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '',
+ actor_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+ cancelled_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS waste_document_items (
+ id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES waste_documents(id),
+ ingredient_id TEXT NOT NULL, qty_milli INTEGER NOT NULL CHECK(qty_milli>0),
+ cost_minor INTEGER NOT NULL DEFAULT 0, total_minor INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS waste_documents_order ON waste_documents(created_at DESC,id);
+CREATE INDEX IF NOT EXISTS waste_items_document ON waste_document_items(document_id);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4498,7 +4789,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 52> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 61> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4551,6 +4842,15 @@ inline constexpr std::array<EmbeddedScript, 52> kMigrations{{
     {50, "050_expired_lots_blocked.sql", "a86ca4b5", &detail::migrationSql49},
     {51, "051_delivery_dispatch.sql", "43b9e146", &detail::migrationSql50},
     {52, "052_goods_categories_income.sql", "1cf61555", &detail::migrationSql51},
+    {53, "053_business_links.sql", "fb0b78f7", &detail::migrationSql52},
+    {54, "054_market_workflows.sql", "66c5b773", &detail::migrationSql53},
+    {55, "055_market_credit.sql", "f193dbe0", &detail::migrationSql54},
+    {56, "056_partner_details.sql", "08a03c3e", &detail::migrationSql55},
+    {57, "057_partner_origin.sql", "d42c6fc2", &detail::migrationSql56},
+    {58, "058_platform_identity.sql", "a1ddfa61", &detail::migrationSql57},
+    {59, "059_automatic_cash_drawer.sql", "01e8225e", &detail::migrationSql58},
+    {60, "060_transfer_rejected.sql", "ec68909a", &detail::migrationSql59},
+    {61, "061_transfer_revoke_waste.sql", "0af3300f", &detail::migrationSql60},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

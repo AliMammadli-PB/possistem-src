@@ -270,14 +270,14 @@ void appendFooter(std::vector<std::uint8_t>& out, const EscPosOptions& options) 
 
     append(out, {0x1B, 0x64, static_cast<std::uint8_t>(std::clamp(options.feedLines, 0, 16))});
 
-    if (options.openCashDrawer) {
-        append(out, {0x1B, 0x70, 0x00, 0x19, 0xFA});  // ESC p 0 25 250
-    }
     if (options.beep) {
         append(out, {0x1B, 0x42, 0x03, 0x02});  // ESC B 3 2
     }
     if (options.cut) {
         append(out, {0x1D, 0x56, 0x00});  // GS V 0 — full cut
+    }
+    if (options.openCashDrawer) {
+        append(out, {0x1B, 0x70, 0x00, 0x19, 0xFA});  // ESC p 0 25 250
     }
 }
 
