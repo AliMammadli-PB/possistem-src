@@ -1,16 +1,80 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+
+// A one-operation credential prompt. Main always verifies the current signed
+// manager or superadmin record; the dialog never decides permission.
+let approvalOpen = false;
+const pendingProtected = new Map();
+function invokeWithApproval(channel, input) {
+  const key = channel + ':' + JSON.stringify(input);
+  if (pendingProtected.has(key)) return pendingProtected.get(key);
+  const task = (async () => {
+    const initial = await ipcRenderer.invoke(channel, input);
+    if (!['E_MANAGER_REQUIRED','E_SUPERADMIN_REQUIRED'].includes(initial?.error?.code)) return initial;
+    const policyOnly=channel==='market:permissions:save';
+    if (approvalOpen) return {success:false,error:{code:'E_APPROVAL_BUSY',message:'Açıq təsdiq pəncərəsini tamamlayın'}};
+    approvalOpen = true;
+    const previous = document.activeElement;
+    const lang = (document.documentElement.lang || 'az').slice(0,2);
+    const text = (az,ru,en) => lang === 'ru' ? ru : lang === 'en' ? en : az;
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('aria-label', text('Müdir təsdiqi','Подтверждение руководителя','Manager approval'));
+    dialog.style.cssText = 'border:1px solid #b8ccec;border-radius:20px;padding:28px;width:min(440px,calc(100vw - 40px));box-sizing:border-box;background:#fff;color:#142540;font-family:Montserrat,Arial,sans-serif;box-shadow:0 24px 90px #10203e66;';
+    const title = document.createElement('h2'); title.textContent = text('Müdir təsdiqi','Подтверждение руководителя','Manager approval'); title.style.cssText='font-size:22px;margin:0 0 12px';
+    const hint = document.createElement('p'); hint.textContent = policyOnly ? text('İcazə ayarlarının dəyişməsini idarəçi kodu ilə təsdiqləyin.','Подтвердите изменение прав кодом администратора.','Confirm permission changes with the administrator code.') : text('Silmə, ləğv və qaytarma üçün müdir kodunu daxil edin.','Введите код руководителя для удаления, отмены или возврата.','Enter the manager code to delete, cancel or refund.'); hint.style.cssText='font-size:14px;line-height:1.6';
+    const form = document.createElement('form');
+    const label = document.createElement('label'); label.textContent = text('Müdir kodu','Код руководителя','Manager code');
+    const pin = document.createElement('input'); pin.type='password'; pin.inputMode='numeric'; pin.maxLength=10; pin.autocomplete='off'; pin.required=true; pin.pattern=policyOnly?'[0-9]{10}':'([0-9]{4,8}|[0-9]{10})'; pin.setAttribute('aria-label', label.textContent); pin.style.cssText='display:block;width:100%;box-sizing:border-box;min-height:56px;margin:10px 0;font-size:24px;letter-spacing:6px;border:1px solid #87a7d8;border-radius:10px;padding:10px;color:#142540;background:#f6f9ff;';
+    pin.addEventListener('input',()=>{pin.value=pin.value.replace(/\D/g,'').slice(0,10);}); label.append(pin);
+    const error = document.createElement('p'); error.setAttribute('role','alert'); error.style.cssText='color:#b42318;font-size:14px;min-height:20px';
+    const actions = document.createElement('div'); actions.style.cssText='display:flex;gap:12px;margin-top:16px';
+    const cancel = document.createElement('button'); cancel.type='button';cancel.textContent=text('Bağla','Закрыть','Close');
+    const submit = document.createElement('button');submit.type='submit';submit.textContent=text('Təsdiqlə','Подтвердить','Confirm');
+    for(const button of [cancel,submit])button.style.cssText='min-height:52px;padding:12px 20px;flex:1;border:1px solid #c6d5eb;border-radius:10px;font:700 15px Montserrat,Arial,sans-serif;cursor:pointer;background:#eef4ff;color:#16325d;';
+    submit.style.background='#145ce0';submit.style.color='#fff';
+    actions.append(cancel,submit);form.append(label,error,actions);dialog.append(title,hint,form);document.body.append(dialog);dialog.showModal();pin.focus();
+    return await new Promise(resolve => {
+      let running=false,finished=false;
+      const finish = result => {if(finished)return;finished=true;pin.value='';dialog.close();dialog.remove();approvalOpen=false;if(previous?.isConnected)previous.focus();resolve(result);};
+      const close = () => finish({success:false,error:{code:'E_APPROVAL_CANCELLED',message:text('Əməliyyat təsdiqlənmədi','Операция не подтверждена','Operation was not approved')}});
+      cancel.onclick=()=>{if(!running)close();};
+      dialog.addEventListener('cancel',event=>{event.preventDefault();if(!running)close();});
+      form.onsubmit=async event=>{event.preventDefault();if(running||!form.reportValidity())return;running=true;submit.disabled=true;cancel.disabled=true;error.textContent='';
+        try {const result=await ipcRenderer.invoke(channel,{...input,...(policyOnly?{superAdminPin:pin.value}:{managerPin:pin.value})});pin.value='';
+          if(['E_MANAGER_REQUIRED','E_SUPERADMIN_REQUIRED'].includes(result?.error?.code)){error.textContent=result.error.message;pin.focus();}
+          else finish(result);
+        }catch(err){error.textContent=String(err?.message||err).replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/,'');pin.value='';pin.focus();}
+        finally{running=false;submit.disabled=false;cancel.disabled=false;}
+      };
+    });
+  })().finally(()=>pendingProtected.delete(key));
+  pendingProtected.set(key,task);return task;
+}
+
+const branchResult=promise=>promise.catch(error=>{const message=String(error?.message||error).replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/,'');throw new Error(/internal server error/i.test(message)?'Filial xidməti hazırda cavab vermir. Məlumatları yeniləyin.':message);});
+
 contextBridge.exposeInMainWorld('marketSystem', {
+  branches: {selection:sessionToken=>branchResult(ipcRenderer.invoke("market:branches:selection",{sessionToken})),manage:(sessionToken,operation)=>branchResult(ipcRenderer.invoke('market:branches:manage',{sessionToken,operation})),assign:(sessionToken,deviceId,name)=>branchResult(ipcRenderer.invoke('market:branches:assign',{sessionToken,deviceId,name})),list:(sessionToken)=>branchResult(ipcRenderer.invoke('market:branches:list',{sessionToken})),rpc:async(sessionToken,deviceId,calls)=>{const result=await invokeWithApproval('market:branches:rpc',{sessionToken,deviceId,calls});if(result?.success===false)throw Error(result.error?.message||'Əməliyyat alınmadı');return result;},stock:(sessionToken)=>ipcRenderer.invoke('market:branches:stock',{sessionToken}),queueEdits:(sessionToken,deviceId,requestId,edits,note)=>branchResult(ipcRenderer.invoke('market:branches:queueEdits',{sessionToken,deviceId,requestId,edits,note})),edits:(sessionToken,deviceId)=>branchResult(ipcRenderer.invoke('market:branches:edits',{sessionToken,deviceId})),cancelEdit:(sessionToken,id)=>branchResult(ipcRenderer.invoke('market:branches:cancelEdit',{sessionToken,id}))},
+  branchContext: (sessionToken) => ipcRenderer.invoke('market:branch:context', { sessionToken }),
   staff: {
     list: () => ipcRenderer.invoke('market:staff:list'),
-    save: (sessionToken, profile, pin) => ipcRenderer.invoke('market:staff:save', { sessionToken, profile, pin }),
+    save: async (sessionToken, profile, pin) => {const res=await invokeWithApproval('market:staff:save', {sessionToken,profile,pin});if(res?.success===false)throw Error(res.error?.message||'İstifadəçi saxlanmadı');return res;},
+    remove: async (sessionToken, id) => { const res = await invokeWithApproval('market:staff:delete', { sessionToken, id }); if (res?.success === false) throw new Error(res.error?.message || 'Əməliyyat alınmadı'); return res; },
+    places: (sessionToken) => ipcRenderer.invoke('market:staff:places', { sessionToken }),
+  },
+  permissions: {
+    get: (sessionToken) => ipcRenderer.invoke('market:permissions:get', {sessionToken}),
+    save: async (sessionToken, role, permissions, expectedVersion) => {const result = await invokeWithApproval('market:permissions:save', {sessionToken,role,permissions,expectedVersion}); if(result?.success === false)throw new Error(result.error?.message || 'İcazələr saxlanmadı'); return result;},
   },
   auth: {
     login: (userId, pin) => ipcRenderer.invoke('market:auth:login', { userId, pin }),
+    adminPrefix: (digits) => ipcRenderer.invoke('market:auth:adminPrefix', digits),
     changePin: (sessionToken, newPin) => ipcRenderer.invoke('market:auth:changePin', { sessionToken, newPin }),
     logout: (sessionToken) => ipcRenderer.invoke('market:auth:logout', sessionToken),
     /** Session restored after a restart, or null when nobody is signed in. */
     current: () => ipcRenderer.invoke('market:auth:current'),
+    /** Permission keys a user holds (default: the signed-in one). */
+    rights: (sessionToken, userId) => ipcRenderer.invoke('market:auth:rights', { sessionToken, userId }),
   },
   support: {
     request: (sessionToken, message) =>
@@ -33,10 +97,23 @@ contextBridge.exposeInMainWorld('marketSystem', {
     toggleFullscreen: () => ipcRenderer.invoke('market:display:toggle'),
   },
   image: { pick: (sessionToken) => ipcRenderer.invoke('market:image:pick', sessionToken) },
+  scale: {
+    get: (sessionToken) => ipcRenderer.invoke('market:scale:get', { sessionToken }),
+    set: (sessionToken, cfg) => ipcRenderer.invoke('market:scale:set', { sessionToken, ...cfg }),
+    scan: (sessionToken) => ipcRenderer.invoke('market:scale:scan', { sessionToken }),
+    send: (sessionToken) => ipcRenderer.invoke('market:scale:send', { sessionToken }),
+    test: (sessionToken) => ipcRenderer.invoke('market:scale:test', { sessionToken }),
+    diagnose: (sessionToken) => ipcRenderer.invoke('market:scale:diagnose', { sessionToken }),
+  },
   activation: {
     status: () => ipcRenderer.invoke('market:activation:status'),
     refresh: () => ipcRenderer.invoke('market:activation:refresh'),
     activate: (sessionToken, activationKey) => ipcRenderer.invoke('market:activation:activate', { sessionToken, activationKey }),
+  },
+  support: {
+    active: () => ipcRenderer.invoke('market:support:active'),
+    send: (ticketId, body) => ipcRenderer.invoke('market:support:send', { ticketId, body }),
+    messages: (ticketId, after) => ipcRenderer.invoke('market:support:messages', { ticketId, after }),
   },
   tenant: {
     status: () => ipcRenderer.invoke('market:tenant:status'),
@@ -102,7 +179,8 @@ contextBridge.exposeInMainWorld('marketSystem', {
 
 /** Əməliyyatlar (warehouse system) for the embedded screens; main checks the session. */
 contextBridge.exposeInMainWorld('marketOps', {
-  invoke: (input) => ipcRenderer.invoke('market:ops:invoke', input),
+  invoke: (input) => invokeWithApproval('market:ops:invoke', input),
+  categories: () => ipcRenderer.invoke('market:ops:categories'),
   status: () => ipcRenderer.invoke('market:ops:status'),
   setHost: (sessionToken, host) => ipcRenderer.invoke('market:ops:setHost', { sessionToken, host }),
   sync: (sessionToken) => ipcRenderer.invoke('market:ops:sync', { sessionToken }),
@@ -114,7 +192,7 @@ contextBridge.exposeInMainWorld('marketCore', {
    * `options.managerPin` is what the override dialog collected. It is verified
    * in main; the renderer never decides who approved anything.
    */
-  invoke: (method, payload, options) => ipcRenderer.invoke('market:invoke', { method, payload, timeoutMs: options?.timeoutMs, sessionToken: options?.sessionToken, managerPin: options?.managerPin }),
+  invoke: (method, payload, options) => invokeWithApproval('market:invoke', { method, payload, timeoutMs: options?.timeoutMs, sessionToken: options?.sessionToken || payload?.sessionToken, managerPin: options?.managerPin }),
   status: () => ipcRenderer.invoke('market:coreStatus:get'),
   restart: (sessionToken) => ipcRenderer.invoke('market:coreRestart', { sessionToken }),
   onStatus: (callback) => {

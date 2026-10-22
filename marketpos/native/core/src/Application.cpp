@@ -1,8 +1,10 @@
 #include <map>
+#include <set>
 #include "market/Application.hpp"
 #include "market/Error.hpp"
 #include "market/Logging.hpp"
 #include "market/RetailOps.hpp"
+#include "market/MoneyValue.hpp"
 #include "market/printing/PrinterHandlers.hpp"
 #include "market/Warehouse.hpp"
 #include "market/protocol_generated.hpp"
@@ -77,9 +79,9 @@ void audit(db::Database& db, const std::string& actorId, const std::string& acti
 
 /** Rows grouped by one of their columns, read in one query instead of one per owner. */
 using RowsBy = std::map<std::string, std::vector<nlohmann::json>>;
-RowsBy rowsBy(db::Database& db, const std::string& sql, const char* key) {
+RowsBy rowsBy(db::Database& db, const std::string& sql, const char* key, const std::vector<std::string>& text = {}, const std::vector<std::int64_t>& ints = {}) {
   RowsBy out;
-  for (auto& row : db.query(sql)) out[row.at(key).get<std::string>()].push_back(std::move(row));
+  for (auto& row : db.query(sql,text,ints)) out[row.at(key).get<std::string>()].push_back(std::move(row));
   return out;
 }
 
@@ -120,7 +122,7 @@ nlohmann::json productRowToJson(const nlohmann::json& row, db::Database& db, con
       // `stock` is the single number the UI works with. `warehouseStock` stays
       // on the wire — as a one-key map now — so peers and tests on the older
       // shape keep parsing.
-      {"stock", totalStock},
+      {"stock", warehouseStock.value(primaryWarehouseId(db),std::int64_t{0})},
       {"warehouseStock", warehouseStock},
       {"accent", row.at("accent")},
       {"image", image},
@@ -471,6 +473,10 @@ std::optional<std::int64_t> requestedStock(const nlohmann::json& product, std::i
   return scalar ? scalar : mapped;
 }
 
+void applyWarehouseSnapshot(db::Database&db,const nlohmann::json&product){
+ if(!product.contains("stockByWarehouse"))return;const auto good=requireString(product,"id");std::set<std::string> seen;
+ for(const auto&w:product.at("stockByWarehouse")){const auto id=requireString(w,"id");if(!seen.insert(id).second)throw PosError("E_VALIDATION","Təkrar anbar");const auto qty=w.at("qty").get<std::int64_t>();if(qty<0)throw PosError("E_VALIDATION","Miqdar mənfi ola bilməz");db.execBound("INSERT INTO warehouses(id,code,name,address,manager,active) VALUES(?,?,?,'','',1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,active=1",{id,id,w.value("name",id)});const auto delta=qty-getStock(db,good,id);if(delta)applyStockDelta(db,delta>0?"ADJUSTMENT_IN":"ADJUSTMENT_OUT",good,id,delta,"ops_snapshot",good,"system","Anbar qalığı ilə uyğunlaşdırma",true);else upsertStock(db,good,id,qty);}
+}
 void saveProduct(db::Database& db, const nlohmann::json& product, bool isCreate) {
   const std::string id = product.at("id").get<std::string>();
   // Tills send {az, ru, en}; the portal sends a plain string and a float price.
@@ -606,13 +612,14 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow, const
     if (hit != itemCache->end()) items = hit->second;
   } else {
     items = db.query(
-        "SELECT id, product_id, qty, discount_minor, note, unit_price_minor, line_total_minor FROM sale_items "
+        "SELECT id, product_id, qty, qty_milli, discount_minor, note, unit_price_minor, line_total_minor FROM sale_items "
         "WHERE sale_id = ? ORDER BY id", {saleId}, {}).get<std::vector<nlohmann::json>>();
   }
   nlohmann::json lines = nlohmann::json::array();
   for (const auto& it : items) {
     nlohmann::json line = {{"saleItemId", it.at("id")}, {"productId", it.at("product_id")}, {"qty", it.at("qty")},
                            {"unitPriceMinor", it.at("unit_price_minor")}, {"lineTotalMinor", it.at("line_total_minor")}};
+    if (it.contains("qty_milli") && !it["qty_milli"].is_null()) line["qtyMilli"] = it["qty_milli"];
     if (!it["discount_minor"].is_null() && it["discount_minor"].get<std::int64_t>() != 0) {
       line["discountMinor"] = it["discount_minor"];
     }
@@ -638,7 +645,7 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow, const
       if (hit != refundCache->end()) rows = hit->second;
     } else {
       rows = db.query(
-          "SELECT refund_id, product_id, qty, amount_minor, created_at FROM refund_lines WHERE sale_id = ? "
+          "SELECT refund_id, sale_item_id, product_id, qty, amount_minor, created_at FROM refund_lines WHERE sale_id = ? "
           "ORDER BY created_at, refund_id", {saleId}, {}).get<std::vector<nlohmann::json>>();
     }
     for (const auto& r : rows) {
@@ -646,7 +653,7 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow, const
       if (refunds.empty() || refunds.back().at("refundId") != refundId) {
         refunds.push_back({{"refundId", refundId}, {"createdAt", r.at("created_at")}, {"lines", nlohmann::json::array()}});
       }
-      refunds.back()["lines"].push_back({{"productId", r.at("product_id")}, {"qty", r.at("qty")}, {"amountMinor", r.at("amount_minor")}});
+      refunds.back()["lines"].push_back({{"saleItemId", r.at("sale_item_id")}, {"productId", r.at("product_id")}, {"qty", r.at("qty")}, {"amountMinor", r.at("amount_minor")}});
     }
   }
   return {
@@ -660,7 +667,7 @@ nlohmann::json saleToJson(db::Database& db, const nlohmann::json& saleRow, const
       {"payment", payment},
       {"refunded", saleRow.at("refunded").get<std::int64_t>() != 0},
       {"cashierId", saleRow.at("cashier_id")},
-      {"registerId", saleRow.at("register_id")},
+      {"registerId", saleRow.at("register_id")},{"warehouseId",saleRow.at("warehouse_id")},
       {"customerId", saleRow.contains("customer_id") && !saleRow["customer_id"].is_null() ? saleRow["customer_id"] : nlohmann::json(nullptr)},
       {"customerName", saleRow["customer_name"].is_null() ? nullptr : saleRow["customer_name"]},
       {"loyaltyEarnedMinor", saleRow.value("loyalty_earned_minor", 0)},
@@ -691,7 +698,7 @@ nlohmann::json exportState(db::Database& db) {
                           {"active", row.at("active").get<std::int64_t>() != 0}});
   }
 
-  auto regs = db.query("SELECT * FROM registers ORDER BY code");
+  auto regs = db.query("SELECT * FROM registers r WHERE NOT EXISTS(SELECT 1 FROM settings s WHERE s.key='register.archived.'||r.id AND s.value='1') ORDER BY code");
   nlohmann::json registers = nlohmann::json::array();
   for (const auto& row : regs) {
     nlohmann::json r = {{"id", row.at("id")},
@@ -749,18 +756,22 @@ nlohmann::json exportState(db::Database& db) {
 
   auto settingsRows = db.query("SELECT key, value FROM settings");
   nlohmann::json settings = {
-      {"storeName", "MarketPos Supermarket"},
-      {"legalName", "MarketPos Retail MMC"},
+      {"showProductImages", false},
+      {"branchName", ""},
+      {"storeName", ""},
+      {"legalName", ""},
       {"taxId", ""},
       {"phone", ""},
       {"address", ""},
-      {"terminalName", "MARKETPOS-01"},
+      {"terminalName", ""},
       {"defaultWarehouseId", primaryWarehouseId(db)},
-      {"defaultRegisterId", "reg-2"},
+      {"defaultRegisterId", ""},
       {"syncUrl", "https://possistem.az/marketpos"},
   };
   for (const auto& row : settingsRows) {
-    settings[row.at("key").get<std::string>()] = row.at("value");
+    const auto key = row.at("key").get<std::string>();
+    if (key == "showProductImages") settings[key] = row.at("value") == "true";
+    else settings[key] = row.at("value");
   }
 
   return {{"schemaVersion", 4},
@@ -888,7 +899,9 @@ void pullStockOnto(db::Database& db, const std::string& productId, const std::st
   }
 }
 
-nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
+#include "CartWorkflow.hpp"
+
+nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload,bool ownTransaction=true,const std::string& fixedWarehouse="") {
   const std::string requestKey = payload.value("idempotencyKey", std::string());
   if (requestKey.size() > 128) throw PosError("E_VALIDATION", "submission key too long");
   auto request = payload;
@@ -905,10 +918,11 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
     }
   }
   const auto items = payload.at("items");
+  validateCart(db,payload,items);
   if (!items.is_array() || items.empty()) throw PosError("E_VALIDATION", "sale items required");
   const std::string cashierId = requireString(payload, "cashierId");
   const std::string registerId = requireString(payload, "registerId");
-  const std::string wh = ensurePrimaryWarehouse(db);
+  const std::string wh = fixedWarehouse.empty()?ensurePrimaryWarehouse(db):fixedWarehouse;
 
   const auto regStatus = db.queryText("SELECT status FROM registers WHERE id = ?", {registerId}, {});
   if (regStatus != "open") throw PosError("REGISTER_CLOSED", "Register is closed");
@@ -921,6 +935,7 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
     std::int64_t discount;
     std::int64_t lineTotal;
     std::string note;
+    std::int64_t qtyMilli;
   };
   std::vector<Line> lines;
   for (const auto& item : items) {
@@ -943,18 +958,21 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
       }
     }
     const std::int64_t disc = item.value("discountMinor", 0);
-    // Support weighted qtyMilli (thousandths)
-    std::int64_t lineTotal = 0;
-    if (item.contains("qtyMilli") && item["qtyMilli"].is_number_integer()) {
-      const auto qtyMilli = item["qtyMilli"].get<std::int64_t>();
-      lineTotal = (unit * qtyMilli) / 1000 - disc;
-      subtotal += (unit * qtyMilli) / 1000;
+    // Use the same nearest-qəpik rounding as the cart and scale barcode reader.
+    std::int64_t gross = 0;
+    if (item.contains("qtyMilli")) {
+      if (!item["qtyMilli"].is_number_integer() || item["qtyMilli"].get<std::int64_t>() <= 0)
+        throw PosError("E_VALIDATION", "qtyMilli must be a positive integer");
+      gross = roundedMoneyValue(unit, item["qtyMilli"].get<std::int64_t>());
     } else {
-      lineTotal = unit * qty - disc;
-      subtotal += unit * qty;
+      gross = roundedMoneyValue(unit, qty, 1);
     }
+    if (disc < 0 || disc > gross || subtotal > std::numeric_limits<std::int64_t>::max() - gross)
+      throw PosError("E_VALIDATION", "Məbləğ və endirim düzgün deyil");
+    const std::int64_t lineTotal = gross - disc;
+    subtotal += gross;
     if (lineTotal < 0) throw PosError("E_VALIDATION", "line total negative");
-    lines.push_back({productId, qty, unit, disc, lineTotal, item.value("note", "")});
+    lines.push_back({productId, qty, unit, disc, lineTotal, item.value("note", ""), item.value("qtyMilli", std::int64_t{0})});
   }
   const std::int64_t discountMinor = std::min(subtotal, payload.value("discountMinor", static_cast<std::int64_t>(0)));
   const std::int64_t total = subtotal - discountMinor;
@@ -969,19 +987,16 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
   if ((creditMinor > 0 || loyaltyMinor > 0) && customerId.empty())
     throw PosError("E_VALIDATION", "customer required for credit or loyalty");
   if (method == "cash" && tendered < total) throw PosError("E_VALIDATION", "tendered less than total");
-  if (cashMinor + cardMinor + creditMinor + loyaltyMinor < total)
+  if(cashMinor<0||cardMinor<0||creditMinor<0||loyaltyMinor<0)throw PosError("E_VALIDATION","Ödəniş mənfi ola bilməz");
+  if (cashMinor + cardMinor + creditMinor + loyaltyMinor != total)
     throw PosError("E_VALIDATION", "payment insufficient");
   if (creditMinor > 0) {
     requirePermission(db, payload, "CUSTOMER_CREDIT");
-    auto customer = db.query("SELECT credit_allowed, credit_limit_minor FROM customers WHERE id = ? AND active = 1", {customerId}, {});
-    if (customer.empty() || customer[0].at("credit_allowed").get<std::int64_t>() == 0)
-      throw PosError("PERMISSION_DENIED", "customer credit is disabled");
-    const auto balance = db.queryInt("SELECT COALESCE((SELECT balance_after_minor FROM customer_ledger WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1),0)", {customerId}, {});
-    if (balance + creditMinor > customer[0].at("credit_limit_minor").get<std::int64_t>())
-      throw PosError("CREDIT_LIMIT_EXCEEDED", "customer credit limit exceeded");
+    if(!db.queryInt("SELECT COUNT(*) FROM customers WHERE id=? AND active=1",{customerId}))
+      throw PosError("E_VALIDATION","Aktiv müştəri seçin");
   }
   const auto loyaltyBalance = customerId.empty() ? 0 : db.queryInt("SELECT COALESCE((SELECT points_after FROM loyalty_ledger WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1),0)", {customerId}, {});
-  if (loyaltyMinor > loyaltyBalance) throw PosError("E_VALIDATION", "insufficient loyalty balance");
+  if (loyaltyMinor > 0 && loyaltyMinor > loyaltyBalance) throw PosError("E_VALIDATION", "insufficient loyalty balance");
   if (loyaltyMinor > 0) requirePermission(db, payload, "LOYALTY_REDEEM");
   std::int64_t loyaltyRateBps = 0;
   try { loyaltyRateBps = std::stoll(db.queryText("SELECT value FROM settings WHERE key='loyaltyRateBps'")); } catch (...) {}
@@ -1015,11 +1030,11 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
   std::snprintf(seqBuf, sizeof(seqBuf), "%04lld", static_cast<long long>(seq));
   const std::string receiptNo = payload.value("receiptNo", prefix + seqBuf);
 
-  db.begin();
+  if(ownTransaction)db.begin();
   try {
     for (const auto& line : lines) {
-      const auto here = getStock(db, line.productId, wh);
-      if (here < line.qty) pullStockOnto(db, line.productId, wh, line.qty - here, cashierId, saleId);
+
+
       applyStockDelta(db, "SALE", line.productId, wh, -line.qty, "sale", saleId, cashierId, "", false);
     }
 
@@ -1072,7 +1087,7 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
       sqlite3_stmt* is = nullptr;
       sqlite3_prepare_v2(db.raw(),
                          "INSERT INTO sale_items(sale_id, product_id, qty, unit_price_minor, discount_minor, "
-                         "line_total_minor, note) VALUES (?,?,?,?,?,?,?)",
+                         "line_total_minor, note, qty_milli) VALUES (?,?,?,?,?,?,?,?)",
                          -1, &is, nullptr);
       sqlite3_bind_text(is, 1, saleId.c_str(), -1, SQLITE_TRANSIENT);
       sqlite3_bind_text(is, 2, line.productId.c_str(), -1, SQLITE_TRANSIENT);
@@ -1082,12 +1097,18 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
       sqlite3_bind_int64(is, 6, line.lineTotal);
       if (line.note.empty()) sqlite3_bind_null(is, 7);
       else sqlite3_bind_text(is, 7, line.note.c_str(), -1, SQLITE_TRANSIENT);
-      sqlite3_step(is);
+      if (line.qtyMilli > 0) sqlite3_bind_int64(is, 8, line.qtyMilli);
+      else sqlite3_bind_null(is, 8);
+      if (sqlite3_step(is) != SQLITE_DONE) {
+        const std::string message = sqlite3_errmsg(db.raw());
+        sqlite3_finalize(is);
+        throw PosError("E_DB", message, true);
+      }
       sqlite3_finalize(is);
     }
 
     if (!customerId.empty() && creditMinor > 0) {
-      const auto balance = db.queryInt("SELECT COALESCE((SELECT balance_after_minor FROM customer_ledger WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1),0)", {customerId}, {});
+      const auto balance = db.queryInt("SELECT COALESCE((SELECT balance_after_minor FROM customer_ledger WHERE customer_id = ? ORDER BY created_at DESC,rowid DESC LIMIT 1),0)", {customerId}, {});
       const std::string ledgerId = newId("cl");
       sqlite3_stmt* ls = nullptr;
       sqlite3_prepare_v2(db.raw(), "INSERT INTO customer_ledger(id, customer_id, kind, amount_minor, balance_after_minor, ref_type, ref_id, note, created_at, actor_id) VALUES (?,?,?,?,?,'sale',?,'Nisye satis',?,?)", -1, &ls, nullptr);
@@ -1119,16 +1140,80 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload) {
     if (!requestKey.empty()) db.execBound(
       "INSERT INTO sale_submissions(request_key, request_json, sale_id) VALUES (?,?,?)",
       {requestKey, fingerprint, saleId});
+    completeCart(db,payload);
     audit(db, cashierId, "SALE_COMPLETE", receiptNo);
-    db.commit();
+    if(ownTransaction)db.commit();
   } catch (...) {
-    db.rollback();
+    if(ownTransaction)db.rollback();
     throw;
   }
 
   auto rows = db.query("SELECT * FROM sales WHERE id = ?", {saleId}, {});
   return saleToJson(db, rows.at(0));
 }
+
+nlohmann::json refundSale(db::Database& db,const nlohmann::json& p,bool ownTransaction=true) {
+    requirePermission(db, p, "SALE_REFUND");
+    const auto saleId = requireString(p, "saleId");
+    auto rows = db.query("SELECT * FROM sales WHERE id = ?", {saleId}, {});
+    if (rows.empty()) throw PosError("E_NOT_FOUND", "sale not found");
+    if (rows[0].at("refunded").get<std::int64_t>() != 0) throw PosError("E_ALREADY_REFUNDED", "already refunded");
+    const std::string wh = rows[0].at("warehouse_id").get<std::string>();
+    const std::string actor = p.value("actorId", rows[0].at("cashier_id").get<std::string>());
+    if(ownTransaction)db.begin();
+    try {
+      auto items = db.query("SELECT id, product_id, qty, line_total_minor FROM sale_items WHERE sale_id = ?", {saleId});
+      const auto refundId = newId("ref");
+      const auto at = nowMs();
+      const auto saleTotal = rows[0].at("total_minor").get<std::int64_t>();
+      const auto previousMoney = db.queryInt("SELECT COALESCE(SUM(amount_minor),0) FROM refund_lines WHERE sale_id=?", {saleId});
+      const auto remainingMoney = std::max<std::int64_t>(0, saleTotal - previousMoney);
+      const auto gross = std::max<std::int64_t>(1, db.queryInt("SELECT COALESCE(SUM(line_total_minor),0) FROM sale_items WHERE sale_id=?", {saleId}));
+      std::int64_t allocated = 0;
+      std::string lastLine;
+      for (const auto& it : items) {
+        const auto itemId = it.at("id").get<std::int64_t>();
+        const auto returned = db.queryInt("SELECT COALESCE(SUM(qty),0) FROM refund_lines WHERE sale_id=? AND sale_item_id=" + std::to_string(itemId), {saleId});
+        const auto sold = it.at("qty").get<std::int64_t>();
+        const auto qty = sold - returned;
+        if (qty <= 0) continue;
+        const auto productId = it.at("product_id").get<std::string>();
+        applyStockDelta(db, "SALE_RETURN", productId, wh, qty, "sale", saleId, actor, "refund", true);
+        const auto grossShare = (it.at("line_total_minor").get<std::int64_t>() * qty + sold / 2) / sold;
+        const auto amount = std::min((grossShare * saleTotal + gross / 2) / gross,
+                                     std::max<std::int64_t>(0, remainingMoney - allocated));
+        allocated += amount;
+        lastLine = newId("rl");
+        db.execBound("INSERT INTO refund_lines(id,refund_id,sale_id,sale_item_id,product_id,qty,amount_minor,created_at,actor_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                      {lastLine,refundId,saleId,std::to_string(itemId),productId,std::to_string(qty),std::to_string(amount),std::to_string(at),actor});
+      }
+      if (!lastLine.empty() && allocated != remainingMoney) {
+        db.execBound("UPDATE refund_lines SET amount_minor=amount_minor+? WHERE id=?", {std::to_string(remainingMoney-allocated),lastLine});
+      }
+      const auto customer=rows[0].contains("customer_id")&&!rows[0]["customer_id"].is_null()?rows[0]["customer_id"].get<std::string>():std::string{};
+      if(!customer.empty()){
+        const auto reversed=db.queryInt("SELECT COALESCE(-SUM(amount_minor),0) FROM customer_ledger WHERE customer_id=? AND kind='refund' AND ref_type='refund' AND ref_id IN(SELECT DISTINCT refund_id FROM refund_lines WHERE sale_id=?)",{customer,saleId});
+        const auto credit=std::max<std::int64_t>(0,rows[0].value("credit_minor",std::int64_t{0})-reversed);
+        if(credit){const auto balance=db.queryInt("SELECT COALESCE((SELECT balance_after_minor FROM customer_ledger WHERE customer_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1),0)",{customer});db.execBound("INSERT INTO customer_ledger(id,customer_id,kind,amount_minor,balance_after_minor,ref_type,ref_id,note,created_at,actor_id) VALUES(?,?,'refund',?,?,'refund',?,'Tam qaytarma',?,?)",{newId("cl"),customer,std::to_string(-credit),std::to_string(balance-credit),refundId,std::to_string(at),actor});}
+      }
+      if(!customer.empty()){
+        const auto originalDelta=rows[0].value("loyalty_earned_minor",std::int64_t{0})-rows[0].value("loyalty_redeemed_minor",std::int64_t{0});
+        const auto reversed=db.queryInt("SELECT COALESCE(SUM(points_delta),0) FROM loyalty_ledger WHERE customer_id=? AND ref_type='refund' AND kind IN('refund','refund_adjustment') AND ref_id IN(SELECT DISTINCT refund_id FROM refund_lines WHERE sale_id=?)",{customer,saleId});
+        const auto desired=-originalDelta-reversed;
+        const auto balance=db.queryInt("SELECT COALESCE((SELECT points_after FROM loyalty_ledger WHERE customer_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1),0)",{customer});const auto delta=std::max(desired,-balance);if(delta){db.execBound("INSERT INTO loyalty_ledger(id,customer_id,points_delta,points_after,kind,ref_type,ref_id,created_at) VALUES(?,?,?,?,'refund','refund',?,?)",{newId("ly"),customer,std::to_string(delta),std::to_string(balance+delta),refundId,std::to_string(at)});}
+      }
+      recordRefundCashOut(db, rows[0], remainingMoney, refundId, actor);
+      db.execBound("UPDATE sales SET refunded = 1 WHERE id = ?", {saleId});
+      audit(db, actor, "SALE_REFUND", rows[0].at("receipt_no").get<std::string>());
+      if(ownTransaction)db.commit();
+    } catch (...) {
+      if(ownTransaction)db.rollback();
+      throw;
+    }
+    return saleToJson(db, db.query("SELECT * FROM sales WHERE id = ?", {saleId}, {})[0]);
+}
+
+#include "SaleCorrections.hpp"
 
 }  // namespace
 
@@ -1444,6 +1529,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
       auto productFields = product;
       productFields.erase("warehouseStock");
       productFields.erase("stock");
+      productFields.erase("stockByWarehouse");
       saveProduct(db_, productFields, true);
       const auto productId = product.at("id").get<std::string>();
       emitProductSync(db_, productId);
@@ -1455,6 +1541,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
       } else {
         upsertStock(db_, productId, warehouseId, 0);
       }
+      applyWarehouseSnapshot(db_,product);
       audit(db_, p.value("actorId", "system"), "PRODUCT_CREATE", product.at("sku").get<std::string>());
       db_.commit();
     } catch (...) {
@@ -1475,18 +1562,20 @@ void Application::registerHandlers(ipc::StdioServer& server) {
       auto productFields = product;
       productFields.erase("warehouseStock");
       productFields.erase("stock");
+      productFields.erase("stockByWarehouse");
       saveProduct(db_, productFields, false);
       const auto productId = product.at("id").get<std::string>();
       emitProductSync(db_, productId);
       const auto warehouseId = ensurePrimaryWarehouse(db_);
       const auto currentStock = getStock(db_, productId, warehouseId);
-      if (const auto target = requestedStock(product, currentStock)) {
+      if (const auto target = product.contains("stock")?scalarStock(product):std::optional<std::int64_t>{}) {
         const auto delta = *target - currentStock;
         if (delta != 0) {
           applyStockDelta(db_, delta > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT", productId, warehouseId, delta,
                           "product", productId, p.value("actorId", "system"), "product stock update", false);
         }
       }
+      applyWarehouseSnapshot(db_,product);
       audit(db_, p.value("actorId", "system"), "PRODUCT_UPDATE", product.at("sku").get<std::string>());
       db_.commit();
     } catch (...) {
@@ -1719,8 +1808,26 @@ void Application::registerHandlers(ipc::StdioServer& server) {
   server.on("sale.create", [](const nlohmann::json& p) {
     return nlohmann::json{{"id", p.value("id", newId("draft"))}, {"items", nlohmann::json::array()}, {"discountMinor", 0}};
   });
+  server.on("cart.state",[this](const nlohmann::json&p){return cartState(db_,p);});
+  server.on("cart.sync",[this](const nlohmann::json&p){return cartSync(db_,p);});
+  server.on("cart.approve",[this](const nlohmann::json&p){return cartApprove(db_,p);});
   server.on("sale.addItem", [](const nlohmann::json& p) { return p; });
   server.on("sale.removeItem", [](const nlohmann::json& p) { return p; });
+  // Storno: an item already scanned leaves the basket. The basket itself lives
+  // on the screen; this is the gate and the record. Without SALE_CANCEL the
+  // cashier needs the PIN of someone who holds it (approverId, set by main).
+  server.on("sale.voidLine", [this](const nlohmann::json& p) {
+    requirePermission(db_, p, "SALE_CANCEL");
+    const auto qty = p.value("qty", 0.0);
+    const auto amount = p.value("amountMinor", std::int64_t{0});
+    if (!(qty > 0) || amount < 0) throw PosError("E_VALIDATION", "qty and amount required");
+    const std::string approver = p.contains("approverId") && p["approverId"].is_string() ? p["approverId"].get<std::string>() : "";
+    char line[64];
+    std::snprintf(line, sizeof line, " x%.3g = %.2f AZN", qty, static_cast<double>(amount) / 100.0);
+    audit(db_, p.value("actorId", ""), "SALE_LINE_VOID",
+          p.value("name", p.value("productId", std::string{})).substr(0, 120) + line + (approver.empty() ? "" : " · təsdiq: " + approver));
+    return nlohmann::json{{"ok", true}, {"approved", !approver.empty()}};
+  });
   server.on("sale.setQuantity", [](const nlohmann::json& p) { return p; });
   server.on("sale.applyDiscount", [](const nlohmann::json& p) { return p; });
   server.on("sale.discardDraft", [](const nlohmann::json&) { return nlohmann::json{{"ok", true}}; });
@@ -1730,24 +1837,33 @@ void Application::registerHandlers(ipc::StdioServer& server) {
     if (rows.empty()) throw PosError("E_NOT_FOUND", "sale not found");
     return saleToJson(db_, rows[0]);
   });
-  // {since, limit, withRefunds}: the warehouse feeder reads only recent sales.
+  // Search the complete history, not only the latest cached sales. Read
+  // lines/refunds for this page only, including for the warehouse feeder.
   server.on("sale.list", [this](const nlohmann::json& p) {
     const std::int64_t since = p.value("since", std::int64_t{0});
+    const std::int64_t before = p.value("before", std::numeric_limits<std::int64_t>::max());
     const std::int64_t limit = std::clamp<std::int64_t>(p.value("limit", std::int64_t{500}), 1, 5000);
-    auto rows = db_.query("SELECT * FROM sales WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?", {}, {since, limit});
+    const std::int64_t offset = std::max<std::int64_t>(0, p.value("offset", std::int64_t{0}));
+    std::string search = p.value("query", std::string{});
+    search.erase(std::remove_if(search.begin(),search.end(),[](unsigned char c){return std::isspace(c) || c=='-';}),search.end());
+    if(search.size()>120) throw PosError("E_VALIDATION", "Axtarış kodu çox uzundur");
+    const std::string scope = " WHERE (? = '' OR instr(replace(replace(lower(receipt_no),'-',''),' ',''),lower(?)) > 0) "
+                              "AND created_at >= ? AND created_at < ? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?";
+    const std::vector<std::string> text{search,search};
+    const std::vector<std::int64_t> ints{since,before,limit,offset};
+    auto rows = db_.query("SELECT * FROM sales" + scope,text,ints);
     const bool withRefunds = p.value("withRefunds", true);
-    const auto items = rowsBy(db_,
-        "SELECT sale_id, id, product_id, qty, discount_minor, note, unit_price_minor, line_total_minor FROM sale_items "
-        "WHERE sale_id IN (SELECT id FROM sales WHERE created_at >= " + std::to_string(since) + ") ORDER BY id", "sale_id");
-    const auto refunds = rowsBy(db_,
-        "SELECT sale_id, refund_id, product_id, qty, amount_minor, created_at FROM refund_lines "
-        "WHERE sale_id IN (SELECT id FROM sales WHERE created_at >= " + std::to_string(since) + ") "
-        "ORDER BY created_at, refund_id", "sale_id");
+    const auto selected = "SELECT id FROM sales" + scope;
+    const auto items = rowsBy(db_, "SELECT sale_id,id,product_id,qty,qty_milli,discount_minor,note,unit_price_minor,line_total_minor "
+                                   "FROM sale_items WHERE sale_id IN (" + selected + ") ORDER BY id", "sale_id",text,ints);
+    const auto refunds = withRefunds ? rowsBy(db_, "SELECT sale_id,refund_id,sale_item_id,product_id,qty,amount_minor,created_at "
+                                      "FROM refund_lines WHERE sale_id IN (" + selected + ") ORDER BY created_at,refund_id", "sale_id",text,ints) : RowsBy{};
     nlohmann::json out = nlohmann::json::array();
     for (const auto& row : rows) out.push_back(saleToJson(db_, row, &items, withRefunds, &refunds));
     return out;
   });
   server.on("sale.hold", [this](const nlohmann::json& p) {
+    validateCart(db_,p,p.at("lines"));
     const std::string id = p.value("id", newId("hold"));
     const std::string label = p.value("label", "Held");
     const std::string lines = p.at("lines").dump();
@@ -1778,6 +1894,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
       sqlite3_bind_null(stmt, 10);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
+    completeCart(db_,p);
     audit(db_, p.value("cashierId", "system"), "SALE_HOLD", id);
     return nlohmann::json{{"id", id},
                           {"label", label},
@@ -1803,54 +1920,9 @@ void Application::registerHandlers(ipc::StdioServer& server) {
                           {"note", rows[0].contains("note") && !rows[0]["note"].is_null() ? rows[0]["note"] : nlohmann::json(nullptr)}};
   });
 
-  server.on("return.create", [this](const nlohmann::json& p) {
-    requirePermission(db_, p, "SALE_REFUND");
-    const auto saleId = requireString(p, "saleId");
-    auto rows = db_.query("SELECT * FROM sales WHERE id = ?", {saleId}, {});
-    if (rows.empty()) throw PosError("E_NOT_FOUND", "sale not found");
-    if (rows[0].at("refunded").get<std::int64_t>() != 0) throw PosError("E_ALREADY_REFUNDED", "already refunded");
-    const std::string wh = rows[0].at("warehouse_id").get<std::string>();
-    const std::string actor = p.value("actorId", rows[0].at("cashier_id").get<std::string>());
-    db_.begin();
-    try {
-      auto items = db_.query("SELECT id, product_id, qty, line_total_minor FROM sale_items WHERE sale_id = ?", {saleId});
-      const auto refundId = newId("ref");
-      const auto at = nowMs();
-      const auto saleTotal = rows[0].at("total_minor").get<std::int64_t>();
-      const auto previousMoney = db_.queryInt("SELECT COALESCE(SUM(amount_minor),0) FROM refund_lines WHERE sale_id=?", {saleId});
-      const auto remainingMoney = std::max<std::int64_t>(0, saleTotal - previousMoney);
-      const auto gross = std::max<std::int64_t>(1, db_.queryInt("SELECT COALESCE(SUM(line_total_minor),0) FROM sale_items WHERE sale_id=?", {saleId}));
-      std::int64_t allocated = 0;
-      std::string lastLine;
-      for (const auto& it : items) {
-        const auto itemId = it.at("id").get<std::int64_t>();
-        const auto returned = db_.queryInt("SELECT COALESCE(SUM(qty),0) FROM refund_lines WHERE sale_id=? AND sale_item_id=" + std::to_string(itemId), {saleId});
-        const auto sold = it.at("qty").get<std::int64_t>();
-        const auto qty = sold - returned;
-        if (qty <= 0) continue;
-        const auto productId = it.at("product_id").get<std::string>();
-        applyStockDelta(db_, "SALE_RETURN", productId, wh, qty, "sale", saleId, actor, "refund", true);
-        const auto grossShare = (it.at("line_total_minor").get<std::int64_t>() * qty + sold / 2) / sold;
-        const auto amount = std::min((grossShare * saleTotal + gross / 2) / gross,
-                                     std::max<std::int64_t>(0, remainingMoney - allocated));
-        allocated += amount;
-        lastLine = newId("rl");
-        db_.execBound("INSERT INTO refund_lines(id,refund_id,sale_id,sale_item_id,product_id,qty,amount_minor,created_at,actor_id) VALUES(?,?,?,?,?,?,?,?,?)",
-                      {lastLine,refundId,saleId,std::to_string(itemId),productId,std::to_string(qty),std::to_string(amount),std::to_string(at),actor});
-      }
-      if (!lastLine.empty() && allocated != remainingMoney) {
-        db_.execBound("UPDATE refund_lines SET amount_minor=amount_minor+? WHERE id=?", {std::to_string(remainingMoney-allocated),lastLine});
-      }
-      recordRefundCashOut(db_, rows[0], remainingMoney, refundId, actor);
-      db_.execBound("UPDATE sales SET refunded = 1 WHERE id = ?", {saleId});
-      audit(db_, actor, "SALE_REFUND", rows[0].at("receipt_no").get<std::string>());
-      db_.commit();
-    } catch (...) {
-      db_.rollback();
-      throw;
-    }
-    return saleToJson(db_, db_.query("SELECT * FROM sales WHERE id = ?", {saleId}, {})[0]);
-  });
+  server.on("return.create", [this](const nlohmann::json& p) { return refundSale(db_,p); });
+  server.on("sale.correct",[this](const nlohmann::json&p){return correctSale(db_,p);});
+  server.on("customer.history",[this](const nlohmann::json&p){return customerHistory(db_,p);});
 
   // purchase.create / purchase.receive / purchase.list live in RetailOps, which
   // registers after this and used to overwrite the copies that stood here. They
@@ -1946,6 +2018,8 @@ void Application::registerHandlers(ipc::StdioServer& server) {
   });
   server.on("cash.openSession", [this](const nlohmann::json& p) {
     const auto registerId = requireString(p, "registerId");
+    if (db_.queryText("SELECT value FROM settings WHERE key=?", {"register.archived." + registerId}) == "1")
+      throw PosError("E_VALIDATION", "Bu kassa silinib");
     const auto operatorId = requireString(p, "operatorId");
     const auto openingFloat = p.value("openingFloatMinor", static_cast<std::int64_t>(0));
     auto openRows = db_.query(
@@ -2122,7 +2196,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
                              "stocktake.post", "lot.receive"}) {
     server.markMutating(method, "stock");
   }
-  for (const char* method : {"sale.complete", "return.create", "return.partial", "sale.hold",
+  for (const char* method : {"sale.complete", "sale.correct", "return.create", "return.partial", "sale.hold",
                              "sale.resume", "sale.cancelHeld", "sale.overridePrice"}) {
     server.markMutating(method, "sales");
   }
@@ -2141,7 +2215,7 @@ void Application::registerHandlers(ipc::StdioServer& server) {
   // register.create, staff.save); the handlers that exist are these. Without
   // them opening a shift or paying a debt on one till never refreshed another.
   for (const char* method : {"cash.openSession", "cash.closeSession", "cash.createRegister",
-                             "cash.cashIn", "cash.cashOut", "cash.safeDrop", "treasury.transfer", "cash.bridgeRegister", "cash.bridgeWarehouseMoves"}) {
+                             "cash.cashIn", "cash.cashOut", "cash.safeDrop", "treasury.transfer", "cash.bridgeRegister", "cash.archiveRegister", "cash.bridgeWarehouseMoves"}) {
     server.markMutating(method, "cash");
   }
   for (const char* method : {"customer.payDebt", "supplier.pay", "warehouse.update", "auth.saveRole",

@@ -16,13 +16,16 @@ const PIN_ITERATIONS = 120000;
 const PIN_PATTERN = /^\d{4,8}$/;
 const ZERO_SALT = '00000000000000000000000000000000';
 
-const DEFAULT_STAFF = [
+// Demo accounts of older versions. Their PINs are published, so they are refused
+// and removed; a new PC starts with nobody (POSSISTEM or the account's users sign in).
+const PUBLISHED_STAFF = [
   { id: 'u-manager', name: 'MarketPos Müdir', role: 'manager', active: true, registerIds: ['reg-1', 'reg-2', 'reg-3'], warehouseIds: ['wh-main', 'wh-cold', 'wh-sales'], salt: '687f8fbf095f402c0f82586d918206a0', pinHash: '1f5488722c7051e86a233f77e18f5a03bc60264c78d6cf18fc47236ab8f44981' },
   { id: 'u-head', name: 'MarketPos Baş kassir', role: 'head_cashier', active: true, registerIds: ['reg-1', 'reg-2', 'reg-3'], warehouseIds: ['wh-sales'], salt: 'b1d14ca3484fbedd1d01f981f54f4c74', pinHash: '6c166257c084772d8bd291a4826991f1353e9da2b6bc5082f211a4f0047ca3d8' },
   { id: 'u-cashier', name: 'MarketPos Kassir', role: 'cashier', active: true, registerIds: ['reg-2'], warehouseIds: ['wh-sales'], salt: 'fe5892f2cb48f1621663fedd138bc8ab', pinHash: '961af08c2dfe98fd30598492d03ae37f22aab332fa7481eca91cbf83adfee452' },
   { id: 'u-warehouse', name: 'MarketPos Anbar', role: 'warehouse', active: true, registerIds: [], warehouseIds: ['wh-main', 'wh-cold', 'wh-sales'], salt: '42e27db11f3ca2ef0c5a8bad872201b7', pinHash: '72dc9539944ef364c217a072f5daac8611aaec82942f9dc6ba933dbf990a5ff2' },
 ];
-const DEFAULT_PIN_FINGERPRINTS = new Set(DEFAULT_STAFF.map((u) => `${u.salt}:${u.pinHash}`));
+const DEFAULT_STAFF = [];
+const DEFAULT_PIN_FINGERPRINTS = new Set(PUBLISHED_STAFF.map((u) => `${u.salt}:${u.pinHash}`));
 const APPROVER_ROLES = new Set(['manager', 'head_cashier']);
 
 /** Idle window of an operator session. */
@@ -47,7 +50,7 @@ function pinIsShippedDefault(user) {
 
 /** True when `pin` is one of the published default PINs, whatever account it is set on. */
 function isShippedDefaultPin(pin) {
-  return DEFAULT_STAFF.some((u) => pinMatches(u, pin));
+  return PUBLISHED_STAFF.some((u) => pinMatches(u, pin));
 }
 
 function newPinCredential(pin) {
@@ -61,9 +64,42 @@ function assertAcceptablePin(pin) {
   if (isShippedDefaultPin(pin)) throw new Error('Bu PIN hamıya məlumdur — başqa PIN seçin');
 }
 
+/**
+ * Users from the account's other PCs into this one's list: a row changed later
+ * there (updatedAt) replaces ours - so does any row of ours still on a published
+ * placeholder PIN - and a new one is added if it carries a PIN. Returns the
+ * same array when nothing changed; never leaves the PC without a manager.
+ */
+function mergeStaff(local, remote) {
+  const rows = Array.isArray(local) ? local.map((row) => ({ ...row })) : [];
+  let changed = false;
+  for (const theirs of Array.isArray(remote) ? remote : []) {
+    if (!theirs?.id || theirs.deleted) continue;
+    const index = rows.findIndex((row) => row.id === theirs.id);
+    const mine = index >= 0 ? rows[index] : null;
+    if (mine && !pinIsShippedDefault(mine) && (Number(mine.updatedAt) || 0) >= (Number(theirs.updatedAt) || 0)) continue;
+    if (!theirs.salt || !theirs.pinHash) { if (!mine) continue; }
+    const next = { ...(mine || {}), id: theirs.id, name: theirs.name, role: theirs.role, active: theirs.active !== false,
+      registerIds: theirs.registerIds || [], warehouseIds: theirs.warehouseIds || mine?.warehouseIds || [], objectId: theirs.objectId || '',
+      branchId: String(theirs.branchId ?? mine?.branchId ?? ''),
+      placesSet: Boolean(theirs.placesSet), updatedAt: Number(theirs.updatedAt) || 0,
+      ...(theirs.salaryMinor !== undefined ? { salaryMinor: Number(theirs.salaryMinor) || 0 } : {}),
+      ...(theirs.employeeId ? { employeeId: String(theirs.employeeId) } : {}),
+      ...(theirs.salt && theirs.pinHash ? { salt: theirs.salt, pinHash: theirs.pinHash } : {}) };
+    if (index >= 0) rows[index] = next; else rows.push(next);
+    changed = true;
+  }
+  if (!changed) return local;
+  // Never takes the last manager off a PC that had one (a PC with none takes the cloud's rows).
+  const manager = (list) => list.some((row) => row.role === 'manager' && row.active !== false);
+  return manager(rows) || !manager(Array.isArray(local) ? local : []) ? rows : local;
+}
+
 function publicStaff(user) {
   const { salt, pinHash, ...profile } = user;
-  return { ...profile, mustChangePin: pinIsShippedDefault(user) };
+  // Rights live in the core (role grants + the super admin's per-worker overrides).
+  const { permissions, ...rest } = profile;
+  return { ...rest, mustChangePin: pinIsShippedDefault(user) };
 }
 
 /**
@@ -117,10 +153,13 @@ function createAttemptLimiter({ max = 5, lockMs = 30000, maxLockMs = 15 * 60 * 1
  * The only producer of an `approverId`. Accounts still on a published PIN never
  * approve, and there is no fallback PIN of any kind.
  */
-function verifyManagerPin(staff, pin, limiter, key = 'manager-approval') {
+function verifyManagerPin(staff, pin, limiter, key = 'manager-approval', { anyRole = false } = {}) {
   if (limiter) limiter.assertOpen(key);
+  // anyRole: the PIN names the person and the core then checks that this person
+  // holds the very permission asked for (approverRole), so a head cashier with
+  // storno approves a storno whatever the role list says.
   const candidates = (Array.isArray(staff) ? staff : []).filter(
-    (row) => row.active && APPROVER_ROLES.has(row.role) && !pinIsShippedDefault(row),
+    (row) => row.active && (anyRole || APPROVER_ROLES.has(row.role)) && !pinIsShippedDefault(row),
   );
   for (const user of candidates) {
     if (pinMatches(user, pin)) {
@@ -205,6 +244,7 @@ module.exports = {
   newPinCredential,
   assertAcceptablePin,
   publicStaff,
+  mergeStaff,
   createAttemptLimiter,
   verifyManagerPin,
   createSessionStore,

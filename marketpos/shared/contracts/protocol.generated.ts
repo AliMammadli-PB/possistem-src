@@ -28,6 +28,7 @@ export type ErrorCode =
   | 'CREDIT_LIMIT_EXCEEDED'
   | 'PROMOTION_CONFLICT'
   | 'STOCK_WARN'
+  | 'CART_APPROVAL_REQUIRED'
 ;
 
 export type MethodName =
@@ -65,6 +66,7 @@ export type MethodName =
   | 'sale.resume'
   | 'sale.listHeld'
   | 'sale.cancelHeld'
+  | 'sale.voidLine'
   | 'sale.discardDraft'
   | 'sale.overridePrice'
   | 'sale.receipt'
@@ -128,6 +130,9 @@ export type MethodName =
   | 'platform.priceScopes'
   | 'platform.eqaimeStatus'
   | 'platform.aggregatorStatus'
+  | 'cart.state'
+  | 'cart.sync'
+  | 'cart.approve'
 ;
 
 export type EventName =
@@ -160,6 +165,7 @@ export const ERROR_CODES = [
   'CREDIT_LIMIT_EXCEEDED',
   'PROMOTION_CONFLICT',
   'STOCK_WARN',
+  'CART_APPROVAL_REQUIRED',
 ] as const;
 
 export const METHOD_NAMES = [
@@ -197,6 +203,7 @@ export const METHOD_NAMES = [
   'sale.resume',
   'sale.listHeld',
   'sale.cancelHeld',
+  'sale.voidLine',
   'sale.discardDraft',
   'sale.overridePrice',
   'sale.receipt',
@@ -260,6 +267,9 @@ export const METHOD_NAMES = [
   'platform.priceScopes',
   'platform.eqaimeStatus',
   'platform.aggregatorStatus',
+  'cart.state',
+  'cart.sync',
+  'cart.approve',
 ] as const;
 
 export const METHOD_META: Record<MethodName, { description?: string }> = {
@@ -297,6 +307,7 @@ export const METHOD_META: Record<MethodName, { description?: string }> = {
   'sale.resume': { description: undefined },
   'sale.listHeld': { description: undefined },
   'sale.cancelHeld': { description: undefined },
+  'sale.voidLine': { description: undefined },
   'sale.discardDraft': { description: undefined },
   'sale.overridePrice': { description: undefined },
   'sale.receipt': { description: undefined },
@@ -360,4 +371,7 @@ export const METHOD_META: Record<MethodName, { description?: string }> = {
   'platform.priceScopes': { description: "Branch/warehouse price scope stub" },
   'platform.eqaimeStatus': { description: "E-qaimə provider interface stub" },
   'platform.aggregatorStatus': { description: "Delivery aggregator provider stub" },
+  'cart.state': { description: "Read persistent current cart" },
+  'cart.sync': { description: "Track cart revision and protected reductions" },
+  'cart.approve': { description: "Approve one exact cart revision with a privileged PIN" },
 };

@@ -3,13 +3,13 @@ import {
   Activity, BarChart3, Boxes, Check,
   ChevronRight, CircleDollarSign, Cloud, CloudOff, 
   Expand, FileClock, LockKeyhole, LogOut, Minus,
-  Monitor, PackageSearch, Pause, Plus, ReceiptText,
+  PackageSearch, Pause, Plus, ReceiptText,
   RotateCcw, Settings, ShieldCheck, ShoppingBag,
   ShoppingBasket, Smartphone, Store, Trash2, TriangleAlert, Users,
   WalletCards, X,
 } from 'lucide-react';
 
-import { createInitialState, demoStaff, initialProducts } from './data';
+import { createInitialState, readPersistedState } from './data';
 import { ChangePinScreen } from './ChangePinScreen';
 import { printStationTickets } from './KitchenStations';
 import { canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
@@ -19,18 +19,29 @@ import { ProductVisual } from './ProductVisual';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
 import { SaleCatalog } from './SaleCatalog';
 import { PaymentModal, checkoutErrorMessage } from './PaymentModal';
+import {useCartApproval} from './useCartApproval';
 import {
   CustomersPage, FiscalBadge, PlatformStubsPage,
   RegistersOpsPage, ReportsOpsPage,
 } from './RetailOpsPanels';
-import { OpsFrame } from './OpsFrame';
+import { OperationsWorkspace } from './OperationsWorkspace';
+import { ManagementPage } from './ManagementPage';
+import { ReturnsPage } from './ReturnsPage';
+import { UsersPage } from './UsersPage';
+import { ManagerApprovalModal } from './ManagerApprovalModal';
+import { tenantLoginError } from './authErrors';
+import { ObjectLoginGate } from './ObjectLoginGate';
+import { SupportButton } from './SupportChat';
+import type { RemoteObject } from './OperationsWorkspace';
+import { BranchAdmin } from './BranchAdmin';
+import type { BranchStockMode } from './BranchStockView';
 import { SettingsPage } from './SettingsPage';
 import type { ActivationStatus, CartLine, HeldCart, Lang, Payment, PersistedState, Product, Register, Role, Sale, SessionUser, StaffProfile, TenantStatus, View } from './types';
 
 import { marketBooks, stockLines } from './books';
 import { longDate, money, newId } from './format';
 import { ACK_KEY, FAIL_KEY, ACK_PENDING_KEY, FAIL_PENDING_KEY, applyMarketCommand, clearPending, failedCommandReasons, productFromCard, readCommandIds, rememberCommandId, rememberFailure } from './portalCommands';
-import { RegisterModal, StaffModal, RoleAvatar, Kpi } from './forms';
+import { RegisterModal, RoleAvatar, Kpi } from './forms';
 const STORE_KEY = 'possistem.market.pos.v2';
 const LEGACY_MIGRATED_KEY = 'possistem.market.pos.core-migrated';
 const CATALOG_SYNC_KEY = 'possistem.market.pos.catalog-sync';
@@ -50,6 +61,12 @@ const CATALOG_SYNC_TOKEN = 'bravo-narimanov-azinko-catalog-aisles-v1';
 const STOCK_VIEWS = new Set<View>(['ops']);
 // The owner's rule: a missing permission never hides a button; using it says so.
 const DENIED = 'Buna icazəniz yoxdur';
+/** Market rights that open a screen (any one); screens not listed follow the role. */
+const OPS_VIEW_RIGHTS = ["OPS_GOODS", "OPS_STOCK", "OPS_TRANSFERS", "OPS_PURCHASES", "OPS_STOCKTAKE", "OPS_CATEGORIES", "OPS_PARTNERS", "OPS_SALES", "OPS_CASH", "OPS_EXPENSES", "OPS_SALARY", "OPS_DOCUMENTS", "OPS_PROFIT", "OPS_EXPORT", "OPS_USERS"];
+const VIEW_RIGHTS: Partial<Record<View, string[]>> = {
+  ops: OPS_VIEW_RIGHTS, reports: ['VIEW_REPORTS', 'VIEW_PROFIT'], returns: ['SALE_REFUND', 'PARTIAL_REFUND'],
+  settings: ['MANAGE_SETTINGS'], staff: ['MANAGE_USERS'],
+};
 /** Electron wraps a main-process refusal in "Error invoking remote method …"; show the refusal itself. */
 /** True when the element (or one it sits in) is something a person acts on. */
 function actsOn(target: EventTarget | null, root: Element): boolean {
@@ -106,29 +123,54 @@ function narrowByStation(access: string[] | null, station: string | undefined): 
   return (access ?? MARKET_AREAS).filter((key) => allowed.includes(key));
 }
 
-function loadState(): PersistedState {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') as (Omit<PersistedState, 'schemaVersion'> & { schemaVersion: number }) | null;
-    if (parsed?.schemaVersion === 5 && Array.isArray(parsed.products)) {
-      return { ...parsed, products: parsed.products } as PersistedState;
-    }
-    if (parsed && Array.isArray(parsed.products) && (parsed.schemaVersion === 4 || parsed.schemaVersion === 3 || parsed.schemaVersion === 2)) {
-      const custom = parsed.products.filter((product) => product.id.startsWith('product-'));
-      return { ...createInitialState(), sales: parsed.sales ?? [], purchaseOrders: parsed.purchaseOrders ?? [], products: [...initialProducts, ...custom] };
-    }
-  } catch { /* Corrupt local state must not block the till. */ }
-  return createInitialState();
-}
 
 export default function App() {
-  const [state, setState] = useState<PersistedState>(loadState);
+  const [legacyState] = useState(() => readPersistedState(localStorage, STORE_KEY));
+  const [state, setState] = useState<PersistedState>(() => (marketCoreClient.available() ? null : legacyState) ?? createInitialState());
   const [coreReady, setCoreReady] = useState(false);
   const [coreError, setCoreError] = useState<string | null>(null);
-  const [staff, setStaff] = useState<StaffProfile[]>(demoStaff);
+  const [staff, setStaff] = useState<StaffProfile[]>([]);
   const [session, setSession] = useState<SessionUser | null>(null);
+  const [objectSession,setObjectSession]=useState<string|null>(null);
   const [lang, setLang] = useState<Lang>('az');
   const [view, setView] = useState<View>('dashboard');
+  const [branch, setBranch] = useState<{ registerId: string; branchName: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    const refresh = () => { if (session && coreReady && window.marketSystem?.branchContext) void window.marketSystem.branchContext(session.sessionToken).then(next => { if (live) setBranch(next); }).catch(() => { if (live) setBranch(null); }); };
+    setBranch(null); refresh();
+    const timer = window.setInterval(refresh, 30000);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [session?.sessionToken, coreReady, state.settings.defaultRegisterId, view]);
+  // The owner's objects for the top-bar switch: another object's Əməliyyatlar
+  // opens here over the internet (its till answers), this one's stays local.
+  type Till = { deviceId: string; branchId?: string | null; online?: boolean; onlineUntil?:number; supported?: boolean; local?: boolean; product?: string };
+  const [places, setPlaces] = useState<{ objects: { id: string; name: string }[]; tills: Till[] } | null>(null);
+  const [remote, setRemote] = useState<RemoteObject | null>(null);
+  // Read-only stock: every branch summed, or a branch's last copy (offline too).
+  const [stockView, setStockView] = useState<BranchStockMode | null>(null);
+  const [placesTick, setPlacesTick] = useState(0);
+  useEffect(() => {
+    const branches = window.marketSystem?.branches;
+    setRemote(null);
+    if (!session || session.role !== 'manager' || !branches) { setPlaces(null); return; }
+    let live = true;
+    const load = () => branches.list(session.sessionToken).then((data) => {
+      const d = data as { objects?: { id: string; name: string }[]; branches?: Till[] };
+      if (live) setPlaces({ objects: d.objects ?? [], tills: d.branches ?? [] });
+    }).catch(() => { if (live) setPlaces(null); });
+    void load();
+    const timer = window.setInterval(load, 20000);
+    const presenceTimer=window.setInterval(()=>setPlaces(p=>p?{...p,tills:p.tills.map(d=>Number.isFinite(d.onlineUntil)?{...d,online:Date.now()<d.onlineUntil!}:d)}:p),1000);
+    // The remote screens reach the other till through this (cloud-branches/remote).
+    (window as unknown as { cloudBranches?: unknown }).cloudBranches = { rpc: (id: string, calls: unknown[]) => branches.rpc(session.sessionToken, id, calls) };
+    return () => { live = false; window.clearInterval(timer);window.clearInterval(presenceTimer); };
+  }, [session?.sessionToken, session?.role, placesTick]);
+  useEffect(() => { if (view !== 'ops') { setRemote(null); setStockView(null); } }, [view]);
+
   const [cart, setCart] = useState<CartLine[]>([]);
+  const syncInputs = useRef({state,staff,branch});
+  syncInputs.current={state,staff,branch};
   const navigationRequest = useRef(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [cloudConnected, setCloudConnected] = useState(false);
@@ -141,13 +183,27 @@ export default function App() {
       return Array.isArray(saved) ? saved : null;
     } catch { return null; }
   });
+  // What the signed-in user may do: role grants plus the super admin's per-worker overrides.
+  // null until the core answers (the role alone decides meanwhile); polled, so a
+  // right taken away on the website hides its screen and buttons within ~20 s.
+  const [rights, setRights] = useState<string[] | null>(null);
+  useEffect(() => {
+    const load = window.marketSystem?.auth.rights;
+    setRights(null);
+    if (!session || !load) return;
+    let live = true;
+    const pull = () => void load(session.sessionToken).then((next) => { if (live) setRights((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next)); }).catch(() => undefined);
+    pull();
+    const timer = window.setInterval(pull, 20000);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [session?.sessionToken]);
   const [notice, setNoticeRaw] = useState<string | null>(null);
   const setNotice = useCallback((message: string | null) => setNoticeRaw(cleanNotice(message)), []);
   useEffect(() => { const warning = () => setNotice(tr(lang, 'inventorySyncPending')); window.addEventListener('market:ops:warning', warning); return () => window.removeEventListener('market:ops:warning', warning); }, [lang, setNotice]);
   const deny = useCallback(() => setNoticeRaw(DENIED), []);
   const [registerModal, setRegisterModal] = useState(false);
-  const [staffModal, setStaffModal] = useState(false);
 
+  (window as unknown as {__marketOpsToken?:string}).__marketOpsToken=session?.sessionToken;
   const t = (key: string) => tr(lang, key);
 
   const refreshFromCore = async () => {
@@ -270,10 +326,8 @@ export default function App() {
     let cancelled = false;
     const migrate = async () => {
       try {
-        let snapshot = await marketCoreClient.getState();
-        if (!snapshot.products?.length && localStorage.getItem(LEGACY_MIGRATED_KEY) !== '1') {
-          snapshot = await marketCoreClient.importLegacy(loadState());
-        }
+        // 1.5.33: no browser-era import - an old cache carried the demo catalogue into real accounts.
+        const snapshot = await marketCoreClient.getState();
         if (!cancelled) {
           setState({ ...snapshot, schemaVersion: 5 });
           localStorage.setItem(LEGACY_MIGRATED_KEY, '1');
@@ -286,11 +340,13 @@ export default function App() {
     };
     void migrate();
     return () => { cancelled = true; };
-  }, [coreReady, session]);
+  }, [coreReady, session, legacyState]);
 
   useEffect(() => {
-    if (coreReady) {
-      localStorage.removeItem(STORE_KEY);
+    // Electron's native database is authoritative; do not manufacture a browser
+    // snapshot while the core is loading. legacyState retains an actual old cache.
+    if (marketCoreClient.available()) {
+      if (coreReady) localStorage.removeItem(STORE_KEY);
       return;
     }
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
@@ -312,7 +368,7 @@ export default function App() {
     window.addEventListener('keydown', toggle);
     return () => window.removeEventListener('keydown', toggle);
   }, []);
-  useEffect(() => { void (window.marketSystem?.staff.list() ?? Promise.resolve(demoStaff)).then(setStaff).catch(() => setStaff(demoStaff)); }, []);
+  useEffect(() => { void (window.marketSystem?.staff.list() ?? Promise.resolve([])).then(setStaff).catch(() => setStaff([])); }, []);
   useEffect(() => {
     if (!session || !window.marketSystem) return;
     let active = true;
@@ -320,6 +376,7 @@ export default function App() {
     const push = async () => {
       if (pushing) return;
       pushing = true;
+      const {state,staff,branch}=syncInputs.current;
       try {
       const sentAck = readCommandIds(ACK_PENDING_KEY).slice(-40);
       const sentFail = readCommandIds(FAIL_PENDING_KEY).slice(-40);
@@ -336,6 +393,7 @@ export default function App() {
       const response = await window.marketSystem?.sync.push(session.sessionToken, {
         storeName: state.settings.storeName,
         terminalName: state.settings.terminalName,
+        branchName: branch?.branchName || state.settings.branchName || "",
         dailySalesMinor,
         transactionCount: sales.length,
         cashMinor,
@@ -373,7 +431,7 @@ export default function App() {
         setMarketAccess(access);
         try { localStorage.setItem('market.access', JSON.stringify(access)); } catch { /* private storage */ }
       }
-      if (response.connected) setState((previous) => ({ ...previous, syncQueue: 0 }));
+      if (response.connected) setState((previous) => previous.syncQueue === 0 ? previous : ({ ...previous, syncQueue: 0 }));
       const canApplyPortal = session.role === 'manager' || session.role === 'warehouse' || session.role === 'head_cashier';
       if (response.connected && canApplyPortal) {
         let changed = false;
@@ -429,7 +487,7 @@ export default function App() {
     void push();
     const timer = window.setInterval(() => void push(), 30000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [session, staff, coreReady, state.settings.storeName, state.settings.terminalName, state.sales, state.registers, state.products, state.warehouses, state.syncQueue]);
+  }, [session, coreReady]);
 
   const login = async (pin: string) => {
     try {
@@ -440,10 +498,11 @@ export default function App() {
       } else {
         // Browser preview (npm run market:dev) has no staff store; it is never a
         // shipped till, so a production web build refuses sign-in outright.
-        const profile = demoStaff[0];
+        const profile: StaffProfile = {id:'browser-manager',name:'Müdir',role:'manager',active:true,registerIds:[],warehouseIds:[]};
         if (!import.meta.env.DEV || !profile || !/^\d{4,8}$/.test(pin)) throw new Error(t('invalidPin'));
         user = { ...profile, sessionToken: `browser-${profile.id}` };
       }
+      setObjectSession(null);
       setSession(user);
       const first = ROLE_VIEWS[user.role][0] ?? 'dashboard';
       setView(first);
@@ -456,7 +515,7 @@ export default function App() {
 
   const logout = async () => {
     if (session && window.marketSystem) await window.marketSystem.auth.logout(session.sessionToken).catch(() => false);
-    setSession(null); setCart([]); setView('dashboard');
+    setSession(null); setObjectSession(null); setCart([]); setView('dashboard');
   };
 
   useEffect(() => {
@@ -539,12 +598,56 @@ export default function App() {
     );
   }
 
-  const viewAllowed = (id: View) => (inventoryOn || !STOCK_VIEWS.has(id)) && (marketAccess == null || marketAccess.includes(id)
+  // One confirmation for each authenticated staff session, including restored sessions.
+  // Managers switch objects from Əməliyyatlar; staff confirm theirs here, and POSSISTEM's
+  // user places a new PC in its object (asked once: a placed PC goes straight on).
+  if(window.marketSystem && (session.role !== 'manager' || session.superAdmin) && objectSession !== session.sessionToken)return <ObjectLoginGate lang={lang} onDone={()=>{setObjectSession(session.sessionToken);void refreshFromCore().catch(()=>{});}} onLogout={()=>void logout()}/>;
+
+  // POSSISTEM's own user (10-digit PIN) may do everything, objects included.
+  const superAdmin = Boolean(session.superAdmin) || Boolean(rights?.includes('SUPER_ADMIN'));
+  const has = (keys: string[]) => superAdmin || (rights == null ? session.role === 'manager' : keys.some((key) => rights.includes(key)));
+  // A screen whose rights POSSISTEM did not give this user (role or worker) is not shown.
+  const rightOk = (id: View) => !VIEW_RIGHTS[id] || has(VIEW_RIGHTS[id]!);
+  const viewAllowed = (id: View): boolean => id === 'management' ? (['branches', 'returns', 'reports', 'ops'] as View[]).some((v) => v !== 'management' && allowedViews.includes(v)) : id === 'branches' ? session.role === 'manager' || superAdmin : rightOk(id) && (inventoryOn || !STOCK_VIEWS.has(id)) && (marketAccess == null || marketAccess.includes(id)
     || (id === 'ops' && ['inventory', 'warehouses', 'purchases', 'stocktake'].some((area) => marketAccess.includes(area))));
-  const allowedViews = ROLE_VIEWS[session.role].filter((id) => viewAllowed(id));
+  const userAdmin = has(['MANAGE_USERS']);
+  // A right from POSSISTEM opens its screen for a role that would not see it.
+  const extraViews: View[] = (Object.keys(VIEW_RIGHTS) as View[]).filter((id) => !ROLE_VIEWS[session.role].includes(id) && rights != null && has(VIEW_RIGHTS[id]!));
+  const allowedViews: View[] = [...ROLE_VIEWS[session.role], ...extraViews].filter((id) => id === 'management' || viewAllowed(id));
+  if (allowedViews.includes('management') && !viewAllowed('management')) allowedViews.splice(allowedViews.indexOf('management'), 1);
+  // Another object's Əməliyyatlar over the internet, chosen at the right of its tab row.
+  const objectSwitch = (session.role === 'manager' || superAdmin) && (places && places.objects.length > 1 ? (() => {
+                const ownId = places.tills.find((d) => d.local)?.branchId ?? '';
+                const ownName = (branch?.registerId === state.settings.defaultRegisterId && branch.branchName) || places.objects.find((o) => o.id === ownId)?.name || state.settings.branchName || '—';
+                const reachable = (id: string) => places.tills.find((d) => d.branchId === id && !d.local && d.online && d.supported);
+                // Online branch: its screens live. Offline branch: its last copy. All: every branch summed.
+                const value = remote?.objectId ?? (stockView?.kind === 'all' ? '__all' : stockView?.kind === 'branch' ? stockView.branchId : 'local');
+                return <select aria-label="Filial" value={value} onChange={(event) => {
+                  const id = event.target.value, till = reachable(id), name = places.objects.find((o) => o.id === id)?.name ?? id;
+                  setRemote(null); setStockView(null);
+                  if (id === '__all') setStockView({ kind: 'all' });
+                  else if (id !== 'local' && till) setRemote({ objectId: id, deviceId: till.deviceId, name, product: till.product === 'restaurant' ? 'restaurant' : 'market' });
+                  else if (id !== 'local') setStockView({ kind: 'branch', branchId: id, name });
+                  if (id !== 'local') safeSetView('ops');
+                }}>
+                  <option value="local">{ownName}</option>
+                  <option value="__all">{lang === 'ru' ? 'Все филиалы' : lang === 'en' ? 'All branches' : 'Bütün filiallar'}</option>
+                  {places.objects.filter((o) => o.id !== ownId).map((o) => <option key={o.id} value={o.id}>{o.name}{reachable(o.id) ? '' : lang === 'ru' ? ' · офлайн' : lang === 'en' ? ' · offline' : ' · oflayn'}</option>)}
+                </select>;
+              })() : null);
+  const ownObjectName = (branch?.registerId === state.settings.defaultRegisterId && branch.branchName) || state.settings.branchName || (lang === 'ru' ? 'Не указан' : lang === 'en' ? 'Not assigned' : 'Təyin edilməyib');
+  // POSSISTEM's user renames or removes this PC's filial from Parametrlər.
+  const ownBranch = places?.tills.find((d) => d.local)?.branchId ?? '';
+  const branchAdmin = superAdmin && ownBranch && places ? <BranchAdmin key={ownBranch} lang={lang} token={session.sessionToken} branchId={ownBranch} name={places.objects.find((o) => o.id === ownBranch)?.name ?? ownObjectName} onChanged={() => setPlacesTick((n) => n + 1)} /> : null;
+  // What the top bar used to carry: shown on Parametrlər → Mağaza instead.
+  const deviceInfo: Array<[string, string]> = [
+    [lang === 'ru' ? 'Связь' : lang === 'en' ? 'Connection' : 'Əlaqə', `${online ? (cloudConnected ? t('online') : t('offline')) : t('offline')}${state.syncQueue ? ` · ${state.syncQueue} ${t('pending')}` : ''}${syncStatus?.peerCount ? ` · ${syncStatus.peerCount} kassa (LAN)` : ''}`],
+    [lang === 'ru' ? 'Филиал' : lang === 'en' ? 'Branch' : 'Filial', ownObjectName],
+    [lang === 'ru' ? 'Терминал' : lang === 'en' ? 'Terminal' : 'Terminal', `${state.settings.terminalName}${state.registers.find((row) => row.id === state.settings.defaultRegisterId) ? ` · ${state.registers.find((row) => row.id === state.settings.defaultRegisterId)!.name}` : ''}`],
+  ];
   const safeSetView = (next: View) => {
     const request = ++navigationRequest.current;
-    if (!canAccess(session.role, next) || !viewAllowed(next)) { deny(); return; }
+    if (!(canAccess(session.role, next) || extraViews.includes(next)) || !viewAllowed(next)) { deny(); return; }
     // The selling screen opens at once. Coming from Əməliyyatlar the warehouse's
     // latest quantities are pulled in behind it (the core announces the change
     // and the screen refreshes) - waiting for that here is what made Satış open
@@ -567,30 +670,35 @@ export default function App() {
   };
   const allNav: Array<{ id: View; icon: typeof Store }> = [
     { id: 'dashboard', icon: Activity }, { id: 'sale', icon: ShoppingBasket }, { id: 'ops', icon: Boxes },
-    { id: 'returns', icon: RotateCcw }, { id: 'reports', icon: BarChart3 }, { id: 'registers', icon: Store },
+    { id: 'returns', icon: RotateCcw }, { id: 'management', icon: Boxes }, { id: 'reports', icon: BarChart3 }, { id: 'registers', icon: Store },
     { id: 'customers', icon: Users }, { id: 'platform', icon: Cloud },
     { id: 'staff', icon: Users }, { id: 'mobile', icon: Smartphone }, { id: 'settings', icon: Settings },
   ];
   // Every screen stays in the sidebar; the locked ones are dimmed and refuse.
-  const nav = allNav;
+  const nav = allNav.filter(item => item.id !== 'registers' && item.id !== 'staff');
 
-  const refundSale = (sale: Sale) => {
-    void (async () => {
-      try {
-        if (coreReady && marketCoreClient.available()) {
-          await marketCoreClient.returns.create(sale.id, session.id);
-          await refreshFromCore();
-        } else {
-          mutate((previous) => ({ ...previous, sales: previous.sales.map((row) => row.id === sale.id ? { ...row, refunded: true } : row), products: previous.products.map((product) => { const qty = sale.items.find((line) => line.productId === product.id)?.qty ?? 0; return qty ? { ...product, stock: stockOf(product) + qty, warehouseStock: { ...product.warehouseStock, [previous.settings.defaultWarehouseId]: (product.warehouseStock[previous.settings.defaultWarehouseId] ?? 0) + qty } } : product; }) }), 'SALE_REFUND', sale.receiptNo);
-        }
-      } catch (err) {
-        setNotice(err instanceof Error ? err.message : String(err));
-      }
-    })();
+  const refundSale = async (sale: Sale) => {
+    if (coreReady && marketCoreClient.available()) {
+      const returned = await marketCoreClient.returns.create(sale.id, session.id);
+      // A committed return must stay committed even if the following read fails.
+      setState(previous => ({...previous, sales: previous.sales.map(row => row.id === returned.id ? returned : row)}));
+      try { await refreshFromCore(); }
+      catch { setNotice(lang === 'ru' ? 'Возврат сохранён; обновите данные.' : lang === 'en' ? 'Return saved; refresh the data.' : 'Qaytarma saxlanıldı; məlumatları yeniləyin.'); return; }
+    } else {
+      mutate(previous => ({ ...previous,
+        sales: previous.sales.map(row => row.id === sale.id ? {...row,refunded:true} : row),
+        products: previous.products.map(product => {
+          const sold = sale.items.filter(line => line.productId === product.id).reduce((sum,line) => sum + line.qty,0);
+          const returned = (sale.refunds ?? []).flatMap(ref => ref.lines).filter(line => line.productId === product.id).reduce((sum,line) => sum + line.qty,0);
+          const qty = Math.max(0,sold-returned);
+          return qty ? {...product,stock:stockOf(product)+qty,warehouseStock:{...product.warehouseStock,[previous.settings.defaultWarehouseId]:(product.warehouseStock[previous.settings.defaultWarehouseId] ?? 0)+qty}} : product;
+        })
+      }), 'SALE_REFUND', sale.receiptNo);
+    }
+    setNotice(lang === 'ru' ? 'Возврат сохранён' : lang === 'en' ? 'Return saved' : 'Geri qaytarma saxlanıldı');
   };
 
-  const toggleRegister = (register: Register) => {
-    void (async () => {
+  const toggleRegister = async (register: Register) => {
       try {
         if (coreReady && marketCoreClient.available()) {
           if (register.status === 'closed') await marketCoreClient.cash.open(register.id, session.id, register.openingFloatMinor || 0);
@@ -602,14 +710,13 @@ export default function App() {
       } catch (err) {
         setNotice(err instanceof Error ? err.message : String(err));
       }
-    })();
   };
 
   return (
     <div className="market-shell">
       <aside className="rail">
         <button className="brand-mark" onClick={() => safeSetView('dashboard')} aria-label="MarketPos ana səhifə"><span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" /></span><span>MarketPos</span></button>
-        <nav>{nav.map(({ id, icon: Icon }) => { const locked = !allowedViews.includes(id); return <button key={id} className={view === id ? 'active' : ''} aria-disabled={locked || undefined} onClick={() => locked ? deny() : safeSetView(id)} title={locked ? `${viewLabel(id, lang)} · ${DENIED}` : viewLabel(id, lang)}><Icon /><span>{viewLabel(id, lang)}</span></button>; })}</nav>
+        <nav>{nav.filter(({ id }) => allowedViews.includes(id) || id === 'returns' && allowedViews.includes('sale')).map(({ id, icon: Icon }) => <button key={id} data-view={id} className={view === id || (id === 'management' && view === 'branches') ? 'active' : ''} onClick={() => safeSetView(id)} title={viewLabel(id, lang)}><Icon /><span>{viewLabel(id, lang)}</span></button>)}</nav>
         <button className="rail-user" type="button" onClick={() => void logout()} title={t('logout')} aria-label={t('logout')}>
           <RoleAvatar role={session.role} name={session.name} compact />
           <span><b>{session.name}</b><small>{t('logout')}</small></span>
@@ -621,28 +728,26 @@ export default function App() {
         <header className="topbar">
           <div className="store-title">{state.settings.logoUrl ? <img src={state.settings.logoUrl} alt="" /> : <span className="ps-brand-mark store-mini"><img src="./assets/brand-mark.png" alt="" /></span>}<div><p>MARKETPOS · RETAIL OS</p><h1>{viewLabel(view, lang)}</h1></div></div>
           <div className="top-actions">
-            <div className={`connection ${online ? 'online' : ''}`}>{online ? <Cloud /> : <CloudOff />}<span>{online ? (cloudConnected ? t('online') : t('offline')) : t('offline')}{state.syncQueue ? ` · ${state.syncQueue} ${t('pending')}` : ''}{syncStatus?.peerCount ? ` · ${syncStatus.peerCount} kassa (LAN)` : ''}</span></div>
+            <SupportButton lang={lang} variant="top" />
             <FiscalBadge coreReady={coreReady} />
-            <div className="terminal-pill"><Monitor /><span>{state.settings.terminalName}<small>{state.registers.find((row) => row.id === state.settings.defaultRegisterId)?.name}</small></span></div>
             <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Language"><option value="az">AZ</option><option value="ru">RU</option><option value="en">EN</option></select>
             <button className="icon-button" onClick={() => void window.marketSystem?.display.toggleFullscreen()} title="F11"><Expand /></button>
-            <button type="button" className="topbar-logout" onClick={() => void logout()} aria-label={t('logout')}><LogOut />{t('logout')}</button>
           </div>
         </header>
 
-        <main className="page-area">
+        <main className={`page-area${view==='branches'||view==='ops'&&remote?' branch-page-area':''}`}>
           <LockedArea locked={!viewAllowed(view)} onDenied={deny}>
           {view === 'dashboard' && <Dashboard state={state} staff={staff} session={session} lang={lang} onView={safeSetView} />}
-          {view === 'sale' && <SalePage state={state} setState={setState} session={session} lang={lang} cart={cart} setCart={setCart} cloudConnected={cloudConnected} notify={setNotice} coreReady={coreReady} onRefresh={refreshFromCore} audit={mutate} />}
-          {view === 'ops' && <OpsFrame session={session} notify={setNotice} />}
-          {view === 'returns' && <ReturnsPage state={state} lang={lang} onRefund={refundSale} />}
+          {view === 'sale' && <SalePage canDiscount={has(['SALE_DISCOUNT'])} state={state} setState={setState} session={session} lang={lang} cart={cart} setCart={setCart} cloudConnected={cloudConnected} notify={setNotice} coreReady={coreReady} onRefresh={refreshFromCore} audit={mutate} />}
+          {view === 'management' && <ManagementPage lang={lang} views={allowedViews} onView={safeSetView}/> }
+          {view === 'branches' && (session.role === 'manager' || superAdmin) && <iframe className="ops-frame branch-hub-frame" title={t('branches')} src={`./cloud-branches/hub.html?lang=${lang}${superAdmin ? '' : '&locked=1'}`}/> }
+          {['ops','registers','staff'].includes(view) && <OperationsWorkspace key={view + (remote?.deviceId ?? '') + (stockView ? JSON.stringify(stockView) : '')} remote={view === 'ops' ? remote : null} stockView={view === 'ops' ? stockView : null} can={has} objectSwitch={view === 'ops' ? objectSwitch : null} session={session} lang={lang} notify={setNotice} initial={view === 'registers' ? 'registers' : view === 'staff' ? 'users' : 'warehouse'} canUsers={userAdmin || superAdmin} registers={<RegistersOpsPage state={state} staff={staff} session={session} lang={lang} coreReady={coreReady} onAdd={() => setRegisterModal(true)} onToggle={toggleRegister} onRefresh={refreshFromCore} notify={setNotice}/>} users={<><UsersPage session={session} canManage={userAdmin} staff={staff} lang={lang} onChanged={setStaff} notify={setNotice}/>{session.role === 'manager' && <RolePermissionsPanel actorRole={session.role} superAdmin={superAdmin} sessionToken={session.sessionToken} lang={lang}/>}</>} />}
+          {view === 'returns' && <ReturnsPage state={state} staff={staff} lang={lang} coreReady={coreReady} onRefund={refundSale} />}
           {view === 'reports' && <ReportsOpsPage state={state} staff={staff} lang={lang} coreReady={coreReady} />}
-          {view === 'registers' && <RegistersOpsPage state={state} staff={staff} session={session} lang={lang} coreReady={coreReady} onAdd={() => setRegisterModal(true)} onToggle={toggleRegister} onRefresh={refreshFromCore} notify={setNotice} />}
           {view === 'customers' && <CustomersPage session={session} lang={lang} coreReady={coreReady} notify={setNotice} />}
           {view === 'platform' && <PlatformStubsPage coreReady={coreReady} notify={setNotice} />}
-          {view === 'staff' && <><StaffPage staff={staff} lang={lang} onAdd={() => setStaffModal(true)} /><RolePermissionsPanel actorRole={session.role} /></>}
           {view === 'mobile' && <MobilePage state={state} staff={staff} lang={lang} cloudConnected={cloudConnected} />}
-          {view === 'settings' && <SettingsPage onBarcodeProduct={(product) => setState(previous => ({ ...previous, products: previous.products.map(p => p.id === product.id ? product : p) }))} state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={async (settings) => {
+          {view === 'settings' && <SettingsPage deviceInfo={deviceInfo} extra={branchAdmin} onBarcodeProduct={(product) => setState(previous => ({ ...previous, products: previous.products.map(p => p.id === product.id ? product : p) }))} state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={async (settings) => {
                 if (coreReady && marketCoreClient.available()) {
                   await marketCoreClient.settings.set(settings, session.id);
                   await refreshFromCore();
@@ -663,7 +768,6 @@ export default function App() {
           } catch (err) { setNotice(err instanceof Error ? err.message : String(err)); }
         })();
       }} />}
-      {staffModal && <StaffModal lang={lang} registers={state.registers} warehouses={state.warehouses} onClose={() => setStaffModal(false)} onSave={async (profile, pin) => { const saved = window.marketSystem ? await window.marketSystem.staff.save(session.sessionToken, profile, pin) : { ...profile, id: newId('u') } as StaffProfile; setStaff((rows) => [...rows, saved]); setStaffModal(false); setNotice(t('staffSaved')); }} />}
       {notice && <div className="toast" role="status">{notice === DENIED ? <TriangleAlert /> : <Check />}{notice}</div>}
       {coreError && <div className="toast"><TriangleAlert />Core: {coreError}</div>}
     </div>
@@ -698,10 +802,9 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
     let cancelled = false;
     const boot = async () => {
       try {
-        const [tenantStatus, license] = await Promise.all([
-          window.marketSystem!.tenant.status(),
-          window.marketSystem!.activation.refresh().catch(() => window.marketSystem!.activation.status()),
-        ]);
+        // Status first: it resets a PC still holding another account's activation.
+        const tenantStatus = await window.marketSystem!.tenant.status();
+        const license = await window.marketSystem!.activation.refresh().catch(() => window.marketSystem!.activation.status());
         if (cancelled) return;
         setTenant(tenantStatus);
         setActivation(license);
@@ -743,7 +846,7 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
         setLang={setLang}
         tenant={tenant}
         activation={activation}
-        onActivated={(next) => setActivation(next)}
+        onActivated={(next) => { if (activation?.customerId && next.customerId && next.customerId !== activation.customerId) location.reload(); else setActivation(next); }}
         onTenantLogout={() => {
           void window.marketSystem?.tenant.logout().then(() => setTenant({ authenticated: false }));
         }}
@@ -761,12 +864,18 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
   );
 }
 
+// Technical support before the owner account is signed in: no account yet, so the chat cannot open — show the phone.
+function SupportLine({ lang }: { lang: Lang }) {
+  return <p className="mp-support-line"><span>{tr(lang, 'techSupport')}</span><strong>051 333 35 55</strong></p>;
+}
+
 function TenantLoginScreen({ lang, onSuccess }: { lang: Lang; setLang: (lang: Lang) => void; onSuccess: (tenant: TenantStatus) => void }) {
   // Same gate as Restaurant POS: the email is always remembered, no extra toggles.
   const [email, setEmail] = useState(() => {
     try { return localStorage.getItem('marketpos.tenant.email') || ''; } catch { return ''; }
   });
   const [password, setPassword] = useState('');
+  const [showPassword,setShowPassword]=useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -777,9 +886,11 @@ function TenantLoginScreen({ lang, onSuccess }: { lang: Lang; setLang: (lang: La
     try {
       const status = await window.marketSystem.tenant.login(email.trim(), password);
       try { localStorage.setItem('marketpos.tenant.email', email.trim()); } catch { /* storage blocked */ }
+      // Another account on this PC: everything on screen was the previous one's.
+      if ((status as { switched?: boolean }).switched) { location.reload(); return; }
       onSuccess(status);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : tr(lang, 'tenantWrongCredentials'));
+      setError(tenantLoginError(reason,lang));
     } finally {
       setBusy(false);
     }
@@ -818,10 +929,12 @@ function TenantLoginScreen({ lang, onSuccess }: { lang: Lang; setLang: (lang: La
           </label>
           <label>
             <span>{tr(lang, 'tenantPassword')}</span>
-            <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="ps-rest-gate-input" required disabled={busy} />
+            <input type={showPassword?"text":"password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="ps-rest-gate-input" required disabled={busy} />
           </label>
+          <button type="button" aria-pressed={showPassword} disabled={busy} onClick={()=>setShowPassword(v=>!v)} style={{minHeight:48,background:'#eff5ff',border:'1px solid #c2d5f0',borderRadius:12,color:'#164b91',fontWeight:700,padding:'10px 14px'}}>{lang==='ru'?(showPassword?'Скрыть пароль':'Показать пароль'):lang==='en'?(showPassword?'Hide password':'Show password'):(showPassword?'Parolu gizlət':'Parolu göstər')}</button>
           {error && <p className="ps-rest-gate-error" role="alert">{error}</p>}
           <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : tr(lang, 'gateSignIn')}</button>
+          <SupportLine lang={lang} />
         </form>
       </div>
     </div>
@@ -838,9 +951,27 @@ function ActivationGateScreen({
   onActivated: (status: ActivationStatus) => void;
   onTenantLogout: () => void;
 }) {
-  const [activationKey, setActivationKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+
+  // No key (1.5.34): the owner's account activates this PC by itself, within its
+  // PC slots on the website. Retried a few times - a network blip is not a screen.
+  const clean = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason)).replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '');
+  const activate = async () => {
+    if (!window.marketSystem) return;
+    setBusy(true);
+    setMessage(lang === 'ru' ? 'Активация через аккаунт…' : lang === 'en' ? 'Activating with the account…' : 'Hesab ilə aktivləşdirilir…');
+    let last: unknown = null;
+    for (const wait of [0, 2000, 5000]) {
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+      try { const status = await window.marketSystem.activation.activate(null, ''); setMessage(''); setBusy(false); onActivated(status); return; }
+      catch (reason) { last = reason; }
+    }
+    setMessage(clean(last));
+    setBusy(false);
+  };
+  const tried = useRef(false);
+  useEffect(() => { if (!tried.current) { tried.current = true; void activate(); } }, []);
 
   // A partner renewing the licence on the website unlocks the till from here.
   const recheck = async () => {
@@ -851,27 +982,6 @@ function ActivationGateScreen({
       const status = await window.marketSystem.activation.refresh();
       onActivated(status);
       if (!licenseAllowsPin(status)) setMessage('Lisenziya hələ uzadılmayıb — partnyorunuza və ya POSSISTEM-ə müraciət edin');
-    } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const redeem = async () => {
-    if (!window.marketSystem || busy) return;
-    const key = activationKey.trim();
-    if (key.length < 12) {
-      setMessage(tr(lang, 'requiredFields'));
-      return;
-    }
-    setBusy(true);
-    setMessage('');
-    try {
-      const status = await window.marketSystem.activation.activate(null, key);
-      onActivated(status);
-      setActivationKey('');
-      setMessage(tr(lang, 'active'));
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -900,7 +1010,7 @@ function ActivationGateScreen({
           </div>
           <p className="ps-rest-gate-secure">{tenant.email}</p>
         </div>
-        <form className="ps-rest-gate-card" onSubmit={(event) => { event.preventDefault(); void redeem(); }}>
+        <form className="ps-rest-gate-card" onSubmit={(event) => { event.preventDefault(); void activate(); }}>
           <div className="ps-rest-gate-mobile">
             <img src="./assets/brand-mark.png" alt="possistem" className="ps-brand-logo ps-brand-logo--compact" draggable={false} />
             <h2>{tr(lang, 'activation')}</h2>
@@ -913,12 +1023,8 @@ function ActivationGateScreen({
             <div><dt>{tr(lang, 'licenseValidUntil')}</dt><dd>{activation?.validUntil ? new Date(activation.validUntil).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ') : '—'}</dd></div>
             <div><dt>{licenseModeLabel(lang, activation?.mode)}</dt><dd>{tr(lang, 'licenseBlocked')}</dd></div>
           </dl>
-          <label>
-            <span>{tr(lang, 'activationKey')}</span>
-            <input value={activationKey} onChange={(event) => setActivationKey(event.target.value)} placeholder="MPOS-XXXX-XXXX-XXXX" className="ps-rest-gate-input" disabled={busy} />
-          </label>
           {message && <p className="ps-rest-gate-error" role="alert">{message}</p>}
-          <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : tr(lang, 'activateNow')}</button>
+          <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : lang === 'ru' ? 'Проверить снова' : lang === 'en' ? 'Try again' : 'Yenidən yoxla'}</button>
           <div className="ps-rest-gate-links">
             {activation?.serverDeviceId && <button type="button" disabled={busy} onClick={() => void recheck()}>Serverdən yoxla</button>}
             <button type="button" onClick={onTenantLogout}>{tr(lang, 'tenantSwitchAccount')}</button>
@@ -941,6 +1047,9 @@ function LoginScreen({ lang, onLogin, onTenantLogout }: {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // POSSISTEM's 10-digit PIN: its first 4 digits keep the pad going instead of signing in.
+  const [long, setLong] = useState(false);
+  const length = long ? 10 : 4;
 
   const submit = async (nextPin = pin) => {
     if (nextPin.length < 4 || busy) return;
@@ -952,6 +1061,7 @@ function LoginScreen({ lang, onLogin, onTenantLogout }: {
       const raw = reason instanceof Error ? reason.message : '';
       setError(/yanlış|invalid|wrong|pin|remote method/i.test(raw) || !raw ? tr(lang, 'invalidPin') : raw);
       setPin('');
+      setLong(false);
     } finally {
       setBusy(false);
     }
@@ -959,15 +1069,20 @@ function LoginScreen({ lang, onLogin, onTenantLogout }: {
 
   const pressKey = (key: string) => {
     if (busy) return;
-    if (key === 'clear') { setPin(''); setError(''); return; }
-    if (key === 'back') { setPin((value) => value.slice(0, -1)); return; }
+    if (key === 'clear') { setPin(''); setLong(false); setError(''); return; }
+    if (key === 'back') { if (pin.length <= 4) setLong(false); setPin(pin.slice(0, -1)); return; }
     setError('');
-    setPin((value) => {
-      if (value.length >= 4) return value;
-      const next = value + key;
-      if (next.length === 4) void submit(next);
-      return next;
-    });
+    if (pin.length >= length) return;
+    const next = pin + key;
+    setPin(next);
+    if (long && next.length === 10) void submit(next);
+    else if (!long && next.length === 4) {
+      setBusy(true);
+      void Promise.resolve(window.marketSystem?.auth.adminPrefix?.(next)).catch(() => false).then((admin) => {
+        setBusy(false);
+        if (admin) setLong(true); else void submit(next);
+      });
+    }
   };
 
   useEffect(() => {
@@ -1009,11 +1124,11 @@ function LoginScreen({ lang, onLogin, onTenantLogout }: {
           <div className="mp-staff-pin">
             <h3 className="mp-staff-pin-title">{tr(lang, 'pinTitle')}</h3>
             <p className="mp-staff-pin-hint">{tr(lang, 'pinHint')}</p>
-            <div className={`mp-staff-pin-dots${busy ? ' is-busy' : ''}`} aria-label={`${pin.length} / 4`}>
-              {[0, 1, 2, 3].map((index) => (
+            <div className={`mp-staff-pin-dots${busy ? ' is-busy' : ''}`} aria-label={`${pin.length} / ${length}`}>
+              {Array.from({ length }, (_, index) => index).map((index) => (
                 <span key={index} className={`mp-staff-pin-cell${index < pin.length ? ' is-on' : ''}`}><span /></span>
               ))}
-              <span className="mp-staff-pin-count">{pin.length}/4</span>
+              <span className="mp-staff-pin-count">{pin.length}/{length}</span>
             </div>
             <div className="mp-staff-pad" aria-label={tr(lang, 'pinPad')}>
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'].map((key) => {
@@ -1042,6 +1157,7 @@ function LoginScreen({ lang, onLogin, onTenantLogout }: {
               ) : null}
             </div>
           </div>
+          {window.marketSystem?.support ? <SupportButton lang={lang} variant="gate" /> : <SupportLine lang={lang} />}
         </section>
       </div>
     </main>
@@ -1058,7 +1174,7 @@ function Dashboard({ state, staff, session, lang, onView }: { state: PersistedSt
   return <div className="module-page dashboard"><section className="welcome-card"><div><p>{longDate(new Date(), lang)}</p><h2>Salam, {session.name.split(' ')[0]}</h2><span>{roleMessage[session.role]}</span></div><div className="live-badge"><Activity /><span>CANLI<small>{state.settings.storeName}</small></span></div></section><section className="kpi-grid"><Kpi icon={CircleDollarSign} label={tr(lang, 'todaySales')} value={money(revenue, lang)} note={`${activeSales.length} ${tr(lang, 'transactions').toLowerCase()}`} tone="green" /><Kpi icon={Store} label={tr(lang, 'openRegisters')} value={`${open.length} / ${state.registers.length}`} note={open.map((row) => row.name).join(' · ')} tone="blue" /><Kpi icon={TriangleAlert} label={tr(lang, 'criticalProducts')} value={String(critical.length)} note={critical.slice(0, 2).map((row) => row.name[lang]).join(' · ')} tone="amber" /><Kpi icon={Boxes} label={tr(lang, 'totalStock')} value={String(totalStock)} note={`${state.warehouses.length} ${tr(lang, 'warehouses').toLowerCase()}`} tone="violet" /></section><section className="dashboard-grid"><article className="panel-card quick-card"><div className="panel-title"><div><p>{tr(lang, 'quickOpsKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'quickActions')}</h3></div></div><div className="quick-grid">{canAccess(session.role, 'sale') && <button onClick={() => onView('sale')}><span><ShoppingBasket /></span><b>{tr(lang, 'newSale')}</b><small>{tr(lang, 'scanReady')}</small><ChevronRight /></button>}{canAccess(session.role, 'ops') && <button onClick={() => onView('ops')}><span><PackageSearch /></span><b>{tr(lang, 'ops')}</b><small>Mallar · Anbar · Alışlar</small><ChevronRight /></button>}{canAccess(session.role, 'registers') && <button onClick={() => onView('registers')}><span><Store /></span><b>{tr(lang, 'registers')}</b><small>{open.length} {tr(lang, 'active').toLowerCase()}</small><ChevronRight /></button>}</div></article><article className="panel-card"><div className="panel-title"><div><p>{tr(lang, 'auditKicker').toLocaleUpperCase(lang)}</p><h3>{tr(lang, 'audit')}</h3></div><FileClock /></div><div className="activity-list">{state.audits.slice(0, 5).map((entry) => <div key={entry.id}><span><Activity /></span><p><b>{auditActionLabel(entry.action, lang)}</b><small>{auditDetailLabel(entry.detail, lang)} · {staff.find((row) => row.id === entry.actorId)?.name ?? tr(lang, 'systemActor')}</small></p><time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div></article></section></div>;
 }
 
-export function SalePage({ state, setState, session, lang, cart, setCart, cloudConnected, notify, coreReady, onRefresh, audit }: { state: PersistedState; setState: React.Dispatch<React.SetStateAction<PersistedState>>; session: SessionUser; lang: Lang; cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; cloudConnected: boolean; notify: (text: string) => void; coreReady: boolean; onRefresh: () => Promise<PersistedState>; audit: (fn: (state: PersistedState) => PersistedState, action?: string, detail?: string) => void }) {
+export function SalePage({ state, setState, session, lang, cart, setCart, cloudConnected, notify, coreReady, onRefresh, audit, canDiscount = true }: { canDiscount?: boolean; state: PersistedState; setState: React.Dispatch<React.SetStateAction<PersistedState>>; session: SessionUser; lang: Lang; cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; cloudConnected: boolean; notify: (text: string) => void; coreReady: boolean; onRefresh: () => Promise<PersistedState>; audit: (fn: (state: PersistedState) => PersistedState, action?: string, detail?: string) => void }) {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -1084,6 +1200,7 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
   const subtotal = detail.reduce((sum, line) => sum + lineMinor(line), 0);
   const discountMinor = Math.min(subtotal, parseMoneyInput(discount));
   const total = subtotal - discountMinor;
+  const approval=useCartApproval(cart,setCart,discountMinor,coreReady&&marketCoreClient.available(),value=>setDiscount((value/100).toFixed(2)),notify);
 
   const add = useCallback((product: Product) => {
     const available = stockOf(product);
@@ -1155,24 +1272,49 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
       }
     })();
   }, [barcodeIndex, products, productMap, coreReady, setCart, add, notify, lang]);
-  const clearCart = useCallback(() => {
+  const emptyCart = useCallback(() => {
     scanEpoch.current += 1; pendingScanCount.current = 0; setPendingScans(0); setCart([]);
   }, [setCart]);
   const cartRef = useRef(cart);
   cartRef.current = cart;
+
+  // Storno: a scanned item leaves the basket only with SALE_CANCEL (set by
+  // POSSISTEM per role or worker) or a PIN of someone who holds it; the core
+  // records each one with who approved it.
+  const [voidAsk, setVoidAsk] = useState<{ held?: HeldCart; title: string; line: { productId: string; name: string; qty: number; amountMinor: number }; apply: () => void } | null>(null);
+  const guardedVoid = (_title: string, _line: {productId:string;name:string;qty:number;amountMinor:number}, apply:()=>void) => {if(!paymentLock.current)apply();};
+
+  const cartLineFor = (rows: CartLine[]) => {
+    const amountMinor = rows.reduce((sum, row) => { const p = productMap.get(row.productId); return sum + (p ? (row.qtyMilli ? Math.round(p.priceMinor * row.qtyMilli / 1000) : p.priceMinor * row.qty) : 0); }, 0);
+    const name = rows.length === 1 ? (productMap.get(rows[0]!.productId)?.name[lang] ?? rows[0]!.productId) : `Səbət · ${rows.length} mal`;
+    return { productId: rows.length === 1 ? rows[0]!.productId : 'cart', name, qty: rows.reduce((sum, row) => sum + (row.qtyMilli ? row.qtyMilli / 1000 : row.qty), 0) || 1, amountMinor };
+  };
+  const clearCart = () => {
+    if (!cartRef.current.length) return;
+    guardedVoid('Səbəti silmək', cartLineFor(cartRef.current), emptyCart);
+  };
   const newSale = useCallback(() => {
     if (paymentLock.current) return false;
-    if (cartRef.current.length && !confirm('Cari səbət təmizlənsin?')) return false;
-    clearCart(); setDiscount('0'); return true;
-  }, [clearCart]);
+    if (!cartRef.current.length) { emptyCart(); setDiscount('0'); return true; }
+    if (!confirm('Cari səbət təmizlənsin?')) return false;
+    guardedVoid('Səbəti silmək', cartLineFor(cartRef.current), () => { emptyCart(); setDiscount('0'); });
+    return false;
+  }, [emptyCart, productMap, lang]);
 
-  const adjust = (productId: string, delta: number) => setCart((rows) => rows.map((row) => row.productId === productId && !row.qtyMilli ? { ...row, qty: Math.max(0, Math.min(productMap.has(productId) ? stockOf(productMap.get(productId)!) : row.qty, row.qty + delta)) } : row).filter((row) => row.qty > 0));
+  const changeQty = (productId: string, delta: number) => setCart((rows) => rows.map((row) => row.productId === productId && !row.qtyMilli ? { ...row, qty: Math.max(0, Math.min(productMap.has(productId) ? stockOf(productMap.get(productId)!) : row.qty, row.qty + delta)) } : row).filter((row) => row.qty > 0));
+  const adjust = (productId: string, delta: number) => {
+    if (delta >= 0) { changeQty(productId, delta); return; }
+    const product = productMap.get(productId);
+    guardedVoid('Malı səbətdən silmək', { productId, name: product?.name[lang] ?? productId, qty: -delta, amountMinor: (product?.priceMinor ?? 0) * -delta }, () => changeQty(productId, delta));
+  };
   const hold = () => {
     if (!cart.length || pendingScanCount.current) return;
     void (async () => {
       try {
         if (coreReady && marketCoreClient.available()) {
+          const checked=await approval.flush();if(checked.dirty)throw Error(lang==='ru'?'Подтвердите изменения корзины':lang==='en'?'Approve cart changes first':'Səbət dəyişikliklərini təsdiqləyin');
           await marketCoreClient.sales.hold({
+            cartRevision:checked.revision,
             lines: cart,
             label: `Gözləyən #${state.heldCarts.length + 1}`,
             cashierId: session.id,
@@ -1217,13 +1359,16 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
               authCode: term.authCode,
             });
           }
+          const checked=await approval.flush();if(checked.dirty)throw Error('Səbət dəyişikliklərini rəhbər PIN-i ilə təsdiqləyin');
           const sale = await marketCoreClient.sales.complete({
+            cartRevision:checked.revision,
             idempotencyKey: submissionKey.current,
             cashierId: session.id,
             registerId: register?.id ?? state.settings.defaultRegisterId,
             warehouseId,
             discountMinor,
             items: cart,
+            customerId:payment.customerId||"",customerName:payment.customerName||"",
             payment: { ...payment, terminalRef },
             role: session.role,
           });
@@ -1235,8 +1380,12 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
           try {
             const receipt = await marketCoreClient.sales.receipt(sale.id);
             const printed = await window.marketSystem?.printer?.receipt(session.sessionToken, receipt, 80);
-            if (!printed || printed.ok === false) throw new Error('Receipt was not accepted');
-          } catch { warnings.push(tr(lang, 'salePrintFailed')); }
+            if (!printed || printed.ok === false) throw new Error('');
+          } catch (error) {
+            // Say why ("Printer seçilməyib", "Printerə göndərilmədi"), so the cashier knows what to fix.
+            const why = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '') : '';
+            warnings.push(why ? `${tr(lang, 'salePrintFailed')} — ${why}` : tr(lang, 'salePrintFailed'));
+          }
           try {
             await marketCoreClient.fiscal.enqueue({
               saleId: sale.id,
@@ -1289,31 +1438,29 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
   };
 
   const cancelHeld = (held: HeldCart) => {
-    void (async () => {
-      try {
-        if (coreReady && marketCoreClient.available()) {
-          await marketCoreClient.sales.cancelHeld(held.id, session.id, session.role);
-          await onRefresh();
-        } else {
-          setState((previous) => ({ ...previous, heldCarts: previous.heldCarts.filter((row) => row.id !== held.id) }));
-        }
-      } catch (err) {
-        notify(err instanceof Error ? err.message : String(err));
-      }
-    })();
+    setVoidAsk({held,title:lang==='ru'?'Отменить отложенную корзину':lang==='en'?'Cancel held basket':'Gözləyən səbəti ləğv et',line:{productId:held.id,name:held.label,qty:1,amountMinor:0},apply:()=>{}});
   };
 
   return (
-    <div className="sale-layout">
-      <SaleCatalog products={products} lang={lang} warehouseId={warehouseId} cloudConnected={cloudConnected} scannerEnabled={!paymentOpen && !paying} onAdd={add} onScan={scan} onNewSale={newSale}/>
+    <div className={`sale-layout ${state.settings.showProductImages === true ? "" : "sale-without-images"}`}>
+      <SaleCatalog showImages={state.settings.showProductImages === true} products={products} lang={lang} warehouseId={warehouseId} cloudConnected={cloudConnected} scannerEnabled={!paymentOpen && !paying} onAdd={add} onScan={scan} onNewSale={newSale}/>
+      {voidAsk && <ManagerApprovalModal superAdminOnly lang={lang} title={`${voidAsk.title} · ${voidAsk.line.name}`} onClose={() => setVoidAsk(null)} onApproved={async (pin) => {
+        if(voidAsk.held){
+          if(coreReady&&marketCoreClient.available()){await marketCoreClient.sales.cancelHeld(voidAsk.held.id,session.id,session.role,{managerPin:pin});await onRefresh();}
+          else setState(previous=>({...previous,heldCarts:previous.heldCarts.filter(row=>row.id!==voidAsk.held!.id)}));
+        }else await approval.approve(pin);
+        setVoidAsk(null);
+      }} />}
       <aside className="cart-pane">
+        {approval.dirty && <div className="cart-approval-bar" role="status"><b>{lang==='ru'?'Изменения ожидают подтверждения':lang==='en'?'Cart changes await approval':'Səbət dəyişiklikləri təsdiq gözləyir'}</b><button disabled={approval.busy||paying} onClick={()=>setVoidAsk({title:lang==='ru'?'Подтвердить изменения':lang==='en'?'Approve changes':'Dəyişiklikləri təsdiqlə',line:{productId:'cart',name:'',qty:1,amountMinor:total},apply:()=>{}})}>{lang==='ru'?'Подтвердить изменения':lang==='en'?'Approve changes':'Dəyişiklikləri təsdiqlə'}</button></div>}
+
         <div className="cart-head">
           <div>
             <p>{tr(lang, 'cart')}</p>
             <strong>#{String(state.sales.length + 1).padStart(4, '0')}</strong>
             <small>{register?.name ?? 'Kassa seçilməyib'}</small>
           </div>
-          <button disabled={paying || !cart.length} onClick={clearCart} aria-label="Səbəti təmizlə"><Trash2 /></button>
+          <button disabled={!approval.ready || paying || !cart.length} onClick={clearCart} aria-label="Səbəti təmizlə"><Trash2 /></button>
         </div>
         {register?.status !== 'open' && (
           <div className="register-warning">
@@ -1326,7 +1473,7 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
             <div className="cart-empty"><ShoppingBag /><strong>{tr(lang, 'emptyCart')}</strong><span>GTIN / EAN-13</span></div>
           ) : detail.map((line, lineIndex) => line.qtyMilli ? (
             <div className="cart-line" key={`w-${lineIndex}`}>
-              <ProductVisual image={line.product.image} compact alt={line.product.name[lang]} accent={line.product.accent} />
+              {state.settings.showProductImages === true && <ProductVisual image={line.product.image} compact alt={line.product.name[lang]} accent={line.product.accent} />}
               <div className="line-copy">
                 <strong>{line.product.name[lang]}</strong>
                 <small>{money(line.product.priceMinor, lang)} / {unitLabel(line.product.unit, lang)}</small>
@@ -1334,12 +1481,12 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
               </div>
               <div className="line-total">
                 <b>{money(lineMinor(line), lang)}</b>
-                <button onClick={() => setCart((rows) => rows.filter((_, index) => index !== lineIndex))} aria-label="Məhsulu səbətdən sil"><X /></button>
+                <button onClick={() => guardedVoid('Malı səbətdən silmək', { productId: line.product.id, name: line.product.name[lang], qty: (line.qtyMilli ?? 0) / 1000, amountMinor: lineMinor(line) }, () => setCart((rows) => rows.filter((_, index) => index !== lineIndex)))} aria-label="Məhsulu səbətdən sil"><X /></button>
               </div>
             </div>
           ) : ((({ product, qty }) => (
             <div className="cart-line" key={product.id}>
-              <ProductVisual image={product.image} compact alt={product.name[lang]} accent={product.accent} />
+              {state.settings.showProductImages === true && <ProductVisual image={product.image} compact alt={product.name[lang]} accent={product.accent} />}
               <div className="line-copy">
                 <strong>{product.name[lang]}</strong>
                 <small>{money(product.priceMinor, lang)} / {unitLabel(product.unit, lang)}</small>
@@ -1369,7 +1516,7 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
           </div>
         )}
         <div className="discount-row">
-          <label>{tr(lang, 'discount')}<span><input value={discount} onChange={(event) => setDiscount(event.target.value)} inputMode="decimal" /> ₼</span></label>
+          <label>{tr(lang, 'discount')}<span><input value={discount} onChange={(event) => setDiscount(event.target.value)} inputMode="decimal" disabled={!canDiscount} title={canDiscount ? undefined : DENIED} /> ₼</span></label>
         </div>
         <div className="totals">
           <div><span>{tr(lang, 'subtotal')}</span><b>{money(subtotal, lang)}</b></div>
@@ -1378,8 +1525,8 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
           <div className="grand"><span>{tr(lang, 'total')}</span><strong>{money(total, lang)}</strong></div>
         </div>
         <div className="checkout-actions">
-          <button className="hold" disabled={paying || pendingScans > 0 || !cart.length} onClick={hold}><Pause />{tr(lang, 'hold')}</button>
-          <button className="pay" disabled={paying || pendingScans > 0 || !cart.length || register?.status !== 'open'} onClick={() => { if (paying || pendingScanCount.current) return; submissionKey.current = null; committedSale.current = null; setPaymentError(null); setPaymentOpen(true); }}>
+          <button className="hold" disabled={!approval.ready || paying || pendingScans > 0 || !cart.length} onClick={hold}><Pause />{tr(lang, 'hold')}</button>
+          <button className="pay" disabled={!approval.ready || paying || pendingScans > 0 || !cart.length || register?.status !== 'open'} onClick={() => { if (paying || pendingScanCount.current) return; submissionKey.current = null; committedSale.current = null; setPaymentError(null); setPaymentOpen(true); }}>
             <WalletCards /><span>{tr(lang, pendingScans > 0 ? 'barcodeResolving' : 'pay')}<small>Nağd · Kart · Qarışıq</small></span><b>{money(total, lang)}</b>
           </button>
         </div>
@@ -1389,17 +1536,6 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
   );
 }
 
-
-function ReturnsPage({ state, lang, onRefund }: { state: PersistedState; lang: Lang; onRefund: (sale: Sale) => void }) {
-  const [query, setQuery] = useState(''); const products = new Map(state.products.map((product) => [product.id, product]));
-  const rows = state.sales.filter((sale) => !query || sale.receiptNo.toLowerCase().includes(query.toLowerCase()));
-  return <div className="module-page"><section className="return-search"><RotateCcw /><div><p>{tr(lang, 'kickerReturns').toLocaleUpperCase(lang)}</p><h2>{tr(lang, 'returns')}</h2></div><label><ReceiptText /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Qəbz nömrəsi..." /></label></section><div className="receipt-list">{rows.map((sale) => <article key={sale.id}><div className="receipt-badge"><ReceiptText /></div><div className="receipt-main"><small>{new Date(sale.createdAt).toLocaleString()}</small><h3>{sale.receiptNo}</h3><p>{sale.items.map((line) => `${products.get(line.productId)?.name[lang]} ×${line.qty}`).join(' · ')}</p></div><strong>{money(sale.totalMinor, lang)}</strong><span className="payment-chip">{sale.payment.method === 'cash' ? <CircleDollarSign /> : <WalletCards />}{tr(lang, sale.payment.method)}</span><button disabled={sale.refunded} onClick={() => onRefund(sale)}>{sale.refunded ? <Check /> : <RotateCcw />}{sale.refunded ? tr(lang, 'refunded') : tr(lang, 'refund')}</button></article>)}</div></div>;
-}
-
-function StaffPage({ staff, lang, onAdd }: { staff: StaffProfile[]; lang: Lang; onAdd: () => void }) {
-  const permissionText: Record<Role, string> = { manager: 'Bütün modullar, ayarlar, işçilər və hesabatlar', head_cashier: 'Satış, qaytarma, hesabat və kassa növbələri', cashier: 'Satış və şəxsi kassa növbəsi', warehouse: 'Məhsul, depo və alış sifarişləri' };
-  return <div className="module-page"><section className="page-intro"><div><p>{tr(lang, 'kickerRoles').toLocaleUpperCase(lang)}</p><h2>{tr(lang, 'staff')}</h2><span>{staff.filter((row) => row.active).length} {tr(lang, 'active').toLowerCase()}</span></div><button className="primary-action" onClick={onAdd}><Plus />{tr(lang, 'addStaff')}</button></section><div className="staff-grid">{staff.map((user) => <article key={user.id}><RoleAvatar role={user.role} name={user.name} /><div><h3>{user.name}</h3><em>{roleLabel(user.role, lang)}</em><p>{permissionText[user.role]}</p><div className="permission-pills">{ROLE_VIEWS[user.role].slice(0, 5).map((view) => <span key={view}>{viewLabel(view, lang)}</span>)}</div></div><b className={user.active ? 'pill ok' : 'pill'}>{user.active ? tr(lang, 'active') : 'Passiv'}</b></article>)}</div></div>;
-}
 
 function MobilePage({ state, staff, lang, cloudConnected }: { state: PersistedState; staff: StaffProfile[]; lang: Lang; cloudConnected: boolean }) {
   const sales = state.sales.filter((sale) => !sale.refunded); const revenue = sales.reduce((sum, sale) => sum + sale.totalMinor, 0); const low = state.products.filter((product) => stockOf(product) <= product.minStock);

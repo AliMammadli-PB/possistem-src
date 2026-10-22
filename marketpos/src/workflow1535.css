@@ -1,0 +1,9 @@
+/* Shared touch controls for accounts, staff access and shift reports. */
+.users-page button,.users-page select,.users-page input:not([type=checkbox]),.modal-content .users-fieldset~.modal-actions button{min-height:48px}
+.users-check{min-height:48px;display:flex;align-items:center;gap:12px}
+.users-check input[type=checkbox]{width:24px;height:24px;accent-color:#1765dc}
+.users-fieldset{display:flex;flex-wrap:wrap;gap:12px;padding:16px;border:1px solid #cbdbea;border-radius:14px}
+.users-fieldset legend{font-weight:700;padding:0 8px}
+.registers-ops button,.registers-ops input{min-height:48px}
+.registers-ops{min-width:0}.registers-ops .register-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr))}
+@media(max-width:600px){.users-page .form-grid{grid-template-columns:1fr}.cash-ops-form{grid-template-columns:1fr}}

@@ -25,6 +25,17 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   const printerProvider = new CorePrinterProvider(
     (method, payload, timeoutMs) => coreSupervisor.invoke(method, payload, timeoutMs),
     printerSession,
+    // Parametrlər → Printer is the warehouse system's screen: its receipt
+    // printer is the one the owner chose. "auto" means the first it can see.
+    async () => {
+      if (opsEngine?.core?.state !== 'ready') return '';
+      const res = await opsEngine.invoke('print.printers', {}, { timeoutMs: 8000 });
+      if (!res?.success) return '';
+      const chosen = String(res.data?.receipt || '');
+      if (chosen && chosen !== 'auto' && chosen !== 'virtual') return chosen;
+      const seen = (res.data?.printers || []).find((p) => p?.name && p.connection !== 'virtual' && p.status !== 'offline');
+      return seen ? String(seen.name) : '';
+    },
   );
   const labels = createLabelService({ app, coreSupervisor, opsEngine });
   const allowMockHardware = mockHardwareAllowed({ isPackaged: app.isPackaged });
@@ -40,6 +51,7 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   ipcMain.handle('market:printer:detect', async (event, input) => {
     assertTrusted(event);
     const user = requireSession(input?.sessionToken, ['manager']);
+    printerProvider.forgetTarget();
     return coreSupervisor.invoke(
       'printer.detect',
       { role: user.role, actorId: user.id, probe: input?.probe !== false },
@@ -49,6 +61,7 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   ipcMain.handle('market:printer:setTarget', async (event, input) => {
     assertTrusted(event);
     const user = requireSession(input?.sessionToken, ['manager']);
+    printerProvider.forgetTarget();
     return coreSupervisor.invoke('printer.setTarget', {
       role: user.role,
       actorId: user.id,
@@ -64,6 +77,7 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
     const user = requireSession(input?.sessionToken, ['manager']);
     const target = String(input?.target || '').trim();
     // The core owns the printer now; 1.4 wrote a file here that nothing read.
+    printerProvider.forgetTarget();
     await coreSupervisor.invoke('printer.setTarget', { role: user.role, actorId: user.id, target });
     const health = await printerProvider.health();
     return { ...health, target };
@@ -94,9 +108,15 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
       }
     }
     // Only a failed layout falls back: a printer error must not print twice.
-    if (designed?.printed) return { ok: true };
     if (designed) return printerProvider.printRaw(designed.bytes, { kind: 'receipt' });
-    return printerProvider.printReceipt(receipt, { widthMm: input?.widthMm || 80, cut: input?.cut !== false });
+    let openCashDrawer = true;
+    if (opsEngine?.core?.state === 'ready') {
+      try {
+        const settings = await opsEngine.invoke('settings.getAll', {}, { timeoutMs: 2000 });
+        if (settings?.success) openCashDrawer = String(settings.data?.settings?.['printer.openCashDrawer'] ?? '1') !== '0';
+      } catch { /* The plain receipt still works if the layout core is unavailable. */ }
+    }
+    return printerProvider.printReceipt(receipt, { widthMm: input?.widthMm || 80, cut: input?.cut !== false, openCashDrawer });
     });
   });
   // Extra kitchen printers: one preparation ticket per station, to that

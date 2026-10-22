@@ -1,0 +1,12 @@
+.transfer-branch-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.transfer-branch-fields>section{min-width:0;display:grid;align-content:start;gap:12px;background:#f3f7ff;border:1px solid #d4e2f8;border-radius:16px;padding:16px}
+.transfer-branch-fields h3{margin:0;font-size:18px;color:#194f9d}
+.transfer-branch-fields label{display:grid;gap:8px;font-size:14px;color:#3c577b;font-weight:600}
+.transfer-branch-fields select{width:100%;min-width:0;min-height:52px;background:#fff;color:#163456;border:1px solid #bdd2ef;border-radius:12px;padding:10px;font-size:16px;touch-action:manipulation}
+.transfer-page .workflow-dialog{width:min(1000px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto}
+.transfer-page .workflow-dialog button{min-height:48px;touch-action:manipulation}
+@media(max-width:640px){.transfer-branch-fields{grid-template-columns:1fr}.transfer-branch-fields>section{padding:12px}.transfer-page .workflow-dialog{padding:14px}.transfer-page .page-intro{flex-wrap:wrap;gap:12px}}
+
+.transfer-page .workflow-dialog fieldset{min-width:0;max-width:100%}
+
+.transfer-page .workflow-dialog fieldset>input[aria-label]{width:100%;min-height:52px}

@@ -11,20 +11,33 @@ declare global {
     /** Əməliyyatlar - the warehouse system (electron/ops-engine.cjs). */
     marketOps?: {
       invoke(input: { sessionToken: string; method: string; payload?: unknown; idempotencyKey?: string; timeoutMs?: number }): Promise<PosResult<unknown>>;
-      status(): Promise<{ host: boolean; state: string; available: boolean; catalogPending?: boolean; catalogError?: string | null }>;
+      status(): Promise<{ host: boolean; state: string; available: boolean; catalogPending?: boolean; catalogError?: string | null; errors?: Record<string, string>; parked?: { key: string; error: string; at: number }[]; linked?: number }>;
       setHost(sessionToken: string, host: boolean): Promise<{ host: boolean; state: string; available: boolean; catalogPending?: boolean; catalogError?: string | null }>;
       sync(sessionToken: string): Promise<PosResult<unknown>>;
+      categories?(): Promise<string[]>;
       cashSummary(sessionToken: string): Promise<PosResult<{ accounts: Array<{ id: string; name: string; kind: string; terminalId: string; balanceMinor: number; todayCashMinor: number; todayCardMinor: number }>; registerNames: Record<string, string> }>>;
     };
     marketSystem?: {
-      staff: { list(): Promise<StaffProfile[]>; save(sessionToken: string, profile: Partial<StaffProfile>, pin: string): Promise<StaffProfile> };
-      auth: { login(userId: string, pin: string): Promise<SessionUser>; logout(sessionToken: string): Promise<boolean>; current?(): Promise<SessionUser | null>; changePin(sessionToken: string, newPin: string): Promise<StaffProfile> };
+      permissions: {get(sessionToken:string):Promise<any>;save(sessionToken:string,role:string,permissions:string[],expectedVersion:number):Promise<any>};
+      branches:{selection(sessionToken:string):Promise<unknown>;manage(sessionToken:string,operation:Record<string,unknown>):Promise<unknown>;assign(sessionToken:string,deviceId:string,name:string|{branchId:string}):Promise<unknown>;list(sessionToken:string):Promise<unknown>;rpc(sessionToken:string,deviceId:string,calls:unknown[]):Promise<unknown>;stock?(sessionToken:string):Promise<{at:number;own:import('./BranchStockView').StockSnapshot|null;branches:import('./BranchStockView').StockSnapshot[]}>;queueEdits?(sessionToken:string,deviceId:string,requestId:string,edits:unknown[],note?:string):Promise<{queued:boolean;online:boolean;commandIds:string[]}>;edits?(sessionToken:string,deviceId:string):Promise<any>;cancelEdit?(sessionToken:string,id:string):Promise<unknown>};
+      branchContext(sessionToken: string): Promise<{ registerId: string; branchName: string; objectId: string }>;
+      staff: {
+        list(): Promise<StaffProfile[]>; save(sessionToken: string, profile: Partial<StaffProfile>, pin: string): Promise<StaffProfile>;
+        remove(sessionToken: string, id: string): Promise<{ ok: boolean }>;
+        places(sessionToken: string): Promise<{ warehouses?:{id:string;name:string}[]; objects: { id: string; name: string }[]; registers: { id: string; name: string; objectId: string }[] }>;
+      };
+      auth: { login(userId: string, pin: string): Promise<SessionUser>; adminPrefix?(digits: string): Promise<boolean>; logout(sessionToken: string): Promise<boolean>; current?(): Promise<SessionUser | null>; changePin(sessionToken: string, newPin: string): Promise<StaffProfile>; rights?(sessionToken: string, userId?: string): Promise<string[]> };
       display: { get(): Promise<{ prefs: DisplayPrefs; presets: DisplayPreset[] }>; set(sessionToken: string, prefs: DisplayPrefs): Promise<DisplayPrefs>; toggleFullscreen(): Promise<DisplayPrefs> };
       image: { pick(sessionToken: string): Promise<string | null> };
       activation: {
         status(): Promise<ActivationStatus>;
         refresh(): Promise<ActivationStatus>;
         activate(sessionToken: string | null, activationKey: string): Promise<ActivationStatus>;
+      };
+      support?: {
+        active(): Promise<{ ticket: import('./SupportChat').SupportTicket | null; messages: import('./SupportChat').SupportMessage[] }>;
+        send(ticketId: string | null, body: string): Promise<unknown>;
+        messages(ticketId: string, after?: string): Promise<import('./SupportChat').SupportMessage[] | { messages: import('./SupportChat').SupportMessage[] }>;
       };
       tenant: {
         status(): Promise<import('./types').TenantStatus>;

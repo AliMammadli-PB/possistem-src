@@ -210,3 +210,33 @@ TEST_CASE("the reason list the screen shows is the list the core checks", "[inve
     REQUIRE_FALSE(entry.at("label").get<std::string>().empty());
   }
 }
+
+TEST_CASE("storno needs SALE_CANCEL or a permitted PIN, and is recorded", "[permissions][gate][storno]") {
+  GatedApp t;
+
+  auto line = t.as("cashier");
+  line["productId"] = t.productId;
+  line["name"] = "Test məhsul";
+  line["qty"] = 1;
+  line["amountMinor"] = 500;
+  // A plain cashier does not remove a scanned item on their own.
+  REQUIRE_THROWS_AS(t.call("sale.voidLine", line), market::PosError);
+
+  // A head cashier holds the right.
+  auto head = t.as("head_cashier");
+  head["productId"] = t.productId; head["qty"] = 2; head["amountMinor"] = 1000;
+  REQUIRE(t.call("sale.voidLine", head).value("approved", true) == false);
+
+  // Another cashier's PIN does not approve what cashiers may not do.
+  line["approverId"] = "staff-cashier-2";
+  line["approverRole"] = "cashier";
+  REQUIRE_THROWS_AS(t.call("sale.voidLine", line), market::PosError);
+
+  // The cashier with a permitted PIN typed (main verified it, wrote approverId).
+  line["approverId"] = "staff-head";
+  line["approverRole"] = "head_cashier";
+  REQUIRE(t.call("sale.voidLine", line).value("approved", false) == true);
+
+  REQUIRE(t.app->database().queryInt("SELECT COUNT(*) FROM audit_logs WHERE action = 'SALE_LINE_VOID'") == 2);
+  REQUIRE(t.app->database().queryInt("SELECT COUNT(*) FROM permission_catalogue WHERE permission IN ('DOCS_VIEW','DOCS_EDIT','DOCS_DELETE')") == 3);
+}

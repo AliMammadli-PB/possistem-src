@@ -9,7 +9,7 @@ import { KitchenStationsCard } from './KitchenStations';
 import { BarcodeSettings } from './BarcodeSettings';
 import { OpsFrame, ReceiptDesignCard } from './OpsFrame';
 
-export function SettingsPage({ state, session, lang, coreReady, notify, onSettings, onBarcodeProduct }: { state: PersistedState; session: SessionUser; lang: Lang; coreReady: boolean; notify: (text: string) => void; onBarcodeProduct?: (p: Product) => void; onSettings: (settings: StoreSettings) => Promise<void> }) {
+export function SettingsPage({ state, session, lang, coreReady, notify, onSettings, onBarcodeProduct, deviceInfo = [], extra = null }: { deviceInfo?: Array<[string, string]>; extra?: React.ReactNode; state: PersistedState; session: SessionUser; lang: Lang; coreReady: boolean; notify: (text: string) => void; onBarcodeProduct?: (p: Product) => void; onSettings: (settings: StoreSettings) => Promise<void> }) {
   const [section, setSection] = useState('store');
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(state.settings); const [display, setDisplay] = useState<{ prefs: { mode: 'fullscreen' | 'windowed'; width: number; height: number; zoomFactor: number }; presets: Array<{ id: string; label: string; mode: 'fullscreen' | 'windowed'; width: number; height: number }> } | null>(null);
@@ -58,6 +58,8 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
     <div className="settings-layout"><nav className="settings-rail" aria-label={text('Parametr bölmələri', 'Разделы настроек', 'Settings sections')}>
       {sections.map((item) => <button key={item.id} type="button" aria-current={section === item.id ? 'page' : undefined} className={section === item.id ? 'active' : ''} onClick={() => setSection(item.id)}><item.icon/><span><b>{item.name}</b><small>{item.hint}</small></span></button>)}
     </nav><div className="settings-content"><div className="settings-content-heading"><div><h3>{selected.name}</h3><p>{selected.hint}</p></div><selected.icon/></div>
+      {section === 'store' && deviceInfo.length > 0 && <section className="panel-card settings-card"><dl className="settings-device-info">{deviceInfo.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>}
+      {section === 'store' && extra}
       {section === 'store' && (
       <section className="panel-card settings-card"><div className="panel-title">
           <h3>Mağaza məlumatları</h3>
@@ -77,6 +79,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
           <Field label="VÖEN" value={draft.taxId} onChange={(value) => setDraft({ ...draft, taxId: value })} />
           <Field label="Telefon" value={draft.phone} onChange={(value) => setDraft({ ...draft, phone: value })} />
           <Field label={tr(lang, 'address')} value={draft.address} onChange={(value) => setDraft({ ...draft, address: value })} wide />
+          <Field label={text("Filial adı", "Название филиала", "Branch name")} value={draft.branchName || ""} onChange={(value) => setDraft({ ...draft, branchName: value })} />
           <Field label={tr(lang, 'terminal')} value={draft.terminalName} onChange={(value) => setDraft({ ...draft, terminalName: value })} />
         </div>
         <button type="button" className="modal-primary" disabled={saving} onClick={() => void saveStore()}>
@@ -84,7 +87,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
         </button>
       </section>
       )}
-      {section === 'catalog' && <div className="settings-embedded"><OpsFrame catalogOnly session={session} notify={notify}/></div>}
+      {section === 'catalog' && <div className="settings-embedded"><OpsFrame lang={lang} catalogOnly session={session} notify={notify}/></div>}
       {(section === 'printer' || section === 'receipt') && <ReceiptDesignCard key={section} session={session} lang={lang} panel={section}/>}
       {section === 'barcode' && <BarcodeSettings session={session} lang={lang} notify={notify} onProduct={onBarcodeProduct}/>}
       {section === 'stations' && <KitchenStationsCard settings={state.settings} products={state.products} session={session} lang={lang} notify={notify} onSave={(kitchenStations) => { void onSettings({ ...state.settings, kitchenStations }).then(() => notify(text('Saxlanıldı', 'Сохранено', 'Saved'))).catch((error: Error) => notify(error.message)); }}/>}
@@ -94,6 +97,8 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
           <h3>{tr(lang, 'display')}</h3>
           <Monitor />
         </div>
+        <label className="sale-images-setting"><input type="checkbox" checked={draft.showProductImages === true} onChange={event => setDraft({ ...draft, showProductImages: event.target.checked })}/><span><b>{text('Satışda məhsul şəkilləri', 'Изображения товаров при продаже', 'Product images in sales')}</b><small>{text('Standart olaraq bağlıdır. Məhsul adı, barkod, qiymət və stok görünür.', 'По умолчанию выключены. Название, штрихкод, цена и остаток видны.', 'Off by default. Names, barcodes, prices and stock remain visible.')}</small></span></label>
+        <button type="button" className="modal-primary" disabled={saving} onClick={() => void saveStore()}><Check/>{tr(lang, 'save')}</button>
         <div className="preset-grid">
           {display?.presets.map((preset) => (
             <button
@@ -151,6 +156,9 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
           type="button"
           className="modal-primary"
           onClick={() => void window.marketSystem?.activation.activate(session.sessionToken, activationKey).then((status) => {
+            // Another customer's account means another database: start the screens
+            // afresh rather than keep the previous customer's products on show.
+            if (activation?.customerId && status.customerId && status.customerId !== activation.customerId) { location.reload(); return; }
             setActivation(status);
             setMessage('Aktivasiya tamamlandı');
           }).catch((error: Error) => setMessage(error.message))}

@@ -1,6 +1,6 @@
 export type Lang = 'az' | 'ru' | 'en';
 export type Role = 'manager' | 'head_cashier' | 'cashier' | 'warehouse';
-export type View = 'dashboard' | 'sale' | 'ops' | 'inventory' | 'warehouses' | 'purchases' | 'returns' | 'reports' | 'registers' | 'staff' | 'mobile' | 'settings' | 'stocktake' | 'customers' | 'import' | 'platform' | 'support' | 'help';
+export type View = 'management' | 'branches' | 'dashboard' | 'sale' | 'ops' | 'inventory' | 'warehouses' | 'purchases' | 'returns' | 'reports' | 'registers' | 'staff' | 'mobile' | 'settings' | 'stocktake' | 'customers' | 'import' | 'platform' | 'support' | 'help';
 export type LocalizedText = Record<Lang, string>;
 export type ProductImage =
   | { kind: 'sprite'; index: number }
@@ -9,8 +9,8 @@ export type Product = { id: string; sku: string; barcode: string; internalCode?:
 /** A product as a form submits it: `stock` absent means "leave the quantity alone". */
 export type ProductDraft = Omit<Product, 'stock'> & { stock?: number };
 export type CartLine = { saleItemId?: number; productId: string; qty: number; /** Weight from a scale label, in thousandths (grams for kq). */ qtyMilli?: number; discountMinor?: number; note?: string };
-export type Payment = { method: 'cash' | 'card' | 'mixed' | 'credit' | 'loyalty'; amountMinor: number; tenderedMinor: number; changeMinor: number; cashMinor?: number; cardMinor?: number; creditMinor?: number; loyaltyMinor?: number; terminalRef?: string };
-export type Sale = { refunds?: Array<{ refundId: string; createdAt: number; lines: Array<{ productId: string; qty: number; amountMinor: number }> }>; id: string; receiptNo: string; createdAt: number; items: CartLine[]; subtotalMinor: number; discountMinor: number; totalMinor: number; payment: Payment; refunded: boolean; cashierId: string; registerId: string; customerId?: string; customerName?: string; loyaltyEarnedMinor?: number; loyaltyRedeemedMinor?: number; creditMinor?: number; note?: string };
+export type Payment = { customerId?:string; customerName?:string; method: 'cash' | 'card' | 'mixed' | 'credit' | 'loyalty'; amountMinor: number; tenderedMinor: number; changeMinor: number; cashMinor?: number; cardMinor?: number; creditMinor?: number; loyaltyMinor?: number; terminalRef?: string };
+export type Sale = { refunds?: Array<{ refundId: string; createdAt: number; lines: Array<{ saleItemId?: number; productId: string; qty: number; amountMinor: number }> }>; id: string; receiptNo: string; createdAt: number; items: CartLine[]; subtotalMinor: number; discountMinor: number; totalMinor: number; payment: Payment; refunded: boolean; cashierId: string; registerId: string; customerId?: string; customerName?: string; loyaltyEarnedMinor?: number; loyaltyRedeemedMinor?: number; creditMinor?: number; note?: string };
 export type PurchaseOrder = { id: string; documentNo?: string; supplier: string; expectedAt: string; createdAt: number; updatedAt?: number; createdBy: string; warehouseId: string; status: 'draft' | 'ordered' | 'received'; totalMinor?: number; paymentStatus?: 'unpaid' | 'partial' | 'paid'; lines: Array<{ id?: string; productId: string; qty: number; costMinor: number; returnedQty?: number }> };
 export type Warehouse = { id: string; code: string; name: string; address: string; manager: string; active: boolean };
 export type Register = { id: string; code: string; name: string; location: string; status: 'open' | 'closed'; operatorId?: string; openingFloatMinor: number; openedAt?: number };
@@ -19,12 +19,12 @@ export type Register = { id: string; code: string; name: string; location: strin
  * the source. Such a session is stripped of its role for core operations, so
  * manager actions stay blocked until a real PIN is set in Settings.
  */
-export type StaffProfile = { id: string; name: string; role: Role; active: boolean; registerIds: string[]; warehouseIds: string[]; mustChangePin?: boolean };
+export type StaffProfile = { salaryMinor?:number; employeeId?:string; id: string; name: string; role: Role; active: boolean; registerIds: string[]; warehouseIds: string[]; mustChangePin?: boolean; objectId?: string; branchId?: string; placesSet?: boolean };
 export type AuditEntry = { id: string; createdAt: number; actorId: string; action: string; detail: string };
 export type HeldCart = { id: string; label: string; createdAt: number; lines: CartLine[]; discountMinor?: number; customerId?: string; customerName?: string; note?: string };
-export type StoreSettings = { kitchenStations?: string; storeName: string; legalName: string; taxId: string; phone: string; address: string; terminalName: string; terminalNameUpdatedAt?: number | string; deviceRegisterId?: string; defaultWarehouseId: string; defaultRegisterId: string; logoUrl?: string; syncUrl: string; stockPolicy?: 'BLOCK_NEGATIVE_STOCK' | 'ALLOW_NEGATIVE_STOCK'; catalogSeedVersion?: string; sampleCatalog?: string; loyaltyRateBps?: number | string };
+export type StoreSettings = { showProductImages?: boolean; branchName?: string; kitchenStations?: string; storeName: string; legalName: string; taxId: string; phone: string; address: string; terminalName: string; terminalNameUpdatedAt?: number | string; deviceRegisterId?: string; defaultWarehouseId: string; defaultRegisterId: string; logoUrl?: string; syncUrl: string; stockPolicy?: 'BLOCK_NEGATIVE_STOCK' | 'ALLOW_NEGATIVE_STOCK'; catalogSeedVersion?: string; sampleCatalog?: string; loyaltyRateBps?: number | string };
 export type PersistedState = { schemaVersion: 4 | 5; products: Product[]; sales: Sale[]; purchaseOrders: PurchaseOrder[]; warehouses: Warehouse[]; registers: Register[]; heldCarts: HeldCart[]; audits: AuditEntry[]; settings: StoreSettings; syncQueue: number };
-export type SessionUser = StaffProfile & { sessionToken: string };
+export type SessionUser = StaffProfile & { sessionToken: string; /** POSSISTEM's own user (10-digit PIN). */ superAdmin?: boolean };
 export type UpdateStatus = { state: 'idle' } | { state: 'checking' } | { state: 'available'; version: string } | { state: 'not_available' } | { state: 'downloading'; percent: number } | { state: 'downloaded'; version: string } | { state: 'disabled'; message: string } | { state: 'error'; message: string };
 export type CustomerBranding = { productName?: string; tagline?: string; appMode?: 'restaurant' | 'market'; fontFamily?: 'montserrat' | 'manrope' | 'system'; density?: 'compact' | 'comfortable' | 'large'; primaryColor?: string; surfaceColor?: string; logoDataUrl?: string; backgroundDataUrl?: string; showProductImages?: boolean };
 export type ActivationStatus = { mode: 'unlicensed' | 'trial' | 'active' | 'expired' | 'revoked'; customerName: string; deviceId: string; serverDeviceId?: string; customerId?: string; validUntil: number; controlUrl: string; branding?: CustomerBranding | null; customer?: { legalName: string; address: string; phone: string; taxId: string } };

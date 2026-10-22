@@ -12,7 +12,7 @@ const oldQA=fs.readFileSync(path.resolve(root,'../restoranpos/scripts/qa-admin-r
 const mock=oldQA.slice(oldQA.indexOf('const mock=`')+12,oldQA.indexOf('`;\nconst fixture='));
 await build({stdin:{resolveDir:root,loader:'tsx',contents:`
 import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
-import {SettingsPage} from './src/SettingsPage';import {SalePage} from './src/App';import {createInitialState} from './src/data';import './src/styles.css';
+import {SettingsPage} from './src/SettingsPage';import {SalePage} from './src/App';import {createDemoState as createInitialState} from './src/data.demo';import './src/styles.css';
 ${mock}
 const qa=window.qa;qa.sales=0;qa.prints=0;qa.refreshes=0;qa.messages=[];qa.calls=[];
 window.marketOps={status:async()=>({host:true,state:'ready',available:true}),invoke:async({method,payload:p})=>{

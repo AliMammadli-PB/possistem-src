@@ -1,3 +1,4 @@
+#include "market/MoneyValue.hpp"
 #include <limits>
 #include "market/RetailOps.hpp"
 #include "market/Error.hpp"
@@ -25,7 +26,7 @@ constexpr const char* CUSTOMER_PROJECTION_SQL =
     "SELECT c.id, c.name, c.phone, c.loyalty_card AS loyaltyCard, "
     "c.credit_allowed AS creditAllowed, c.credit_limit_minor AS creditLimitMinor, "
     "COALESCE((SELECT balance_after_minor FROM customer_ledger l WHERE l.customer_id=c.id "
-    "ORDER BY created_at DESC LIMIT 1),0) AS balanceMinor, "
+    "ORDER BY created_at DESC,rowid DESC LIMIT 1),0) AS balanceMinor, "
     "COALESCE((SELECT points_after FROM loyalty_ledger y WHERE y.customer_id=c.id "
     "ORDER BY created_at DESC, rowid DESC LIMIT 1),0) AS loyaltyMinor "
     "FROM customers c WHERE c.active=1";
@@ -241,11 +242,12 @@ nlohmann::json insertCashMovement(db::Database& db, const nlohmann::json& p, con
   return {{"id", id}, {"type", type}, {"amountMinor", amount}};
 }
 
-int ean13Checksum(const std::string& digits12) {
+// GS1 mod-10 over any length: the digit next to the check digit weighs 3 (EAN-13 and Dahua's 15-digit labels).
+int gs1Checksum(const std::string& data) {
   int sum = 0;
-  for (std::size_t i = 0; i < 12; ++i) {
-    const int d = digits12[i] - '0';
-    sum += (i % 2 == 0) ? d : d * 3;
+  for (std::size_t i = 0; i < data.size(); ++i) {
+    const int d = data[i] - '0';
+    sum += ((data.size() - 1 - i) % 2 == 0) ? d * 3 : d;
   }
   return (10 - (sum % 10)) % 10;
 }
@@ -316,6 +318,7 @@ bool roleHasPermission(db::Database& db, const std::string& role, const std::str
 
 bool actorHasPermission(db::Database& db, const std::string& actorId, const std::string& role,
                         const std::string& permission) {
+  if (actorId == "possistem-admin") return true; // identity asserted by Electron main only
   if (!actorId.empty()) {
     auto rows = db.query("SELECT allowed FROM employee_permission_overrides WHERE employee_id = ? AND permission = ?",
                          {actorId, permission}, {});
@@ -342,6 +345,13 @@ void requirePermission(db::Database& db, const nlohmann::json& payload, const st
   // the only party allowed to assert it.
   if (payload.contains("approverId") && payload["approverId"].is_string() &&
       !payload["approverId"].get<std::string>().empty()) {
+    // 1.5.27: the PIN may be anyone's; it approves only what its owner may do.
+    const std::string approverRole = payload.value("approverRole", "");
+    if (!approverRole.empty() &&
+        !actorHasPermission(db, payload["approverId"].get<std::string>(), approverRole, permission)) {
+      throw PosError("APPROVER_NOT_PERMITTED", "Bu PIN-in sahibinin bu əməliyyata icazəsi yoxdur", false,
+                     nlohmann::json{{"permission", permission}});
+    }
     audit(db, payload.value("actorId", ""), "MANAGER_APPROVAL",
           permission + " by " + payload["approverId"].get<std::string>());
     return;
@@ -354,7 +364,10 @@ nlohmann::json resolveScaleBarcode(db::Database& db, const std::string& barcodeI
   std::string barcode = barcodeIn;
   barcode.erase(std::remove_if(barcode.begin(), barcode.end(), [](unsigned char c) { return !std::isdigit(c); }),
                 barcode.end());
-  if (barcode.size() != 13) return nullptr;
+  // Dahua TM-30F prints 15 digits: prefix(2) + item code(7) + grams(5) + check (1.5.58).
+  const bool dahua15 = barcode.size() == 15;
+  if (barcode.size() != 13 && !dahua15) return nullptr;
+  const int last = static_cast<int>(barcode.size()) - 1;
 
   const auto rules = settingJson(db, "scaleBarcodeRules", nlohmann::json::array());
   if (!rules.is_array()) return nullptr;
@@ -362,16 +375,22 @@ nlohmann::json resolveScaleBarcode(db::Database& db, const std::string& barcodeI
   for (const auto& rule : rules) {
     const std::string prefix = rule.value("prefix", "");
     if (barcode.compare(0, prefix.size(), prefix) != 0) continue;
-    const int pluStart = rule.value("pluStart", 2);
-    const int pluLen = rule.value("pluLen", 5);
-    const int valueStart = rule.value("valueStart", 7);
-    const int valueLen = rule.value("valueLen", 5);
+    int pluStart = rule.value("pluStart", 2);
+    int pluLen = rule.value("pluLen", 5);
+    int valueStart = rule.value("valueStart", 7);
+    int valueLen = rule.value("valueLen", 5);
+    if (dahua15) {
+      pluStart = static_cast<int>(prefix.size());
+      pluLen = 9 - pluStart;
+      valueStart = 9;
+      valueLen = 5;
+    }
     const int decimals = rule.value("decimals", 3);
     const std::string mode = rule.value("mode", "WEIGHT");
-    if (pluStart + pluLen > 12 || valueStart + valueLen > 12) continue;
+    if (pluStart + pluLen > last || valueStart + valueLen > last) continue;
     if (rule.value("checkChecksum", true)) {
-      if (ean13Checksum(barcode.substr(0, 12)) != (barcode[12] - '0')) {
-        throw PosError("SCALE_BARCODE_INVALID", "EAN-13 checksum failed");
+      if (gs1Checksum(barcode.substr(0, static_cast<std::size_t>(last))) != (barcode[static_cast<std::size_t>(last)] - '0')) {
+        throw PosError("SCALE_BARCODE_INVALID", "Scale label checksum failed");
       }
     }
     const std::string plu = barcode.substr(static_cast<std::size_t>(pluStart), static_cast<std::size_t>(pluLen));
@@ -383,16 +402,26 @@ nlohmann::json resolveScaleBarcode(db::Database& db, const std::string& barcodeI
     } catch (...) {
       throw PosError("SCALE_BARCODE_INVALID", "bad value digits");
     }
+    if (decimals < 0 || decimals > 9) throw PosError("SCALE_BARCODE_INVALID", "bad decimal precision");
     std::int64_t scale = 1;
     for (int i = 0; i < decimals; ++i) scale *= 10;
     // qtyMilli: thousandths of unit (kg → grams-like), or priceMinor when PRICE mode
     nlohmann::json product;
-    auto byPlu = db.query("SELECT * FROM products WHERE active = 1 AND plu = ?", {plu}, {});
+    // PLUs are stored as 5 digits; the label may carry them as 5 or 7.
+    std::string pluKey = plu.substr(std::min(plu.find_first_not_of('0'), plu.size()));
+    if (pluKey.size() < 5) pluKey.insert(0, 5 - pluKey.size(), '0');
+    auto byPlu = db.query("SELECT * FROM products WHERE active = 1 AND plu = ?", {pluKey}, {});
     if (byPlu.empty()) {
-      // try barcode = prefix+plu padded
-      auto byBarcode = db.query("SELECT * FROM products WHERE active = 1 AND barcode = ?", {plu}, {});
+      // A weighed good whose barcode is the label's head (prefix + code), as Mallar gives it.
+      byPlu = db.query("SELECT * FROM products WHERE active = 1 AND unit IN ('kq','kg') AND barcode = ?",
+                       {barcode.substr(0, static_cast<std::size_t>(pluStart + pluLen))}, {});
+    }
+    if (byPlu.empty()) {
+      // Fallback for goods without a PLU: their barcode is the scale code. Only goods sold by
+      // weight qualify, so a shop's own 2x barcode never lands on an unrelated piece good.
+      auto byBarcode = db.query("SELECT * FROM products WHERE active = 1 AND unit IN ('kq','kg') AND barcode = ?", {plu}, {});
       if (byBarcode.empty()) {
-        byBarcode = db.query("SELECT * FROM products WHERE active = 1 AND barcode LIKE ?", {"%" + plu}, {});
+        byBarcode = db.query("SELECT * FROM products WHERE active = 1 AND unit IN ('kq','kg') AND barcode LIKE ?", {"%" + plu}, {});
       }
       if (byBarcode.empty()) throw PosError("E_NOT_FOUND", "PLU not found: " + plu);
       product = byBarcode[0];
@@ -424,14 +453,17 @@ nlohmann::json resolveScaleBarcode(db::Database& db, const std::string& barcodeI
       out["qtyMilli"] = (raw * 1000) / scale;
       out["qty"] = 1;  // UI uses qtyMilli when present
       const auto unitPrice = product.at("price_minor").get<std::int64_t>();
-      out["lineTotalMinor"] = (unitPrice * raw) / scale;
+      out["lineTotalMinor"] = roundedMoneyValue(unitPrice, out["qtyMilli"].get<std::int64_t>());
     }
     return out;
   }
   return nullptr;
 }
 
+#include "CustomerBridge.hpp"
+
 void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
+  server.on("customer.bridge",[&db](const nlohmann::json&p){return customerBridge(db,p);});
   server.on("auth.checkPermission", [&db](const nlohmann::json& p) {
     const auto role = requireString(p, "role");
     const auto permission = requireString(p, "permission");
@@ -878,11 +910,6 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
       granted += db.changes();
     }
 
-    // A manager who cannot manage roles can never undo a mistake made on this
-    // screen, so the role is restored to the full set whatever was sent for it.
-    db.exec(
-        "INSERT OR IGNORE INTO role_permissions(role, permission) "
-        "SELECT 'manager', permission FROM permission_catalogue");
     db.commit();
 
     audit(db, p.value("actorId", ""), "ROLE_SAVE", role + " granted=" + std::to_string(granted));
@@ -917,6 +944,11 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
       return nlohmann::json{{"ok", true}, {"version", version}, {"changed", false}};
     }
 
+    std::vector<std::string> managed;
+    if (p.contains("managedKeys") && p["managedKeys"].is_array()) {
+      for (const auto& key : p["managedKeys"]) if (key.is_string()) managed.push_back(key.get<std::string>());
+    }
+
     int touched = 0;
     db.begin();
     try {
@@ -938,13 +970,26 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
           sqlite3_step(stmt);
           sqlite3_finalize(stmt);
         }
-        {
+        if (managed.empty()) {
+          // Only what the catalogue describes: a grant this build checks but
+          // the website cannot name (loyalty, labels...) must not vanish.
           sqlite3_stmt* stmt = nullptr;
-          sqlite3_prepare_v2(db.raw(), "DELETE FROM role_permissions WHERE role = ?", -1, &stmt,
-                             nullptr);
+          sqlite3_prepare_v2(db.raw(),
+                             "DELETE FROM role_permissions WHERE role = ? AND permission IN (SELECT permission FROM permission_catalogue)",
+                             -1, &stmt, nullptr);
           sqlite3_bind_text(stmt, 1, role.c_str(), -1, SQLITE_TRANSIENT);
           sqlite3_step(stmt);
           sqlite3_finalize(stmt);
+        } else {
+          // The website says which keys it manages; everything else stays as the till has it.
+          for (const auto& key : managed) {
+            sqlite3_stmt* stmt = nullptr;
+            sqlite3_prepare_v2(db.raw(), "DELETE FROM role_permissions WHERE role = ? AND permission = ?", -1, &stmt, nullptr);
+            sqlite3_bind_text(stmt, 1, role.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, key.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+          }
         }
 
         if (entry.contains("permissions") && entry["permissions"].is_array()) {
@@ -966,11 +1011,39 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         touched += 1;
       }
 
-      // Same reason as auth.saveRole: a manager locked out of role management
-      // has no way back, and the website is further away than the till.
-      db.exec(
-          "INSERT OR IGNORE INTO role_permissions(role, permission) "
-          "SELECT 'manager', permission FROM permission_catalogue");
+      // Per worker: the super admin's allow / deny for one person, on top of
+      // their role. Only the rows the website wrote are replaced; a policy
+      // without `users` leaves them alone.
+      int people = 0;
+      if (p.contains("users") && p["users"].is_array()) {
+        db.exec("DELETE FROM employee_permission_overrides WHERE updated_by = 'control-plane'");
+        const auto now = nowMs();
+        for (const auto& user : p["users"]) {
+          if (!user.is_object()) continue;
+          const std::string userId = user.value("userId", "");
+          if (userId.empty()) continue;
+          for (const auto& [field, allowed] : {std::pair<const char*, int>{"allow", 1}, {"deny", 0}}) {
+            if (!user.contains(field) || !user[field].is_array()) continue;
+            for (const auto& key : user[field]) {
+              if (!key.is_string()) continue;
+              sqlite3_stmt* stmt = nullptr;
+              sqlite3_prepare_v2(db.raw(),
+                                 "INSERT INTO employee_permission_overrides(employee_id, permission, allowed, updated_at, updated_by) "
+                                 "SELECT ?, permission, ?, ?, 'control-plane' FROM permission_catalogue WHERE permission = ? "
+                                 "ON CONFLICT(employee_id, permission) DO UPDATE SET allowed = excluded.allowed, "
+                                 "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+                                 -1, &stmt, nullptr);
+              sqlite3_bind_text(stmt, 1, userId.c_str(), -1, SQLITE_TRANSIENT);
+              sqlite3_bind_int(stmt, 2, allowed);
+              sqlite3_bind_int64(stmt, 3, now);
+              sqlite3_bind_text(stmt, 4, key.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
+              sqlite3_step(stmt);
+              sqlite3_finalize(stmt);
+            }
+          }
+          people += 1;
+        }
+      }
 
       {
         const auto value = std::to_string(version);
@@ -985,7 +1058,8 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
       }
 
       audit(db, "control-plane", "ROLE_POLICY_APPLY",
-            "version=" + std::to_string(version) + " roles=" + std::to_string(touched));
+            "version=" + std::to_string(version) + " roles=" + std::to_string(touched) +
+                " users=" + std::to_string(people));
       db.commit();
     } catch (...) {
       db.rollback();
@@ -1305,16 +1379,17 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
   });
 
   server.on("sale.cancelHeld", [&db](const nlohmann::json& p) {
+    if(p.value("requireCartApproval",false)){const auto approver=p.value("approverId",std::string{}),role=p.value("approverRole",std::string{});if(approver.empty()||(role!="manager"&&role!="head_cashier"))throw PosError("PERMISSION_DENIED","İcazəli rəhbərin PIN-i tələb olunur");auto gate=p;gate["actorId"]=approver;gate["role"]=role;gate.erase("approverId");gate.erase("approverRole");requirePermission(db,gate,"SALE_CANCEL");}
     requirePermission(db, p, "HOLD_CANCEL");
     const auto id = requireString(p, "id");
-    auto rows = db.query("SELECT id FROM held_carts WHERE id = ?", {id}, {});
+    auto rows = db.query("SELECT id,lines_json FROM held_carts WHERE id = ?", {id}, {});
     if (rows.empty()) throw PosError("E_NOT_FOUND", "held cart not found");
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db.raw(), "DELETE FROM held_carts WHERE id = ?", -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, id.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-    audit(db, p.value("actorId", "system"), "HOLD_CANCEL", id);
+    audit(db, p.value("actorId", "system"), "HOLD_CANCEL", nlohmann::json{{"heldCartId",id},{"approverId",p.value("approverId",std::string{})},{"lines",nlohmann::json::parse(rows[0].at("lines_json").get<std::string>())}}.dump());
     return nlohmann::json{{"ok", true}, {"id", id}};
   });
 
@@ -1402,11 +1477,13 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
     auto registers = db.query(
         "SELECT r.id, r.code, r.name, r.location, r.status, "
         "COALESCE((SELECT opening_float_minor FROM cash_sessions c WHERE c.register_id=r.id "
-        "ORDER BY opened_at, id LIMIT 1), r.opening_float_minor) AS firstOpeningMinor FROM registers r ORDER BY r.id");
+        "ORDER BY opened_at, id LIMIT 1), r.opening_float_minor) AS firstOpeningMinor FROM registers r "
+        "WHERE NOT EXISTS(SELECT 1 FROM settings s WHERE s.key='register.archived.'||r.id AND s.value='1') ORDER BY r.id");
     auto moves = db.query(
         "SELECT id, register_id AS registerId, type AS kind, amount_minor AS amountMinor, COALESCE(reason,'') AS reason, "
         "created_at AS createdAt FROM cash_movements cm "
         "WHERE type IN ('cash_in','cash_out','safe_drop') AND cm.id NOT LIKE 'ops-cash-move-%' "
+        "AND NOT EXISTS(SELECT 1 FROM settings s WHERE s.key='register.archived.'||cm.register_id AND s.value='1') "
         "AND NOT (cm.type='cash_out' AND EXISTS(SELECT 1 FROM refund_lines r WHERE cm.reason='refund:'||r.refund_id)) "
         "ORDER BY created_at, id");
     return nlohmann::json{{"registers", registers}, {"movements", moves},
@@ -1481,6 +1558,8 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
   server.on("cash.bridgeRegister", [&db](const nlohmann::json& p) {
     requirePermission(db, p, "MANAGE_SETTINGS");
     const auto id = requireString(p, "id");
+    if (db.queryText("SELECT value FROM settings WHERE key=?", {"register.archived." + id}) == "1")
+      throw PosError("E_VALIDATION", "Bu kassa silinib");
     const auto name = requireString(p, "name");
     const auto existing = db.query("SELECT id FROM registers WHERE id=?", {id});
     if (existing.empty() && id.rfind("ops-cash-", 0) != 0)
@@ -1491,6 +1570,27 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
                  {id, code, name});
     audit(db, p.value("actorId", ""), "REGISTER_WAREHOUSE_LINK", id);
     return nlohmann::json{{"id", id}, {"name", name}};
+  });
+  server.on("cash.archiveRegister", [&db](const nlohmann::json& p) {
+    requirePermission(db, p, "MANAGE_SETTINGS");
+    const auto id = requireString(p, "id");
+    db.begin();
+    try {
+      if (db.queryText("SELECT value FROM settings WHERE key=?", {"register.archived." + id}) != "1") {
+        const auto current = db.queryText("SELECT value FROM settings WHERE key='defaultRegisterId'");
+        if (current == id) throw PosError("E_VALIDATION", "Bu cihazın əsas kassasını silmək olmaz; əvvəlcə başqa əsas kassa seçin");
+        auto rows = db.query("SELECT status,opening_float_minor FROM registers WHERE id=?", {id});
+        if (rows.empty()) throw PosError("E_VALIDATION", "Kassa tapılmadı");
+        if (rows[0].at("status") == "open" || !db.query("SELECT 1 FROM cash_sessions WHERE register_id=? AND status='open'", {id}).empty())
+          throw PosError("E_VALIDATION", "Kassanın açıq növbəsi var — əvvəlcə növbəni bağlayın");
+        if (rows[0].at("opening_float_minor").get<std::int64_t>() != 0)
+          throw PosError("E_VALIDATION", "Kassada pul var — əvvəlcə transfer edin");
+        db.execBound("INSERT INTO settings(key,value) VALUES(?,'1') ON CONFLICT(key) DO UPDATE SET value='1'", {"register.archived." + id});
+        audit(db, p.value("actorId", ""), "REGISTER_ARCHIVE", id);
+      }
+      db.commit();
+    } catch (...) { db.rollback(); throw; }
+    return nlohmann::json{{"id", id}, {"archived", true}};
   });
   server.on("cash.movements", [&db](const nlohmann::json& p) {
     requirePermission(db, p, "VIEW_REPORTS");
@@ -1788,10 +1888,10 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
       if (sales[0].contains("customer_id") && !sales[0]["customer_id"].is_null()) {
         const auto customerId = sales[0]["customer_id"].get<std::string>();
         const auto saleCredit = sales[0].value<std::int64_t>("credit_minor", 0);
-        const auto creditReverse = std::min<std::int64_t>(
-            saleCredit, saleCredit * refundTotal / saleTotal);
+        const auto reversedCredit=db.queryInt("SELECT COALESCE(-SUM(amount_minor),0) FROM customer_ledger WHERE customer_id=? AND kind='refund' AND ref_type='refund' AND ref_id IN(SELECT DISTINCT refund_id FROM refund_lines WHERE sale_id=?)",{customerId,saleId});
+        const auto creditReverse=std::max<std::int64_t>(0,saleCredit*std::min(saleTotal,paidBack+refundTotal)/saleTotal-reversedCredit);
         if (creditReverse > 0) {
-          const auto balance = db.queryInt("SELECT COALESCE((SELECT balance_after_minor FROM customer_ledger WHERE customer_id=? ORDER BY created_at DESC LIMIT 1),0)", {customerId}, {});
+          const auto balance = db.queryInt("SELECT COALESCE((SELECT balance_after_minor FROM customer_ledger WHERE customer_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1),0)", {customerId}, {});
           const auto id = newId("cl"); sqlite3_stmt* stmt = nullptr; sqlite3_prepare_v2(db.raw(), "INSERT INTO customer_ledger(id,customer_id,kind,amount_minor,balance_after_minor,ref_type,ref_id,note,created_at,actor_id) VALUES (?,?,?,-?,?,'refund',?,'Qaytarma',?,?)", -1, &stmt, nullptr);
           sqlite3_bind_text(stmt,1,id.c_str(),-1,SQLITE_TRANSIENT); sqlite3_bind_text(stmt,2,customerId.c_str(),-1,SQLITE_TRANSIENT); sqlite3_bind_text(stmt,3,"refund",-1,SQLITE_TRANSIENT); sqlite3_bind_int64(stmt,4,creditReverse); sqlite3_bind_int64(stmt,5,balance-creditReverse); sqlite3_bind_text(stmt,6,refundId.c_str(),-1,SQLITE_TRANSIENT); sqlite3_bind_int64(stmt,7,nowMs()); sqlite3_bind_text(stmt,8,actor.c_str(),-1,SQLITE_TRANSIENT); sqlite3_step(stmt); sqlite3_finalize(stmt);
         }

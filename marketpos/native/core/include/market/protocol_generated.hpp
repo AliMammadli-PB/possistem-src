@@ -29,6 +29,7 @@ inline constexpr std::string_view InvalidRefundQuantity = "INVALID_REFUND_QUANTI
 inline constexpr std::string_view CreditLimitExceeded = "CREDIT_LIMIT_EXCEEDED";
 inline constexpr std::string_view PromotionConflict = "PROMOTION_CONFLICT";
 inline constexpr std::string_view StockWarn = "STOCK_WARN";
+inline constexpr std::string_view CartApprovalRequired = "CART_APPROVAL_REQUIRED";
 }  // namespace errors
 inline constexpr std::string_view kMethods[] = {
   "core.ping",
@@ -65,6 +66,7 @@ inline constexpr std::string_view kMethods[] = {
   "sale.resume",
   "sale.listHeld",
   "sale.cancelHeld",
+  "sale.voidLine",
   "sale.discardDraft",
   "sale.overridePrice",
   "sale.receipt",
@@ -128,6 +130,9 @@ inline constexpr std::string_view kMethods[] = {
   "platform.priceScopes",
   "platform.eqaimeStatus",
   "platform.aggregatorStatus",
+  "cart.state",
+  "cart.sync",
+  "cart.approve",
 };
-inline constexpr std::size_t kMethodCount = 97;
+inline constexpr std::size_t kMethodCount = 101;
 }  // namespace market::protocol

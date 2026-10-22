@@ -157,7 +157,15 @@ const {
   pinMatches,
   findStaffByPin,
   pinTaken,
+  mergeStaff,
 } = require('./staff-auth.cjs');
+const { SUPER_ADMIN, verifySuperAdmin, startsSuperAdmin, isSuperAdminPin } = require('./superadmin.cjs');
+/** The account's staff plus POSSISTEM's super admin once its PIN reached this till. */
+const staffWithAdmin = (state) => (state.superAdmin ? [...state.staff, SUPER_ADMIN] : state.staff);
+/** A staff PIN may not start like the super admin PIN (the pad would wait for 10 digits). */
+function assertNotAdminPrefix(pin) {
+  if (startsSuperAdmin(loadSecureState().superAdmin, String(pin).slice(0, 4))) throw new Error('Bu PIN istifadə edilə bilməz — başqa PIN seçin');
+}
 const { registerHardwareIpc } = require('./hardware-ipc.cjs');
 const { createEncryptionKey } = require('./lan-crypto.cjs');
 const LEGACY_STAFF_NAMES = { 'Aysel Məmmədova': 'MarketPos Müdir', 'Murad Əliyev': 'MarketPos Baş kassir', 'Nigar Kərimova': 'MarketPos Kassir', 'Elvin Qasımov': 'MarketPos Anbar' };
@@ -301,6 +309,9 @@ function loadSecureState() {
       parsed.deviceProof = { ...parsed.deviceProof, ...createEncryptionKey() };
       dirty = true;
     }
+    // 1.5.33: the shipped demo accounts (published PINs) are gone.
+    const real = parsed.staff.filter((user) => !pinIsShippedDefault(user));
+    if (real.length !== parsed.staff.length) { parsed.staff = real; dirty = true; }
     const renamed = parsed.staff.some((user) => LEGACY_STAFF_NAMES[user.name]);
     if (renamed) {
       parsed.staff = parsed.staff.map((user) => ({ ...user, name: LEGACY_STAFF_NAMES[user.name] || user.name }));
@@ -398,7 +409,25 @@ function assertTrusted(event) {
  * produce an `approverId`. Throttled, and never satisfied by a published PIN.
  */
 function verifyManagerPin(pin) {
-  return verifyManagerPinAgainst(loadSecureState().staff, String(pin || ''), approvalLimiter);
+  if (/^\d{10}$/.test(String(pin || ''))) {
+    approvalLimiter.assertOpen('manager-approval');
+    if(isSuperAdminPin(loadSecureState().superAdmin,String(pin))){approvalLimiter.succeed('manager-approval');return {ok:true,approverId:SUPER_ADMIN.id,role:SUPER_ADMIN.role};}
+    approvalLimiter.fail('manager-approval');return {ok:false};
+  }
+  // The core checks the approver's own rights (approverRole); see core-payload.cjs.
+  return verifyManagerPinAgainst(loadSecureState().staff, String(pin || ''), approvalLimiter, 'manager-approval', { anyRole: true });
+}
+
+async function operationApproval(input, actor, method) {
+  try {
+    const state=loadSecureState();
+    return await require('./operation-approval.cjs').approveOperation({
+      pin:String(input?.managerPin || input?.superAdminPin || ''),
+      staff:state.staff,superAdmin:state.superAdmin,superIdentity:SUPER_ADMIN,
+      verifySuperPin:isSuperAdminPin,limiter:approvalLimiter,superOnly:method==='permissions.save',
+      record:approver=>coreSupervisor.invoke('auth.recordApproval', {actorId:actor.id,role:actor.role,permission:'MANAGER:'+method,approverId:approver.id})
+    });
+  } catch(error) {return opsFail(error.code || 'E_APPROVAL',error.message || 'Təsdiq alınmadı');}
 }
 
 /** The operator signed in at this till, or '' when nobody is. */
@@ -410,11 +439,27 @@ let currentSessionToken = '';
  * flow passes that.
  */
 function requireSession(token, roles, options = {}) {
-  return resolveSessionUser(authSessions, loadSecureState().staff, token, { roles, ...options });
+  return resolveSessionUser(authSessions, staffWithAdmin(loadSecureState()), token, { roles, ...options });
+}
+
+/**
+ * Every permission key a user holds: role grants plus the super admin's
+ * per-worker overrides (core); POSSISTEM's own user holds all of them.
+ */
+async function rightsOf(user) {
+  const catalogue = await coreSupervisor.invoke('auth.permissionCatalogue', {});
+  const keys = require('./operation-access.cjs').catalogueKeys(catalogue);
+  if (user.superAdmin) return [...keys, 'SUPER_ADMIN'];
+  const checked = await Promise.all(keys.map(async (permission) => {
+    const res = await coreSupervisor.invoke('auth.checkPermission', { actorId: user.id, role: user.role, permission });
+    return res?.success && res.data?.allowed ? permission : '';
+  }));
+  return checked.filter(Boolean);
 }
 
 async function requireCorePermission(token, permission) {
   const user = requireSession(token);
+  if (user.superAdmin) return user;
   const result = await coreSupervisor.invoke('auth.checkPermission', {
     actorId: user.id,
     role: user.role,
@@ -528,11 +573,12 @@ function signedMarketDeviceCall(state) {
  * internet keeps the policy it already applied and keeps selling.
  */
 let lastRolePullAt = 0;
-async function syncRolePolicy(state) {
+async function syncRolePolicy(state, { force = false } = {}) {
   // The renderer pushes a heartbeat far more often than a policy changes.
   // Same pace as the heartbeat (30 s), so a role revoked on the website stops
   // working on the till in about half a minute rather than two.
-  if (Date.now() - lastRolePullAt < 30000) return;
+  if (Date.now() - lastRolePullAt < (force ? 5000 : 30000)) return;
+  if (state.activation?.mode !== 'active' || !state.activation.serverDeviceId) return;
   lastRolePullAt = Date.now();
   try {
     const response = await fetch(controlApi('/market-pos/roles'), {
@@ -543,14 +589,129 @@ async function syncRolePolicy(state) {
     });
     if (!response.ok) return;
     const policy = await response.json();
-    if (!policy?.version || !Array.isArray(policy.roles) || policy.roles.length === 0) return;
+    // POSSISTEM's PIN: kept only when signed with this till's licence key; an
+    // explicit null (PIN removed on the website) clears it.
+    if (policy && 'superAdmin' in policy) {
+      const fresh = loadSecureState();
+      const record = policy.superAdmin ? verifySuperAdmin(policy.superAdmin, { publicKeyHex: fresh.pinnedLicenseKey?.publicKeyHex, customerId: fresh.activation.customerId, deviceId: fresh.activation.serverDeviceId }) : null;
+      if ((record || policy.superAdmin === null) && JSON.stringify(record) !== JSON.stringify(fresh.superAdmin ?? null)) {
+        fresh.superAdmin = record;
+        saveSecureState(fresh);
+      }
+    }
+    const users = Array.isArray(policy?.users) ? policy.users : null;
+    if (!policy?.version || !Array.isArray(policy.roles) || (policy.roles.length === 0 && !users?.length)) return;
     await coreSupervisor.invoke(
       'roles.applyPolicy',
-      { policySource: 'control-plane', version: policy.version, roles: policy.roles },
+      // users: the super admin's allow / deny for single workers (employee overrides).
+      { policySource: 'control-plane', version: policy.version, roles: policy.roles, ...(users ? { users } : {}), ...(Array.isArray(policy.managedKeys) ? { managedKeys: policy.managedKeys } : {}) },
       15000,
     );
   } catch {
     // Offline, or the core is restarting: the next heartbeat tries again.
+  }
+}
+
+let purgingDemo = false, demoPurgeTriedAt = 0;
+/**
+ * 1.5.33: older versions' demo catalogue (p-wolt-*) reached some accounts from a
+ * browser cache. Once per account on every PC (the warehouse PC also takes its
+ * goods out of Mallar - ops-engine purgeDemoCatalog).
+ */
+async function purgeDemoProducts(customerId) {
+  if (purgingDemo || !customerId) return;
+  // At most hourly: a product the core refuses must not rescan the catalogue every heartbeat.
+  purgingDemo = true; demoPurgeTriedAt = Date.now();
+  try {
+    const list = await coreSupervisor.invoke('product.list', { activeOnly: true }, 60000);
+    if (!list?.success || !Array.isArray(list.data)) return;
+    for (const p of list.data.filter((row) => String(row.id).startsWith('p-wolt-'))) {
+      const res = await coreSupervisor.invoke('product.delete', { id: p.id, actorId: 'system' }, 15000);
+      if (!res?.success) return;
+    }
+    const state = loadSecureState();
+    state.demoPurgedFor = customerId;
+    saveSecureState(state);
+  } catch (error) {
+    console.error('[demo-purge]', error?.message || error);
+  } finally {
+    purgingDemo = false;
+  }
+}
+
+/**
+ * Branches' warehouses for each other and for the website (1.5.41): the
+ * warehouse PC sends its stock when it changed (or every 5 min), and every PC
+ * keeps the other branches' last copies on disk - an offline branch still shows
+ * what it had when it was last online.
+ */
+const branchStockFile = (customerId) => userDataFile(`branch-stock-${String(customerId).replace(/[^\w-]/g, '')}.json`);
+const branchStockSync = new Map();
+function readBranchStock(state) {
+  try {
+    const cached = JSON.parse(readFileSync(branchStockFile(state.activation.customerId), 'utf8'));
+    return { at: Number(cached.at) || 0, branches: Array.isArray(cached.branches) ? cached.branches : [] };
+  } catch { return { at: 0, branches: [] }; }
+}
+async function syncBranchStock(state, force = false, knownSnapshot) {
+  const activation = state.activation;
+  if (activation?.mode !== 'active' || !activation.serverDeviceId || !activation.customerId) return;
+  const key = activation.customerId + ':' + activation.serverDeviceId + ':' + (activation.cloudBranchId || '');
+  const record = branchStockSync.get(key) || { hash: '', sentAt: 0, pulledAt: 0, pending: null };
+  branchStockSync.set(key, record);
+  if (record.pending) return record.pending;
+  if (Date.now() - record.pulledAt < (force ? 5000 : 15000)) return;
+  record.pulledAt = Date.now();
+  record.pending = (async () => {
+    try {
+      const snapshot = knownSnapshot === undefined ? await opsEngine.stockSnapshot().catch(() => null) : knownSnapshot;
+      const hash = snapshot ? createHash('sha256').update(JSON.stringify([snapshot.objectId, snapshot.warehouses, snapshot.lines, snapshot.registers])).digest('hex') : '';
+      const send = Boolean(snapshot) && (hash !== record.hash || Date.now() - record.sentAt > 60000);
+      const response = await fetch(controlApi('/market-pos/branch-stock'), {
+        method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ ...signedMarketDeviceCall(state), ...(send ? { snapshot } : {}) }), signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      // A pending request cannot overwrite a different account's cache after a login or branch switch.
+      const current = loadSecureState().activation;
+      if (current?.customerId !== activation.customerId || current?.serverDeviceId !== activation.serverDeviceId || current?.cloudBranchId !== activation.cloudBranchId) return;
+      if (send) Object.assign(record, { hash, sentAt: Date.now() });
+      if (Array.isArray(data?.branches)) writeFileSync(branchStockFile(activation.customerId), JSON.stringify({ at: Date.now(), branches: data.branches }));
+    } catch { /* Last confirmed copies remain available while disconnected. */ }
+  })().finally(() => { record.pending = null; });
+  return record.pending;
+}
+
+let lastStaffSyncAt = 0;
+/**
+ * The account's users on every PC: send ours (salted PIN hashes, never a PIN),
+ * take back anyone changed later elsewhere. Shipped placeholder accounts
+ * (published PINs) are not sent; a real account with the same id replaces them.
+ */
+async function syncStaff(state, { force = false } = {}) {
+  if (!force && Date.now() - lastStaffSyncAt < 30000) return;
+  if (state.activation?.mode !== 'active' || !state.activation.serverDeviceId) return;
+  lastStaffSyncAt = Date.now();
+  try {
+    const mine = state.staff.filter((row) => !pinIsShippedDefault(row)).map((row) => ({
+      id: String(row.id), name: String(row.name || '').slice(0, 80), role: row.role, active: row.active !== false,
+      salt: row.salt, pinHash: row.pinHash, registerIds: row.registerIds || [], warehouseIds: row.warehouseIds || [],
+      objectId: String(row.objectId || ''), branchId: String(row.branchId || ''), placesSet: Boolean(row.placesSet), deleted: false, updatedAt: Number(row.updatedAt) || 1,
+      salaryMinor: Math.max(0, Math.round(Number(row.salaryMinor) || 0)), ...(row.employeeId ? { employeeId: String(row.employeeId) } : {}),
+    }));
+    const response = await fetch(controlApi('/market-pos/staff/sync'), {
+      method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ ...signedMarketDeviceCall(state), staff: mine }), signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return;
+    const remote = (await response.json())?.staff;
+    if (!Array.isArray(remote)) return;
+    const fresh = loadSecureState();
+    const merged = mergeStaff(fresh.staff, remote);
+    if (merged !== fresh.staff) { fresh.staff = merged; saveSecureState(fresh); }
+  } catch {
+    // Offline: the next heartbeat tries again; sign-in uses what this PC has.
   }
 }
 
@@ -856,25 +1017,97 @@ async function redeemMarketActivation(state, activationKey) {
   return verifyOnlineLicense(await response.json(), state);
 }
 
+/**
+ * The owner's email/password session activates this PC (no key per PC): the
+ * control plane checks the account's free PC slots and answers exactly as
+ * /activation/redeem does. The device key signs the request, so a PC that was
+ * another account's till before can be moved here only by itself.
+ */
+async function tenantActivateMarket(state) {
+  if (!state.tenant?.token) throw new Error('Əvvəlcə müştəri hesabına daxil olun');
+  const signedAt = new Date().toISOString();
+  const nonce = randomBytes(16).toString('hex');
+  const body = {
+    deviceFingerprint: state.activation.deviceId, hostname: hostname(), appVersion: app.getVersion(),
+    devicePublicKey: state.deviceProof.publicKeyHex, product: 'market', signedAt, nonce,
+  };
+  const canonical = stableStringify({ purpose: 'tenant-activate', deviceFingerprint: body.deviceFingerprint, devicePublicKey: body.devicePublicKey, signedAt, nonce });
+  const privateKey = createPrivateKey({ key: Buffer.from(state.deviceProof.privateKeyPkcs8, 'base64'), type: 'pkcs8', format: 'der' });
+  body.deviceSignature = signPayload(null, Buffer.from(canonical, 'utf8'), privateKey).toString('hex');
+  const response = await fetch(controlApi('/tenant/pos/activate'), {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${state.tenant.token}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({}));
+    throw new Error(problem.error || `Aktivasiya serveri xətası (${response.status})`);
+  }
+  return verifyOnlineLicense(await response.json(), state);
+}
+
+/**
+ * Another account signed in on this PC: the users, sign-in and activation were
+ * the previous account's (its PINs kept working, its objects were refused).
+ * Start this account clean: activate with its key, its users come from the cloud.
+ * Mutates state; the caller saves. Returns whether anything was reset.
+ */
+async function forgetPreviousAccount(state) {
+  const previous = String(state.activation?.customerId || state.lastCustomerId || '');
+  const current = String(state.tenant?.customerId || '');
+  if (!previous || !current || previous === current) return false;
+  state.staff = DEFAULT_STAFF;
+  state.staffSession = null;
+  state.pinnedLicenseKey = null;
+  state.superAdmin = null;
+  state.activation = { ...defaultSecureState().activation, deviceId: state.activation.deviceId, customerName: state.tenant.customerName };
+  state.lastCustomerId = current;
+  authSessions.clear();
+  currentSessionToken = '';
+  if (syncService) await syncService.stop().catch(() => undefined);
+  await opsEngine.stop().catch(() => undefined);
+  return true;
+}
+
 function registerIpc() {
   ipcMain.handle('market:staff:list', (event) => { assertTrusted(event); return loadSecureState().staff.map(publicStaff); });
-  ipcMain.handle('market:auth:login', (event, input) => {
+  ipcMain.handle('market:auth:login', async (event, input) => {
     assertTrusted(event);
     const state = loadSecureState();
     if (!state.tenant?.token) throw new Error('Əvvəlcə müştəri hesabına daxil olun');
     if (!licenseAllowsStaffLogin(state.activation)) throw new Error('Cihaz aktivləşdirilməyib');
+    if (state.activation.customerId && state.activation.customerId !== state.tenant.customerId) {
+      throw new Error('Bu kassa başqa hesabın lisenziyası ilədir — bu hesabın aktivasiya açarını daxil edin');
+    }
     const pin = String(input?.pin || '');
     // No userId: the PIN alone names the person, as on the restaurant till.
     // The till, not an account, is what gets guessed at, so it is what locks.
     const limiterKey = String(input?.userId || '') || 'pin-only';
     loginLimiter.assertOpen(limiterKey);
-    const user = input?.userId
+    const user = isSuperAdminPin(state.superAdmin, pin) ? SUPER_ADMIN : input?.userId
       ? state.staff.find((row) => row.id === String(input.userId) && row.active && pinMatches(row, pin))
       : findStaffByPin(state.staff, pin);
     if (!user) {
       loginLimiter.fail(limiterKey);
       throw new Error('Giriş kodu yanlışdır');
     }
+    // A worker POSSISTEM put in one filial signs in only on that filial's PCs.
+    if (!user.superAdmin && user.branchId && state.activation.cloudBranchId && user.branchId !== state.activation.cloudBranchId) {
+      loginLimiter.fail(limiterKey);
+      throw new Error('Bu işçi bu filiala aid deyil');
+    }
+    // A user bound to kassas on the users screen signs in only at those kassas.
+    const here = opsEngine.cashCurrentRegisterId;
+    // Unknown kassa (a new PC before its kassa is set up): staff wait, a manager may sign in to set it up.
+    if (!user.superAdmin && user.placesSet && user.registerIds?.length && (here ? !user.registerIds.includes(here) : user.role !== 'manager')) {
+      throw new Error('Bu istifadəçi bu kassaya bağlı deyil');
+    }
+    if (!user.superAdmin && user.objectId && !user.branchId) {
+      const local=await opsEngine.branchContext().catch(()=>{throw Error('Anbar sistemi açılır — bir neçə saniyədən sonra yenidən daxil olun');});
+      if(!local.objectId||local.objectId!==user.objectId)throw Error('Bu istifadəçi bu filialə bağlı deyil');
+    }
+    if(!user.superAdmin&&user.branchId&&!state.activation.cloudBranchId)throw Error('Filial bağlantısı yenilənməlidir');
     loginLimiter.succeed(limiterKey);
     const userId = user.id;
     const issued = authSessions.issue(userId);
@@ -888,6 +1121,14 @@ function registerIpc() {
     // An account still on a published PIN gets a session that can do exactly one
     // thing: market:auth:changePin (the renderer shows that screen first).
     return { ...publicStaff(user), sessionToken: issued.token };
+  });
+  // The PIN pad asks after 4 digits whether to wait for POSSISTEM's 10.
+  // A PIN set on the website a moment ago: asked for once more before saying no.
+  ipcMain.handle('market:auth:adminPrefix', async (event, digits) => {
+    assertTrusted(event);
+    const state = loadSecureState();
+    if (!state.superAdmin) await syncRolePolicy(state, { force: true });
+    return startsSuperAdmin(loadSecureState().superAdmin, String(digits || ''));
   });
   ipcMain.handle('market:auth:logout', (event, token) => {
     assertTrusted(event);
@@ -911,12 +1152,15 @@ function registerIpc() {
     const user = requireSession(input?.sessionToken, undefined, { allowDefaultPin: true });
     const pin = String(input?.newPin || '');
     assertAcceptablePin(pin);
+    assertNotAdminPrefix(pin);
     const state = loadSecureState();
     // Sign-in is by PIN alone, so two people may never share one.
     if (pinTaken(state.staff, pin, user.id)) throw new Error('Bu PIN artıq başqa işçidə var - başqa PIN seçin');
     const credential = newPinCredential(pin);
-    state.staff = state.staff.map((row) => (row.id === user.id ? { ...row, ...credential } : row));
+    const updatedAt = Date.now();
+    state.staff = state.staff.map((row) => (row.id === user.id ? { ...row, ...credential, updatedAt } : row));
     saveSecureState(state);
+    void syncStaff(state);
     return publicStaff({ ...user, ...credential });
   });
 
@@ -935,7 +1179,7 @@ function registerIpc() {
     // The licence gate still applies — a revoked or expired licence must not be
     // bypassable just by having been logged in before.
     if (!licenseAllowsStaffLogin(state.activation)) return null;
-    const user = state.staff.find((row) => row.id === stored.userId && row.active);
+    const user = staffWithAdmin(state).find((row) => row.id === stored.userId && row.active);
     const token = user ? authSessions.restore(stored) : null;
     if (!token) {
       state.staffSession = null;
@@ -945,9 +1189,35 @@ function registerIpc() {
     currentSessionToken = token;
     return { ...publicStaff(user), sessionToken: token };
   });
-  ipcMain.handle('market:tenant:status', (event) => {
+  // Technical support chat (1.5.49): the till talks to possistem support through the owner account's
+  // tenant token — the same ticket the console and the support APK answer. Works before a staff PIN.
+  const supportCall = async (pathname, init = {}) => {
+    const state = loadSecureState();
+    if (!state.tenant?.token) throw new Error('Dəstək çatı üçün əvvəlcə sahibkar hesabına daxil olun');
+    const response = await fetch(controlApi(pathname), { ...init, headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${state.tenant.token}` }, signal: AbortSignal.timeout(20000) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(response.status === 401 ? 'Hesab sessiyası bitib. Sahibkar hesabına yenidən daxil olun.' : (data?.error || `Server xətası (${response.status})`));
+    return data;
+  };
+  const supportId = (value) => { const id = String(value || ''); if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Sorğu tapılmadı'); return id; };
+  ipcMain.handle('market:support:active', async (event) => { assertTrusted(event); return supportCall('/customer/support/active'); });
+  ipcMain.handle('market:support:send', async (event, input) => {
+    assertTrusted(event);
+    const body = String(input?.body || '').trim().slice(0, 4000);
+    if (!body) throw new Error('Mesaj boşdur');
+    if (!input?.ticketId) return supportCall('/customer/support/request', { method: 'POST', body: JSON.stringify({ message: body }) });
+    return supportCall(`/customer/support/tickets/${supportId(input.ticketId)}/messages`, { method: 'POST', body: JSON.stringify({ body }) });
+  });
+  ipcMain.handle('market:support:messages', async (event, input) => {
+    assertTrusted(event);
+    const after = input?.after && !Number.isNaN(Date.parse(input.after)) ? `?after=${encodeURIComponent(new Date(input.after).toISOString())}` : '';
+    return supportCall(`/customer/support/tickets/${supportId(input?.ticketId)}/messages${after}`);
+  });
+  ipcMain.handle('market:tenant:status', async (event) => {
     assertTrusted(event);
     const state = loadSecureState();
+    // Signed in to another account under 1.5.30 (no reset then): reset now.
+    if (await forgetPreviousAccount(state)) saveSecureState(state);
     return publicTenant(state.tenant);
   });
   ipcMain.handle('market:tenant:login', async (event, input) => {
@@ -956,16 +1226,7 @@ function registerIpc() {
     const password = String(input?.password || '');
     if (!email || !password) throw new Error('Email və parol tələb olunur');
     const hwid = tenantBindFingerprint();
-    const response = await fetch(controlApi('/tenant/login'), {
-      method: 'POST',
-      headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password, client: 'pos', hwid, product: 'market' }),
-      signal: AbortSignal.timeout(20000),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload.error || payload.message || `Giriş uğursuz (${response.status})`);
-    }
+    const payload = await require('./tenant-auth.cjs').tenantLogin({endpoint:controlApi('/tenant/login'),email,password,hwid});
     const customer = payload.customer || {};
     const state = loadSecureState();
     state.tenant = {
@@ -978,41 +1239,154 @@ function registerIpc() {
       licenses: Array.isArray(payload.licenses) ? payload.licenses : [],
     };
     if (!state.tenant.token) throw new Error('Server token qaytarmadı');
+    const switched = await forgetPreviousAccount(state);
+    state.lastCustomerId = state.tenant.customerId;
     if (state.activation.mode === 'unlicensed' || state.activation.mode === 'trial') {
       state.activation.customerName = state.tenant.customerName;
     }
     saveSecureState(state);
-    return publicTenant(state.tenant);
+    return { ...publicTenant(state.tenant), ...(switched ? { switched: true } : {}) };
   });
   ipcMain.handle('market:tenant:logout', (event) => {
     assertTrusted(event);
     const state = loadSecureState();
+    const token = state.tenant?.token;
+    if (token) void fetch(controlApi('/tenant/logout'), { method: 'POST', headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) }).catch(() => undefined);
     state.tenant = null;
+    state.staffSession = null;
     saveSecureState(state);
     authSessions.clear();
     currentSessionToken = '';
     return { ok: true };
   });
-  ipcMain.handle('market:staff:save', (event, input) => {
+  /**
+   * Users are created here; what they may do is not. Rights come from
+   * POSSISTEM (the super admin's role policy and per-worker overrides, applied
+   * by syncRolePolicy), so the shop's admin needs MANAGE_USERS and grants nothing.
+   */
+  ipcMain.handle('market:staff:save', async (event, input) => {
     assertTrusted(event);
-    requireSession(input?.sessionToken, ['manager']);
+    const actor = await requireCorePermission(input?.sessionToken, 'MANAGE_USERS');
     const state = loadSecureState();
     const profile = input?.profile || {};
+    if(profile.active===false){const approval=await operationApproval(input,actor,'staff.deactivate');if(!approval.success)return approval;}
     const roles = ['manager', 'head_cashier', 'cashier', 'warehouse'];
-    if (!profile.name || !roles.includes(profile.role)) throw new Error('İşçi məlumatı düzgün deyil');
+    if (!String(profile.name || '').trim() || !roles.includes(profile.role)) throw new Error('İstifadəçi məlumatı düzgün deyil');
     const existing = state.staff.find((row) => row.id === profile.id);
+    if (actor.role !== 'manager' && (profile.role === 'manager' || existing?.role === 'manager')) throw new Error('Müdir hesabını yalnız müdir dəyişə bilər');
+    if (existing?.id === actor.id && (profile.role !== existing.role || profile.active === false)) throw new Error('Öz rolunuzu və ya aktivliyinizi dəyişə bilməzsiniz');
     const pin = String(input?.pin || '');
-    if (!existing || pin) assertAcceptablePin(pin);
+    if (!existing || pin) { assertAcceptablePin(pin); assertNotAdminPrefix(pin); }
     if (pin && pinTaken(state.staff, pin, existing?.id)) throw new Error('Bu PIN artıq başqa işçidə var - başqa PIN seçin');
     const { salt, pinHash } = pin ? newPinCredential(pin) : existing;
-    const next = { id: existing?.id || `u-${Date.now()}`, name: String(profile.name).slice(0, 80), role: profile.role, active: profile.active !== false, registerIds: Array.isArray(profile.registerIds) ? profile.registerIds.slice(0, 20) : [], warehouseIds: Array.isArray(profile.warehouseIds) ? profile.warehouseIds.slice(0, 20) : [], salt, pinHash };
-    state.staff = existing ? state.staff.map((row) => row.id === existing.id ? next : row) : [...state.staff, next];
+    const ids = (list) => (Array.isArray(list) ? [...new Set(list.map(String))].slice(0, 20) : []);
+    await opsEngine.syncOwnerObject();
+    const places=await require('./staff-places.cjs').staffPlaces({core:coreSupervisor,ops:opsEngine,network:()=>cloudBranches.list(),activation:state.activation,cache:opsEngine.settings().staffPlacesCache,links:opsEngine.settings().cloudObjectLinks||{},remote:(id,calls)=>cloudBranches.rpc(id,calls),allowedBranchId:actor.branchId||''});
+    const object=require('./staff-places.cjs').validatePlaces(places,profile,actor);
+    const next = {
+      id: existing?.id || `u-${Date.now()}`, name: String(profile.name).trim().slice(0, 80), role: profile.role, active: profile.active !== false,
+      registerIds: ids(profile.registerIds), warehouseIds: profile.warehouseIds ? ids(profile.warehouseIds) : existing?.warehouseIds || [],
+      objectId: String(object?.id || '').slice(0,80),
+      // Bind login access to the selected owner's cloud location; credentials never grant another owner.
+      branchId: String(object?.branchId || (profile.objectId?existing?.branchId||'':'')),
+      // Set by the users screen: from then on sign-in honours the kassa binding.
+      placesSet: true, ...(existing?.employeeId?{employeeId:existing.employeeId}:{}), salt, pinHash, updatedAt: Date.now(),
+    };
+    const managers = (rows) => rows.filter((row) => row.role === 'manager' && row.active).length;
+    const after = existing ? state.staff.map((row) => row.id === existing.id ? next : row) : [...state.staff, next];
+    if (managers(state.staff) > 0 && managers(after) === 0) throw new Error('Ən azı bir aktiv müdir qalmalıdır');
+    state.staff = after;
     saveSecureState(state);
+    void syncStaff(state);
     return publicStaff(next);
+  });
+  /** What a user may do here (rights come from POSSISTEM); another user's needs MANAGE_USERS. */
+  const readPermissions = async () => {
+    const state=loadSecureState();
+    const response=await fetch(controlApi('/market-pos/roles'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(signedMarketDeviceCall(state)),signal:AbortSignal.timeout(10000)});
+    const data=await response.json();if(!response.ok)throw Error(data.error || 'İcazələr yüklənmədi');return data;
+  };
+  ipcMain.handle('market:permissions:get', async(event,input)=>{
+    assertTrusted(event);const actor=requireSession(input?.sessionToken);if(!actor.superAdmin)throw Error('İcazələri yalnız superadmin dəyişə bilər');
+    return readPermissions();
+  });
+  ipcMain.handle('market:permissions:save', async(event,input)=>{
+    assertTrusted(event);const actor=requireSession(input?.sessionToken);if(!actor.superAdmin)throw Error('İcazələri yalnız superadmin dəyişə bilər');
+    const approval=await operationApproval(input,actor,'permissions.save');if(!approval.success)return approval;
+    const response=await fetch(controlApi('/market-pos/roles/edit'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...signedMarketDeviceCall(loadSecureState()),role:input.role,permissions:input.permissions,expectedVersion:input.expectedVersion,superAdminPin:input.superAdminPin}),signal:AbortSignal.timeout(20000)});
+    const data=await response.json();if(!response.ok)throw Error(data.error || 'İcazələr saxlanmadı');
+    lastRolePullAt=0;await syncRolePolicy(loadSecureState(),{force:true});return readPermissions();
+  });
+  ipcMain.handle('market:auth:rights', async (event, input) => {
+    assertTrusted(event);
+    const me = requireSession(input?.sessionToken);
+    const userId = String(input?.userId || me.id);
+    if (userId !== me.id) await requireCorePermission(input?.sessionToken, 'MANAGE_USERS');
+    const user = staffWithAdmin(loadSecureState()).find((row) => row.id === userId);
+    return user ? rightsOf(user) : [];
+  });
+  ipcMain.handle('market:staff:delete', async (event, input) => {
+    assertTrusted(event);
+    const actor = await requireCorePermission(input?.sessionToken, 'MANAGE_USERS');
+    const state = loadSecureState();
+    const target = state.staff.find((row) => row.id === String(input?.id || ''));
+    if (!target) throw new Error('İstifadəçi tapılmadı');
+    if (target.id === actor.id) throw new Error('Öz hesabınızı silə bilməzsiniz');
+    if (target.role === 'manager' && actor.role !== 'manager') throw new Error('Müdir hesabını yalnız müdir silə bilər');
+    if (target.role === 'manager' && state.staff.filter((row) => row.role === 'manager' && row.active && row.id !== target.id).length === 0) throw new Error('Ən azı bir aktiv müdir qalmalıdır');
+    const approval = await operationApproval(input, actor, 'staff.delete'); if (!approval.success) return approval;
+    target.active = false;
+    target.updatedAt = Date.now();
+    saveSecureState(state);
+    void syncStaff(state);
+    // Their open session ends with the row: every session check looks the user up.
+    return { ok: true };
+  });
+  /** Objects (Filiallar) and kassas a user can be bound to; kassas from Market, objects from the warehouse. */
+  ipcMain.handle('market:staff:places', async (event, input) => {
+    assertTrusted(event);
+    const actor=await requireCorePermission(input?.sessionToken, 'MANAGE_USERS');
+    await opsEngine.syncOwnerObject();
+    const result=await require('./staff-places.cjs').staffPlaces({core:coreSupervisor,ops:opsEngine,network:()=>cloudBranches.list(),activation:loadSecureState().activation,cache:opsEngine.settings().staffPlacesCache,links:opsEngine.settings().cloudObjectLinks||{},remote:(id,calls)=>cloudBranches.rpc(id,calls),allowedBranchId:actor.branchId||''});
+    if(!result.offline)opsEngine.saveSettings({staffPlacesCache:{objects:result.cloudObjects}});
+    return result;
   });
   ipcMain.handle('market:display:get', (event) => { assertTrusted(event); return { prefs: loadDisplayPrefs(), presets: [{ id: 'fullscreen', label: 'Tam ekran', mode: 'fullscreen', width: 0, height: 0 }, { id: '1920x1080', label: '1920×1080', mode: 'windowed', width: 1920, height: 1080 }, { id: '1600x900', label: '1600×900', mode: 'windowed', width: 1600, height: 900 }, { id: '1366x768', label: '1366×768', mode: 'windowed', width: 1366, height: 768 }, { id: '1024x768', label: '1024×768', mode: 'windowed', width: 1024, height: 768 }] }; });
   ipcMain.handle('market:display:set', (event, input) => { assertTrusted(event); requireSession(input?.sessionToken, ['manager']); return saveDisplayPrefs(input); });
   ipcMain.handle('market:display:toggle', (event) => { assertTrusted(event); return toggleFullscreen(); });
+  // LAN label scale (1.5.51): Mallar → Tərəziyə çıxış; ops-engine resends goods on every change.
+  const scaleCfg = () => opsEngine.settings().scaleLan || {};
+  const scaleUser = (event, input) => { assertTrusted(event); requireSession(input?.sessionToken, ['manager', 'warehouse']); };
+  ipcMain.handle('market:scale:get', (event, input) => { scaleUser(event, input); const c = scaleCfg(); return { ip: c.ip || '', prefix: c.prefix || '20', auto: c.auto !== false, last: c.last || '' }; });
+  ipcMain.handle('market:scale:set', (event, input) => {
+    scaleUser(event, input);
+    const ip = String(input?.ip || '').trim();
+    if (ip && !require('node:net').isIPv4(ip)) throw new Error('Tərəzinin IP ünvanı düzgün deyil');
+    const prefix = /^2\d$/.test(String(input?.prefix)) ? String(input.prefix) : '20';
+    opsEngine.saveSettings({ scaleLan: { ...scaleCfg(), ip, prefix, auto: input?.auto !== false, sig: '' } });
+    return true;
+  });
+  ipcMain.handle('market:scale:scan', async (event, input) => { scaleUser(event, input); return require('./scale-lan.cjs').scan(); });
+  ipcMain.handle('market:scale:send', async (event, input) => { scaleUser(event, input); return opsEngine.scaleSync({ force: true }); });
+  ipcMain.handle('market:scale:diagnose', async (event, input) => {
+    scaleUser(event, input);
+    const c = scaleCfg();
+    const goods = await opsEngine.invoke('goods.list', {}, { timeoutMs: 60000 }).catch(() => null);
+    const header = [`time ${new Date().toISOString()}`, `MarketPos ${app.getVersion()}, Electron ${process.versions.electron}, ${process.platform} ${require('node:os').release()}`];
+    const result = await require('./scale-lan.cjs').diagnose({ ip: c.ip, prefix: c.prefix || '20', goods: goods?.success ? goods.data?.goods ?? [] : [], header });
+    const file = path.join(app.getPath('userData'), 'scale-diagnostics.txt');
+    try { writeFileSync(file, result.log, 'utf8'); result.log += `\n\nsaved to ${file}`; } catch { /* log still shown */ }
+    return result;
+  });
+  ipcMain.handle('market:scale:test', async (event, input) => {
+    scaleUser(event, input);
+    const lan = require('./scale-lan.cjs'), c = scaleCfg();
+    if (!c.ip) throw new Error('Tərəzinin IP ünvanı yazılmayıb');
+    const goods = await opsEngine.invoke('goods.list', {}, { timeoutMs: 60000 }).catch(() => null);
+    const plu = lan.testPlu(goods?.success ? goods.data?.goods ?? [] : []);
+    const res = await lan.sendLines(c.ip, [lan.pluLine({ plu, name: 'POSSISTEM AZN TEST', priceMinor: 800 }, c.prefix)]);
+    return { plu, reply: res.reply, accepted: res.accepted === 1 };
+  });
   ipcMain.handle('market:image:pick', async (event, token) => {
     assertTrusted(event); requireSession(token, ['manager', 'warehouse']);
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'Şəkillər', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
@@ -1099,7 +1473,13 @@ function registerIpc() {
       : state.activation.mode;
     // Bootstrap redeem allowed without staff session when not already active; Settings re-activate needs manager.
     if (localMode === 'active') requireSession(input?.sessionToken, ['manager']);
-    const activation = await redeemMarketActivation(state, input?.activationKey);
+    // No key typed: the owner's account activates this PC (within its PC slots).
+    const activation = String(input?.activationKey || '').trim()
+      ? await redeemMarketActivation(state, input.activationKey)
+      : await tenantActivateMarket(state);
+    // This account's users (PINs set on its other PCs) before anyone signs in.
+    await syncStaff(loadSecureState(), { force: true });
+    await syncRolePolicy(loadSecureState(), { force: true });
     if (syncService) await syncService.stop().catch(() => undefined);
     await coreSupervisor.stop();
     await coreSupervisor.start(activation.customerId || '_default');
@@ -1154,13 +1534,20 @@ function registerIpc() {
     if (state.activation.mode !== 'active') return { connected: false, reason: 'trial' };
     if (!state.activation.serverDeviceId) return { connected: false, reason: 'reactivation_required' };
     try {
-      const body = signedMarketHeartbeat(state, input.snapshot);
+      // The till's users, so the super admin can set each worker's rights.
+      // Names and roles only - never PINs.
+      // lines (every product x warehouse) is not read by the server and pushed big
+      // shops past its 4 MB limit (413 on every heartbeat), so it stays home.
+      const { lines: _lines, ...sent } = input.snapshot || {};
+      if (state.demoPurgedFor !== state.activation.customerId && Date.now() - demoPurgeTriedAt > 3600000) void purgeDemoProducts(state.activation.customerId);
+      const snapshot = { ...sent, staff: state.staff.slice(0, 200).map((row) => ({ id: String(row.id), name: String(row.name || '').slice(0, 80), role: String(row.role), active: row.active !== false })) };
+      const body = signedMarketHeartbeat(state, snapshot);
       if (input.books && typeof input.books === 'object') body.books = input.books;
       const response = await fetch(controlApi('/market-pos/heartbeat'), { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
       // The heartbeat is the till's regular word with the server, so the role
       // policy rides along with it rather than needing a timer of its own.
       const payload = response.ok ? await response.json().catch(() => ({})) : {};
-      if (response.ok) void syncRolePolicy(state);
+      if (response.ok) { void syncRolePolicy(state); void syncStaff(state); }
       if (response.ok && payload?.licenseRefresh) {
         try { applyLicenseRefresh(state, payload.licenseRefresh); } catch (error) { console.warn('[market] license refresh rejected', error?.message || error); }
       }
@@ -1193,8 +1580,15 @@ function registerIpc() {
     assertTrusted(event);
     const method = String(input?.method || '');
     if (!method) return { success: false, error: { code: 'E_VALIDATION', message: 'method required', retryable: false } };
+    if(method==='inventory.transfer')return {success:false,error:{code:'PERMISSION_DENIED',message:'Anbar → Yerdəyişmələr qaiməsindən istifadə edin',retryable:false}};
+    // Rights are POSSISTEM's to set (roles.applyPolicy from the control plane);
+    // the till's own screens may read them but not grant or revoke.
+    if (method === 'auth.saveRole' || method === 'auth.deleteRole' || method === 'auth.setOverride') {
+      return { success: false, error: { code: 'PERMISSION_DENIED', message: 'Səlahiyyətləri possistem təyin edir', retryable: false } };
+    }
     // The core decides permissions from `role` in the payload, so the renderer
     // must not be the one writing it - see core-payload.cjs.
+    if(['customer.bridge','customer.history','sale.correct'].includes(method))throw Error('Partnyor qaiməsindən istifadə edin');
     const payload = authorizeCorePayload(
       input?.payload,
       () => {
@@ -1211,6 +1605,16 @@ function registerIpc() {
       (pin) => verifyManagerPin(String(pin || '')),
       input?.managerPin,
     );
+    if (require('./operation-access.cjs').isDestructive(method, input?.payload)) {
+      let actor; try { actor = requireSession(input?.sessionToken || input?.payload?.sessionToken || currentSessionToken); } catch { return opsFail('E_FORBIDDEN', 'Giriş tələb olunur'); }
+      const approval = await operationApproval(input, actor, method); if (!approval.success) return approval;
+      payload.approverId = approval.approver.id; payload.approverRole = approval.approver.role;
+    }
+    if (/^(cart\.|sale\.(complete|hold|cancelHeld)$)/.test(method)) {
+      if (!payload.role) return opsFail('E_FORBIDDEN','Giriş tələb olunur');
+      payload.cartId = 'active-' + payload.actorId;
+      payload.requireCartApproval = true;
+    }
     if (payload?.role && opsEngine.isHost() && /^cash\.(xReport|zClose|openSession|closeSession|cashIn|cashOut|safeDrop)$/.test(method)) {
       try {
         await opsEngine.flushCatalog({ timeoutMs: 20000 });
@@ -1267,25 +1671,154 @@ function registerIpc() {
     return { state: coreSupervisor.state };
   });
 
+  const cloudBranches = require('./cloud-branches.cjs').createCloudBranches({credentials:async()=>{
+    const state=loadSecureState();if(!state.tenant?.token || state.tenant.customerId!==state.activation?.customerId)throw Error('Sahibkar hesabı aktiv kassaya uyğun deyil');
+    return {token:state.tenant.token,deviceId:state.activation.serverDeviceId,baseUrl:CONTROL_URL};
+  }});
+  opsEngine.staffProfiles=()=>loadSecureState().staff;
+  opsEngine.ownerObject=()=>{const a=loadSecureState().activation;return {branchId:a.cloudBranchId,name:a.cloudBranchName,deviceId:a.serverDeviceId};};
+  opsEngine.transferTransport=async event=>{
+    const result=await cloudBranches.rpc(event.deviceId,[{method:'business.call',payload:{action:'transfer.sync',event:event.payload},idempotencyKey:event.id}]);
+    const first=result?.results?.[0];
+    // A validation refusal from the recipient's core means nothing was booked there: the sender may recall.
+    if(!first?.success)throw Object.assign(Error(first?.error?.message||'Filial qaiməni qəbul etmədi'),{rejected:first?.error?.code==='E_VALIDATION'});
+    opsEngine.scheduleCatalog();return first.data;
+  };
+  // This branch's warehouse (live on the warehouse PC) and the other branches' last copies.
+  ipcMain.handle('market:branches:stock', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager']);
+    const state = loadSecureState();
+    const own = await opsEngine.stockSnapshot().catch(() => null);
+    const cached = readBranchStock(state);
+    const pulling = syncBranchStock(state, true, own);
+    // Cached warehouses open immediately; first visit waits at most two seconds for the cloud.
+    if (!cached.branches.length) { let timer; await Promise.race([pulling, new Promise(resolve => { timer = setTimeout(resolve, 2000); })]); clearTimeout(timer); }
+    const latest = readBranchStock(state);
+    return { ...latest, own: own ? { deviceId: state.activation.serverDeviceId, branchId: state.activation.cloudBranchId || null, branchName: state.activation.cloudBranchName || '', online: true, ...own } : null };
+  });
+  // Edits to a branch's warehouse wait on the server until that branch is online
+  // (1.5.42): the owner's account sends them, the branch's warehouse PC applies them.
+  const ownerCall = async (pathname, init = {}) => {
+    const state = loadSecureState();
+    if (!state.tenant?.token) throw new Error('Əvvəlcə müştəri hesabına daxil olun');
+    const response = await fetch(controlApi(pathname), { ...init, headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${state.tenant.token}` }, signal: AbortSignal.timeout(20000) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Server xətası (${response.status})`);
+    return data;
+  };
+  ipcMain.handle('market:branches:queueEdits', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager']);
+    const edits = Array.isArray(input?.edits) ? input.edits.slice(0, 200) : [];
+    if (!edits.length) throw new Error('Düzəliş yoxdur');
+    return ownerCall('/owner/market/branch-edits', { method: 'POST', body: JSON.stringify({ deviceId: String(input.deviceId), requestId: String(input.requestId), edits, ...(input.note ? { note: String(input.note).slice(0, 200) } : {}) }) });
+  });
+  ipcMain.handle('market:branches:edits', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager']);
+    return ownerCall(`/owner/market/branch-edits?deviceId=${encodeURIComponent(String(input?.deviceId || ''))}`);
+  });
+  ipcMain.handle('market:branches:cancelEdit', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager']);
+    return ownerCall(`/owner/market/branch-edits/${encodeURIComponent(String(input?.id || ''))}/cancel`, { method: 'POST', body: '{}' });
+  });
+  ipcMain.handle('market:branches:selection',async(event,input)=>{
+    assertTrusted(event);const staff=requireSession(input?.sessionToken, ['manager', 'head_cashier', 'cashier', 'warehouse']);
+    return require('./object-selection.cjs').selection({manager:Boolean(staff.superAdmin),list:()=>cloudBranches.list(),localContext:()=>{const a=loadSecureState().activation;return {id:a.cloudBranchId,name:a.cloudBranchName};}});
+  });
+  // Objects and which object a till belongs to: POSSISTEM's user only (1.5.33).
+  const requireSuperAdmin=(token)=>{const user=requireSession(token,['manager']);if(!user.superAdmin)throw new Error('Filiallari yalnız POSSISTEM dəyişə bilər');return user;};
+  ipcMain.handle('market:branches:manage',async(event,input)=>{assertTrusted(event);requireSuperAdmin(input?.sessionToken);return cloudBranches.manage(input.operation);});
+  ipcMain.handle('market:branches:assign',async(event,input)=>{assertTrusted(event);requireSuperAdmin(input?.sessionToken);const result=await cloudBranches.assign(input.deviceId,input.name);const state=loadSecureState();if(input.deviceId===state.activation.serverDeviceId){state.activation.cloudBranchId=result.branchId;state.activation.cloudBranchName=result.name;state.activation.branchScopeKnown=true;saveSecureState(state);}return result;});
+  ipcMain.handle('market:branches:list',async(event,input)=>{assertTrusted(event);requireSession(input?.sessionToken,['manager']);return cloudBranches.list();});
+  ipcMain.handle('market:branches:rpc',async(event,input)=>{assertTrusted(event);const actor=requireSession(input?.sessionToken,['manager']);const rights=await rightsOf(actor);for(const call of Array.isArray(input.calls)?input.calls:[]){if(!actor.superAdmin&&!(await require('./operation-access.cjs').allowsOperation(call.method,call.payload||{},async key=>rights.includes(key))))throw Error('Bu filial əməliyyatına icazəniz yoxdur');}if(Array.isArray(input.calls)&&input.calls.some(call=>require('./operation-access.cjs').isDestructive(call.method,call.payload))){const approval=await operationApproval(input,actor,'branches.rpc');if(!approval.success)return approval;}return cloudBranches.rpc(input.deviceId,input.calls);});
+  ipcMain.handle('market:branch:context', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager', 'head_cashier', 'cashier', 'warehouse']);
+    const result=await opsEngine.branchContext();const cloudName=loadSecureState().activation.cloudBranchName;return {...result,branchName:cloudName||result.branchName};
+  });
+
   // Əməliyyatlar screens (an iframe of the restaurant renderer) call through here.
+  ipcMain.handle('market:ops:categories', (event) => { assertTrusted(event); return opsEngine.saleCategories(); });
   ipcMain.handle('market:ops:invoke', async (event, input) => {
     assertTrusted(event);
     let staff;
-    try { staff = requireSession(input?.sessionToken, ['manager', 'warehouse']); } catch (error) { return opsFail('E_FORBIDDEN', error instanceof Error ? error.message : String(error)); }
+    try { staff = requireSession(input?.sessionToken); } catch (error) { return opsFail('E_FORBIDDEN', error instanceof Error ? error.message : String(error)); }
+    const can = async (permission) => {
+      if (staff.superAdmin) return true;
+      const check = await coreSupervisor.invoke('auth.checkPermission', { actorId: staff.id, role: staff.role, permission });
+      return Boolean(check?.success && check.data?.allowed);
+    };
+    // Əməliyyatlar is the manager's and the storekeeper's; anyone else POSSISTEM
+    // gave a document right (Qaimələrə baxmaq / düzəliş / silmək) gets in too.
+    const opsRole = (await Promise.all(require('./operation-access.cjs').SECTION_KEYS.map(can))).some(Boolean);
+    const docsOnly = !opsRole && (await can('DOCS_VIEW') || await can('DOCS_CREATE') || await can('DOCS_EDIT') || await can('DOCS_DELETE') || await can('MANAGE_USERS') || await can('EDIT_STOCK') || await can('RECEIVE_PURCHASE') || await can('STOCK_ADJUSTMENT'));
+    if (!opsRole && !docsOnly) return opsFail('E_FORBIDDEN', 'Əməliyyatlara icazəniz yoxdur');
+    if (!(await require('./operation-access.cjs').allowsOperation(String(input?.method || ''), input?.payload || {}, can))) return opsFail('E_FORBIDDEN', 'Bu əməliyyat üçün icazəniz yoxdur');
+    if(input?.method==='cashAccounts.list')await opsEngine.syncOwnerObject();
+    if(staff.objectId&&staff.objectId===staff.branchId&&staff.branchId===loadSecureState().activation.cloudBranchId){
+      const local=await opsEngine.branchContext();staff={...staff,objectId:local.objectId||staff.objectId};
+    }
     const method = String(input?.method || '');
     if (method === '__session') {
-      try { return await opsEngine.session(staff); } catch (error) { return opsFail('E_CORE_DOWN', error instanceof Error ? error.message : String(error)); }
+      try { const result=await opsEngine.session(staff, await rightsOf(staff));if(result.success)Object.assign(result.data,{canBranchCatalog:staff.role==='manager'&&await can('CREATE_PRODUCT')&&await can('DOCS_CREATE'),canDocsCreate:await can('DOCS_CREATE'),canDocsEdit:await can('DOCS_EDIT'),canDocsDelete:await can('DOCS_DELETE'),canDocsView:await can('DOCS_VIEW')});return result; } catch (error) { return opsFail('E_CORE_DOWN', error instanceof Error ? error.message : String(error)); }
     }
-    if (!opsEngine.allowed(method, staff.role)) return opsFail('E_FORBIDDEN', 'Buna icazəniz yoxdur');
-    if (method === 'cashAccounts.list') {
-      try { await opsEngine.flushCatalog({ timeoutMs: 20000 }); }
-      catch (error) { return opsFail('E_SYNC', error?.message || String(error)); }
+    if (method === '__importBranchProduct') {
+      try {
+        const state = loadSecureState();
+        const data = await require('./branch-catalog.cjs').importBranchProduct({ ops: opsEngine, snapshots: readBranchStock(state).branches, activation: state.activation, reference: input?.payload || {}, staff, can });
+        return opsOk(data);
+      } catch (error) { return opsFail('E_BRANCH_PRODUCT', error.message); }
     }
-    const result = await opsEngine.invoke(method, input?.payload ?? {}, {
+    if(method==='inventory.transfer')return opsFail('E_FORBIDDEN','Anbar → Yerdəyişmələr qaiməsindən istifadə edin');
+    const businessAction=method==='business.call'?String(input?.payload?.action||''):'';
+    if(['stock.snapshot','party.import','party.snapshot'].includes(businessAction))return opsFail('E_FORBIDDEN','Daxili anbar əməliyyatıdır');
+    if(['transfer.sync','transfer.outbox','transfer.ack','transfer.failure'].includes(businessAction))return opsFail('E_FORBIDDEN','Daxili göndəriş əməliyyatıdır');
+    if(businessAction==='transfer.targets'){
+      if(!(await can('TRANSFER_STOCK')))return opsFail('E_FORBIDDEN','Anbarlararası göndəriş icazəniz yoxdur');
+      try{return opsOk(await require('./transfer-places.cjs').transferPlaces({ops:opsEngine,network:()=>cloudBranches.list(),remote:(id,calls)=>cloudBranches.rpc(id,calls),activation:loadSecureState().activation,scope:{id:staff.id,role:staff.role,warehouseIds:staff.warehouseIds||[],objectId:staff.objectId||''},deviceId:String(input?.payload?.deviceId||''),sourceDeviceId:String(input?.payload?.sourceDeviceId||'')}));}
+      catch(error){return opsFail('E_TRANSFER_NETWORK',error.message);}
+    }
+    if(['market.customer.history','market.sale.correct'].includes(businessAction)) {
+      if (require('./operation-access.cjs').isDestructive(method, input?.payload)) { const approval = await operationApproval(input, staff, method); if (!approval.success) return approval; }
+      try{return await require('./customer-history.cjs').customerAction({action:businessAction,payload:input.payload||{},staff,can,core:coreSupervisor,ops:opsEngine});}
+      catch(error){return opsFail('E_CUSTOMER_DOCUMENT',error.message);}
+    }
+    if(businessAction.startsWith('transfer.')&&!['transfer.list','transfer.get'].includes(businessAction)&&!(await can('TRANSFER_STOCK')))return opsFail('E_FORBIDDEN','Yerdəyişmə icazəniz yoxdur');
+    if (!opsEngine.allowed(method, require('./operation-access.cjs').operationRights(method, input?.payload || {}).length ? 'manager' : staff.role, docsOnly, input?.payload || {})) return opsFail('E_FORBIDDEN', 'Buna icazəniz yoxdur');
+    // Qaimələr: everyone in here may look at all of them; changing or deleting
+    // one needs the right (role grants + the super admin's per-worker overrides).
+    const docNeed = require('./ops-engine.cjs').docPermission(method, input?.payload);
+    if (docNeed) {
+      if (!(await can(docNeed))) return opsFail('E_FORBIDDEN', docNeed === 'DOCS_DELETE' ? 'Qaimə silməyə icazəniz yoxdur' : docNeed === 'DOCS_EDIT' ? 'Qaimədə düzəliş etməyə icazəniz yoxdur' : 'Qaimələrə baxmağa icazəniz yoxdur');
+    }
+    if(staff.role!=='manager'&&(method==='customers.payDebt'||businessAction==='correct')) {
+      const listing=await opsEngine.invoke('cashAccounts.list',{});
+      if(!listing.success)return listing;
+      const accountIds=[input.payload?.accountId].filter(Boolean);
+      if(businessAction==='correct'&&input.payload?.type==='customer'){
+        const old=await opsEngine.invoke('business.call',{action:'document.get',type:'customer',id:input.payload.id});
+        if(!old.success)return old;
+        if(old.data.document.accountId)accountIds.push(old.data.document.accountId);
+      }
+      for(const id of accountIds){const account=listing.data.accounts.find(a=>a.id===id);if(!account||staff.objectId&&account.objectId!==staff.objectId||staff.registerIds?.length&&(!account.terminalId?.startsWith('market-')||!staff.registerIds.includes(account.terminalId.slice(7))))return opsFail('E_FORBIDDEN','Bu kassada əməliyyat icazəniz yoxdur');}
+    }
+    if (require('./operation-access.cjs').isDestructive(method, input?.payload)) {
+      const approval = await operationApproval(input, staff, method);
+      if (!approval.success) return approval;
+    }
+    if(method==='customers.payDebt'){try{await opsEngine.flushCatalog({timeoutMs:20000});}catch(error){return opsFail('E_SYNC',error.message);}}
+    // Read the committed ledger immediately; catalog reconciliation runs independently.
+    // Opening a warehouse screen must not wait for thousands of product writes.
+    const result = await opsEngine.invoke(method, {...(input?.payload ?? {}),_marketScope:{id:staff.id,name:staff.name,role:staff.role,objectId:staff.objectId||'',registerIds:staff.registerIds||[],warehouseIds:staff.warehouseIds||[]},...(businessAction==='transfer.save'?{fromDeviceId:loadSecureState().activation.serverDeviceId}: {})}, {
       terminal: { id: 'market-ops', name: staff.name },
       idempotencyKey: typeof input?.idempotencyKey === 'string' ? input.idempotencyKey : undefined,
       timeoutMs: Math.min(Math.max(Number(input?.timeoutMs) || 15000, 1000), 120000),
     });
+    if(result.success&&(method==='customers.payDebt'||businessAction==='correct'&&input.payload?.type==='customer')){opsEngine.scheduleCatalog();try{await opsEngine.syncCustomers();await opsEngine.syncWarehouseLedger();}catch{return {...result,syncWarning:true}}}
+    if(result.success&&businessAction.startsWith('transfer.')){opsEngine.scheduleCatalog();void opsEngine.flushTransfers().catch(()=>{});}
     if (result.success && (require('./ops-engine.cjs').isCatalogWrite(method) || /^cashAccounts\.(save|transfer|deactivate)$/.test(method))) {
       try { await opsEngine.flushCatalog({ timeoutMs: 5000 }); }
       catch (error) {
@@ -1294,6 +1827,13 @@ function registerIpc() {
         console.error('[ops-sync]', error?.message || error);
         return { ...result, syncWarning: true };
       }
+    }
+    // Parametrlər → Printer is the warehouse system's screen; the Market receipt
+    // must go to the printer chosen there, not wait for a second setting.
+    if (method === 'print.setPrinter' && result.success && (input?.payload?.target || 'receipt') === 'receipt') {
+      const name = String(input?.payload?.printerName || 'auto');
+      printerProvider?.forgetTarget?.();
+      await coreSupervisor.invoke('printer.setTarget', { role: 'manager', actorId: 'system', target: name === 'virtual' ? 'auto' : name }).catch(() => undefined);
     }
     if (method === 'cashAccounts.list' && result.success && opsEngine.cashCurrentRegisterId) {
       const current = `market-${opsEngine.cashCurrentRegisterId}`;
@@ -1322,6 +1862,8 @@ function registerIpc() {
   ipcMain.handle('market:ops:sync', async (event, input) => {
     assertTrusted(event);
     requireSession(input?.sessionToken, ['manager', 'warehouse']);
+    // "Yenidən göndər": receipts set aside after failed tries get another go.
+    opsEngine.retryParked();
     try { await opsEngine.flushCatalog({ timeoutMs: 20000 }); return opsOk(opsEngine.status()); }
     catch (error) { return opsFail('E_SYNC', error?.message || String(error)); }
   });
@@ -1375,6 +1917,8 @@ function createSyncService() {
     onStatus: (status) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('market:sync:changed', status);
     },
+    onBranchContext: ({branchId,branchName}) => {const state=loadSecureState();if(state.activation.cloudBranchId!==branchId||state.activation.cloudBranchName!==branchName||!state.activation.branchScopeKnown){state.activation.cloudBranchId=branchId;state.activation.cloudBranchName=branchName;state.activation.branchScopeKnown=true;saveSecureState(state);}},
+    onCoreBatch: payload => opsEngine.remoteBatch(payload),
     onReport: async (report) => {
       // A remote X/Z must not be reported as done when the output only went to
       // the local stub file: the owner would see a success in the web panel and
@@ -1439,6 +1983,17 @@ app.whenReady().then(async () => {
     }
   }, 3600000);
   backupTimer.unref();
+  // The account's users and POSSISTEM's PIN reach the till before anyone signs
+  // in: a PC just updated or installed has nobody else to sign in with (1.5.34).
+  const accountPull = () => {
+    const state = loadSecureState();
+    if (state.activation.mode !== 'active' || !state.activation.serverDeviceId) return;
+    void syncRolePolicy(state);
+    void syncStaff(state);
+    void syncBranchStock(state);
+  };
+  setTimeout(accountPull, 3000);
+  setInterval(accountPull, 30000).unref();
 });
 
 app.on('before-quit', (event) => {

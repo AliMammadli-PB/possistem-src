@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { publishBrowserAssets } from '../../restoranpos/demo-web/browser-assets.mjs';
 /**
  * Packs MarketPos for the possistem.az live demo:
  *   dist/ (the Vite build) + the market core built to WebAssembly + a bridge
@@ -15,6 +16,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build } from '../../restoranpos/node_modules/esbuild/lib/main.js';
 import { brandBridge } from '../../brands/offline/brand.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +51,26 @@ const loader = fs.readFileSync(path.join(WASM, 'market-pos-core.mjs'), 'utf8');
 if (!loader.includes('"market-pos-core.wasm"')) throw new Error('core loader: wasm file name not found');
 const core = publish(demo, 'market-pos-core.mjs', loader.replaceAll('"market-pos-core.wasm"', `"${wasm}"`));
 
+// Seed sample records only in the browser build. Production keeps its empty defaults.
+const sampleBundle = await build({entryPoints:[path.join(ROOT,'src/data.demo.ts')],bundle:true,write:false,format:'esm',platform:'node'});
+const sampleModule = await import('data:text/javascript;base64,'+Buffer.from(sampleBundle.outputFiles[0].text).toString('base64'));
+const snapshot = sampleModule.createDemoState();
+// The public demo shows no alcohol or tobacco (owner's request, 2026-10-21); the desktop catalogue is unchanged.
+const RESTRICTED_CATEGORIES = new Set(['Spirtli içkilər', 'Tütün']);
+// Word start only (Azerbaijani suffixes allowed): keeps Narşərab sauce and Qəlyanaltı snacks.
+const RESTRICTED_NAME = /(?<!\p{L})(pivə|pivo|beer|bira|şərab|wine|araq|vodka|votka|konyak|cognac|brendi|brandy|viski|whisk(e)?y|likör|liqueur|tekila|tequila|martini|siqaret|sigaret|cigarette|tütün|terea|iqos|heets|qəlyan(?!altı)|nargile|hookah|marlboro|winston|parliament|camel|vape)/iu;
+snapshot.products = snapshot.products.filter((p) => !RESTRICTED_CATEGORIES.has(p.category) && !RESTRICTED_NAME.test(`${p.name?.az ?? ''} ${p.name?.en ?? ''}`));
+// A representative sample keeps the mobile demo fast; actual catalogue UI is unchanged.
+const categories = [...new Set(snapshot.products.map(p=>p.category))];
+snapshot.products = categories.flatMap(category=>snapshot.products.filter(p=>p.category===category).slice(0,6)).slice(0,144);
+snapshot.sales=[];snapshot.purchaseOrders=[];snapshot.audits=[];
+snapshot.settings={...snapshot.settings,storeName:'Demo Market',deviceRegisterId:'reg-2'};
+const sample = publish(demo, 'sample.js', 'export default '+JSON.stringify(snapshot));
+const opsWasmDir = path.resolve(process.argv[4] ?? path.join(ROOT,'../restoranpos/native/build-wasm'));
+const opsWasm = publish(demo,'ops-core.wasm',fs.readFileSync(path.join(opsWasmDir,'restaurant-pos-core.wasm')));
+const opsCore = publish(demo,'ops-core.mjs',fs.readFileSync(path.join(opsWasmDir,'restaurant-pos-core.mjs'),'utf8').replaceAll('"restaurant-pos-core.wasm"',`"${opsWasm}"`));
+const ops = publish(demo,'ops.js',fs.readFileSync(path.join(HERE,'ops.template.js'),'utf8').replace("'./ops-core.mjs'",`'./${opsCore}'`));
+
 const template = brandBridge(fs.readFileSync(path.join(HERE, 'bridge.template.js'), 'utf8'));
 for (const slot of ['/*PRELOAD*/', '/*CORE_PAYLOAD*/', "'./market-pos-core.mjs'"]) {
   if (!template.includes(slot)) throw new Error(`bridge template lost its ${slot} slot`);
@@ -58,6 +80,8 @@ const bridge = publish(
   demo,
   'bridge.js',
   template
+    .replace("'./sample.js'", `'./${sample}'`)
+    .replace("'./ops.js'", `'./${ops}'`)
     .replace('/*CORE_PAYLOAD*/', () => read('core-payload.cjs'))
     .replace('/*PRELOAD*/', () => read('preload.cjs'))
     .replaceAll('__APP_VERSION__', JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version)
@@ -93,3 +117,5 @@ html = html
   .replace(bundleTag[0], `<script type="module" src="./demo/${bridge}"></script>\n    ${bundleTag[0]}`);
 fs.writeFileSync(indexPath, html);
 process.stdout.write(`[market demo-web] ${OUT}\n`);
+
+publishBrowserAssets(OUT, JSON.parse(fs.readFileSync(path.join(ROOT,'package.json'),'utf8')).version);

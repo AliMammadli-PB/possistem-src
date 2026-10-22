@@ -5,7 +5,7 @@ import { settingsText } from './settingsText';
 import { HardwareSettingsCard } from './RetailOpsPanels';
 import type { Lang, SessionUser } from './types';
 
-type OpsStatus = { host: boolean; state: string; available: boolean };
+type OpsStatus = { host: boolean; state: string; available: boolean; catalogPending?: boolean; catalogError?: string | null; errors?: Record<string, string>; parked?: { key: string; error: string; at: number }[]; linked?: number };
 
 /**
  * Əməliyyatlar (1.5.0): the restaurant's warehouse system - Mallar,
@@ -14,7 +14,7 @@ type OpsStatus = { host: boolean; state: string; available: boolean };
  * frame and reach the warehouse core through window.marketOps (main checks
  * this user's session on every call).
  */
-export function OpsFrame({ session, notify, catalogOnly = false }: { session: SessionUser; notify: (text: string) => void; catalogOnly?: boolean }) {
+export function OpsFrame({ session, notify, catalogOnly = false, initialTab = "goods", lang = "az" }: { session: SessionUser; notify: (text: string) => void; catalogOnly?: boolean; initialTab?: string; lang?: Lang }) {
   const [status, setStatus] = useState<OpsStatus | null>(null);
   const [busy, setBusy] = useState(false);
   // The frame reads the token from here; main still verifies it on every call.
@@ -23,9 +23,18 @@ export function OpsFrame({ session, notify, catalogOnly = false }: { session: Se
   const refresh = () => { void window.marketOps?.status().then(setStatus).catch(() => setStatus(null)); };
   useEffect(() => {
     refresh();
-    const timer = window.setInterval(() => { if (status?.state !== 'ready') refresh(); }, 3000);
+    // Ready: every 15 s, so the warehouse-sync line below stays current.
+    const timer = window.setInterval(refresh, status?.state === 'ready' ? 15000 : 3000);
     return () => window.clearInterval(timer);
   }, [status?.state]);
+  const resync = async () => {
+    setBusy(true);
+    try {
+      const res = await window.marketOps!.sync(session.sessionToken);
+      if (!res.success) notify(res.error?.message || 'Sinxron alınmadı');
+      refresh();
+    } finally { setBusy(false); }
+  };
 
   if (!window.marketOps) return <div className="module-page"><p>Əməliyyatlar yalnız MarketPos proqramında açılır.</p></div>;
   if (!status) return <div className="module-page"><p>Yüklənir…</p></div>;
@@ -56,7 +65,15 @@ export function OpsFrame({ session, notify, catalogOnly = false }: { session: Se
       </div>
     );
   }
-  return <iframe className="ops-frame" title="Əməliyyatlar" src={`./ops/index.html${catalogOnly ? "?panel=catalog" : ""}#/operations?tab=goods`} />;
+  // What has not reached the warehouse (sales, returns, goods, kassas) and why.
+  const problems = [...Object.entries(status.errors ?? {}).map(([step, error]) => `${step}: ${error}`), ...(status.parked ?? []).map((p) => `${p.key.startsWith('r:') ? 'Qaytarma' : 'Satış'} göndərilmədi: ${p.error}`)];
+  return <>
+    {!catalogOnly && problems.length > 0 && <div className="ops-sync-bar" role="status">
+      <TriangleAlert /><div><b>Anbara çatmayanlar</b>{problems.slice(0, 4).map((line, i) => <small key={i}>{line}</small>)}{problems.length > 4 && <small>… və daha {problems.length - 4}</small>}</div>
+      <button type="button" disabled={busy} onClick={() => void resync()}><RefreshCw />Yenidən göndər</button>
+    </div>}
+    <iframe className="ops-frame" title="Əməliyyatlar" src={`./ops/index.html?lang=${lang}${catalogOnly ? "&panel=catalog" : `&embed=1${initialTab === "kassa" ? "&panel=ledger" : ""}`}#/operations?tab=${initialTab}`} />
+  </>;
 }
 
 /**

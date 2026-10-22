@@ -11,11 +11,11 @@ export const mmToUnit = (mm: number, unit: LabelUnit) => (unit === 'in' ? mm / M
 export const unitToMm = (value: number, unit: LabelUnit) => (unit === 'in' ? value * MM_PER_INCH : value);
 /** A layout length in dots → the unit shown. */
 export const dotsToUnit = (dots: number, dpi: number, unit: LabelUnit) => (unit === 'dot' ? dots : mmToUnit(dots / dotsPerMm(dpi), unit));
-/** A typed layout length → whole printer dots. */
-export const unitToDots = (value: number, dpi: number, unit: LabelUnit) => Math.round(unit === 'dot' ? value : unitToMm(value, unit) * dotsPerMm(dpi));
+/** Fine layout coordinates remain fractional until the final printer raster. */
+export const unitToDots = (value: number, dpi: number, unit: LabelUnit) => Math.round((unit === 'dot' ? value : unitToMm(value, unit) * dotsPerMm(dpi)) * 10000) / 10000;
 /** Display precision: one dot is 0.125 mm / ~0.005 in at 203 DPI. */
-export const roundUnit = (value: number, unit: LabelUnit) => (unit === 'dot' ? Math.round(value) : unit === 'in' ? Math.round(value * 1000) / 1000 : Math.round(value * 100) / 100);
-export const unitStep = (unit: LabelUnit) => (unit === 'dot' ? 1 : unit === 'in' ? 0.005 : 0.1);
+export const roundUnit = (value: number, unit: LabelUnit) => (unit === 'dot' ? Math.round(value * 10000) / 10000 : unit === 'in' ? Math.round(value * 1000) / 1000 : Math.round(value * 100) / 100);
+export const unitStep = (unit: LabelUnit) => (unit === 'dot' ? 0.1 : unit === 'in' ? 0.0001 : 0.01);
 /** Move-step choices for the arrows. */
 export const moveSteps = (unit: LabelUnit) => (unit === 'dot' ? [1, 5, 10, 20] : unit === 'in' ? [0.01, 0.02, 0.05, 0.1] : [0.25, 0.5, 1, 2]);
 /** Paper sizes are never shown in dots: dots fall back to millimetres there. */

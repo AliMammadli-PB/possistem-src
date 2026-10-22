@@ -67,14 +67,22 @@ export const marketCoreClient = {
   barcode: {
     resolve: (barcode: string) => call<Record<string, unknown>>('barcode.resolve', { barcode }),
   },
+  cart: {
+    state: () => call<any>('cart.state'),
+    sync: (lines: unknown[], discountMinor: number) => call<any>('cart.sync', {lines,discountMinor}),
+    approve: (revision: number, managerPin: string) => call<any>('cart.approve', {revision}, {managerPin}),
+  },
   sales: {
     complete: (payload: Record<string, unknown>) => call<Sale>('sale.complete', payload),
-    list: () => call<Sale[]>('sale.list'),
+    list: (filter: { query?: string; since?: number; before?: number; limit?: number; offset?: number } = {}) => call<Sale[]>('sale.list', filter),
     hold: (payload: Record<string, unknown>) => call('sale.hold', payload),
     resume: (id: string) => call('sale.resume', { id }),
     listHeld: () => call('sale.listHeld'),
-    cancelHeld: (id: string, actorId: string, role: string, approverId?: string) =>
-      call('sale.cancelHeld', { id, actorId, role, approverId }),
+    cancelHeld: (id: string, actorId: string, role: string, options?: CallOptions) =>
+      call('sale.cancelHeld', { id, actorId, role }, options),
+    /** Storno: records an item leaving the basket; needs SALE_CANCEL or a permitted PIN. */
+    voidLine: (line: { productId: string; name: string; qty: number; amountMinor: number }, options?: CallOptions) =>
+      call<{ ok: boolean; approved: boolean }>('sale.voidLine', line, options),
     receipt: (saleId: string) => call('sale.receipt', { saleId }),
     overridePrice: (payload: Record<string, unknown>) => call('sale.overridePrice', payload),
   },

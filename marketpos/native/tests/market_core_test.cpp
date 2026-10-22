@@ -1,6 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "market/Logging.hpp"
 #include "market/db/Database.hpp"
+#include "market/RetailOps.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -44,6 +45,83 @@ TEST_CASE("migrations apply with WAL", "[db]") {
   REQUIRE(db.queryInt("SELECT COUNT(*) FROM database_migrations") >= 1);
   const auto mode = db.queryText("PRAGMA journal_mode;");
   REQUIRE((mode == "wal" || mode == "WAL"));
+  db.close();
+  market::logging::shutdown();
+}
+
+static std::string ean13(const std::string& digits12) {
+  int sum = 0;
+  for (int i = 0; i < 12; ++i) sum += (digits12[i] - '0') * (i % 2 ? 3 : 1);
+  return digits12 + std::to_string((10 - sum % 10) % 10);
+}
+
+// 1.5.50: a TM-30F (or CAS/DIGI/Aclas) label: prefix 20-29 + PLU(5) + grams(5) + check digit.
+TEST_CASE("scale labels: any 2x prefix, PLU first, weight in grams", "[scale]") {
+  auto dir = tempDbDir();
+  market::logging::init((dir / "logs").string(), "error");
+  market::db::Database db;
+  db.open((dir / "market.db").string());
+  market::db::Migrator(db).migrate();
+  REQUIRE(db.queryText("SELECT value FROM settings WHERE key='scaleBarcodeRules'").find("\"prefix\":\"27\"") != std::string::npos);
+  db.exec("INSERT INTO products(id,sku,barcode,name_az,unit,price_minor,cost_minor,created_at,plu) VALUES"
+          "('p-tom','TOM','4760000000017','Pomidor','kq',350,200,0,'00042'),"
+          "('p-cuc','CUC','00077','Xiyar','kq',280,150,0,NULL),"
+          "('p-soap','SOAP','2300099000004','Sabun','əd',150,90,0,NULL)");
+  auto tomato = market::resolveScaleBarcode(db, ean13("210004201250"));
+  REQUIRE(tomato["productId"] == "p-tom");
+  REQUIRE(tomato["qtyMilli"] == 1250);
+  REQUIRE(tomato["lineTotalMinor"] == 438);  // 3.50 ₼/kq × 1.250 kq
+  auto seven = market::resolveScaleBarcode(db, ean13("270004200500"));
+  REQUIRE(seven["productId"] == "p-tom");
+  REQUIRE(seven["qtyMilli"] == 500);
+  auto halfCent = market::resolveScaleBarcode(db, ean13("210004200010"));
+  REQUIRE(halfCent["lineTotalMinor"] == 4); // 0.010 kg × 3.50 = 3.5 qəpik
+  // No PLU: a weighed good whose barcode is the scale code still matches.
+  REQUIRE(market::resolveScaleBarcode(db, ean13("220007700800"))["productId"] == "p-cuc");
+  // A piece good never matches a scale label, even when its barcode ends in the code.
+  REQUIRE_THROWS(market::resolveScaleBarcode(db, ean13("230009900400")));
+  // Not a scale label at all.
+  REQUIRE(market::resolveScaleBarcode(db, "4760000000017").is_null());
+  db.close();
+  market::logging::shutdown();
+}
+
+// Dahua TM-30F labels: 15 digits, prefix + 7-digit item code + grams + GS1 check (1.5.58).
+TEST_CASE("scale labels: Dahua 15-digit labels", "[scale]") {
+  auto dir = tempDbDir();
+  market::logging::init((dir / "logs").string(), "error");
+  market::db::Database db;
+  db.open((dir / "market.db").string());
+  market::db::Migrator(db).migrate();
+  db.exec("INSERT INTO products(id,sku,barcode,name_az,unit,price_minor,cost_minor,created_at,plu) VALUES"
+          "('p-one','ONE','200000001','Terezi mali','kq',800,500,0,'00001'),"
+          "('p-tom','TOM','2700042','Pomidor','kq',350,200,0,'00042'),"
+          "('p-cuc','CUC','210000077','Xiyar','kq',280,150,0,NULL)");
+  // The label the shop's scale printed: PLU 1, 100 g.
+  auto one = market::resolveScaleBarcode(db, "200000001001004");
+  REQUIRE(one["productId"] == "p-one");
+  REQUIRE(one["qtyMilli"] == 100);
+  REQUIRE(one["lineTotalMinor"] == 80);
+  REQUIRE(market::resolveScaleBarcode(db, "200000001026052")["qtyMilli"] == 2605);
+  REQUIRE(market::resolveScaleBarcode(db, "270000042012501")["productId"] == "p-tom");
+  // No PLU: the label's head is the good's barcode.
+  REQUIRE(market::resolveScaleBarcode(db, "210000077008003")["productId"] == "p-cuc");
+  // A 13-digit label still finds a good by its 1.5.54 barcode (prefix + 5-digit code).
+  db.exec("UPDATE products SET plu = NULL WHERE id = 'p-tom'");
+  REQUIRE(market::resolveScaleBarcode(db, ean13("270004201250"))["productId"] == "p-tom");
+  REQUIRE_THROWS(market::resolveScaleBarcode(db, "200000001001005"));
+  db.close();
+  market::logging::shutdown();
+}
+
+// A shop that already had the 1.5.49 default gets every prefix; edited rules are left alone.
+TEST_CASE("scale labels: migration widens only the old default", "[scale]") {
+  auto dir = tempDbDir();
+  market::logging::init((dir / "logs").string(), "error");
+  market::db::Database db;
+  db.open((dir / "market.db").string());
+  market::db::Migrator(db).migrate();
+  REQUIRE(db.queryInt("SELECT COUNT(*) FROM settings WHERE key='scaleBarcodeRules' AND value LIKE '%\"29\"%'") == 1);
   db.close();
   market::logging::shutdown();
 }

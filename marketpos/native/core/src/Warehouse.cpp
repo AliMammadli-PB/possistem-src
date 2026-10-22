@@ -1,6 +1,7 @@
 #include "market/Warehouse.hpp"
 #include "market/Logging.hpp"
 #include <sqlite3.h>
+#include <stdexcept>
 
 namespace market {
 namespace {
@@ -55,8 +56,10 @@ std::string ensurePrimaryWarehouse(db::Database& db) {
   return id;
 }
 
-std::string normalizeWarehouseId(db::Database& db, const std::string&) {
-  return ensurePrimaryWarehouse(db);
+std::string normalizeWarehouseId(db::Database& db, const std::string& requested) {
+  if(requested.empty())return ensurePrimaryWarehouse(db);
+  if(db.queryText("SELECT id FROM warehouses WHERE id=? AND active=1",{requested}).empty())throw std::runtime_error("Anbar tapılmadı");
+  return requested;
 }
 
 void repairWarehouseSetting(db::Database& db) {

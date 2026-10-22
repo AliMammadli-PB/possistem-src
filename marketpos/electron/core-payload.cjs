@@ -23,7 +23,7 @@
  * from the control plane rather than from a window script. Stripping it is what
  * stops any code in the renderer from rewriting every grant in the shop.
  */
-const ASSERTED = ['role', 'actorId', 'approverId', 'policySource'];
+const ASSERTED = ['role', 'actorId', 'approverId', 'approverRole', 'policySource', 'requireCartApproval', 'cartId', 'superAdmin', 'superAdminPin', 'superAdminApproved', '_marketScope'];
 
 /**
  * @param rawPayload what the renderer sent
@@ -40,6 +40,7 @@ function authorizeCorePayload(rawPayload, resolveSession, verifyManagerPin, mana
 
   for (const field of ASSERTED) delete payload[field];
 
+  if(payload.product&&typeof payload.product==='object'){payload.product={...payload.product};delete payload.product.stockByWarehouse;}delete payload.stockByWarehouse;
   const user = resolveSession();
   if (!user) return payload; // fail closed: the core sees no role at all
 
@@ -48,7 +49,11 @@ function authorizeCorePayload(rawPayload, resolveSession, verifyManagerPin, mana
 
   if (managerPin && typeof verifyManagerPin === 'function') {
     const approval = verifyManagerPin(managerPin);
-    if (approval && approval.ok) payload.approverId = String(approval.approverId || '');
+    if (approval && approval.ok) {
+      payload.approverId = String(approval.approverId || '');
+      // The core grants the override only if this person holds the permission.
+      payload.approverRole = String(approval.role || '');
+    }
   }
   return payload;
 }

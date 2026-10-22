@@ -1,0 +1,19 @@
+.branch-stock-switch,.branch-stock-pagination {display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px}
+.branch-stock-switch button,.branch-stock-pagination button,.branch-stock-head button,.branch-stock-filter select {min-height:48px;padding:10px 16px;border:1px solid #c2d8f6;border-radius:12px;background:#fff;color:#174c94;font-size:15px;touch-action:manipulation}
+.branch-stock-switch button[aria-pressed=true] {background:#1765de;border-color:#1765de;color:#fff}
+.branch-stock-pagination span {margin-right:auto;color:#476387}
+.branch-stock-pagination button:disabled {opacity:.45;cursor:default}
+.branch-stock-filter {display:grid;gap:5px;font-size:13px;font-weight:600;color:#476387;min-width:200px}
+.branch-stock-filter select {width:100%;max-width:100%}
+.branch-stock-scroll {overflow:auto;max-width:100%}
+.branch-stock-table {min-width:650px}
+.branch-stock-part {white-space:normal}
+.branch-stock-head {flex-wrap:wrap}
+@media(max-width:600px){.branch-stock-filter{width:100%}.branch-stock-sources{flex-basis:100%}.branch-stock-head .ops-wide-search{width:100%;min-width:0}}
+/* 1.5.47: stock value totals and print. */
+.branch-stock-totals{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:10px 0;font-size:15px}
+.branch-stock-totals button{margin-left:auto;min-height:42px;padding:8px 14px;border:1px solid #c6d8ea;border-radius:10px;background:#f3f8fe;color:#164b81;font-weight:700}
+.branch-registers{background:#fff;border:1px solid #d6e4f1;border-radius:12px;padding:10px 14px;margin:8px 18px}
+.branch-registers summary{cursor:pointer;font-weight:800;color:#183452;min-height:36px;display:flex;align-items:center}
+.branch-registers section{margin-top:10px}.branch-registers h4{margin:6px 0;font-size:15px}.branch-registers h4 small{font-weight:600;color:#8a5a12;margin-left:6px}.branch-registers h4 small.online{color:#1f5f35}
+.branch-registers .branch-stock-table{max-height:none}

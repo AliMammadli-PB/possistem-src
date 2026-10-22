@@ -9,8 +9,8 @@ import { money } from './format';
 import type { Lang, Product } from './types';
 
 /** Search/scanner input never rerenders the basket or the app shell. */
-export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouseId, cloudConnected, scannerEnabled, onAdd, onScan, onNewSale }: {
-  products: Product[]; lang: Lang; warehouseId: string; cloudConnected: boolean; scannerEnabled: boolean;
+export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouseId, showImages = false, cloudConnected, scannerEnabled, onAdd, onScan, onNewSale }: {
+  products: Product[]; lang: Lang; warehouseId: string; showImages?: boolean; cloudConnected: boolean; scannerEnabled: boolean;
   onAdd: (product: Product) => void; onScan: (value: string, inputValue?: string) => void; onNewSale: () => boolean;
 }) {
   const [query, setQuery] = useState('');
@@ -26,7 +26,15 @@ export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouse
     const timer = window.setTimeout(() => setSearchQuery(query), 100);
     return () => window.clearTimeout(timer);
   }, [query]);
-  const categories = useMemo(() => [...new Set(products.map((product) => product.category))], [products]);
+  // Əməliyyatlar → Kateqoriyalar: a new category shows here at once, even before it has goods.
+  const [warehouseCategories, setWarehouseCategories] = useState<string[]>([]);
+  useEffect(() => {
+    const load = () => void window.marketOps?.categories?.().then((rows) => setWarehouseCategories(Array.isArray(rows) ? rows : [])).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 10000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const categories = useMemo(() => [...new Set([...warehouseCategories, ...products.map((product) => product.category)])], [products, warehouseCategories]);
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const product of products) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
@@ -87,7 +95,7 @@ export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouse
             <button className={quick === 'weighted' ? 'active' : ''} aria-pressed={quick === 'weighted'} onClick={() => setQuick(quick === 'weighted' ? null : 'weighted')}><Scale /><span>Kilo məhsul</span></button>
           </div>
         </div>
-        <SaleProductGrid products={filtered} lang={lang} warehouseId={warehouseId} money={money} onAdd={add} />
+        <SaleProductGrid showImages={showImages} products={filtered} lang={lang} warehouseId={warehouseId} money={money} onAdd={add} />
       </section>
   </>;
 });

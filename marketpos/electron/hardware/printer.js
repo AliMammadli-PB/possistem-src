@@ -26,7 +26,7 @@ function escPosCut() {
 
 function escPosDrawerPulse() {
   // ESC p m t1 t2 — pin 2 pulse
-  return Buffer.from([ESC, 0x70, 0x00, 0x19, 0x19]);
+  return Buffer.from([ESC, 0x70, 0x00, 0x19, 0xFA]);
 }
 
 function escPosLine(text, width = 42) {
@@ -78,12 +78,15 @@ function buildReceiptEscPos(receipt, opts = {}) {
     if (earned > 0) chunks.push(escPosLine(`Qazanılan bonus: ${moneyAZN(earned)}`, width));
     chunks.push(escPosLine(`Bonus balansı: ${moneyAZN(receipt.loyaltyBalanceMinor || 0)}`, width));
   }
+  chunks.push(escPosLine('GERI QAYTARMA KODU', width));
+  chunks.push(escPosLine(String(receipt.receiptNo || '').match(/\d+$/)?.[0] || String(receipt.receiptNo || ''), width));
   if (receipt.fiscalStatus && receipt.fiscalStatus !== 'none') {
     chunks.push(escPosLine(`Fiskal: ${receipt.fiscalStatus}`, width));
   }
   if (receipt.fiscal?.qrData) chunks.push(escPosLine(`QR: ${receipt.fiscal.qrData}`, width));
   chunks.push(escPosLine('\n', width));
   if (opts.cut !== false) chunks.push(escPosCut());
+  if (opts.openCashDrawer !== false && !receipt.isReprint) chunks.push(escPosDrawerPulse());
   return Buffer.concat(chunks);
 }
 
@@ -172,14 +175,29 @@ class CorePrinterProvider {
    * @param invoke (method, payload) => Promise - the core supervisor's invoke
    * @param session () => ({ role, actorId }) for calls the core gates on a role
    */
-  constructor(invoke, session) {
+  constructor(invoke, session, fallbackTarget) {
     this.invoke = invoke;
     this.session = session || (() => ({}));
+    // Where to look when the till has no printer of its own yet: the one chosen
+    // in Parametrlər → Printer (the warehouse system's receipt printer).
+    this.fallbackTarget = fallbackTarget;
+    this.knownTarget = '';
+  }
+
+  /** The core answers {success, data, error}; a failure must reach the cashier, not read as printed. */
+  async call(method, payload, timeoutMs) {
+    const res = await this.invoke(method, payload, timeoutMs);
+    if (!res?.success) {
+      const error = new Error(res?.error?.message || 'Printer cavab vermədi');
+      error.code = res?.error?.code;
+      throw error;
+    }
+    return res.data || {};
   }
 
   async listPrinters() {
-    const result = await this.invoke('printer.list', {});
-    return (result?.printers || []).map((printer) => ({
+    const result = await this.call('printer.list', {});
+    return (result.printers || []).map((printer) => ({
       id: printer.target,
       name: printer.displayName || printer.target,
       connection: printer.connection,
@@ -194,9 +212,9 @@ class CorePrinterProvider {
   }
 
   async health() {
-    const result = await this.invoke('printer.list', {});
-    const current = result?.current || '';
-    const match = (result?.printers || []).find((printer) => printer.target === current);
+    const result = await this.call('printer.list', {});
+    const current = result.current || '';
+    const match = (result.printers || []).find((printer) => printer.target === current);
     return {
       provider: 'core',
       // No configured printer is not the same as one that is unreachable, and
@@ -209,19 +227,38 @@ class CorePrinterProvider {
 
   /** Finds every printer, prints a page to each until one takes it. */
   async detect(options = {}) {
-    return this.invoke('printer.detect', { ...this.session(), probe: options.probe !== false }, 60000);
+    this.forgetTarget();
+    return this.call('printer.detect', { ...this.session(), probe: options.probe !== false }, 60000);
   }
 
   async setTarget(target) {
-    return this.invoke('printer.setTarget', { ...this.session(), target });
+    this.forgetTarget();
+    return this.call('printer.setTarget', { ...this.session(), target });
+  }
+
+  forgetTarget() { this.knownTarget = ''; }
+
+  /** The till's printer; adopts the Parametrlər → Printer choice when the till has none. */
+  async target() {
+    if (this.knownTarget) return this.knownTarget;
+    const current = (await this.call('printer.list', {})).current || '';
+    if (current) return (this.knownTarget = current);
+    const adopted = typeof this.fallbackTarget === 'function' ? await this.fallbackTarget().catch(() => '') : '';
+    if (!adopted) return '';
+    await this.call('printer.setTarget', { ...this.session(), target: adopted });
+    return (this.knownTarget = adopted);
   }
 
   async printRaw(buffer, meta = {}) {
-    const result = await this.invoke('printer.send', {
-      bytes: Array.from(buffer),
-      ...(meta.target ? { target: meta.target } : {}),
-    });
-    return { ok: true, bytes: result?.bytes ?? buffer.length };
+    const target = meta.target || await this.target();
+    try {
+      const result = await this.call('printer.send', { bytes: Array.from(buffer), ...(target ? { target } : {}) });
+      return { ok: true, bytes: result.bytes ?? buffer.length, target: result.target || target };
+    } catch (error) {
+      // A printer that moved (new USB port, new IP) is looked up again next time.
+      if (!meta.target) this.forgetTarget();
+      throw error;
+    }
   }
 
   async printReceipt(receipt, opts) {

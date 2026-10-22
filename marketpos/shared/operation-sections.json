@@ -1,0 +1,132 @@
+[
+  {
+    "key": "OPS_GOODS",
+    "label": "Mallar",
+    "legacy": [
+      "CREATE_PRODUCT",
+      "EDIT_PRODUCT",
+      "EDIT_PRICE",
+      "EDIT_STOCK"
+    ]
+  },
+  {
+    "key": "OPS_STOCK",
+    "label": "Anbar",
+    "legacy": [
+      "EDIT_STOCK",
+      "STOCK_ADJUSTMENT",
+      "VIEW_COST"
+    ]
+  },
+  {
+    "key": "OPS_TRANSFERS",
+    "label": "Yerdəyişmələr",
+    "legacy": [
+      "TRANSFER_STOCK"
+    ]
+  },
+  {
+    "key": "OPS_PURCHASES",
+    "label": "Alışlar",
+    "legacy": [
+      "RECEIVE_PURCHASE",
+      "DOCS_VIEW",
+      "DOCS_CREATE",
+      "DOCS_EDIT",
+      "DOCS_DELETE"
+    ]
+  },
+  {
+    "key": "OPS_STOCKTAKE",
+    "label": "Sayım",
+    "legacy": [
+      "STOCK_ADJUSTMENT"
+    ]
+  },
+  {
+    "key": "OPS_CATEGORIES",
+    "label": "Kateqoriyalar",
+    "legacy": [
+      "CREATE_PRODUCT",
+      "EDIT_PRODUCT",
+      "EDIT_PRICE",
+      "EDIT_STOCK"
+    ]
+  },
+  {
+    "key": "OPS_PARTNERS",
+    "label": "Partnyorlar",
+    "legacy": [
+      "RECEIVE_PURCHASE",
+      "DOCS_VIEW",
+      "DOCS_CREATE",
+      "DOCS_EDIT",
+      "DOCS_DELETE"
+    ]
+  },
+  {
+    "key": "OPS_SALES",
+    "label": "Satışlar",
+    "legacy": [
+      "VIEW_REPORTS"
+    ]
+  },
+  {
+    "key": "OPS_CASH",
+    "label": "Kassalar",
+    "legacy": [
+      "CASH_IN",
+      "CASH_OUT",
+      "SAFE_DROP",
+      "CLOSE_SHIFT"
+    ]
+  },
+  {
+    "key": "OPS_EXPENSES",
+    "label": "Xərclər",
+    "legacy": [
+      "CASH_IN",
+      "CASH_OUT",
+      "SAFE_DROP",
+      "CLOSE_SHIFT"
+    ]
+  },
+  {
+    "key": "OPS_SALARY",
+    "label": "Maaşlar",
+    "legacy": [
+      "MANAGE_USERS"
+    ]
+  },
+  {
+    "key": "OPS_DOCUMENTS",
+    "label": "Ödəniş qaimələri",
+    "legacy": [
+      "DOCS_VIEW",
+      "DOCS_CREATE",
+      "DOCS_EDIT",
+      "DOCS_DELETE"
+    ]
+  },
+  {
+    "key": "OPS_PROFIT",
+    "label": "Qazanc",
+    "legacy": [
+      "VIEW_PROFIT"
+    ]
+  },
+  {
+    "key": "OPS_EXPORT",
+    "label": "İxrac",
+    "legacy": [
+      "VIEW_REPORTS"
+    ]
+  },
+  {
+    "key": "OPS_USERS",
+    "label": "İstifadəçilər",
+    "legacy": [
+      "MANAGE_USERS"
+    ]
+  }
+]

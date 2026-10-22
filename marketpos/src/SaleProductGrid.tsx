@@ -114,22 +114,24 @@ const SaleProductCard = memo(function SaleProductCard({
   product,
   lang,
   stock,
+  showImages,
   money,
   onAdd,
 }: {
   product: Product;
   lang: Lang;
   stock: number;
+  showImages: boolean;
   money: MoneyFn;
   onAdd: (product: Product) => void;
 }) {
   return (
     <button
       type="button"
-      className={stock === 0 ? 'product-card product-card-lg disabled' : 'product-card product-card-lg'}
+      className={`product-card product-card-lg ${stock === 0 ? 'disabled' : ''} ${showImages ? '' : 'product-text-card'}`}
       onClick={() => onAdd(product)}
     >
-      <ProductVisual image={product.image} alt={product.name[lang]} accent={product.accent} defer />
+      {showImages && <ProductVisual image={product.image} alt={product.name[lang]} accent={product.accent} defer />}
       {/* A cashier typing a code by hand finds the product by name and reads its barcode under the photo. */}
       {product.barcode && <span className="card-barcode" title={tr(lang, 'barcode')}><Barcode aria-hidden="true" /><code>{product.barcode}</code></span>}
       <span className="product-copy">
@@ -183,6 +185,7 @@ const InventoryProductCard = memo(function InventoryProductCard({
 });
 
 type SaleProductGridProps = {
+  showImages?: boolean;
   products: Product[];
   lang: Lang;
   warehouseId: string;
@@ -190,7 +193,7 @@ type SaleProductGridProps = {
   onAdd: (product: Product) => void;
 };
 
-export const SaleProductGrid = memo(function SaleProductGrid({ products, lang, money, onAdd }: SaleProductGridProps) {
+export const SaleProductGrid = memo(function SaleProductGrid({ products, lang, money, onAdd, showImages = false }: SaleProductGridProps) {
   const catalog = useCatalogPage(products, lang);
   const handleAdd = useCallback((product: Product) => onAdd(product), [onAdd]);
 
@@ -212,6 +215,7 @@ export const SaleProductGrid = memo(function SaleProductGrid({ products, lang, m
             product={product}
             lang={lang}
             stock={stockOf(product)}
+            showImages={showImages}
             money={money}
             onAdd={handleAdd}
           />

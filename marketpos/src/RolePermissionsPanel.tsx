@@ -1,204 +1,39 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
-
+import { ShieldCheck, RefreshCw } from 'lucide-react';
 import { marketCoreClient } from './core/client';
+import type { Lang } from './types';
 
-type Catalogue = Record<string, { permission: string; label: string }[]>;
-type RoleRow = { role: string; label: string; custom: boolean; permissions: string[] };
+type Group = {key:string;label:string;permissions:{key:string;label:string;hint?:string}[]};
+type Role = {name:string;permissions:string[]};
+type Policy = {version:number;roles:Role[];catalogue:Group[];entitlements?:{unrestricted:boolean;allowed:string[]}};
+const ROLES=['manager','head_cashier','cashier','warehouse'];
 
-const GROUP_LABELS: Record<string, string> = {
-  satis: 'Satış',
-  kassa: 'Kassa',
-  menyu: 'Menyu və məhsul',
-  anbar: 'Anbar və stok',
-  hesabat: 'Hesabatlar',
-  sistem: 'Sistem',
-  other: 'Digər',
-};
-
-/**
- * Which role may do what, edited in the app.
- *
- * Roles were three names baked into the seed and a grant could only be changed
- * by editing SQL, so "let this cashier refund" had no answer inside the product.
- *
- * The manager is deliberately not editable: the core restores its full grant on
- * every save, so a mistake made here can always be undone.
- */
-export function RolePermissionsPanel({ actorRole }: { actorRole: string }) {
-  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
-  const [roles, setRoles] = useState<RoleRow[]>([]);
-  const [selected, setSelected] = useState<RoleRow | null>(null);
-  const [draft, setDraft] = useState<string[]>([]);
-  const [label, setLabel] = useState('');
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  const load = useCallback(async () => {
-    try {
-      const [cat, list] = await Promise.all([
-        marketCoreClient.auth.permissionCatalogue(),
-        marketCoreClient.auth.roles(),
-      ]);
-      setCatalogue(cat.groups ?? {});
-      setRoles(list.roles ?? []);
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (!catalogue) return null;
-
-  const manager = selected?.role === 'manager';
-
-  const open = (role: RoleRow | null) => {
-    setSelected(role);
-    setName(role?.role ?? '');
-    setLabel(role?.label ?? '');
-    setDraft(role ? [...role.permissions] : []);
+/** The owner is an ordinary editable manager; only the verified superadmin
+ * session may publish grants, using the same server policy as the website. */
+export function RolePermissionsPanel({superAdmin=false,sessionToken,lang='az'}:{actorRole:string;superAdmin?:boolean;sessionToken:string;lang?:Lang}) {
+  const t=(az:string,ru:string,en:string)=>lang==='ru'?ru:lang==='en'?en:az;
+  const [policy,setPolicy]=useState<Policy|null>(null),[role,setRole]=useState('manager'),[draft,setDraft]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+  const load=useCallback(async()=>{
+    setError('');
+    try{
+      if(superAdmin){setPolicy(await window.marketSystem!.permissions.get(sessionToken));}
+      else {const [cat,list]=await Promise.all([marketCoreClient.auth.permissionCatalogue(),marketCoreClient.auth.roles()]);setPolicy({version:0,roles:list.roles.map(r=>({name:r.role,permissions:r.permissions})),catalogue:Object.entries(cat.groups).map(([key,rows])=>({key,label:key,permissions:rows.map(r=>({key:r.permission,label:r.label}))}))});}
+    }catch(e){setError((e as Error).message);}
+  },[sessionToken,superAdmin]);
+  useEffect(()=>{void load();},[load]);
+  useEffect(()=>{setDraft(policy?.roles.find(r=>r.name===role)?.permissions??[]);},[policy,role]);
+  const roleLabel=(key:string)=>({manager:t('Müdir / Sahibkar','Руководитель / Владелец','Manager / Owner'),head_cashier:t('Baş kassir','Старший кассир','Head cashier'),cashier:t('Kassir','Кассир','Cashier'),warehouse:t('Anbardar','Кладовщик','Storekeeper')}[key]||key);
+  const save=async()=>{
+    if(busy||!policy||!superAdmin)return;setBusy(true);setError('');setNotice('');
+    try{const next=await window.marketSystem!.permissions.save(sessionToken,role,draft,policy.version);setPolicy(next);setNotice(t('Saxlanıldı. Bu hesabın onlayn kassalarında icazələr yenilənir.','Сохранено. Права обновляются на кассах этого аккаунта.','Saved. Permissions are updating on this account’s online tills.'));}
+    catch(e){setError((e as Error).message);}finally{setBusy(false);}
   };
-
-  const toggle = (permission: string) =>
-    setDraft((prev) =>
-      prev.includes(permission) ? prev.filter((k) => k !== permission) : [...prev, permission],
-    );
-
-  const save = async () => {
-    if (!name.trim()) {
-      setError('Rol adı tələb olunur');
-      return;
-    }
-    setBusy(true);
-    try {
-      await marketCoreClient.auth.saveRole(name.trim(), label.trim() || name.trim(), draft);
-      setSelected(null);
-      setName('');
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (role: RoleRow) => {
-    setBusy(true);
-    try {
-      await marketCoreClient.auth.deleteRole(role.role);
-      setSelected(null);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Only a role that may manage roles sees the editor; everyone else sees the
-  // list, which is useful on its own ("what can a cashier do here?").
-  const mayEdit = actorRole === 'manager';
-
-  return (
-    <section className="module-page role-permissions">
-      <section className="page-intro">
-        <div>
-          <p>SƏLAHİYYƏTLƏR</p>
-          <h2>Rollar və səlahiyyətlər</h2>
-          <span>Rol seçin və hər səlahiyyəti açıb-bağlayın.</span>
-        </div>
-        <ShieldCheck />
-      </section>
-
-      {error && <p className="danger">{error}</p>}
-
-      <div className="role-chips">
-        {roles.map((role) => (
-          <button
-            key={role.role}
-            type="button"
-            className={selected?.role === role.role ? 'primary-action' : ''}
-            onClick={() => open(role)}
-          >
-            {role.label || role.role}
-            <small> ({role.permissions.length})</small>
-          </button>
-        ))}
-        {mayEdit && (
-          <button type="button" onClick={() => open(null)}>
-            + Yeni rol
-          </button>
-        )}
-      </div>
-
-      {(selected || name) && (
-        <div className="role-editor">
-          <label>
-            <span>Rol açarı</span>
-            <input
-              value={name}
-              disabled={Boolean(selected) || !mayEdit}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label>
-            <span>Görünən ad</span>
-            <input value={label} disabled={!mayEdit} onChange={(e) => setLabel(e.target.value)} />
-          </label>
-
-          {manager && (
-            <p>
-              Müdir həmişə bütün səlahiyyətlərə malikdir — bu, burada edilən səhvi geri
-              qaytarmağın yeganə yoludur.
-            </p>
-          )}
-
-          {Object.keys(catalogue)
-            .sort()
-            .map((group) => (
-              <div key={group} className="role-group">
-                <h4>{GROUP_LABELS[group] ?? group}</h4>
-                {catalogue[group]!.map((perm) => (
-                  <label key={perm.permission} className="role-permission">
-                    <input
-                      type="checkbox"
-                      disabled={manager || !mayEdit}
-                      checked={manager || draft.includes(perm.permission)}
-                      onChange={() => toggle(perm.permission)}
-                    />
-                    <span>{perm.label || perm.permission}</span>
-                  </label>
-                ))}
-              </div>
-            ))}
-
-          {mayEdit && (
-            <div className="role-actions">
-              <button
-                type="button"
-                className="primary-action"
-                disabled={busy || manager}
-                onClick={() => void save()}
-              >
-                {busy ? 'Saxlanılır…' : 'Saxla'}
-              </button>
-              <button type="button" onClick={() => { setSelected(null); setName(''); }}>
-                Bağla
-              </button>
-              {selected?.custom && (
-                <button type="button" className="danger" disabled={busy} onClick={() => void remove(selected)}>
-                  Rolu sil
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
+  const locked=(key:string)=>!superAdmin||busy||Boolean(policy?.entitlements&&!policy.entitlements.unrestricted&&!policy.entitlements.allowed.includes(key));
+  return <section className="module-page role-permissions"><section className="page-intro"><div><p>{t('SƏLAHİYYƏTLƏR','ПРАВА ДОСТУПА','PERMISSIONS')}</p><h2>{t('Rollar və səlahiyyətlər','Роли и права','Roles and permissions')}</h2><span>{superAdmin?t('Bölmələrə giriş və əməliyyat hüquqları ayrıdır. Dəyişikliklər bu sahibkarın Market kassalarına tətbiq olunur.','Доступ к разделам и действиям настраивается отдельно. Изменения применяются к Market-кассам владельца.','Section access and actions are separate. Changes apply to the owner’s Market tills.'):t('İcazələri yalnız superadmin dəyişir.','Права изменяет только суперадминистратор.','Only the superadmin can change permissions.')}</span></div><ShieldCheck/></section>
+    <button type="button" disabled={busy} onClick={()=>void load()}><RefreshCw/>{t('Yenilə','Обновить','Refresh')}</button>
+    {error&&<p className="form-error" role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
+    {policy?<><div className="role-chips">{ROLES.map(key=><button key={key} type="button" disabled={busy} className={role===key?'primary-action':''} onClick={()=>{setRole(key);setNotice('');}}>{roleLabel(key)}</button>)}</div>
+    <div className="role-editor">{policy.catalogue.map(group=><fieldset className="role-group" key={group.key} disabled={busy}><legend>{group.label}</legend>{superAdmin&&<button type="button" disabled={busy} onClick={()=>{const keys=group.permissions.map(p=>p.key).filter(k=>!locked(k));const all=keys.every(k=>draft.includes(k));setDraft(prev=>all?prev.filter(k=>!keys.includes(k)):[...new Set([...prev,...keys])]);}}>{t('Hamısını seç / bağla','Выбрать / снять все','Select / clear all')}</button>}{group.permissions.map(p=><label className="role-permission" key={p.key}><input type="checkbox" checked={draft.includes(p.key)} disabled={locked(p.key)} onChange={()=>setDraft(prev=>prev.includes(p.key)?prev.filter(k=>k!==p.key):[...prev,p.key])}/><span>{p.label}{p.hint&&<small>{p.hint}</small>}</span></label>)}</fieldset>)}
+    {superAdmin&&<div className="role-actions"><button type="button" className="primary-action" disabled={busy} onClick={()=>void save()}>{busy?'…':t('İcazələri saxla','Сохранить права','Save permissions')}</button></div>}</div></>:!error&&<p role="status">{t('Yüklənir…','Загрузка…','Loading…')}</p>}
+  </section>;
 }

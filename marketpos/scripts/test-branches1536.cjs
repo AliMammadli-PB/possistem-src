@@ -1,0 +1,23 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {project,online,TIMEOUT_MS}=require('../../restoranpos/cloud-branches/presence.js');
+const {transferPlaces}=require('../electron/transfer-places.cjs');
+const ok=data=>({success:true,data});
+(async()=>{
+ const server=Date.UTC(2026,9,19),local=server+3600000;
+ const data=project({serverTime:new Date(server).toISOString(),branches:[{lastSeenAt:new Date(server-299999).toISOString(),online:true},{lastSeenAt:new Date(server-300000).toISOString(),online:true},{lastSeenAt:null,online:false}]},local);
+ assert.equal(TIMEOUT_MS,300000);assert.equal(online(data.branches[0],local),true);assert.equal(online(data.branches[0],local+1),false);assert.equal(online(data.branches[1],local),false);assert.equal(online(data.branches[2],local),false);
+ const {OpsEngine}=require('../electron/ops-engine.cjs');const engine=Object.create(OpsEngine.prototype);engine.methods=new Set(['business.call']);assert.equal(engine.allowed('business.call','manager',false,{action:'staff.save'}),false);assert.equal(engine.allowed('business.call','manager',false,{action:'staff.link'}),false);
+ engine.settings=()=>({host:true});engine.flushCatalog=async()=>{};engine.invoke=async()=>{throw Error('Payroll API must not run')};const blocked=await engine.remoteBatch({expiresAt:Date.now()+10000,calls:[{method:'business.call',payload:{action:'staff.save'}}]});const reply=JSON.parse(require('node:zlib').inflateRawSync(Buffer.from(blocked.z,'base64')));assert.equal(reply[0].success,false);assert.equal(reply[0].error.code,'E_FORBIDDEN');
+ const calls=[],deps={scope:{role:'warehouse',warehouseIds:['w1']},activation:{serverDeviceId:'self',cloudBranchName:'Gənclik'},ops:{invoke:async(m,p)=>{calls.push({m,p});return ok(m==='warehouses.list'?{warehouses:[{id:'w1',name:'Əsas',active:1},{id:'hidden',active:0}]}:{objects:[{name:'Gənclik',warehouseId:'w1'}]})}},network:async()=>{throw Error('Internet offline')}};
+ const localOnly=await transferPlaces(deps);assert.equal(localOnly.warehouses.length,1);assert.equal(localOnly.networkError,'Internet offline');assert.deepEqual(calls[0].p._marketScope.warehouseIds,['w1']);
+ const target={deviceId:'remote',branchId:'b2',name:'Nərimanov',product:'market',online:true,version:'1.5.36'};
+ const remote={...deps,network:async()=>({branches:[target]}),deviceId:'remote',remote:async()=>({results:[ok({warehouses:[{id:'w1',name:'Qəbul',active:true}]}),ok({objects:[]})]})};
+ assert.equal((await transferPlaces(remote)).warehouses[0].objectName,'Nərimanov');
+ await assert.rejects(()=>transferPlaces({...remote,deviceId:'another-owner'}),/sahibkara/);
+ await assert.rejects(()=>transferPlaces({...remote,network:async()=>({branches:[{...target,online:false}]})}),/oflayn/);
+ await assert.rejects(()=>transferPlaces({...remote,remote:async()=>({results:[{success:false,error:{message:'denied'}}]})}),/denied/);
+ await assert.rejects(()=>transferPlaces({...deps,ops:{invoke:async()=>({success:false,error:{message:'Warehouse scope denied'}})}}),/scope denied/);
+ const source=await transferPlaces({...remote,scope:{role:'manager'},deviceId:'',sourceDeviceId:'remote'});assert.equal(source.deviceId,'remote');assert.equal(source.warehouses[0].objectName,'Nərimanov');await assert.rejects(()=>transferPlaces({...remote,deviceId:'',sourceDeviceId:'remote'}),/yalnız müdir/);
+ console.log('PASS 5-minute exact boundary with PC clock skew, offline source access, active warehouses, scoped selection, remote branch and owner rejection, visible RPC errors');
+})().catch(e=>{console.error(e);process.exitCode=1});

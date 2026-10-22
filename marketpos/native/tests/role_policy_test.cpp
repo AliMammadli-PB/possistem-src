@@ -126,20 +126,21 @@ TEST_CASE("the same policy arriving again changes nothing", "[roles][policy]") {
   REQUIRE_FALSE(t.roleHas("cashier", "SALE_REFUND"));
 }
 
-TEST_CASE("a policy cannot lock the shop out of its own till", "[roles][policy]") {
+TEST_CASE("manager policy is editable while the verified superadmin keeps recovery access", "[roles][policy]") {
   PolicyDb t;
-
   t.apply(policy(2, nlohmann::json::array({
-                        {{"name", "manager"}, {"permissions", nlohmann::json::array()}},
-                    })));
-
-  // The website is further away than the till. A manager stripped of role
-  // management could not undo the mistake that stripped them.
-  const auto missing = t.db.queryInt(
-      "SELECT COUNT(*) FROM permission_catalogue c "
-      "WHERE NOT EXISTS (SELECT 1 FROM role_permissions rp "
-      "                  WHERE rp.role = 'manager' AND rp.permission = c.permission)");
-  REQUIRE(missing == 0);
+    {{"name", "manager"}, {"permissions", {"OPS_PURCHASES", "DOCS_VIEW"}}},
+  })));
+  REQUIRE(t.roleHas("manager", "OPS_PURCHASES"));
+  REQUIRE_FALSE(t.roleHas("manager", "OPS_SALARY"));
+  REQUIRE_FALSE(t.roleHas("manager", "DOCS_DELETE"));
+  REQUIRE(t.server.dispatch("auth.checkPermission", {{"actorId", "possistem-admin"}, {"role", "manager"}, {"permission", "MANAGE_ROLES"}}).value("allowed", false));
+  t.apply(policy(3, nlohmann::json::array({
+    {{"name", "manager"}, {"permissions", nlohmann::json::array()}},
+  })));
+  REQUIRE_FALSE(t.roleHas("manager", "OPS_PURCHASES"));
+  REQUIRE_FALSE(t.roleHas("manager", "MANAGE_ROLES"));
+  REQUIRE(t.server.dispatch("auth.checkPermission", {{"actorId", "possistem-admin"}, {"role", "manager"}, {"permission", "OPS_SALARY"}}).value("allowed", false));
 }
 
 TEST_CASE("a permission this build has never heard of is dropped", "[roles][policy]") {
@@ -163,4 +164,37 @@ TEST_CASE("a malformed policy is refused rather than half-applied", "[roles][pol
                     market::PosError);
   REQUIRE_THROWS_AS(t.apply(nlohmann::json{{"policySource", "control-plane"}, {"version", 3}}),
                     market::PosError);
+}
+
+TEST_CASE("a policy gives one worker more or less than their role", "[roles][policy][users]") {
+  PolicyDb t;
+  auto p = policy(7, nlohmann::json::array({{{"name", "cashier"}, {"permissions", {"DOCS_VIEW"}}}}));
+  p["users"] = nlohmann::json::array({
+      {{"userId", "u-ali"}, {"allow", {"SALE_CANCEL", "NOT_A_KEY"}}, {"deny", nlohmann::json::array()}},
+      {{"userId", "u-vusal"}, {"allow", nlohmann::json::array()}, {"deny", {"DOCS_VIEW"}}},
+  });
+  t.apply(p);
+  REQUIRE(t.server.dispatch("auth.checkPermission", {{"actorId", "u-ali"}, {"role", "cashier"}, {"permission", "SALE_CANCEL"}}).value("allowed", false));
+  REQUIRE_FALSE(t.server.dispatch("auth.checkPermission", {{"actorId", "u-other"}, {"role", "cashier"}, {"permission", "SALE_CANCEL"}}).value("allowed", false));
+  REQUIRE_FALSE(t.server.dispatch("auth.checkPermission", {{"actorId", "u-vusal"}, {"role", "cashier"}, {"permission", "DOCS_VIEW"}}).value("allowed", false));
+  REQUIRE(t.db.queryInt("SELECT COUNT(*) FROM employee_permission_overrides WHERE permission = 'NOT_A_KEY'", {}, {}) == 0);
+
+  // The next policy replaces the website's rows; nobody keeps an old grant.
+  auto next = policy(8, nlohmann::json::array({{{"name", "cashier"}, {"permissions", {"DOCS_VIEW"}}}}));
+  next["users"] = nlohmann::json::array();
+  t.apply(next);
+  REQUIRE_FALSE(t.server.dispatch("auth.checkPermission", {{"actorId", "u-ali"}, {"role", "cashier"}, {"permission", "SALE_CANCEL"}}).value("allowed", false));
+  REQUIRE(t.server.dispatch("auth.checkPermission", {{"actorId", "u-vusal"}, {"role", "cashier"}, {"permission", "DOCS_VIEW"}}).value("allowed", false));
+}
+
+TEST_CASE("a policy replaces only the keys the website manages", "[roles][policy]") {
+  PolicyDb t;
+  t.db.exec("INSERT OR IGNORE INTO role_permissions(role, permission) VALUES ('cashier', 'LOYALTY_REDEEM'), ('cashier', 'SALE_DISCOUNT'), ('cashier', 'DELIVERY_VIEW')");
+  auto p = policy(11, nlohmann::json::array({{{"name", "cashier"}, {"permissions", {"SALE_CANCEL"}}}}));
+  p["managedKeys"] = {"SALE_CANCEL", "SALE_DISCOUNT"};
+  t.apply(p);
+  REQUIRE(t.roleHas("cashier", "SALE_CANCEL"));
+  REQUIRE_FALSE(t.roleHas("cashier", "SALE_DISCOUNT"));
+  REQUIRE(t.roleHas("cashier", "LOYALTY_REDEEM"));  // not in any catalogue
+  REQUIRE(t.roleHas("cashier", "DELIVERY_VIEW"));   // in the till's, not the website's
 }

@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS cart_drafts (
+ id TEXT PRIMARY KEY, actor_id TEXT NOT NULL, lines_json TEXT NOT NULL DEFAULT '[]',
+ changes_json TEXT NOT NULL DEFAULT '[]',
+ revision INTEGER NOT NULL DEFAULT 1, dirty INTEGER NOT NULL DEFAULT 0,
+ approved_revision INTEGER NOT NULL DEFAULT 0, approver_id TEXT NOT NULL DEFAULT '',
+ discount_minor INTEGER NOT NULL DEFAULT 0, completed INTEGER NOT NULL DEFAULT 0,
+ updated_at INTEGER NOT NULL
+);

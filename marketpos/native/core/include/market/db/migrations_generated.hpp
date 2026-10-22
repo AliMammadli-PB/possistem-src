@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <string_view>
 namespace market::db {
-inline constexpr int kSchemaVersion = 13;
+inline constexpr int kSchemaVersion = 21;
 struct EmbeddedMigration { int version; const char* name; const char* checksum; std::string_view sql; };
 inline constexpr EmbeddedMigration kMigrations[] = {
   {1, "001_initial_schema.sql", "16074141", R"market(-- Market POS initial schema. Money is INTEGER qəpik (int64). Never REAL.
@@ -984,8 +984,92 @@ CREATE TABLE IF NOT EXISTS sale_submissions (
   sale_id TEXT NOT NULL REFERENCES sales(id)
 );
 )market"},
+  {14, "014_staff_rights.sql", "9ba5f746", R"market(-- 1.5.27: rights are set by POSSISTEM (the super admin, per customer role and
+-- per worker); the shop only creates its users. Three document rights for
+-- Əməliyyatlar's qaimələr, and SALE_CANCEL now means removing a scanned item
+-- from the basket (storno) - without it the cashier needs a permitted PIN.
+INSERT OR IGNORE INTO roles(role, label, custom) VALUES ('head_cashier', 'Baş kassir', 0);
+
+UPDATE permission_catalogue SET label = 'Səbətdən malı silmək (storno)' WHERE permission = 'SALE_CANCEL';
+INSERT OR IGNORE INTO permission_catalogue(permission, grp, label) VALUES
+  ('DOCS_VIEW',   'anbar', 'Qaimələrə baxmaq'),
+  ('DOCS_EDIT',   'anbar', 'Qaimələrdə düzəliş etmək'),
+  ('DOCS_DELETE', 'anbar', 'Qaimələri silmək');
+
+-- What each role could do before, so an update changes nothing by itself.
+INSERT OR IGNORE INTO role_permissions(role, permission) VALUES
+  ('manager', 'DOCS_VIEW'), ('manager', 'DOCS_EDIT'), ('manager', 'DOCS_DELETE'), ('manager', 'SALE_CANCEL'),
+  ('warehouse', 'DOCS_VIEW'), ('warehouse', 'DOCS_EDIT'), ('warehouse', 'DOCS_DELETE'),
+  ('head_cashier', 'DOCS_VIEW'), ('head_cashier', 'SALE_CANCEL'),
+  ('cashier', 'DOCS_VIEW');
+)market"},
+  {15, "015_cart_approval.sql", "5412474b", R"market(CREATE TABLE IF NOT EXISTS cart_drafts (
+ id TEXT PRIMARY KEY, actor_id TEXT NOT NULL, lines_json TEXT NOT NULL DEFAULT '[]',
+ changes_json TEXT NOT NULL DEFAULT '[]',
+ revision INTEGER NOT NULL DEFAULT 1, dirty INTEGER NOT NULL DEFAULT 0,
+ approved_revision INTEGER NOT NULL DEFAULT 0, approver_id TEXT NOT NULL DEFAULT '',
+ discount_minor INTEGER NOT NULL DEFAULT 0, completed INTEGER NOT NULL DEFAULT 0,
+ updated_at INTEGER NOT NULL
+);
+)market"},
+  {16, "016_customer_bridge.sql", "e24786d7", R"market(CREATE TABLE customer_bridge_acks (ledger_id TEXT PRIMARY KEY);
+)market"},
+  {17, "017_document_create.sql", "625d5786", R"market(INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('DOCS_CREATE','anbar','Qaimə yaratmaq');
+INSERT OR IGNORE INTO role_permissions(role,permission) VALUES('manager','DOCS_CREATE'),('warehouse','DOCS_CREATE');
+)market"},
+  {18, "018_sale_corrections.sql", "97bf11a5", R"market(CREATE TABLE sale_corrections (
+ id TEXT PRIMARY KEY, request_json TEXT NOT NULL, sale_id TEXT NOT NULL UNIQUE REFERENCES sales(id),
+ replacement_id TEXT REFERENCES sales(id), reason TEXT NOT NULL, actor_id TEXT NOT NULL,
+ created_at INTEGER NOT NULL
+);
+)market"},
+  {19, "019_scale_prefixes.sql", "79cabe66", R"market(-- 1.5.50: label scales (TM-30F, CAS, DIGI, Rongta/Aclas) print EAN-13 weight labels
+-- prefix(2) + PLU(5) + weight in grams(5) + check digit, with a prefix the shop picks
+-- in the scale (20-29). Əməliyyatlar -> Mallar exports the PLU list with any of those
+-- prefixes, so the till must read all of them. A shop that edited the rules keeps them.
+UPDATE settings SET value = '[{"prefix":"20","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"21","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"22","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"23","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"24","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"25","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"26","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"27","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"28","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"29","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true}]'
+ WHERE key = 'scaleBarcodeRules' AND value = '[{"prefix":"20","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true}]';
+INSERT OR IGNORE INTO settings(key, value) VALUES ('scaleBarcodeRules', '[{"prefix":"20","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"21","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"22","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"23","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"24","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"25","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"26","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"27","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"28","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true},{"prefix":"29","pluStart":2,"pluLen":5,"valueStart":7,"valueLen":5,"decimals":3,"mode":"WEIGHT","checkChecksum":true}]');
+)market"},
+  {20, "020_operation_access.sql", "0fbfa3d2", R"market(-- Independent operation screen access; preserve existing role visibility on upgrade.
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_GOODS','emeliyyat','Mallar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_GOODS' FROM role_permissions WHERE permission IN ('CREATE_PRODUCT','EDIT_PRODUCT','EDIT_PRICE','EDIT_STOCK');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_STOCK','emeliyyat','Anbar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_STOCK' FROM role_permissions WHERE permission IN ('EDIT_STOCK','STOCK_ADJUSTMENT','VIEW_COST');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_TRANSFERS','emeliyyat','Yerdəyişmələr bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_TRANSFERS' FROM role_permissions WHERE permission IN ('TRANSFER_STOCK');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_PURCHASES','emeliyyat','Alışlar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_PURCHASES' FROM role_permissions WHERE permission IN ('RECEIVE_PURCHASE','DOCS_VIEW','DOCS_CREATE','DOCS_EDIT','DOCS_DELETE');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_STOCKTAKE','emeliyyat','Sayım bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_STOCKTAKE' FROM role_permissions WHERE permission IN ('STOCK_ADJUSTMENT');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_CATEGORIES','emeliyyat','Kateqoriyalar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_CATEGORIES' FROM role_permissions WHERE permission IN ('CREATE_PRODUCT','EDIT_PRODUCT','EDIT_PRICE','EDIT_STOCK');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_PARTNERS','emeliyyat','Partnyorlar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_PARTNERS' FROM role_permissions WHERE permission IN ('RECEIVE_PURCHASE','DOCS_VIEW','DOCS_CREATE','DOCS_EDIT','DOCS_DELETE');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_SALES','emeliyyat','Satışlar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_SALES' FROM role_permissions WHERE permission IN ('VIEW_REPORTS');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_CASH','emeliyyat','Kassalar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_CASH' FROM role_permissions WHERE permission IN ('CASH_IN','CASH_OUT','SAFE_DROP','CLOSE_SHIFT');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_EXPENSES','emeliyyat','Xərclər bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_EXPENSES' FROM role_permissions WHERE permission IN ('CASH_IN','CASH_OUT','SAFE_DROP','CLOSE_SHIFT');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_SALARY','emeliyyat','Maaşlar bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_SALARY' FROM role_permissions WHERE permission IN ('MANAGE_USERS');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_DOCUMENTS','emeliyyat','Ödəniş qaimələri bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_DOCUMENTS' FROM role_permissions WHERE permission IN ('DOCS_VIEW','DOCS_CREATE','DOCS_EDIT','DOCS_DELETE');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_PROFIT','emeliyyat','Qazanc bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_PROFIT' FROM role_permissions WHERE permission IN ('VIEW_PROFIT');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_EXPORT','emeliyyat','İxrac bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_EXPORT' FROM role_permissions WHERE permission IN ('VIEW_REPORTS');
+INSERT OR IGNORE INTO permission_catalogue(permission,grp,label) VALUES('OPS_USERS','emeliyyat','İstifadəçilər bölməsinə giriş');
+INSERT OR IGNORE INTO role_permissions(role,permission) SELECT DISTINCT role,'OPS_USERS' FROM role_permissions WHERE permission IN ('MANAGE_USERS');
+DELETE FROM settings WHERE key = 'pos.rolePolicyVersion';
+)market"},
+  {21, "021_sale_item_weight.sql", "30815878", R"market(-- Preserve the scanned weight independently of rounded money. Old receipts
+-- retain NULL and keep the legacy inference; existing financial values stay intact.
+ALTER TABLE sale_items ADD COLUMN qty_milli INTEGER CHECK (qty_milli IS NULL OR qty_milli > 0);
+)market"},
 };
-inline constexpr std::size_t kMigrationCount = 13;
+inline constexpr std::size_t kMigrationCount = 21;
 struct EmbeddedSeed { const char* name; std::string_view sql; };
 inline constexpr EmbeddedSeed kSeeds[] = {
 };

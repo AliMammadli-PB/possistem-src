@@ -1,0 +1,21 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {staffPlaces,validatePlaces}=require('../electron/staff-places.cjs');
+const {OpsEngine}=require('../electron/ops-engine.cjs');
+const ok=data=>({success:true,data});
+(async()=>{
+ const data={accounts:[{id:'a1',kind:'till',terminalId:'market-r1',objectId:'o1'},{id:'a2',kind:'till',terminalId:'market-r2',objectId:'o2'}],objects:[{id:'o1',name:'Gənclik',warehouseId:'w1'},{id:'o2',name:'Nərimanov',warehouseId:'w2'}]};
+ const deps={core:{invoke:async()=>ok([{id:'r1',name:'Kassa 1'},{id:'r2',name:'Kassa 2'},{id:'r3',archived:true}])},ops:{invoke:async m=>ok(m==='cashAccounts.list'?data:{warehouses:[{id:'w1',name:'Anbar 1'},{id:'w2',name:'Anbar 2'}]})},activation:{cloudBranchId:'b1'},network:async()=>({objects:[{id:'b1',name:'Gənclik'},{id:'b2',name:'Nərimanov'},{id:'b3',name:'Əhmədli'}],branches:[{local:true,branchId:'b1'}]})};
+ const p=await staffPlaces(deps);assert.equal(p.objects.length,3);assert.equal(p.objects[0].branchId,'b1');assert.equal(p.registers.length,2);assert.equal(p.warehouses[0].objectId,'b1');
+ assert.equal(validatePlaces(p,{objectId:'b1',registerIds:['r1'],warehouseIds:['w1']},{role:'manager'}).branchId,'b1');
+ assert.throws(()=>validatePlaces(p,{objectId:'b1',registerIds:['r2']},{role:'manager'}));
+ assert.throws(()=>validatePlaces(p,{objectId:'b1',warehouseIds:['w2']},{role:'manager'}));
+ assert.throws(()=>validatePlaces(p,{objectId:'foreign'},{role:'manager'}));
+ assert.throws(()=>validatePlaces(p,{objectId:''},{branchId:'b1'}));
+ const cross=await staffPlaces({...deps,network:async()=>({objects:[{id:'b1',name:'Gənclik'},{id:'b2',name:'Nərimanov'}],branches:[{local:true,branchId:'b1'},{deviceId:'remote',product:'market',online:true,branchId:'b2'}]}),remote:async()=>({results:[ok({accounts:[{kind:'till',terminalId:'market-r1',name:'Uzaq kassa'}]}),ok({warehouses:[{id:'w1',name:'Uzaq anbar'}]})]})});
+ assert.equal(validatePlaces(cross,{objectId:'b2',registerIds:['r1'],warehouseIds:['w1']},{}).id,'b2','Same local IDs on remote devices are scoped by the selected object');
+ const cached=await staffPlaces({...deps,network:async()=>{throw Error('offline')},cache:{objects:p.cloudObjects}});assert.equal(cached.offline,true);assert.ok(cached.warning);assert.equal(cached.objects.length,3);
+ await assert.rejects(()=>staffPlaces({...deps,ops:{invoke:async()=>({success:false})}}));
+ const e=Object.create(OpsEngine.prototype);let calls=0;e.staffProfiles=()=>[{id:'legacy-user',name:'Changed user',salaryMinor:99999}];e.invoke=async()=>{calls++;return ok({})};await e.syncStaff();assert.equal(calls,0,'Login changes do not create or overwrite salary cards');
+ console.log('PASS staff places: owner projection, object/register/warehouse validation, branch-bound manager, cached offline list, visible failure and independent payroll');
+})().catch(e=>{console.error(e);process.exitCode=1});

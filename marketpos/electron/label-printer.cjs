@@ -3,10 +3,12 @@
 const bwip = require('bwip-js');
 const fs = require('node:fs');
 const path = require('node:path');
-const DEFAULT_DESIGN = Object.freeze({ offsetX: 0, offsetY: 0, margin: 8, showName: true, nameX: 0, nameY: 0, nameSize: 16, nameLines: 2, nameAlign: 'center', nameBold: true, priceX: 0, priceY: 0, priceSize: 22, priceAlign: 'center', priceBold: true, barcodeX: 0, barcodeY: 0, barcodeHeight: 0, barWidth: 0, digitsX: 0, digitsY: 0, digitsSize: 14, digitsBold: false, showDigits: true, caption: '', showCaption: false, captionX: 0, captionY: 0, captionSize: 12, captionAlign: 'center', captionBold: false, pricePosition: 'top' });
+const DEFAULT_DESIGN = Object.freeze({ offsetX: 0, offsetY: 0, margin: 8, showName: true, nameX: 0, nameY: 0, nameSize: 16, nameLines: 2, nameAlign: 'center', nameBold: true, priceX: 0, priceY: 0, priceSize: 22, priceAlign: 'center', priceBold: true, barcodeX: 0, barcodeY: 0, barcodeHeight: 0, barWidth: 0, digitsX: 0, digitsY: 0, digitsSize: 14, digitsBold: false, showDigits: true, caption: '', showCaption: false, captionX: 0, captionY: 0, captionSize: 12, captionAlign: 'center', captionBold: false, pricePosition: 'top', showBarcode: true, nameScaleX: 1, nameScaleY: 1, priceScaleX: 1, priceScaleY: 1, digitsScaleX: 1, digitsScaleY: 1, captionScaleX: 1, captionScaleY: 1, nameFont: 'Arial', priceFont: 'Arial', digitsFont: 'monospace', captionFont: 'Arial', nameItalic: false, priceItalic: false, digitsItalic: false, captionItalic: false, inkScale: 1, barEdits: {} });
 // `unit` is only how the screens show sizes (mm, inch or printer dots); the
 // profile itself is always millimetres and dots.
-const DEFAULT_PROFILE = Object.freeze({ target: '', name: '', model: 'xp350b', protocol: 'tspl', widthMm: 45, heightMm: 25, gapMm: 2, dpi: 203, maxWidthMm: 76, showPrice: true, unit: 'mm', design: DEFAULT_DESIGN });
+const DEFAULT_SAMPLE = Object.freeze({ name: '', price: '', barcode: '2001234567893' });
+const FONTS = ['Arial', 'Tahoma', 'Segoe UI', 'Verdana', 'Georgia', 'Times New Roman', 'Courier New', 'sans-serif', 'serif', 'monospace'];
+const DEFAULT_PROFILE = Object.freeze({ target: '', name: '', model: 'xp350b', protocol: 'tspl', widthMm: 45, heightMm: 25, gapMm: 2, dpi: 203, maxWidthMm: 76, showPrice: true, unit: 'mm', design: DEFAULT_DESIGN, sample: DEFAULT_SAMPLE });
 const DRIVER_URLS = Object.freeze({ xprinter: 'https://www.xprinter.net/companyfile/32.html', tsc: 'https://www.tscprinters.com/en/downloads', zebra: 'https://www.zebra.com/us/en/support-downloads/printers.html' });
 const fail = (code) => { throw new Error(code); };
 function number(value, min, max) { if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) fail('E_LABEL_SIZE'); return value; }
@@ -20,12 +22,21 @@ function design(input = {}, dpi = 203) {
   const defaults = { ...DEFAULT_DESIGN };
   if (dpi === 300) for (const k of ['margin', 'nameSize', 'priceSize', 'digitsSize', 'captionSize']) defaults[k] = Math.round(defaults[k] * 1.5);
   const d = { ...defaults, ...input };
-  for (const k of ['offsetX','offsetY','nameX','nameY','priceX','priceY','barcodeX','barcodeY','digitsX','digitsY','captionX','captionY']) if (!Number.isInteger(d[k]) || Math.abs(d[k]) > 3000) fail('E_LABEL_DESIGN');
-  for (const k of ['nameSize','priceSize','digitsSize','captionSize']) if (!Number.isInteger(d[k]) || d[k] < 8 || d[k] > 120) fail('E_LABEL_DESIGN');
-  for (const k of ['showName','nameBold','priceBold','digitsBold','showDigits','showCaption','captionBold']) if (typeof d[k] !== 'boolean') fail('E_LABEL_DESIGN');
+  for (const k of ['offsetX','offsetY','nameX','nameY','priceX','priceY','barcodeX','barcodeY','digitsX','digitsY','captionX','captionY']) if (!Number.isFinite(d[k]) || Math.abs(d[k]) > Number.MAX_SAFE_INTEGER) fail('E_LABEL_DESIGN');
+  for (const k of ['nameScaleX','nameScaleY','priceScaleX','priceScaleY','digitsScaleX','digitsScaleY','captionScaleX','captionScaleY']) if (!Number.isFinite(d[k]) || d[k] <= 0 || d[k] > 1000) fail('E_LABEL_DESIGN');
+  for (const k of ['nameSize','priceSize','digitsSize','captionSize']) if (!Number.isFinite(d[k]) || d[k] < 6 || d[k] > 400) fail('E_LABEL_DESIGN');
+  for (const k of ['showName','nameBold','priceBold','digitsBold','showDigits','showCaption','captionBold','showBarcode','nameItalic','priceItalic','digitsItalic','captionItalic']) if (typeof d[k] !== 'boolean') fail('E_LABEL_DESIGN');
   for (const k of ['nameAlign','priceAlign','captionAlign']) if (!['left','center','right'].includes(d[k])) fail('E_LABEL_DESIGN');
   if (!['top','bottom'].includes(d.pricePosition)) fail('E_LABEL_DESIGN');
-  if (!Number.isInteger(d.margin) || d.margin < 0 || d.margin > 100 || !Number.isInteger(d.nameLines) || d.nameLines < 1 || d.nameLines > 3 || !Number.isInteger(d.barcodeHeight) || d.barcodeHeight < 0 || d.barcodeHeight > 2000 || !Number.isInteger(d.barWidth) || d.barWidth < 0 || d.barWidth > 8 || typeof d.caption !== 'string' || d.caption.length > 120 || /[\r\n\0]/.test(d.caption)) fail('E_LABEL_DESIGN');
+  if (!Number.isFinite(d.margin) || d.margin < 0 || d.margin > 100 || !Number.isInteger(d.nameLines) || d.nameLines < 1 || d.nameLines > 3 || !Number.isFinite(d.barcodeHeight) || d.barcodeHeight < 0 || d.barcodeHeight > 2000 || !Number.isFinite(d.barWidth) || d.barWidth < 0 || d.barWidth > 64 || typeof d.caption !== 'string' || d.caption.length > 120 || /[\r\n\0]/.test(d.caption)) fail('E_LABEL_DESIGN');
+  for (const key of ['nameFont','priceFont','digitsFont','captionFont']) if (!FONTS.includes(d[key])) fail('E_LABEL_DESIGN');
+  if (!Number.isFinite(d.inkScale) || d.inkScale < .1 || d.inkScale > 3 || !d.barEdits || typeof d.barEdits !== 'object' || Array.isArray(d.barEdits) || Object.keys(d.barEdits).length > 600) fail('E_LABEL_DESIGN');
+  d.barEdits = Object.fromEntries(Object.entries(d.barEdits).map(([key, value]) => {
+    if (!/^(0|[1-9][0-9]{0,3})$/.test(key) || Number(key) > 1200 || Number(key) % 2 || !value || typeof value !== 'object' || Array.isArray(value)) fail('E_LABEL_DESIGN');
+    const e = { shift: 0, top: 0, width: 1, height: 1, hidden: false, ...value };
+    if (![e.shift,e.top,e.width,e.height].every(Number.isFinite) || Math.abs(e.shift) > 1e7 || Math.abs(e.top) > 1e7 || e.width <= 0 || e.width > 1000 || e.height <= 0 || e.height > 1000 || typeof e.hidden !== 'boolean') fail('E_LABEL_DESIGN');
+    return [key, { shift: e.shift, top: e.top, width: e.width, height: e.height, hidden: e.hidden }];
+  }));
   return Object.fromEntries(Object.keys(DEFAULT_DESIGN).map(k => [k, d[k]]));
 }
 function validEan13(code) {
@@ -41,6 +52,9 @@ function profile(input = {}) {
   p.maxWidthMm = p.model === 'xp350b' ? 76 : number(p.maxWidthMm, 20, 112);
   p.widthMm = number(p.widthMm, 20, p.maxWidthMm); p.heightMm = number(p.heightMm, 20, 150); p.gapMm = number(p.gapMm, 0, 10);
   p.design = design(input.design || {}, p.dpi);
+  const sample = { ...DEFAULT_SAMPLE, ...input.sample };
+  if (typeof sample.name !== 'string' || sample.name.length > 400 || typeof sample.price !== 'string' || sample.price.length > 80 || !validEan13(sample.barcode) || /[\r\n\0]/.test(sample.name + sample.price)) fail('E_LABEL_SAMPLE');
+  p.sample = { name: sample.name, price: sample.price, barcode: sample.barcode };
   return Object.fromEntries(Object.keys(DEFAULT_PROFILE).map(k => [k, p[k]]));
 }
 function classifyPrinters(printers = [], current = '') {
@@ -56,51 +70,54 @@ function classifyPrinters(printers = [], current = '') {
     return [{ target: p.target, name: p.displayName || p.model || p.target, model: p.model || '', connection: p.connection || '', driver: p.driver || '', compatible: tspl || zpl, protocol: zpl && !tspl ? 'zpl' : 'tspl', preset: xp350 ? 'xp350b' : 'generic', direct: key.startsWith('usbraw:') || key.startsWith('tcp:'), selected: p.target === current }];
   }).sort((a, b) => Number(b.compatible) - Number(a.compatible) || Number(b.direct) - Number(a.direct) || a.name.localeCompare(b.name));
 }
-function layout(product, settings, lang = 'az') {
-  const p = profile(settings);
+function layout(product, settings, lang = 'az', sample = false) {
+  const p = profile(settings), v = p.design;
   const code = String(product.barcode || '');
+  const needsCode = v.showBarcode || v.showDigits;
   // Never silently truncate or replace code bytes. Text is data, not printer commands.
-  if (!/^[\x20-\x7e]{1,80}$/.test(code)) fail(code ? 'E_LABEL_CODE' : 'E_LABEL_NO_BARCODE');
+  if (needsCode && !/^[\x20-\x7e]{1,80}$/.test(code)) fail(code ? 'E_LABEL_CODE' : 'E_LABEL_NO_BARCODE');
   if (!Number.isSafeInteger(product.priceMinor) || product.priceMinor < 0) fail('E_LABEL_PRICE');
   const name = typeof product.name === 'object' ? (product.name[lang] || product.name.az || product.name.en) : product.name;
   // Nominal 203/300 DPI thermal heads address 8/12 dots per millimetre.
   const dotsPerMm = p.dpi === 203 ? 8 : 12;
   const width = Math.floor(p.widthMm * dotsPerMm / 8) * 8, height = Math.round(p.heightMm * dotsPerMm);
-  const symbology = validEan13(code) ? 'ean13' : 'code128';
-  const bars = bwip.raw({ bcid: symbology, text: code, includetext: false, parse: false, parsefnc: false })[0].sbs;
-  const modules = bars.reduce((a, b) => a + b, 0), margin = p.design.margin, quiet = symbology === 'ean13' ? 11 : 10;
-  const moduleWidth = p.design.barWidth || Math.min(4, Math.floor((width - margin * 2) / (modules + quiet * 2)));
-  if (moduleWidth < Math.ceil(p.dpi / 25.4 * 0.19) || (modules + quiet * 2) * moduleWidth > width) fail('E_LABEL_TOO_NARROW');
-  return { profile: p, width, height, bars, moduleWidth, margin, quiet, symbology, code, name: String(name || '').slice(0, 400), price: `${(product.priceMinor / 100).toFixed(2)} AZN` };
+  const warnings = [];
+  let bars = [], symbology = '', quiet = 0, moduleWidth = 0;
+  if (v.showBarcode && code) {
+    symbology = validEan13(code) ? 'ean13' : 'code128';
+    bars = bwip.raw({ bcid: symbology, text: code, includetext: false, parse: false, parsefnc: false })[0].sbs;
+    const modules = bars.reduce((a, b) => a + b, 0);
+    quiet = symbology === 'ean13' ? 11 : 10;
+    // Whatever the operator chooses is drawn; what may not scan is a warning, not a refusal.
+    moduleWidth = v.barWidth || Math.max(1, Math.min(4, Math.floor((width - v.margin * 2) / (modules + quiet * 2))));
+    if (moduleWidth < Math.ceil(p.dpi / 25.4 * 0.19) || (modules + quiet * 2) * moduleWidth > width) warnings.push('E_LABEL_TOO_NARROW');
+  }
+  return { profile: p, width, height, bars, moduleWidth, margin: v.margin, quiet, symbology, code, warnings, name: String(name || '').slice(0, 400), price: sample && p.sample.price ? p.sample.price : `${(product.priceMinor / 100).toFixed(2)} AZN` };
 }
-/** Self-contained sandbox renderer: all coordinates/sizes are physical printer dots. */
+/**
+ * Self-contained sandbox renderer: all coordinates/sizes are physical printer dots.
+ *
+ * Draws exactly what was designed - like a photo editor, nothing is refused.
+ * Parts past the paper edge are cut by the paper; text over the barcode may
+ * stop it scanning. Both come back as `warnings` for the screen to show.
+ */
 /* global document -- drawLabel runs inside the hidden render window (executeJavaScript), not in main. */
 function drawLabel(d) {
   const c = document.createElement('canvas'); c.width = d.width; c.height = d.height;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
+  let ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
-  const v = d.profile.design, m = v.margin, spacing = 3, boxes = {}, pending = [], fitted = {};
-  const sizes = { price: v.priceSize, digits: v.digitsSize, caption: v.captionSize };
-  let y = m, truncated = false;
-  function font(size, bold, mono = false) { ctx.font = `${bold ? 'bold ' : ''}${size}px ${mono ? 'monospace' : 'Arial'}`; }
-  /**
-   * Text that stays on the paper wherever it is moved. The room is what is left
-   * between the shifted anchor and the paper edge: a long name wraps/shortens
-   * into it, the price, digits and custom text shrink their font into it
-   * (never below 6 dots). Only a shift that puts the anchor itself off the
-   * paper is refused (E_LABEL_CLIPPED).
-   */
-  function textBlock(key, text, size, bold, align, baseY, lineCount = 1, allowShorten = false) {
-    const shift = v.offsetX + v[key + 'X'];
-    const room = align === 'left' ? c.width - (m + shift) : align === 'right' ? c.width - m + shift : c.width - 2 * Math.abs(shift);
-    const maxWidth = Math.max(1, Math.min(c.width - m * 2, room));
-    font(size, bold, key === 'digits');
-    if (!allowShorten) {
-      while (size > 6 && ctx.measureText(text).width > maxWidth) { size -= 1; font(size, bold, key === 'digits'); }
-      if (size !== sizes[key]) fitted[key] = size;
-    }
+  const v = d.profile.design, m = v.margin, spacing = 3, boxes = {}, pending = [], warnings = [...(d.warnings || [])];
+  let y = m, truncated = false, barcodeBase = null; const stripes = [];
+  function font(key, size, bold) {
+    const family = v[key + 'Font'] || (key === 'digits' ? 'monospace' : 'Arial');
+    const fallback = /Courier|mono/.test(family) ? 'monospace' : /Times|Georgia|^serif$/.test(family) ? 'serif' : 'sans-serif';
+    ctx.font = `${v[key + 'Italic'] ? 'italic ' : ''}${bold ? 'bold ' : ''}${size}px "${family}", ${fallback}`;
+  }
+  function textBlock(key, text, size, bold, align, baseY, lineCount = 1, wrap = false) {
+    const maxWidth = Math.max(1, c.width - m * 2);
+    font(key, size, bold); ctx.textAlign = 'left';
     let rest = text, lines = [];
-    if (allowShorten) {
+    if (wrap) {
       while (rest && lines.length < lineCount) {
         let n = rest.length;
         while (n > 1 && ctx.measureText(rest.slice(0, n)).width > maxWidth) n--;
@@ -109,40 +126,79 @@ function drawLabel(d) {
       }
       if (rest && lines.length) { let last = lines.pop(); while (last && ctx.measureText(last + '…').width > maxWidth) last = last.slice(0, -1); lines.push(last + '…'); truncated = true; }
     } else lines = [text];
-    const width = Math.ceil(Math.max(0, ...lines.map(s => ctx.measureText(s).width))), lineHeight = Math.ceil(size * 1.2);
-    const height = lines.length ? (lines.length - 1) * lineHeight + Math.ceil(size * 1.2) : 0;
+    const sx = v[key + 'ScaleX'] ?? 1, sy = v[key + 'ScaleY'] ?? 1;
+    const naturalWidth = Math.ceil(Math.max(0, ...lines.map(s => ctx.measureText(s).width))), width = naturalWidth * sx, lineHeight = Math.ceil(size * 1.2);
+    const height = lines.length ? lines.length * lineHeight * sy : 0;
     const baseX = align === 'left' ? m : align === 'right' ? c.width - m - width : (c.width - width) / 2;
-    const x = Math.round(baseX + v.offsetX + v[key + 'X']), top = Math.round(baseY + v.offsetY + v[key + 'Y']);
-    boxes[key] = { x, y: top, width, height };
-    pending.push(() => { font(size, bold, key === 'digits'); ctx.textAlign = align; const anchor = align === 'left' ? x : align === 'right' ? x + width : x + width / 2; lines.forEach((line, i) => ctx.fillText(line, anchor, top + i * lineHeight)); });
+    const x = baseX + v.offsetX + v[key + 'X'], top = baseY + v.offsetY + v[key + 'Y'];
+    const ink = lines.map(line => { const metric = ctx.measureText(line), start = align === 'left' ? 0 : align === 'right' ? naturalWidth - metric.width : (naturalWidth - metric.width) / 2; return { left: start - (metric.actualBoundingBoxLeft || 0), right: start + (metric.actualBoundingBoxRight || metric.width) }; });
+    const inkLeft = Math.min(0, ...ink.map(b => b.left)) * sx, inkRight = Math.max(naturalWidth, ...ink.map(b => b.right)) * sx;
+    boxes[key] = { x: x + inkLeft, y: top, width: inkRight - inkLeft, height };
+    pending.push({ key, draw: () => { ctx.save(); ctx.translate(x, top); ctx.scale(sx, sy); font(key, size, bold); ctx.textAlign = align; const anchor = align === 'left' ? 0 : align === 'right' ? naturalWidth : naturalWidth / 2; lines.forEach((line, i) => ctx.fillText(line, anchor, i * lineHeight)); ctx.restore(); } });
     return height;
   }
+  const hasBars = v.showBarcode && d.bars.length > 0;
   if (v.showName) y += textBlock('name', d.name, v.nameSize, v.nameBold, v.nameAlign, y, v.nameLines, true) + spacing;
   const priceBottom = d.profile.showPrice && v.pricePosition === 'bottom';
   if (d.profile.showPrice && !priceBottom) y += textBlock('price', d.price, v.priceSize, v.priceBold, v.priceAlign, y) + spacing;
-  const digitsHeight = v.showDigits ? Math.ceil(v.digitsSize * 1.2) + spacing : 0;
-  const captionHeight = v.showCaption && v.caption ? Math.ceil(v.captionSize * 1.2) + spacing : 0;
-  const priceHeight = priceBottom ? Math.ceil(v.priceSize * 1.2) + spacing : 0;
-  const barHeight = v.barcodeHeight || Math.floor(c.height - y - m - digitsHeight - captionHeight - priceHeight);
-  if (barHeight < Math.round(d.profile.dpi / 203 * 35)) throw Error('E_LABEL_BAR_HEIGHT');
-  const fullWidth = d.bars.reduce((a, b) => a + b, 0) * d.moduleWidth;
-  const bx = Math.floor((c.width - fullWidth) / 2) + v.offsetX + v.barcodeX, by = y + v.offsetY + v.barcodeY;
-  boxes.barcode = { x: bx - d.quiet * d.moduleWidth, y: by, width: fullWidth + d.quiet * d.moduleWidth * 2, height: barHeight };
-  pending.push(() => { let x = bx; d.bars.forEach((n, i) => { if (i % 2 === 0) ctx.fillRect(x, by, n * d.moduleWidth, barHeight); x += n * d.moduleWidth; }); });
-  y += barHeight + spacing;
-  if (v.showDigits) y += textBlock('digits', d.code, v.digitsSize, v.digitsBold, 'center', y) + spacing;
+  if (hasBars) {
+    const digitsHeight = v.showDigits ? Math.ceil(v.digitsSize * 1.2) * v.digitsScaleY + spacing : 0;
+    const captionHeight = v.showCaption && v.caption ? Math.ceil(v.captionSize * 1.2) * v.captionScaleY + spacing : 0;
+    const priceHeight = priceBottom ? Math.ceil(v.priceSize * 1.2) * v.priceScaleY + spacing : 0;
+    const minHeight = Math.round(d.profile.dpi / 203 * 35);
+    let barHeight = v.barcodeHeight || Math.floor(c.height - y - m - digitsHeight - captionHeight - priceHeight);
+    // Too little room left for an automatic height: draw a readable minimum and say so.
+    if (barHeight < minHeight) { warnings.push('E_LABEL_BAR_HEIGHT'); if (!v.barcodeHeight) barHeight = minHeight; }
+    const fullWidth = d.bars.reduce((a, b) => a + b, 0) * d.moduleWidth;
+    const bx = (c.width - fullWidth) / 2 + v.offsetX + v.barcodeX, by = y + v.offsetY + v.barcodeY;
+    barcodeBase = { x: bx - d.quiet * d.moduleWidth, y: by, width: fullWidth + d.quiet * d.moduleWidth * 2, height: barHeight };
+    let cursor = bx;
+    d.bars.forEach((n, index) => {
+      if (index % 2 === 0) {
+        const e = v.barEdits[index] || { shift: 0, top: 0, width: 1, height: 1, hidden: false }, width = n * d.moduleWidth * v.inkScale * e.width;
+        stripes.push({ index, x: cursor + (n * d.moduleWidth - width) / 2 + e.shift * d.moduleWidth, y: by + e.top * barHeight, width, height: barHeight * e.height, hidden: e.hidden });
+      }
+      cursor += n * d.moduleWidth;
+    });
+    const minX = Math.min(barcodeBase.x, ...stripes.map(b => b.x)), minY = Math.min(by, ...stripes.map(b => b.y));
+    const maxX = Math.max(barcodeBase.x + barcodeBase.width, ...stripes.map(b => b.x + b.width)), maxY = Math.max(by + barHeight, ...stripes.map(b => b.y + b.height));
+    boxes.barcode = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    if (Object.keys(v.barEdits).length || v.inkScale !== 1) warnings.push('E_LABEL_CUSTOM_BARS');
+    pending.push({ key: 'barcode', draw: () => stripes.forEach(b => { if (!b.hidden) ctx.fillRect(b.x, b.y, b.width, b.height); }) });
+    y += barHeight + spacing;
+  }
+  if (v.showDigits && d.code) y += textBlock('digits', d.code, v.digitsSize, v.digitsBold, 'center', y) + spacing;
   if (priceBottom) y += textBlock('price', d.price, v.priceSize, v.priceBold, v.priceAlign, y) + spacing;
   if (v.showCaption && v.caption) textBlock('caption', v.caption, v.captionSize, v.captionBold, v.captionAlign, y);
-  // The bars must be on the paper; their quiet zone may run to the paper edge,
-  // which is blank anyway. Overlap below still keeps text out of the quiet zone.
-  const onPaper = (k, b) => k === 'barcode' ? { ...b, x: b.x + d.quiet * d.moduleWidth, width: b.width - 2 * d.quiet * d.moduleWidth } : b;
-  for (const [k, raw] of Object.entries(boxes)) { const b = onPaper(k, raw); if (b.x < 0 || b.y < 0 || b.x + b.width > c.width || b.y + b.height > c.height) throw Error('E_LABEL_CLIPPED'); }
-  const items = Object.entries(boxes);
-  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
-    const a = items[i][1], b = items[j][1];
-    if (a.width > 0 && b.width > 0 && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y) throw Error('E_LABEL_OVERLAP');
+  // Warnings only: the bars past the edge (the quiet zone may reach it), any
+  // part cut by the paper, text on top of the barcode.
+  const bars = (k, b) => k === 'barcode' ? { ...b, x: b.x + d.quiet * d.moduleWidth, width: b.width - 2 * d.quiet * d.moduleWidth } : b;
+  const outside = Object.entries(boxes).filter(([k, raw]) => { const b = bars(k, raw); return b.width > 0 && (b.x < 0 || b.y < 0 || b.x + b.width > c.width || b.y + b.height > c.height); }).map(([k]) => k);
+  if (outside.length) warnings.push('E_LABEL_CLIPPED');
+  const overlap = [];
+  if (boxes.barcode) for (const [k, b] of Object.entries(boxes)) {
+    const a = boxes.barcode;
+    if (k !== 'barcode' && b.width > 0 && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y) overlap.push(k);
   }
-  pending.forEach(draw => draw());
+  if (overlap.length) warnings.push('E_LABEL_OVERLAP');
+  // Isolated transparent layers keep live dragging faithful to the printer renderer,
+  // including objects outside the paper. Only preview resolution is bounded.
+  const layers = {}, paperCtx = ctx;
+  for (const { key, draw } of pending) {
+    const box = boxes[key], factor = Math.min(1, 2048 / Math.max(1, box.width, box.height));
+    const layer = document.createElement('canvas');
+    layer.width = Math.max(1, Math.ceil(box.width * factor)); layer.height = Math.max(1, Math.ceil(box.height * factor));
+    ctx = layer.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#000'; ctx.textBaseline = 'top'; ctx.scale(factor, factor); ctx.translate(-box.x, -box.y); draw();
+    const data = ctx.getImageData(0, 0, layer.width, layer.height);
+    for (let i = 0; i < data.data.length; i += 4) {
+      const black = data.data[i + 3] >= 96 && data.data[i] * .299 + data.data[i + 1] * .587 + data.data[i + 2] * .114 < 160;
+      data.data[i] = data.data[i + 1] = data.data[i + 2] = 0; data.data[i + 3] = black ? 255 : 0;
+    }
+    ctx.putImageData(data, 0, 0); layers[key] = layer.toDataURL('image/png');
+  }
+  ctx = paperCtx;
+  pending.forEach(({ draw }) => draw());
   // The displayed preview and printer bytes share this exact thresholded raster.
   const pixels = ctx.getImageData(0, 0, c.width, c.height), mono = new Uint8Array(c.width / 8 * c.height);
   for (let i = 0; i < c.width * c.height; i++) {
@@ -152,7 +208,7 @@ function drawLabel(d) {
   }
   ctx.putImageData(pixels, 0, 0);
   let binary = ''; for (const byte of mono) binary += String.fromCharCode(byte);
-  return { image: c.toDataURL('image/png'), mono: btoa(binary), width: c.width, height: c.height, nameTruncated: truncated, boxes, fitted, moduleWidth: d.moduleWidth };
+  return { image: c.toDataURL('image/png'), mono: btoa(binary), width: c.width, height: c.height, nameTruncated: truncated, boxes, layers, stripes, barcodeBase, moduleWidth: d.moduleWidth, warnings: [...new Set(warnings)], outside, overlap };
 }
 
 function buildJob(rendered, settings, copies) {
@@ -191,17 +247,18 @@ function createLabelService({ app, coreSupervisor, opsEngine, render }) {
     finally { if (!w.isDestroyed()) w.destroy(); }
   }
   const cache = new Map();
-  async function prepare(product, p, lang) {
-    const d = layout(product, p, lang), key = JSON.stringify(d);
+  async function prepare(product, p, lang, sample = false) {
+    const d = layout(product, p, lang, sample), key = JSON.stringify(d);
     if (cache.has(key)) return cache.get(key);
     // Rendering is serialized; stale previews cannot race on a shared canvas.
     const task = (rendering || Promise.resolve()).catch(() => {}).then(() => renderImage(d)); rendering = task;
     const image = await task;
-    if (image && image.error) throw Error(/^E_LABEL_[A-Z_]+$/.test(image.error) ? image.error : 'E_LABEL_RENDER');
+    if (image && image.error) throw Error(/^E_LABEL_[A-Z0-9_]+$/.test(image.error) ? image.error : 'E_LABEL_RENDER');
     cache.set(key, image); if (cache.size > 12) cache.delete(cache.keys().next().value); return image;
   }
   async function products() { const rows = await invoke('product.list', { activeOnly: true }); return rows.filter(p => p.active !== false && p.kind !== 'service'); }
   async function product(id) { const p = await invoke('product.get', { id: String(id || '') }); if (!p || p.active === false || p.kind === 'service') fail('E_LABEL_PRODUCT'); return p; }
+  const sampleProduct = p => ({ barcode: p.sample.barcode, name: p.sample.name || { az: 'Nümunə məhsul', ru: 'Пример товара', en: 'Sample product' }, priceMinor: 1250 });
   const jobs = new Map();
   return {
     read,
@@ -227,7 +284,7 @@ function createLabelService({ app, coreSupervisor, opsEngine, render }) {
       if (refreshed.barcode !== res.data.barcode) fail('E_LABEL_SYNC');
       return refreshed;
     },
-    async preview(id, input, lang) { const p = id ? await product(id) : { barcode: '2001234567893', name: { az: 'Nümunə məhsul', ru: 'Пример товара', en: 'Sample product' }, priceMinor: 1250 }; const image = await prepare(p, profile(input), lang); return { image: image.image, width: image.width, height: image.height, barcode: p.barcode, nameTruncated: image.nameTruncated, boxes: image.boxes, fitted: image.fitted || {}, moduleWidth: image.moduleWidth, symbology: validEan13(p.barcode) ? 'EAN-13' : 'Code 128' }; },
+    async preview(id, input, lang) { const settings = profile(input), p = id ? await product(id) : sampleProduct(settings); const image = await prepare(p, settings, lang, !id); return { image: image.image, width: image.width, height: image.height, barcode: p.barcode, nameTruncated: image.nameTruncated, boxes: image.boxes, layers: image.layers, stripes: image.stripes, barcodeBase: image.barcodeBase, moduleWidth: image.moduleWidth, warnings: image.warnings || [], outside: image.outside || [], overlap: image.overlap || [], symbology: validEan13(p.barcode) ? 'EAN-13' : 'Code 128' }; },
     print(id, input, count, operationId, lang, test = false) {
       // A stable operation key covers retries after a timeout, including failures:
       // bytes may have reached paper before a transport error. Reprint is explicit.
@@ -237,8 +294,8 @@ function createLabelService({ app, coreSupervisor, opsEngine, render }) {
       if (jobs.size >= 2000) fail('E_LABEL_JOB_LIMIT');
       const task = (async () => {
         const settings = profile(input); target(settings.target);
-        const p = test && !id ? { barcode: '2001234567893', name: { az: 'Nümunə məhsul', ru: 'Пример товара', en: 'Sample product' }, priceMinor: 1250 } : await product(id);
-        const rendered = await prepare(p, settings, lang), bytes = buildJob(rendered, settings, count);
+        const p = test && !id ? sampleProduct(settings) : await product(id);
+        const rendered = await prepare(p, settings, lang, test && !id), bytes = buildJob(rendered, settings, count);
         await invoke('printer.send', { target: settings.target, bytes: Array.from(bytes) }, 30000);
         return { ok: true, copies: count, target: settings.target, operationId, barcode: p.barcode };
       })();

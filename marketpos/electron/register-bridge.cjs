@@ -47,17 +47,20 @@ async function syncRegisters(engine) {
   }
   const movementKey = JSON.stringify([snapshot.movements || [], accounts.map(a => [a.id, a.terminalId, a.createdAt])]);
   const movements = movementKey === engine.cashMovementKey ? [] : snapshot.movements || [];
-  checked(await engine.invoke('cashAccounts.syncMarket', { registers, movements }, { timeoutMs: 60000 }));
+  // An unused installation has no physical tills or ledger to reconcile.
+  if (registers.length || movements.length) checked(await engine.invoke('cashAccounts.syncMarket', { registers, movements }, { timeoutMs: 60000 }));
   engine.cashMovementKey = movementKey;
   engine.cashCurrentRegisterId = snapshot.defaultRegisterId || null;
   engine.registers.clear();
   for (const r of registers) engine.registers.set(String(r.id), String(r.name || r.code || r.id));
+  await engine.syncOwnerObject?.();
   const cashNames = Object.fromEntries(registers.map(r => [r.id, r.name]));
   if (JSON.stringify(lastNames) !== JSON.stringify(cashNames)) engine.saveSettings({ cashNames });
 }
 
 /** Apply the final warehouse ledger after pending sales/returns have been booked. */
 async function syncWarehouseLedger(engine) {
+  if (engine.registers?.size === 0) return;
   const result = checked(await engine.invoke('cashAccounts.syncMarket', { registers: [], movements: [] }, { timeoutMs: 60000 }));
   const movements = result.movements || [], balances = result.balances || [];
   const key = JSON.stringify([movements, balances]);

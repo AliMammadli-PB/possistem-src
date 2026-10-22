@@ -8,6 +8,8 @@
  * tenant state live here in memory; desktop-only features answer "not in demo".
  */
 import createCore from './market-pos-core.mjs';
+import snapshot from './sample.js';
+import {bootOps,opsInvoke,recordSale,syncGoods,stockSnapshot,syncRegisters} from './ops.js';
 
 // electron/core-payload.cjs, inlined at build time
 const { authorizeCorePayload } = (function () {
@@ -83,6 +85,9 @@ const ready = (async () => {
   const error = module.ccall('market_boot', 'string', ['string'], ['/data/market.db']);
   if (error) throw new Error(error);
   core = module;
+  const seeded=coreInvoke('state.importLegacy',{snapshot,actorId:'u-manager',role:'manager'});
+  if(!seeded.success)throw Error(seeded.error?.message||'Demo catalogue failed');
+  await bootOps(snapshot,coreInvoke);
   emit('market:coreStatus', { state: 'ready', dbPath: 'demo' });
 })();
 ready.catch((err) => console.error('[demo] market core failed to start', err));
@@ -111,7 +116,7 @@ function requireSession(token, roles) {
 
 function verifyManagerPin(pin) {
   const user = staff.find((row) => row.active && ['manager', 'head_cashier'].includes(row.role) && row.pin === String(pin));
-  return user ? { ok: true, approverId: user.id } : { ok: false };
+  return user ? { ok: true, approverId: user.id, role: user.role } : { ok: false };
 }
 
 const PIN_TAKEN = 'Bu PIN artıq başqa işçidə var - başqa PIN seçin';
@@ -128,7 +133,31 @@ async function requireCorePermission(token, permission) {
   return user;
 }
 
+const ok=data=>({success:true,data,error:null});
+const fail=message=>({success:false,data:null,error:{code:'E_DEMO',message,retryable:false}});
 const handlers = {
+  'market:auth:adminPrefix':()=>false,
+  'market:auth:rights':input=>{const u=requireSession(input?.sessionToken);const catalogue=coreInvoke('auth.permissionCatalogue',{});const keys=Object.values(catalogue.data?.groups||catalogue.data||{}).flat().map(r=>r.permission).filter(Boolean);return keys.filter(permission=>coreInvoke('auth.checkPermission',{actorId:u.id,role:u.role,permission}).data?.allowed);},
+  'market:branch:context':()=>({registerId:'reg-2',branchName:'Demo filial',objectId:'demo'}),
+  'market:branches:list':()=>({objects:[],branches:[]}),
+  'market:branches:selection':()=>({required:false,objects:[],branches:[],current:{name:'Demo filial'}}),
+  'market:branches:stock':()=>({own:stockSnapshot(),branches:[]}),
+  'market:ops:categories':()=>[...new Set(snapshot.products.map(p=>p.category))],
+  'market:ops:status':()=>({state:'ready',host:true}),
+  'market:ops:sync':()=>{syncGoods();syncRegisters();return ok({});},
+  'market:ops:invoke':input=>{
+    const user=requireSession(input?.sessionToken);
+    if(input.method==='__session'){
+      const perms=opsInvoke('permissions.list');const permissions=Object.values(perms.data?.groups||{}).flat().map(p=>p.key);
+      return ok({userId:'usr-admin',fullName:user.name,role:'administrator',authenticated:true,permissions,loginAt:now,canPaymentDocuments:true,canDocsView:true,canDocsCreate:true,canDocsEdit:true,canDocsDelete:true});
+    }
+    if(input.method==='__branchContext')return ok({objectId:'demo',branchName:'Demo filial'});
+    if(String(input.method).startsWith('__'))return fail(NOT_IN_DEMO);
+    const result=opsInvoke(input.method,input.payload,input.idempotencyKey);
+    if(result.success && /^(ingredients\.(save|deactivate)|goods\.(import|prices)|inventory\.(adjust|waste)|purchases\.|stocktake\.post)/.test(input.method))syncGoods();
+    return result;
+  },
+
   'market:staff:list': () => staff.map(publicStaff),
   'market:auth:login': (input) => {
     // No userId: the PIN alone names the person, exactly as main.cjs does.
@@ -218,7 +247,9 @@ const handlers = {
       (pin) => verifyManagerPin(String(pin || '')),
       input?.managerPin,
     );
+    if (/^(cart\.|sale\.(complete|hold|cancelHeld)$)/.test(method) && payload.actorId) { payload.cartId='active-'+payload.actorId; payload.requireCartApproval=true; }
     const result = coreInvoke(method, payload);
+    if(method==='sale.complete' && result.success)recordSale(result.data);
     // A till asks its first operator to name it. The demo PC is "Demo kassa", so
     // a visitor lands on the sale screen straight after the catalogue loads.
     if (method === 'state.importLegacy' && result.success && !result.data?.settings?.deviceRegisterId && payload.actorId) {
@@ -260,7 +291,7 @@ const handlers = {
 const ipcRenderer = {
   async invoke(channel, arg) {
     const handler = handlers[channel];
-    if (!handler) throw new Error(`Error invoking remote method '${channel}': Error: No handler registered`);
+    if (!handler) throw new Error(NOT_IN_DEMO);
     await ready;
     try {
       return await handler(arg);

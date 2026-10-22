@@ -71,7 +71,7 @@ TEST_CASE("the permission catalogue describes every key in words", "[roles]") {
 TEST_CASE("the shipped roles exist and are not deletable custom rows", "[roles]") {
   RoleDb t;
 
-  REQUIRE(t.db.queryInt("SELECT COUNT(*) FROM roles WHERE custom = 0") == 3);
+  REQUIRE(t.db.queryInt("SELECT COUNT(*) FROM roles WHERE custom = 0") == 4);  // + head_cashier (014)
   REQUIRE(t.db.queryText("SELECT label FROM roles WHERE role = 'manager'") == "Müdir");
 }
 

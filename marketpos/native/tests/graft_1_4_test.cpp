@@ -96,7 +96,7 @@ TEST_CASE("a database from the 1.3.0 line is renumbered, not refused", "[graft]"
 
   App app(dir);
   auto rows = app.app->database().query("SELECT version, name FROM database_migrations ORDER BY version");
-  REQUIRE(rows.size() == 13);
+  REQUIRE(rows.size() == std::size(market::db::kMigrations));
   REQUIRE(rows[3].at("name") == "004_market_140.sql");
   REQUIRE(rows[8].at("name") == "009_role_catalogue.sql");
   REQUIRE(rows[9].at("name") == "010_delivery_recipes_roster.sql");
@@ -151,4 +151,37 @@ TEST_CASE("a cashier cannot raise a purchase order", "[graft]") {
                       {"order", {{"supplier", "A"}, {"warehouseId", "wh-po"},
                                  {"lines", {{{"productId", "prod-po"}, {"qty", 1}}}}}}};
   REQUIRE_THROWS_AS(app.call("purchase.create", p), market::PosError);
+}
+
+TEST_CASE("cart reductions persist until a privileged revision-bound approval","[market1529][cart]"){
+ const auto dir=freshDir("cart");App app(dir);auto p=nlohmann::json{{"role","cashier"},{"actorId","cashier-a"},{"cartId","active-cashier-a"},{"lines",{{{"productId","p"},{"qty",3}}}},{"discountMinor",0}};
+ auto state=app.call("cart.sync",p);REQUIRE(state.at("dirty")==false);p["lines"][0]["qty"]=2;state=app.call("cart.sync",p);REQUIRE(state.at("dirty")==true);const auto revision=state.at("revision");
+ REQUIRE(app.call("cart.state",p).at("dirty")==true);
+ auto approve=p;approve["revision"]=revision;approve["approverId"]="cashier-b";approve["approverRole"]="cashier";REQUIRE_THROWS_AS(app.call("cart.approve",approve),market::PosError);
+ auto hold=p;hold["requireCartApproval"]=true;hold["cartRevision"]=revision;hold["label"]="Gözləyən";REQUIRE_THROWS_AS(app.call("sale.hold",hold),market::PosError);
+ approve["approverId"]="manager-a";approve["approverRole"]="manager";approve["revision"]=revision.get<int>()-1;REQUIRE_THROWS_AS(app.call("cart.approve",approve),market::PosError);
+ approve["revision"]=revision;REQUIRE(app.call("cart.approve",approve).at("dirty")==false);
+ p["lines"][0]["qty"]=1;REQUIRE(app.call("cart.sync",p).at("dirty")==true);REQUIRE_THROWS_AS(app.call("cart.approve",approve),market::PosError);
+ p["lines"]=nlohmann::json::array();state=app.call("cart.sync",p);REQUIRE(state.at("dirty")==true);approve["revision"]=state.at("revision");REQUIRE(app.call("cart.approve",approve).at("dirty")==false);
+ REQUIRE(app.app->database().queryInt("SELECT COUNT(*) FROM audit_logs WHERE action='CART_CHANGES_APPROVED'")==2);
+ p["lines"]={{{"productId","p"},{"qty",1}}};state=app.call("cart.sync",p);hold=p;hold["requireCartApproval"]=true;hold["cartRevision"]=state.at("revision");const auto held=app.call("sale.hold",hold);
+ auto cancel=nlohmann::json{{"id",held.at("id")},{"role","manager"},{"actorId","manager-a"},{"requireCartApproval",true}};REQUIRE_THROWS_AS(app.call("sale.cancelHeld",cancel),market::PosError);cancel["approverId"]="cashier-b";cancel["approverRole"]="cashier";REQUIRE_THROWS_AS(app.call("sale.cancelHeld",cancel),market::PosError);cancel["approverId"]="manager-a";cancel["approverRole"]="manager";app.call("sale.cancelHeld",cancel);REQUIRE(app.app->database().queryInt("SELECT COUNT(*) FROM held_carts")==0);
+
+}
+TEST_CASE("per-warehouse stock is isolated and a sale cannot pull another warehouse's goods","[market1529][stock]"){
+ const auto dir=freshDir("stock");App app(dir);auto&db=app.app->database();
+ db.exec("INSERT INTO warehouses(id,code,name) VALUES('main','MAIN','Əsas'),('other','OTHER','Digər');INSERT INTO settings(key,value) VALUES('defaultWarehouseId','main') ON CONFLICT(key) DO UPDATE SET value='main';INSERT INTO products(id,sku,barcode,name_az,price_minor,cost_minor,created_at) VALUES('p-stock','STOCK','4761234567890','Çay',100,50,0);INSERT INTO stock_levels(product_id,warehouse_id,qty) VALUES('p-stock','main',0),('p-stock','other',12);INSERT INTO registers(id,code,name,status) VALUES('register','R','Kassa','open');");
+ REQUIRE(app.call("product.get",{{"id","p-stock"}}).at("stock")==0);
+ const nlohmann::json sale{{"role","manager"},{"actorId","manager-a"},{"cashierId","manager-a"},{"registerId","register"},{"items",{{{"productId","p-stock"},{"qty",1}}}},{"payment",{{"method","cash"},{"amountMinor",100},{"tenderedMinor",100}}}};
+ REQUIRE_THROWS_AS(app.call("sale.complete",sale),market::PosError);REQUIRE(db.queryInt("SELECT qty FROM stock_levels WHERE product_id='p-stock' AND warehouse_id='other'")==12);
+}
+TEST_CASE("customer bridge merges outstanding native credit exactly once","[market1529][credit]"){
+ const auto dir=freshDir("credit");App app(dir);auto&db=app.app->database();
+ app.call("customer.create",{{"role","manager"},{"actorId","m"},{"id","c"},{"name","Partnyor"},{"creditAllowed",true},{"creditLimitMinor",10000}});
+ db.exec("INSERT INTO customer_ledger(id,customer_id,kind,amount_minor,balance_after_minor,ref_type,ref_id,note,created_at,actor_id) VALUES('e','c','sale_credit',2500,2500,'sale','s','Nisyə',1,'m');");
+ const auto exported=app.call("customer.bridge",{{"action","export"}});REQUIRE(exported.at("events").size()==1);
+ const nlohmann::json snapshot{{"action","import"},{"customers",{{{"id","c"},{"name","Partnyor"},{"creditAllowed",true},{"creditLimitMinor",10000},{"debtMinor",1000}}}}};
+ app.call("customer.bridge",snapshot);REQUIRE(app.call("customer.list",nlohmann::json::object())[0].at("balanceMinor")==3500);
+ app.call("customer.bridge",snapshot);REQUIRE(app.call("customer.list",nlohmann::json::object())[0].at("balanceMinor")==3500);
+ app.call("customer.bridge",{{"action","ack"},{"ids",{"e"}}});auto authoritative=snapshot;authoritative["customers"][0]["debtMinor"]=3500;app.call("customer.bridge",authoritative);REQUIRE(app.call("customer.list",nlohmann::json::object())[0].at("balanceMinor")==3500);REQUIRE(app.call("customer.bridge",{{"action","export"}}).at("events").empty());
 }

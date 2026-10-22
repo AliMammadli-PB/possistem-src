@@ -65,6 +65,20 @@ try{
   const correctedClock={id:'clock-backwards',registerId:'tie',amountMinor:-1,createdAt:0,reason:'new move after clock correction'};await cash('cash.bridgeWarehouseMoves',{movements:[correctedClock],balances:[]});await cash('cash.bridgeWarehouseMoves',{movements:[correctedClock],balances:[]});assert.equal((await cash('cash.xReport',{registerId:'tie'})).expectedCashMinor,89,'A new movement is applied once after a backwards clock correction');
   const denied=await market.invoke('cash.bridgeRegister',{id:'ops-cash-bad',code:'BAD',name:'Bad'});assert.equal(denied.success,false);
   assert.equal(e.allowed('cashAccounts.syncMarket','warehouse'),false);
-  console.log('PASS two real cores: two tills, opening floats, mixed sale, bank, cash in/out, safe transfer, refund, repeated sync, rename identity, warehouse-created till, shared balance after warehouse transfer, open/closed shift transfers, next opening, zero-float provenance, discounted cent returns, stock and permission isolation.');
+  await cash('cash.createRegister',{register:{id:'archive-zero',code:'ARCH0',name:'Closed empty till',openingFloatMinor:0}});await e.flushCatalog();
+  const archivedAccount=till(await accountList(),'archive-zero').id;
+  await cash('cash.openSession',{registerId:'archive-zero',operatorId:'qa',openingFloatMinor:0});await e.flushCatalog();
+  assert.equal((await e.invoke('cashAccounts.deactivate',{accountId:archivedAccount})).success,false,'Open shifts prevent linked till deletion');
+  await cash('cash.closeSession',{registerId:'archive-zero',operatorId:'qa'});await e.flushCatalog();
+  check(await e.invoke('cashAccounts.deactivate',{accountId:archivedAccount},{idempotencyKey:'archive-zero-key'}));
+  await e.flushCatalog();
+  assert.equal(check(await market.invoke('cash.listRegisters')).some(r=>r.id==='archive-zero'),false,'Archived till disappears from sale register selection');
+  assert.equal(till(await accountList(),'archive-zero'),undefined,'Archived till does not revive during reconciliation');
+  check(await e.invoke('cashAccounts.deactivate',{accountId:archivedAccount},{idempotencyKey:'archive-zero-key'}));
+  assert.equal((await market.invoke('cash.openSession',{registerId:'archive-zero',operatorId:'qa',role:'manager'})).success,false,'An archived till cannot be reopened');
+  assert.equal((await market.invoke('cash.bridgeRegister',{id:'archive-zero',name:'Revive attempt',actorId:'system'})).success,false,'Name reconciliation cannot revive an archived register');
+  assert.ok(check(await market.invoke('sale.list')).some(s=>s.id===first.id),'Existing sale history survives register archiving');
+  const primaryDenied=await market.invoke('cash.archiveRegister',{id:'r1',actorId:'system'});assert.equal(primaryDenied.success,false);assert.match(primaryDenied.error.message,/əsas kassasını/);
+  console.log('PASS two real cores: two tills, opening floats, mixed sale, bank, cash in/out, safe transfer, refund, repeated sync, rename identity, warehouse-created till, shared balance after warehouse transfer, open/closed shift transfers, next opening, zero-float provenance, discounted cent returns, stock and permission isolation, safe linked-till archiving, replay and no resurrection.');
  }
 }finally{clearTimeout(e.catalogTimer);clearInterval(e.timer);await Promise.allSettled([market.stop(),ops.stop()]);await fs.rm(work,{recursive:true,force:true})}

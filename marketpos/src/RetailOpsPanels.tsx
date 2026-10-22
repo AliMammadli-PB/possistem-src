@@ -17,19 +17,36 @@ const money = (minor: number, lang: Lang) =>
 type Notify = (text: string) => void;
 
 export function RegistersOpsPage({
-  state, staff, session, lang, coreReady, onAdd, onToggle, onRefresh, notify,
+  state, staff, session, lang, coreReady, onAdd, onToggle, onRefresh, notify, focusRegisterId, compact=false,
 }: {
+  focusRegisterId?: string; compact?:boolean;
   state: PersistedState;
   staff: StaffProfile[];
   session: SessionUser;
   lang: Lang;
   coreReady: boolean;
   onAdd: () => void;
-  onToggle: (register: Register) => void;
+  onToggle: (register: Register) => void | Promise<void>;
   onRefresh: () => Promise<unknown>;
   notify: Notify;
 }) {
-  const [selectedId, setSelectedId] = useState(state.settings.defaultRegisterId);
+  const [edit, setEdit] = useState<null|{id:string;terminalId:string;name:string;objectId:string;objects:Array<{id:string;name:string}>;confirmDelete?:boolean}>(null);
+  const editLock=useRef(false);
+  const [editBusy,setEditBusy]=useState(false);
+  const label=(az:string,ru:string,en:string)=>lang==='ru'?ru:lang==='en'?en:az;
+  const editRegister=async(register:Register)=>{
+    if(editLock.current||!window.marketOps)return;
+    editLock.current=true;setEditBusy(true);
+    try{const r=await window.marketOps.invoke({sessionToken:session.sessionToken,method:'cashAccounts.list'});if(!r.success)throw Error(r.error?.message);const data=r.data as {accounts:Array<{id:string;terminalId:string;name:string;objectId:string}>;objects:Array<{id:string;name:string}>};const account=data.accounts.find(a=>a.terminalId==='market-'+register.id);if(!account)throw Error(label('Kassa əlaqəsi yenilənmədi. Kassaları yeniləyin.','Обновите связь кассы.','Refresh the linked till first.'));setEdit({...account,objects:data.objects||[]});}catch(e){notify(e instanceof Error?e.message:String(e));}finally{editLock.current=false;setEditBusy(false);}
+  };
+  const saveEdit=async(remove=false)=>{
+    if(!edit||editLock.current||!window.marketOps)return;
+    if(!remove&&!edit.name.trim())return;
+    editLock.current=true;setEditBusy(true);
+    try{const r=await window.marketOps.invoke({sessionToken:session.sessionToken,method:remove?'cashAccounts.deactivate':'cashAccounts.save',payload:remove?{accountId:edit.id}:{id:edit.id,name:edit.name.trim(),kind:'till',terminalId:edit.terminalId,objectId:edit.objectId||''},idempotencyKey:crypto.randomUUID(),timeoutMs:30000});if(!r.success)throw Error(r.error?.message);setEdit(null);await onRefresh();notify(label(remove?'Kassa silindi':'Saxlanıldı',remove?'Касса удалена':'Сохранено',remove?'Till deleted':'Saved'));}catch(e){notify(e instanceof Error?e.message:String(e));}finally{editLock.current=false;setEditBusy(false);}
+  };
+  const [selectedId, setSelectedId] = useState(focusRegisterId||state.settings.defaultRegisterId);
+  useEffect(()=>{if(focusRegisterId){setSelectedId(focusRegisterId);void onRefresh();}},[focusRegisterId]);
   const [amount, setAmount] = useState('10.00');
   const [reason, setReason] = useState('');
   const [xReport, setXReport] = useState<Record<string, unknown> | null>(null);
@@ -43,17 +60,20 @@ export function RegistersOpsPage({
     finally { cashAction.current = false; setCashBusy(false); }
   };
   const [approval, setApproval] = useState<null | { permission: string; run: (managerPin: string) => Promise<void> }>(null);
-  const selected = state.registers.find((r) => r.id === selectedId) ?? state.registers[0];
+  const selected = state.registers.find((r) => r.id === selectedId) ?? (focusRegisterId ? undefined : state.registers[0]);
   const openCount = state.registers.filter((r) => r.status === 'open').length;
   const [shared, setShared] = useState<{ accounts: Array<{ id: string; name: string; kind: string; terminalId: string; balanceMinor: number; todayCashMinor: number; todayCardMinor: number }> } | null>(null);
   const [sharedError, setSharedError] = useState(false);
   const [sharedBusy, setSharedBusy] = useState(false);
   const [sharedAccess, setSharedAccess] = useState<boolean | null>(null);
   const sharedAvailable = Boolean(coreReady && window.marketOps?.cashSummary && sharedAccess !== false);
+  // A refresh hands over new arrays with the same content: keyed on what changes the
+  // sums, so the figures are not re-asked (and blanked) on every state refresh.
+  const sharedKey = `${state.registers.map((r) => `${r.id}:${r.status}`).join('|')}#${state.sales.length}:${state.sales[state.sales.length - 1]?.id ?? ''}`;
   useEffect(() => {
     if (!sharedAvailable) return;
     let alive = true;
-    setSharedBusy(true); setSharedError(false);
+    setSharedBusy(true);
     void (async () => {
       const status = await window.marketOps!.status?.();
       if (status?.host === false) {
@@ -63,13 +83,13 @@ export function RegistersOpsPage({
       return window.marketOps!.cashSummary(session.sessionToken);
     })().then(result => {
       if (!alive || !result) return;
-      if (result.success && result.data) setShared(result.data);
+      if (result.success && result.data) { setShared(result.data); setSharedError(false); }
       else if (result.error?.code === 'E_FORBIDDEN') { setSharedAccess(false); setShared(null); }
       else setSharedError(true);
     }).catch(() => { if (alive) setSharedError(true); })
       .finally(() => { if (alive) setSharedBusy(false); });
     return () => { alive = false; };
-  }, [sharedAvailable, session.sessionToken, state.registers, state.sales]);
+  }, [sharedAvailable, session.sessionToken, sharedKey]);
   const selectedName = shared?.accounts.find(a => a.kind === 'till' && a.terminalId === `market-${selected?.id}`)?.name ?? selected?.name;
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
@@ -138,10 +158,10 @@ export function RegistersOpsPage({
           <h2>{tr(lang, 'registers')}</h2>
           <span>{openCount} {tr(lang, 'openRegisters').toLowerCase()} · X/Z · nağd hərəkət</span>
         </div>
-        <button className="primary-action" type="button" onClick={onAdd}><Plus />{tr(lang, 'addRegister')}</button>
+        {!compact&&<button className="primary-action" type="button" onClick={onAdd}><Plus />{tr(lang,'addRegister')}</button>}
       </section>
 
-      {sharedAvailable && <section className="panel-card" aria-busy={sharedBusy}>
+      {sharedAvailable && !compact && <section className="panel-card" aria-busy={sharedBusy}>
         <div className="panel-title"><h3>{tr(lang, 'sharedCashTitle')}</h3>
           <button type="button" className="ops-chip" disabled={sharedBusy} onClick={() => void onRefresh().catch(() => notify(tr(lang, 'sharedCashError')))}><RefreshCw />{tr(lang, 'sharedCashRefresh')}</button>
         </div>
@@ -150,8 +170,9 @@ export function RegistersOpsPage({
         {sharedError && <p role="alert">{tr(lang, 'sharedCashError')}</p>}
       </section>}
 
+      {focusRegisterId&&!selected&&<p role="status">{label('Kassa məlumatı yenilənir…','Обновление кассы…','Refreshing register…')}<button onClick={()=>void onRefresh()}>{label('Yenilə','Обновить','Refresh')}</button></p>}
       <div className="register-grid">
-        {state.registers.map((register) => {
+        {state.registers.filter(r=>!focusRegisterId||r.id===focusRegisterId).map((register) => {
           const operator = staff.find((u) => u.id === register.operatorId);
           const account = shared?.accounts.find(a => a.kind === 'till' && a.terminalId === `market-${register.id}`);
           const revenue = state.sales.filter((s) => s.registerId === register.id && s.createdAt >= today.getTime() && !s.refunded)
@@ -193,29 +214,30 @@ export function RegistersOpsPage({
                 </span>
               </div>
               {sharedAvailable && <div className="register-money register-shared-money" aria-label={tr(lang, 'sharedCashTitle')}>
-                <span><small>{tr(lang, 'sharedCashBalance')}</small><b>{account && !sharedError && !sharedBusy ? money(account.balanceMinor, lang) : '—'}</b></span>
-                <span><small>{tr(lang, 'sharedCashToday')}</small><b>{account && !sharedError && !sharedBusy ? money(account.todayCashMinor, lang) : '—'}</b></span>
-                <span><small>{tr(lang, 'sharedCardToday')}</small><b>{account && !sharedError && !sharedBusy ? money(account.todayCardMinor, lang) : '—'}</b></span>
+                <span><small>{tr(lang, 'sharedCashBalance')}</small><b>{account && !sharedError ? money(account.balanceMinor, lang) : '—'}</b></span>
+                <span><small>{tr(lang, 'sharedCashToday')}</small><b>{account && !sharedError ? money(account.todayCashMinor, lang) : '—'}</b></span>
+                <span><small>{tr(lang, 'sharedCardToday')}</small><b>{account && !sharedError ? money(account.todayCardMinor, lang) : '—'}</b></span>
               </div>}
               <footer className="register-actions">
-                <button
+                {session.role==='manager'&&window.marketOps&&<button type="button" className="register-toggle" disabled={editBusy} onClick={e=>{e.stopPropagation();void editRegister(register);}}>{label('Düzəliş / Sil','Изменить / Удалить','Edit / Delete')}</button>}
+                {(!compact || register.status === 'closed') && <button
                   type="button"
                   className={register.status === 'open' ? 'register-toggle danger' : 'register-toggle'}
-                  disabled={register.status === 'closed' && sharedAvailable && sharedBusy}
-                  onClick={(e) => { e.stopPropagation(); onToggle(register.status === 'closed' && account ? { ...register, openingFloatMinor: account.balanceMinor } : register); }}
+                  disabled={cashBusy || (register.status === 'closed' && sharedAvailable && sharedBusy)}
+                  onClick={(e) => { e.stopPropagation(); void withCashLock(async()=>{await onToggle(register.status === 'closed' && account ? { ...register, openingFloatMinor: account.balanceMinor } : register);}); }}
                 >
                   {register.status === 'open' ? <LockKeyhole /> : <KeyRound />}
                   {register.status === 'open' ? tr(lang, 'closeRegister') : tr(lang, 'openRegister')}
-                </button>
+                </button>}
               </footer>
             </article>
           );
         })}
       </div>
 
-      {shared && !sharedError && shared.accounts.some(a => a.kind === 'bank') && <section className="panel-card">
+      {!compact && shared && !sharedError && shared.accounts.some(a => a.kind === 'bank') && <section className="panel-card">
         <h3>{tr(lang, 'sharedCashBank')}</h3>
-        <div className="register-money register-shared-money">{shared.accounts.filter(a => a.kind === 'bank').map(a => <span key={a.id}><small>{a.name}</small><b>{sharedBusy ? '—' : money(a.balanceMinor, lang)}</b></span>)}</div>
+        <div className="register-money register-shared-money">{shared.accounts.filter(a => a.kind === 'bank').map(a => <span key={a.id}><small>{a.name}</small><b>{money(a.balanceMinor, lang)}</b></span>)}</div>
       </section>}
 
       {selected?.status === 'open' && coreReady ? (
@@ -258,7 +280,7 @@ export function RegistersOpsPage({
                 <span>Z sayım · faktiki nağd</span>
                 <input value={zCount} onChange={(e) => setZCount(e.target.value)} inputMode="decimal" placeholder="0.00" />
               </label>
-              <button type="button" className="primary-action" disabled={cashBusy} onClick={() => void runZ()}>
+              <button type="button" className="primary-action" disabled={cashBusy || !/^\d+(?:[.,]\d{1,2})?$/.test(zCount)} onClick={() => void runZ()}>
                 <KeyRound />Z bağla
               </button>
             </div>
@@ -291,6 +313,11 @@ export function RegistersOpsPage({
         </section>
       ) : null}
 
+      {edit&&<div className="modal-backdrop" role="presentation"><section className="register-edit-modal" role="dialog" aria-modal="true" aria-label={label('Kassaya düzəliş','Изменить кассу','Edit till')}>
+        <h2>{label('Kassaya düzəliş','Изменить кассу','Edit till')}</h2>
+        {edit.confirmDelete?<p>{label('Kassa silinsin? Əvvəlcə növbəni bağlayın və pul qalığını transfer edin. Satış və hesabat tarixçəsi saxlanılır.','Удалить кассу? Сначала закройте смену и переведите остаток. История сохраняется.','Delete this till? Close its shift and transfer its balance first. Business history is preserved.')}</p>:<><label>{label('Kassanın adı','Название кассы','Till name')}<input autoFocus value={edit.name} onChange={e=>setEdit({...edit,name:e.target.value})}/></label><label>{label('Filial','Филиал','Branch')}<select value={edit.objectId||''} onChange={e=>setEdit({...edit,objectId:e.target.value})}><option value="">{label('Filialsiz','Без филиала','Unassigned')}</option>{edit.objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label></>}
+        <footer><button disabled={editBusy} onClick={()=>edit.confirmDelete?void saveEdit(true):void saveEdit()}>{edit.confirmDelete?label('Silməni təsdiqlə','Подтвердить удаление','Confirm deletion'):tr(lang,'save')}</button>{!edit.confirmDelete&&<button className="danger" disabled={editBusy} onClick={()=>setEdit({...edit,confirmDelete:true})}>{label('Kassanı sil','Удалить кассу','Delete till')}</button>}<button disabled={editBusy} onClick={()=>setEdit(null)}>{tr(lang,'cancel')}</button></footer>
+      </section></div>}
       {approval && (
         <ManagerApprovalModal
           title={`${approval.permission} təsdiqi`}
@@ -498,10 +525,14 @@ export function HardwareSettingsCard({ session, lang, notify, includePrinter = t
           // printer, so the button says what is happening while it runs.
           setDetecting(true);
           void window.marketSystem?.printer?.detect(session.sessionToken)
-            .then((result) => {
+            .then((raw) => {
+              // The core's answer is {success, data}; reading it bare threw here.
+              const reply = raw as unknown as { success?: boolean; data?: { chosen?: string | null; printers?: unknown[] }; error?: { message?: string }; chosen?: string | null; printers?: unknown[] };
+              if (reply.success === false) throw new Error(reply.error?.message || 'Printer tapılmadı');
+              const result = reply.data ?? reply;
               notify(result.chosen
                 ? `Printer tapıldı: ${result.chosen}`
-                : `Printer tapılmadı (${result.printers.length} namizəd yoxlandı)`);
+                : `Printer tapılmadı (${result.printers?.length ?? 0} namizəd yoxlandı)`);
               return refresh();
             })
             .catch((e: Error) => notify(e.message))

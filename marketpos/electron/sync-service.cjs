@@ -1,3 +1,4 @@
+const VPS_BATCH = 2000;
 const dgram = require('node:dgram');
 const http = require('node:http');
 const { createPrivateKey, createPublicKey, randomBytes, sign, verify } = require('node:crypto');
@@ -26,10 +27,13 @@ class MarketSyncService {
     this.appVersion = opts.appVersion;
     this.onStatus = opts.onStatus;
     this.onReport = opts.onReport;
+    this.onCoreBatch = opts.onCoreBatch;
+    this.onBranchContext = opts.onBranchContext;
     this.rewriteEvents = opts.rewriteEvents;
     this.hydrateImages = opts.hydrateImages;
     this.peers = new Map();
     this.seenCommands = new Set();
+    this.commandResults = new Map();
     this.serverVector = {};
     this.timer = null;
     this.udp = null;
@@ -70,6 +74,9 @@ class MarketSyncService {
     catch { return false; }
   }
 
+  branchFields(state) {return state.activation.branchScopeKnown?{branchScopeKnown:true,branchId:state.activation.cloudBranchId||null}:{};}
+  sameBranch(document,state) {if(!state.activation.branchScopeKnown)return true;if(document.branchScopeKnown)return (document.branchId||null)===(state.activation.cloudBranchId||null);return !state.activation.cloudBranchId;}
+
   verifyLicenseProof(proof, state, deviceId, publicKeyHex) {
     try {
       const envelope = proof?.signedLicense;
@@ -84,6 +91,9 @@ class MarketSyncService {
         const expiresAtMs = typeof expiry === 'number' ? expiry : Date.parse(expiry);
         if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) return false;
       }
+      const localBranch=state.activation.licenseProof?.signedLicense?.payload?.branchId;
+      const peerBranch=envelope.payload.branchId;
+      if(!state.activation.branchScopeKnown && localBranch && localBranch!==peerBranch)return false;
       return envelope.payload.status === 'active' && envelope.payload.customerId === state.activation.customerId &&
         envelope.payload.deviceId === deviceId && envelope.payload.devicePublicKey === publicKeyHex;
     } catch { return false; }
@@ -155,7 +165,7 @@ class MarketSyncService {
         const packet = JSON.parse(bytes.toString('utf8'));
         const { signature, ...document } = packet;
         const state = this.activatedState();
-        if (!state || document.v !== 1 || document.customerId !== state.activation.customerId || document.deviceId === state.activation.serverDeviceId) return;
+        if (!state || !this.sameBranch(document,state) || document.v !== 1 || document.customerId !== state.activation.customerId || document.deviceId === state.activation.serverDeviceId) return;
         if (Math.abs(Date.now() - Number(document.ts)) > 15000 || !this.verifyDocument(document, signature, document.publicKey) ||
             !this.verifyLicenseProof(document.licenseProof, state, document.deviceId, document.publicKey)) return;
         const known = this.peers.get(document.deviceId);
@@ -188,7 +198,7 @@ class MarketSyncService {
   announce(state) {
     if (!this.udp || !this.httpPort) return;
     if (!state.activation.licenseProof) return;
-    const document = { v: 1, customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, port: this.httpPort, ts: Date.now(), publicKey: state.deviceProof.publicKeyHex, licenseProof: state.activation.licenseProof };
+    const document = { ...this.branchFields(state), v: 1, customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, port: this.httpPort, ts: Date.now(), publicKey: state.deviceProof.publicKeyHex, licenseProof: state.activation.licenseProof };
     if (state.deviceProof.encPublicKeyHex) document.encKey = state.deviceProof.encPublicKeyHex;
     const packet = Buffer.from(JSON.stringify({ ...document, signature: this.signDocument(document, state) }));
     this.udp.send(packet, DISCOVERY_PORT, MULTICAST_ADDRESS, () => undefined);
@@ -206,12 +216,12 @@ class MarketSyncService {
    */
   async exchangeDocument(body, state) {
     const { signature, publicKey, ...document } = body || {};
-    if (!state || document.customerId !== state.activation.customerId || Math.abs(Date.now() - Number(document.signedAt)) > 300000 || !this.verifyDocument(document, signature, publicKey) ||
+    if (!state || !this.sameBranch(document,state) || document.customerId !== state.activation.customerId || Math.abs(Date.now() - Number(document.signedAt)) > 300000 || !this.verifyDocument(document, signature, publicKey) ||
         !this.verifyLicenseProof(document.licenseProof, state, document.deviceId, publicKey)) return null;
     await this.call('sync.apply', { events: document.events || [] });
     this.queueHydrate();
     const outgoing = await this.call('sync.export', { vector: document.vector || {} });
-    const responseDoc = { customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, signedAt: Date.now(), vector: outgoing.vector, events: this.outgoingEvents(outgoing.events), licenseProof: state.activation.licenseProof };
+    const responseDoc = { ...this.branchFields(state), customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, signedAt: Date.now(), vector: outgoing.vector, events: this.outgoingEvents(outgoing.events), licenseProof: state.activation.licenseProof };
     return { ...responseDoc, publicKey: state.deviceProof.publicKeyHex, signature: this.signDocument(responseDoc, state) };
   }
 
@@ -238,7 +248,7 @@ class MarketSyncService {
 
   async exchangePeer(peer, state) {
     const local = await this.call('sync.export', { vector: peer.vector || {} });
-    const document = { customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, signedAt: Date.now(), vector: local.vector, events: this.outgoingEvents(local.events), licenseProof: state.activation.licenseProof };
+    const document = { ...this.branchFields(state), customerId: state.activation.customerId, deviceId: state.activation.serverDeviceId, signedAt: Date.now(), vector: local.vector, events: this.outgoingEvents(local.events), licenseProof: state.activation.licenseProof };
     const signed = { ...document, publicKey: state.deviceProof.publicKeyHex, signature: this.signDocument(document, state) };
     // Sealed whenever the peer announced an encryption key; plaintext /v1 only
     // for a peer too old to have one.
@@ -247,7 +257,7 @@ class MarketSyncService {
     if (!response.ok) throw new Error(`LAN ${response.status}`);
     const body = sealed ? lanCrypto.openResponse(await response.json(), sealed.responseKey) : await response.json();
     const { signature, publicKey, ...responseDoc } = body;
-    if (responseDoc.customerId !== state.activation.customerId || !this.verifyDocument(responseDoc, signature, publicKey) ||
+    if (!this.sameBranch(responseDoc,state) || responseDoc.customerId !== state.activation.customerId || !this.verifyDocument(responseDoc, signature, publicKey) ||
         !this.verifyLicenseProof(responseDoc.licenseProof, state, responseDoc.deviceId, publicKey)) throw new Error('LAN response proof failed');
     peer.seenAt = Date.now();
     // Apply before advancing the cursor — recording the peer as up to date first
@@ -262,11 +272,16 @@ class MarketSyncService {
   async exchangeVps(state, local) {
     const signedAt = new Date().toISOString();
     const nonce = randomBytes(16).toString('hex');
-    const document = { deviceId: state.activation.serverDeviceId, appVersion: this.appVersion(), signedAt, nonce, vector: local.vector, events: this.outgoingEvents(local.events) };
+    // The server takes at most 2000 events per call (older servers refused the
+    // whole exchange above that - a till with a big backlog never synced).
+    // The oldest go first; the rest follow on the next passes.
+    const sent = (local.events || []).slice(0, VPS_BATCH);
+    const document = { deviceId: state.activation.serverDeviceId, appVersion: this.appVersion(), signedAt, nonce, vector: local.vector, events: this.outgoingEvents(sent) };
     const body = { ...document, deviceFingerprint: state.activation.deviceId, deviceSignature: this.signDocument(document, state) };
     const response = await fetch(this.controlApi('/market-pos/sync/exchange'), { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw new Error(`VPS ${response.status}`);
     const payload = await response.json();
+    if(Object.hasOwn(payload,'branchId')){if(state.activation.cloudBranchId!==payload.branchId)this.peers.clear();await this.onBranchContext?.({branchId:payload.branchId,branchName:payload.branchName||''});}
     await this.call('sync.apply', { events: payload.events || [] });
     this.queueHydrate();
     const accepted = payload.acceptedEventIds || [];
@@ -274,7 +289,7 @@ class MarketSyncService {
     // Only advance the cursor for what the server actually acked. Taking the
     // server's vector wholesale filters unacked events out of every future export
     // while they stay pending forever.
-    if (payload.serverVector && accepted.length === (local.events || []).length) {
+    if (payload.serverVector && accepted.length === sent.length) {
       this.serverVector = payload.serverVector;
       await this.call('sync.setServerVector', { vector: this.serverVector }).catch(() => undefined);
     }
@@ -283,7 +298,7 @@ class MarketSyncService {
   }
 
   async reportCommand(state, commandId, status, result, error) {
-    await fetch(this.controlApi(`/market-pos/commands/${commandId}/result`), {
+    const response = await fetch(this.controlApi(`/market-pos/commands/${commandId}/result`), {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -294,10 +309,31 @@ class MarketSyncService {
         error: error || undefined,
       }),
       signal: AbortSignal.timeout(8000),
-    }).catch(() => undefined);
+    });
+    if (!response.ok) throw Error(`Əmr nəticəsi serverə çatmadı (${response.status})`);
+  }
+
+  async finishCommand(state, commandId, status, result, error) {
+    const entry = {deviceId: state.activation.serverDeviceId, customerId: state.activation.customerId, commandId, status, result, error};
+    this.commandResults.set(commandId, entry);
+    await this.flushCommandResults(state);
+  }
+
+  async flushCommandResults(state) {
+    for (const [id, entry] of this.commandResults) {
+      if (entry.deviceId !== state.activation.serverDeviceId || entry.customerId !== state.activation.customerId) continue;
+      try {
+        await this.reportCommand(state, id, entry.status, entry.result, entry.error);
+        this.commandResults.delete(id);
+      } catch {
+        // Retain the completed outcome for the next sync; never rerun the mutation.
+        break;
+      }
+    }
   }
 
   async dispatchCommands(state, commands) {
+    await this.flushCommandResults(state);
     if (!Array.isArray(commands) || commands.length === 0) return;
     let snapshot = null;
     try { snapshot = await this.call('state.get'); } catch { snapshot = null; }
@@ -312,11 +348,12 @@ class MarketSyncService {
       });
       if (!verified.ok) {
         console.warn('[market-sync] command refused', received?.id, verified.reason);
-        if (received?.id) await this.reportCommand(state, received.id, 'failed', null, `Əmr imzası etibarsızdır (${verified.reason})`).catch(() => undefined);
+        // Invalid or replayed envelopes must not overwrite a completed result.
         continue;
       }
       const command = verified.command;
       try {
+        if(command.kind==='core_batch'){if(typeof this.onCoreBatch!=='function')throw Error('Proqramı yeniləyin');const result=await this.onCoreBatch(command.payload);await this.finishCommand(state,command.id,'done',result);continue;}
         if (!registerId) throw new Error('Kassa tapılmadı');
         let report;
         if (command.kind === 'x_report') {
@@ -345,9 +382,9 @@ class MarketSyncService {
             printError = error.message || String(error);
           }
         }
-        await this.reportCommand(state, command.id, 'done', report, printError);
+        await this.finishCommand(state, command.id, 'done', report, printError);
       } catch (error) {
-        await this.reportCommand(state, command.id, 'failed', null, error.message || String(error));
+        await this.finishCommand(state, command.id, 'failed', null, error.message || String(error));
       }
     }
   }

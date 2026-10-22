@@ -11,8 +11,8 @@ export const parseMoneyInput = (value: string): number => {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : 0;
 };
 export const ROLE_VIEWS: Record<Role, View[]> = {
-  manager: ['dashboard', 'sale', 'ops', 'returns', 'reports', 'registers', 'customers', 'platform', 'staff', 'mobile', 'settings'],
-  head_cashier: ['dashboard', 'sale', 'returns', 'reports', 'registers', 'customers'],
+  manager: ['management', 'branches', 'dashboard', 'sale', 'ops', 'returns', 'reports', 'registers', 'customers', 'platform', 'staff', 'mobile', 'settings'],
+  head_cashier: ['management', 'dashboard', 'sale', 'returns', 'reports', 'registers', 'customers'],
   cashier: ['dashboard', 'sale'],
   warehouse: ['dashboard', 'ops'],
 };

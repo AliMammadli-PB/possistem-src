@@ -31,6 +31,10 @@
       "auth": "none",
       "why": "Ends a session; can only reduce access."
     },
+    "market:auth:rights": {
+      "auth": "session",
+      "why": "Permission keys of the signed-in user (or, with MANAGE_USERS, of another user); read-only."
+    },
     "market:backup:configure": {
       "auth": "core:BACKUP_MANAGE"
     },
@@ -47,6 +51,25 @@
     "market:backup:status": {
       "auth": "none",
       "why": "Whether backups are configured, for the settings badge."
+    },
+    "market:branch:context": {
+      "auth": "roles:manager,head_cashier,cashier,warehouse",
+      "why": "Only the signed-in register branch label is returned, without financial balances."
+    },
+    "market:branches:assign": {
+      "auth": "roles:manager"
+    },
+    "market:branches:list": {
+      "auth": "roles:manager"
+    },
+    "market:branches:manage": {
+      "auth": "roles:manager"
+    },
+    "market:branches:rpc": {
+      "auth": "roles:manager"
+    },
+    "market:branches:selection": {
+      "auth": "roles:manager,head_cashier,cashier,warehouse"
     },
     "market:coreRestart": {
       "auth": "roles:manager"
@@ -78,15 +101,48 @@
     "market:invoke": {
       "auth": "session"
     },
-    "market:ops:invoke": {
+    "market:label:config": {
       "auth": "roles:manager,warehouse"
+    },
+    "market:label:discover": {
+      "auth": "roles:manager"
+    },
+    "market:label:driver": {
+      "auth": "roles:manager"
+    },
+    "market:label:generate": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:label:preview": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:label:print": {
+      "auth": "core:PRINT_LABEL"
+    },
+    "market:label:products": {
+      "auth": "roles:manager,warehouse"
+    },
+    "market:label:save": {
+      "auth": "roles:manager"
+    },
+    "market:ops:cashSummary": {
+      "auth": "roles:manager,head_cashier,cashier",
+      "why": "Read shared cash balances only after a trusted session and native VIEW_REPORTS permission check."
+    },
+    "market:ops:categories": {
+      "auth": "none",
+      "why": "Top-level category names for the selling screen chips; no prices, stock or people."
+    },
+    "market:ops:invoke": {
+      "auth": "session",
+      "why": "Manager and storekeeper roles, or anyone POSSISTEM gave a DOCS_* right (checked in the core); document edit/delete need DOCS_EDIT/DOCS_DELETE."
     },
     "market:ops:setHost": {
       "auth": "roles:manager"
     },
     "market:ops:status": {
       "auth": "none",
-      "why": "Whether this till runs the warehouse system and its core state, shown before the \u018fm\u0259liyyatlar frame opens."
+      "why": "Whether this till runs the warehouse system and its core state, shown before the Əməliyyatlar frame opens."
     },
     "market:ops:sync": {
       "auth": "roles:manager,warehouse"
@@ -123,12 +179,21 @@
     "market:printer:test": {
       "auth": "roles:manager"
     },
+    "market:staff:delete": {
+      "auth": "session",
+      "why": "Main then requires the core permission MANAGE_USERS."
+    },
     "market:staff:list": {
       "auth": "none",
       "why": "Staff names/roles for the sign-in picker; credentials never leave main."
     },
+    "market:staff:places": {
+      "auth": "session",
+      "why": "Objects and kassas for the user form; needs MANAGE_USERS."
+    },
     "market:staff:save": {
-      "auth": "roles:manager"
+      "auth": "session",
+      "why": "Main then requires the core permission MANAGE_USERS; rights are not granted here."
     },
     "market:support:download": {
       "auth": "session"
@@ -173,34 +238,6 @@
     "market:update:status": {
       "auth": "none",
       "why": "Update progress indicator."
-    },
-    "market:ops:cashSummary": {
-      "auth": "roles:manager,head_cashier,cashier",
-      "why": "Read shared cash balances only after a trusted session and native VIEW_REPORTS permission check."
-    },
-    "market:label:config": {
-      "auth": "roles:manager,warehouse"
-    },
-    "market:label:save": {
-      "auth": "roles:manager"
-    },
-    "market:label:discover": {
-      "auth": "roles:manager"
-    },
-    "market:label:products": {
-      "auth": "roles:manager,warehouse"
-    },
-    "market:label:generate": {
-      "auth": "roles:manager,warehouse"
-    },
-    "market:label:preview": {
-      "auth": "roles:manager,warehouse"
-    },
-    "market:label:print": {
-      "auth": "core:PRINT_LABEL"
-    },
-    "market:label:driver": {
-      "auth": "roles:manager"
     }
   }
 }

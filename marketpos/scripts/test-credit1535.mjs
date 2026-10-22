@@ -1,0 +1,71 @@
+/** Real Windows warehouse + till cores in isolated databases. */
+import {spawn} from 'node:child_process';import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),require=createRequire(import.meta.url),{OpsEngine}=require('../electron/ops-engine.cjs'),work=await fs.mkdtemp(path.join(os.tmpdir(),'market-warehouse-'));let seq=0;const before=process.argv.includes('--before');
+class Rpc{constructor(name,binary){this.state='ready';this.pending=new Map();this.ready=new Promise((resolve,reject)=>{this.child=spawn('wine',[binary,'--db',path.join(work,name+'.db'),'--log-dir',path.join(work,name+'-logs'),'--protocol','1'],{stdio:['pipe','pipe','pipe'],env:{...process.env,WINEDEBUG:'-all',POS_SEED_DEMO_MENU:'0'}});let buf='';this.child.stdout.on('data',b=>{buf+=b;let at;while((at=buf.indexOf('\n'))>=0){let raw=buf.slice(0,at);buf=buf.slice(at+1);let msg;try{msg=JSON.parse(raw)}catch{continue}if(msg.event==='core.ready')resolve();const p=this.pending.get(msg.requestId);if(p){clearTimeout(p.timer);this.pending.delete(msg.requestId);p.resolve(msg)}}});this.child.stderr.on('data',()=>{});this.child.on('error',reject);setTimeout(()=>reject(Error(name+' startup timeout')),30000).unref()})}async invoke(method,payload={},options={}){await this.ready;return new Promise((resolve,reject)=>{const requestId='bridge-'+(++seq),timer=setTimeout(()=>{this.pending.delete(requestId);reject(Error('Timeout '+method))},60000);this.pending.set(requestId,{resolve,timer});const o=typeof options==='object'?options:{};this.child.stdin.write(JSON.stringify({requestId,method,protocolVersion:1,timestamp:Date.now(),payload:o.idempotencyKey?{...payload,idempotencyKey:o.idempotencyKey}:payload,...(o.actor?{actor:o.actor}:{}),...(o.terminal?{terminal:o.terminal}:{})})+'\n')})}async stop(){const ended=new Promise(r=>this.child.once('exit',r));this.child.stdin.end();await ended}}
+const market=new Rpc('market',path.join(root,'marketpos/native/build/market-pos-core.exe'));const ops=new Rpc('ops',path.join(root,'restoranpos/native/build/restaurant-pos-core.exe'));const e=Object.create(OpsEngine.prototype);e.core=ops;e.market=market;e.admin=null;e.busy={};e.registers=new Map();let settings={legacyImported:true,links:{},fed:[]};e.settings=()=>settings;e.saveSettings=p=>(settings={...settings,...p});
+const check=r=>{assert.equal(r.success,true,JSON.stringify(r.error));return r.data};
+try{
+ await Promise.all([market.ready,ops.ready]);
+ const id=check(await e.invoke('ingredients.save',{name:'Nisyə məhsulu',barcode:'4760001000001',unit:'ədəd',costMinor:50,salePriceMinor:100})).id;settings.links={p1:id};
+ check(await market.invoke('state.importLegacy',{role:'manager',snapshot:{schemaVersion:5,warehouses:[{id:'wh-sales',code:'ZAL',name:'Sales',active:true}],registers:[{id:'reg-1',code:'K1',name:'Kassa',status:'open',openingFloatMinor:0,operatorId:'qa',openedAt:Date.now()}],products:[{id:'p1',sku:'SKU1',barcode:'4760001000001',name:{az:'Nisyə məhsulu',ru:'QA',en:'QA'},category:'Digər',unit:'əd',priceMinor:100,costMinor:50,minStock:0,taxRate:18,supplier:'',warehouseStock:{'wh-sales':0},image:{kind:'url',url:''},active:true,createdAt:Date.now()}],settings:{storeName:'QA',legalName:'QA',taxId:'',phone:'',address:'',terminalName:'T1',defaultWarehouseId:'wh-sales',defaultRegisterId:'reg-1',syncUrl:''}}}));
+ check(await e.invoke('inventory.adjust',{ingredientId:id,qtyDeltaMilli:10000,reason:'Opening',idempotencyKey:'opening'}));await e.flushCatalog();
+ const beforeOwner=check(await e.invoke('business.call',{action:'stock.snapshot'}));
+ e.ownerObject=()=>({branchId:'cloud-owner-location',name:'Gənclik'});await e.syncRegisters();
+ const ownerCash=check(await e.invoke('cashAccounts.list',{}));const ownerObject=ownerCash.objects.find(o=>o.id==='cloud-owner-location');assert.ok(ownerObject,'Cloud location is available to native cash/payment forms');assert.equal(ownerObject.warehouseId,'wh-main');
+ assert.equal(ownerCash.accounts.find(a=>a.terminalId==='market-reg-1').objectId,ownerObject.id);
+ const afterOwner=check(await e.invoke('business.call',{action:'stock.snapshot'}));assert.deepEqual(afterOwner.levels,beforeOwner.levels,'Connecting owner metadata never moves stock');assert.equal(afterOwner.warehouses.length,beforeOwner.warehouses.length,'No artificial warehouse is created');
+ const customer=check(await e.invoke('customers.save',{name:'Nisyə partnyoru',creditAllowed:false,creditLimitMinor:0})).id;await e.syncCustomers();
+ let customers=check(await market.invoke('customer.list'));assert.equal(customers[0].id,customer);assert.equal(customers[0].creditLimitMinor,0);
+ const payment={method:'credit',amountMinor:300,cashMinor:100,cardMinor:0,creditMinor:200,tenderedMinor:100};
+ const request={role:'manager',actorId:'qa',cashierId:'qa',registerId:'reg-1',customerId:customer,items:[{productId:'p1',qty:3}],payment,idempotencyKey:'credit-sale'};
+ const sale=check(await market.invoke('sale.complete',request));check(await market.invoke('sale.complete',request));assert.equal(check(await market.invoke('customer.list'))[0].balanceMinor,200);
+ await e.flushCatalog();await e.flushCatalog();await e.syncCustomers();assert.equal(check(await e.invoke('customers.get',{customerId:customer})).debtMinor,200,'Credit is written once into the shared partner');assert.equal(check(await market.invoke('customer.list'))[0].balanceMinor,200);
+ const account=check(await e.invoke('cashAccounts.save',{name:'Treasury',kind:'treasury'})).id;check(await e.invoke('customers.payDebt',{customerId:customer,amountMinor:50,accountId:account,idempotencyKey:'partner-payment'}));await e.syncCustomers();assert.equal(check(await market.invoke('customer.list'))[0].balanceMinor,150,'Operations payment updates sale partner balance');
+ check(await market.invoke('return.create',{saleId:sale.id,role:'manager',actorId:'qa'}));await e.flushCatalog();await e.syncCustomers();assert.equal(check(await e.invoke('customers.get',{customerId:customer})).debtMinor,-50,'Full return reverses the original credit exactly once');assert.equal(check(await market.invoke('customer.list'))[0].balanceMinor,-50);
+ await e.flushCatalog();assert.equal(check(await e.invoke('customers.get',{customerId:customer})).debtMinor,-50);
+
+ const supplier=check(await e.invoke('suppliers.save',{name:'Təchizatçı',phone:'0501234567',companyName:'Firma MMC',address:'Bakı',note:'Qeyd'}));
+ let suppliers=check(await e.invoke('suppliers.list',{})).suppliers;assert.equal(suppliers.find(s=>s.id===supplier.id).companyName,'Firma MMC');assert.equal(suppliers.find(s=>s.id===supplier.id).address,'Bakı');
+ check(await e.invoke('suppliers.save',{id:supplier.id,name:'Təchizatçı 2',note:'Yeni qeyd'}));suppliers=check(await e.invoke('suppliers.list',{})).suppliers;assert.equal(suppliers.find(s=>s.id===supplier.id).companyName,'Firma MMC','Older clients preserve new fields');
+ const sale2=check(await market.invoke('sale.complete',{...request,idempotencyKey:'unrestricted-credit'}));
+ await e.flushCatalog();await e.syncCustomers();
+ const dueBefore=check(await e.invoke('customers.get',{customerId:customer})).debtMinor;
+ const object=check(await e.invoke('cashObjects.save',{name:'Test obyekti'})).id;
+ const accountA=check(await e.invoke('cashAccounts.save',{name:'Kassa A',kind:'till',objectId:object})).id;
+ const accountB=check(await e.invoke('cashAccounts.save',{name:'Kassa B',kind:'till',objectId:object})).id;
+ const payRequest={customerId:customer,amountMinor:100,accountId:accountA,objectId:object,docAt:Date.now()-1000,idempotencyKey:'market-debt-receive',_marketScope:{id:'qa-user',name:'Kassir',role:'manager'}};
+ const pay=check(await e.invoke('customers.payDebt',payRequest));assert.ok(pay.id&&pay.number);check(await e.invoke('customers.payDebt',payRequest));
+ let due=check(await e.invoke('customers.get',{customerId:customer})).debtMinor;assert.equal(due,dueBefore-100);
+ const denied=await e.invoke('customers.payDebt',{...payRequest,idempotencyKey:'wrong-object',objectId:'different'});assert.equal(denied.success,false,'Account/object mismatch is rejected by core');
+ const over=await e.invoke('customers.payDebt',{...payRequest,idempotencyKey:'overpayment',amountMinor:dueBefore+10000});assert.equal(over.success,false);
+ const history=check(await e.invoke('customers.ledger',{customerId:customer})).entries;const payRow=history.find(r=>r.id===pay.id);assert.equal(payRow.actorName,'Kassir');assert.equal(payRow.createdAt,payRequest.docAt);assert.equal(payRow.objectName,'Test obyekti');
+ const edit={action:'correct',type:'customer',id:pay.id,amountMinor:50,accountId:accountB,note:'Düzəliş',idempotencyKey:'payment-correction',_marketScope:{id:'qa-user',role:'manager'}};
+ check(await e.invoke('business.call',edit));check(await e.invoke('business.call',edit));
+ due=check(await e.invoke('customers.get',{customerId:customer})).debtMinor;assert.equal(due,dueBefore-50);
+ let cash=check(await e.invoke('cashAccounts.list',{})).accounts;assert.equal(cash.find(a=>a.id===accountA).balanceMinor,0);assert.equal(cash.find(a=>a.id===accountB).balanceMinor,50);
+ const cancel={...edit,cancel:true,note:'Səhv ödəniş',idempotencyKey:'payment-cancel'};check(await e.invoke('business.call',cancel));check(await e.invoke('business.call',cancel));await e.syncCustomers();
+ assert.equal(check(await e.invoke('customers.get',{customerId:customer})).debtMinor,dueBefore);
+ cash=check(await e.invoke('cashAccounts.list',{})).accounts;assert.equal(cash.find(a=>a.id===accountB).balanceMinor,0);
+ const correction={saleId:sale2.id,role:'manager',actorId:'qa',reason:'Miqdar düzəlişi',idempotencyKey:'sale-correction-1535',replacement:{items:[{productId:'p1',qty:2}],payment:{method:'credit',cashMinor:100,cardMinor:0,creditMinor:100,tenderedMinor:100}}};
+ const edited=check(await market.invoke('sale.correct',correction));assert.ok(edited.replacementId);check(await market.invoke('sale.correct',correction));await e.flushCatalog();await e.syncCustomers();
+ assert.equal(check(await e.invoke('customers.get',{customerId:customer})).debtMinor,dueBefore-100);
+ const newSale=check(await market.invoke('sale.get',{id:edited.replacementId}));assert.equal(newSale.totalMinor,200);assert.equal(newSale.items[0].qty,2);
+ const beforeBad=check(await market.invoke('customer.history',{customerId:customer,role:'manager',actorId:'qa'}));
+ const bad=await market.invoke('sale.correct',{...correction,saleId:edited.replacementId,idempotencyKey:'bad-correction',replacement:{items:[{productId:'p1',qty:2}],payment:{method:'credit',cashMinor:0,creditMinor:9999}}});assert.equal(bad.success,false);
+ assert.equal(check(await market.invoke('sale.get',{id:edited.replacementId})).refunded,false,'Failed replacement rolls back the refund');
+ const noPermission=await market.invoke('sale.correct',{...correction,role:'cashier',actorId:'cashier',saleId:edited.replacementId,idempotencyKey:'forbidden'});assert.equal(noPermission.success,false);
+ const partial=check(await market.invoke('return.partial',{saleId:edited.replacementId,role:'manager',actorId:'qa',lines:[{saleItemId:newSale.items[0].saleItemId,qty:1}]}));
+ await e.flushCatalog();await e.syncCustomers();
+ const afterPartial=check(await market.invoke('customer.history',{customerId:customer,role:'manager',actorId:'qa'})).sales.find(s=>s.id===edited.replacementId);assert.equal(afterPartial.items[0].returnedQty,1);
+ const remaining=check(await market.invoke('sale.correct',{...correction,saleId:edited.replacementId,idempotencyKey:'remaining-correction',replacement:{items:[{productId:'p1',qty:1}],payment:{method:'credit',cashMinor:50,cardMinor:0,creditMinor:50,tenderedMinor:50}}}));await e.flushCatalog();await e.syncCustomers();
+ const finalCancel={saleId:remaining.replacementId,cancel:true,role:'manager',actorId:'qa',reason:'Sınaq ləğvi',idempotencyKey:'cancel-sale-1535'};check(await market.invoke('sale.correct',finalCancel));check(await market.invoke('sale.correct',finalCancel));await e.flushCatalog();await e.syncCustomers();
+ assert.equal(check(await e.invoke('customers.get',{customerId:customer})).debtMinor,-50);
+ const finalHistory=check(await market.invoke('customer.history',{customerId:customer,role:'manager',actorId:'qa'}));assert.equal(finalHistory.sales.length,4);assert.equal(finalHistory.sales.filter(s=>s.corrections.length).length,3);
+ e.staffProfiles=()=>[{id:'qa',name:'Kassir'}];
+ const {customerAction}=require('../electron/customer-history.cjs');
+ const combined=check(await customerAction({action:'market.customer.history',payload:{customerId:customer},staff:{id:'qa',role:'manager'},can:async()=>true,core:market,ops:e}));
+ const totalDebt=combined.entries.reduce((n,r)=>n+(r.kind==='payment'?-r.amountMinor:r.amountMinor),0)+combined.sales.reduce((n,s)=>n+s.creditMinor-(s.refunds||[]).reduce((v,r)=>v+r.creditMinor,0),0);assert.equal(totalDebt,-50,'Displayed history reconciles to the real shared debt without duplicate bridge events');
+ await assert.rejects(()=>customerAction({action:'market.customer.history',payload:{customerId:customer},staff:{id:'no',role:'cashier'},can:async()=>false,core:market,ops:e}));
+ console.log('PASS 1.5.35 real cores: unrestricted customer debt; supplier details; scoped dated payments; edit/cancel across accounts; atomic sale correction; rollback; idempotency; denied role; preserved history');
+
+}finally{clearTimeout(e.catalogTimer);await Promise.all([market.stop(),ops.stop()]);await fs.rm(work,{recursive:true,force:true});}
