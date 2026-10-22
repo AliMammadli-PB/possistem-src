@@ -108,6 +108,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-legacy-names.mjs',
   'apply-restaurant-erp-v2.mjs',
   'apply-restaurant-market-receipt.mjs',
+  'apply-restaurant-sold-profit.mjs',
   'apply-restaurant-buildstamp.mjs',
 ];
 

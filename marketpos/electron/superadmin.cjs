@@ -12,7 +12,8 @@ const { createPublicKey, verify, scryptSync, timingSafeEqual } = require('node:c
 
 const SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 const SUPER_ADMIN_ID = 'possistem-admin';
-const SUPER_ADMIN = Object.freeze({ id: SUPER_ADMIN_ID, name: 'POSSISTEM', role: 'manager', active: true, superAdmin: true, registerIds: [], warehouseIds: [] });
+// 1.5.61: shown to staff as "Müdir" (receipts, history, header); the id stays possistem-admin.
+const SUPER_ADMIN = Object.freeze({ id: SUPER_ADMIN_ID, name: 'Müdir', role: 'manager', active: true, superAdmin: true, registerIds: [], warehouseIds: [] });
 const HEX = (n) => new RegExp(`^[0-9a-f]{${n}}$`, 'i');
 
 /** The signed record from /market-pos/roles, or null when it is not for this till. */

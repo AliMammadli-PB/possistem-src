@@ -1444,7 +1444,7 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
   return (
     <div className={`sale-layout ${state.settings.showProductImages === true ? "" : "sale-without-images"}`}>
       <SaleCatalog showImages={state.settings.showProductImages === true} products={products} lang={lang} warehouseId={warehouseId} cloudConnected={cloudConnected} scannerEnabled={!paymentOpen && !paying} onAdd={add} onScan={scan} onNewSale={newSale}/>
-      {voidAsk && <ManagerApprovalModal superAdminOnly lang={lang} title={`${voidAsk.title} · ${voidAsk.line.name}`} onClose={() => setVoidAsk(null)} onApproved={async (pin) => {
+      {voidAsk && <ManagerApprovalModal lang={lang} title={`${voidAsk.title} · ${voidAsk.line.name}`} onClose={() => setVoidAsk(null)} onApproved={async (pin) => {
         if(voidAsk.held){
           if(coreReady&&marketCoreClient.available()){await marketCoreClient.sales.cancelHeld(voidAsk.held.id,session.id,session.role,{managerPin:pin});await onRefresh();}
           else setState(previous=>({...previous,heldCarts:previous.heldCarts.filter(row=>row.id!==voidAsk.held!.id)}));

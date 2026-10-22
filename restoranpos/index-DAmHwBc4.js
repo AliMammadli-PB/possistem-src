@@ -14911,7 +14911,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.0 · dbe0190";
+const _PS_BUILD = "1.9.0 · 29f5973";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -26836,9 +26836,9 @@ function OpsGoods() {
   const goods = data.goods ?? [];
   const t = data.totals ?? {};
   const exportExcel = () => psExcel("mallar", "Mallar", [
-    ["Barkod", "Ad", "Kateqoriya", "Vahid", "PLU", "Alış (₼)", "Satış (₼)", "Qalıq", "Cəmi alış (₼)", "Cəmi satış (₼)", "Qazanc (₼)"],
-    ...goods.map((g) => [g.barcode || "", g.name, g.categoryPath || "", g.unit, Number(g.plu) || "", psAzn(g.costMinor), psAzn(g.salePriceMinor), psQtyNum(g.qtyMilli), psAzn(g.costValueMinor), psAzn(g.saleValueMinor), psAzn(g.profitMinor)]),
-    ["", "CƏMİ", "", "", "", "", "", "", psAzn(t.costMinor), psAzn(t.saleMinor), psAzn(t.profitMinor)]
+    ["Barkod", "Ad", "Kateqoriya", "Vahid", "PLU", "Alış (₼)", "Satış (₼)", "Qalıq", "Cəmi alış (₼)", "Cəmi satış (₼)", "Gözlənilən qazanc (₼)", "Satılıb (₼)", "Satışdan qazanc (₼)"],
+    ...goods.map((g) => [g.barcode || "", g.name, g.categoryPath || "", g.unit, Number(g.plu) || "", psAzn(g.costMinor), psAzn(g.salePriceMinor), psQtyNum(g.qtyMilli), psAzn(g.costValueMinor), psAzn(g.saleValueMinor), psAzn(g.profitMinor), psAzn(g.soldMinor ?? 0), psAzn(g.soldProfitMinor ?? 0)]),
+    ["", "CƏMİ", "", "", "", "", "", "", psAzn(t.costMinor), psAzn(t.saleMinor), psAzn(t.profitMinor), psAzn(t.soldMinor ?? 0), psAzn(t.soldProfitMinor ?? 0)]
   ]);
   const saveScale = () => {
     const prefix = String(scale.prefix || "20").replace(/\D/g, "").slice(0, 2) || "20";
@@ -26851,7 +26851,9 @@ function OpsGoods() {
       psMetric("Mal", String(t.count ?? goods.length), "siyahıda"),
       psMetric("Cəmi alış", formatMoney(t.costMinor ?? 0), "qalıq × alış"),
       psMetric("Cəmi satış", formatMoney(t.saleMinor ?? 0), "qalıq × satış" + (objectId ? " (obyekt qiyməti)" : "")),
-      psMetric("Qazanc", formatMoney(t.profitMinor ?? 0), "satış − alış", (t.profitMinor ?? 0) < 0 ? "var(--ps-danger)" : "var(--ps-ok)")),
+      psMetric("Gözlənilən qazanc", formatMoney(t.profitMinor ?? 0), "qalıq üzrə: satış − alış", (t.profitMinor ?? 0) < 0 ? "var(--ps-danger)" : "var(--ps-ok)"),
+      psMetric("Satılıb", formatMoney(t.soldMinor ?? 0), "satış məbləği (qaytarmalar çıxılıb)"),
+      psMetric("Satışdan qazanc", formatMoney(t.soldProfitMinor ?? 0), "satılan − maya dəyəri", (t.soldProfitMinor ?? 0) < 0 ? "var(--ps-danger)" : "var(--ps-ok)")),
     h("div", { className: "flex flex-wrap items-center gap-2" },
       psSearchBox(query, setQuery, "Axtar: barkod / ad / qiymət / PLU"),
       psCategorySelect(cats.categories, categoryId, setCategoryId, { none: "Kateqoriyasız" }),
@@ -26864,7 +26866,7 @@ function OpsGoods() {
       jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setImporting(true), children: "Excel import" }),
       psMarketMode() ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setScale({ kind: "cas", prefix: "20" }), children: "Tərəziyə çıxış" }) : null),
     jsxRuntimeExports.jsx(OpsTable, {
-      head: ["Barkod", "Mal", "Alış", "Satış", "Qalıq", "Cəmi alış", "Cəmi satış", "Qazanc", ""],
+      head: ["Barkod", "Mal", "Alış", "Satış", "Qalıq", "Cəmi alış", "Cəmi satış", "Gözlənilən qazanc", "Satışdan qazanc", ""],
       empty: needle || categoryId ? "Bu axtarışa uyğun mal yoxdur" : "Hələ mal yoxdur — \"+ Yeni mal\" və ya Excel import",
       rows: goods.map((g) => [
         h("span", { className: "font-mono text-xs" }, g.barcode || "—", Number(g.plu) ? h("span", { className: "block text-faint" }, "PLU " + g.plu) : null),
@@ -26875,6 +26877,7 @@ function OpsGoods() {
         h("span", { style: (Number(g.qtyMilli) || 0) < 0 ? { color: "var(--ps-danger)", fontWeight: 600 } : null }, opsQty(g.qtyMilli), " ", g.unit),
         formatMoney(g.costValueMinor ?? 0), formatMoney(g.saleValueMinor ?? 0),
         h("b", { style: { color: (g.profitMinor ?? 0) < 0 ? "var(--ps-danger)" : "var(--ps-ok)" } }, formatMoney(g.profitMinor ?? 0)),
+        h("span", null, h("b", { style: { color: (g.soldProfitMinor ?? 0) < 0 ? "var(--ps-danger)" : "var(--ps-ok)" } }, formatMoney(g.soldProfitMinor ?? 0)), (Number(g.soldQtyMilli) || 0) > 0 ? h("span", { className: "block text-[11px] text-faint" }, opsQty(g.soldQtyMilli) + " " + g.unit + " satılıb") : null),
         h("span", { className: "flex flex-wrap gap-1" },
           jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setForm(psGoodForm(g, false)), children: "Düzəliş" }),
           jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setForm(psGoodForm(g, true)), children: "Kopyala" }),
@@ -26883,7 +26886,7 @@ function OpsGoods() {
             void run(window.pos.inventory.deactivateIngredient(g.id), "Silindi");
           }, children: "Sil" }))])
     }),
-    goods.length ? h("p", { className: "text-xs text-muted" }, "Cəmi: " + goods.length + " mal · alış " + formatMoney(t.costMinor ?? 0) + " · satış " + formatMoney(t.saleMinor ?? 0) + " · qazanc " + formatMoney(t.profitMinor ?? 0)) : null,
+    goods.length ? h("p", { className: "text-xs text-muted" }, "Cəmi: " + goods.length + " mal · alış " + formatMoney(t.costMinor ?? 0) + " · satış " + formatMoney(t.saleMinor ?? 0) + " · gözlənilən qazanc " + formatMoney(t.profitMinor ?? 0) + " · satışdan qazanc " + formatMoney(t.soldProfitMinor ?? 0)) : null,
     form ? jsxRuntimeExports.jsx(PsGoodDialog, { form, setForm, categories: cats.categories, objects, onSaved: async () => { await reload(); await reloadCats(); } }) : null,
     importing ? jsxRuntimeExports.jsx(PsGoodsImport, { onClose: () => setImporting(false), onDone: async () => { await reload(); await reloadCats(); } }) : null,
     scale ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Tərəziyə çıxış", onClose: () => setScale(null), children: h("div", { className: "space-y-3" },

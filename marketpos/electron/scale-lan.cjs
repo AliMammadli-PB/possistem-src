@@ -48,22 +48,31 @@ function codes3(text) {
   return out;
 }
 
-/** One PLU line. Price is per kg in qəpik; prefix lands in the 2-digit shop field the label barcode starts with. */
-function pluLine({ plu, name, priceMinor, nameField }, prefix) {
+/**
+ * One PLU line. Price is per kg in qəpik; prefix lands in the 2-digit shop field the label barcode starts with.
+ * Field map after the shop number (48 digits): department 2, digital code 13, tare 5 (grams),
+ * label (print format) number 2, discount flag 2, four time-discount segments 24.
+ * 1.5.61: `labelNo` picks the scale's print format for the PLU (0 = the scale's own default,
+ * 1-9 factory formats, 10-39 formats edited on the scale or its PC tool).
+ */
+function pluLine({ plu, name, priceMinor, nameField, labelNo = 0 }, prefix) {
   const n = Number(plu);
   if (!Number.isInteger(n) || n < 1 || n > MAX_PLU) throw new Error(`PLU ${plu}: tərəzi 1–${MAX_PLU} qəbul edir`);
   const price = Number(priceMinor);
   if (!Number.isSafeInteger(price) || price < 0 || price > 999999) throw new Error('Tərəzi qiyməti 0.00–9999.99 AZN aralığında olmalıdır');
   const shop = String(prefix || '20').replace(/\D/g, '').slice(0, 2).padStart(2, '0');
-  return `!0V${String(n).padStart(4, '0')}A${String(n).padStart(7, '0')}${String(price).padStart(6, '0')}0000000000${shop}${'0'.repeat(48)}B${nameField ?? codes3(name)}CDE`;
+  const label = Number(labelNo) || 0;
+  if (!Number.isInteger(label) || label < 0 || label > 39) throw new Error('Etiket formatı 0–39 olmalıdır');
+  const tail = '0'.repeat(20) + String(label).padStart(2, '0') + '0'.repeat(26);
+  return `!0V${String(n).padStart(4, '0')}A${String(n).padStart(7, '0')}${String(price).padStart(6, '0')}0000000000${shop}${tail}B${nameField ?? codes3(name)}CDE`;
 }
 
 /** Weighed goods with a PLU, as scale lines; goods the scale cannot hold come back in `skipped`. */
-function scaleLines(goods, prefix) {
+function scaleLines(goods, prefix, { labelNo = 0 } = {}) {
   const lines = [], names = [], skipped = [];
   for (const g of goods) {
     if (!Number(g.weighted) || !(Number(g.plu) > 0)) continue;
-    try { lines.push(pluLine({ plu: g.plu, name: g.name, priceMinor: g.salePriceMinor }, prefix)); names.push(`${g.name} (PLU ${g.plu})`); }
+    try { lines.push(pluLine({ plu: g.plu, name: g.name, priceMinor: g.salePriceMinor, labelNo }, prefix)); names.push(`${g.name} (PLU ${g.plu})`); }
     catch (error) { skipped.push(`${g.name} (PLU ${g.plu}): ${error.message}`); }
   }
   return { lines, names, skipped };

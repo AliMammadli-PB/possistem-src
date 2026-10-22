@@ -475,7 +475,7 @@ class OpsEngine {
     if (!cfg.ip) throw new Error('Tərəzinin IP ünvanı yazılmayıb');
     const goods = await this.invoke('goods.list', { objectId: await this.branchObject() }, { timeoutMs: 60000 });
     if (!goods.success) throw new Error(goods.error?.message || 'Mallar oxunmadı');
-    const { lines, names, skipped } = lan.scaleLines(goods.data?.goods ?? [], cfg.prefix);
+    const { lines, names, skipped } = lan.scaleLines(goods.data?.goods ?? [], cfg.prefix, { labelNo: cfg.labelNo });
     if (!lines.length) throw new Error('Çəkili və PLU-su olan mal yoxdur');
     const sig = require('node:crypto').createHash('sha1').update(cfg.ip + lines.join('\n')).digest('hex');
     if (!force && sig === cfg.sig) return { sent: 0, total: lines.length, skipped, unchanged: true };

@@ -1,0 +1,34 @@
+/* Parametrlər → Tərəzi (1.5.61) */
+.scale-settings{display:grid;gap:14px;min-width:0}
+.scale-card{display:grid;gap:12px;min-width:0}
+.scale-card .hint{margin:0;color:#56657a;font-size:12px;line-height:1.5}
+.scale-presets{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.scale-presets button{min-height:56px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;color:#334155;font-size:12px;font-weight:700;text-align:left}
+.scale-presets button.active{border-color:var(--primary);background:#eef4ff;color:var(--primary)}
+.scale-custom,.scale-detect{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end}
+.scale-custom label,.scale-detect label,.scale-try label{display:grid;gap:5px;color:#475569;font-size:11px;font-weight:700}
+.scale-custom input,.scale-custom select,.scale-detect input,.scale-detect select,.scale-try input{min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;min-width:0}
+.scale-detect button,.scale-try button,.scale-candidates button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:#fff;font-weight:800;font-size:12px}
+.scale-prefixes{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:10px;border:1px solid var(--line);border-radius:12px}
+.scale-prefixes legend{padding:0 6px;color:#475569;font-size:11px;font-weight:700}
+.scale-prefixes label{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:0 10px;border-radius:9px;background:#f5f8fc;font-weight:700;font-size:13px}
+.scale-strip{display:flex;flex-wrap:wrap;gap:4px;font-family:ui-monospace,Consolas,monospace}
+.scale-strip .seg{display:grid;justify-items:center;gap:2px;padding:6px 8px;border-radius:9px;min-width:0}
+.scale-strip .seg b{font-size:20px;letter-spacing:.12em;overflow-wrap:anywhere}
+.scale-strip .seg small{font-family:var(--font-body,inherit);font-size:10px;font-weight:700;color:#475569}
+.scale-strip .prefix{background:#e0e7ff}.scale-strip .plu{background:#dcfce7}.scale-strip .value{background:#fef3c7}.scale-strip .check{background:#f1f5f9}
+.scale-sample{margin:0;font-size:12px;color:#334155;overflow-wrap:anywhere}
+.scale-dahua{display:grid;gap:4px;padding:12px;border-radius:12px;background:#f5f8fc;font-size:12px;color:#334155}
+.scale-dahua code{font-size:16px;font-weight:800;letter-spacing:.06em;overflow-wrap:anywhere;color:#0f172a}
+.scale-dahua small{color:#56657a}
+.scale-try{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.scale-try label{flex:1 1 220px}
+.scale-try p{flex-basis:100%;margin:0;font-size:13px;font-weight:700;color:#0f5132}
+.scale-candidates{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.scale-candidates li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.scale-candidates li.best{border-color:var(--primary);background:#eef4ff}
+.scale-candidates li span{display:grid;gap:3px;min-width:0}
+.scale-candidates li small{color:#56657a;overflow-wrap:anywhere}
+.scale-spec{width:100%;border-collapse:collapse;font-size:12px}
+.scale-spec th,.scale-spec td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+.scale-spec td:last-child,.scale-spec th:last-child{text-align:right}

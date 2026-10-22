@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Barcode, Building2, Check, CreditCard, Download, ImagePlus, KeyRound, Monitor, Printer, ReceiptText, RefreshCw, ShieldCheck, Store, ShoppingBag, Boxes, X } from 'lucide-react';
+import { Barcode, Building2, Scale, Check, CreditCard, Download, ImagePlus, KeyRound, Monitor, Printer, ReceiptText, RefreshCw, ShieldCheck, Store, ShoppingBag, Boxes, X } from 'lucide-react';
 import type { ActivationStatus, Lang, PersistedState, Product, SessionUser, StoreSettings, UpdateStatus } from './types';
 import { Field } from './forms';
 import { tr } from './i18n';
@@ -7,6 +7,7 @@ import { settingsText } from './settingsText';
 import { HardwareSettingsCard } from './RetailOpsPanels';
 import { KitchenStationsCard } from './KitchenStations';
 import { BarcodeSettings } from './BarcodeSettings';
+import { ScaleSettings } from './ScaleSettings';
 import { OpsFrame, ReceiptDesignCard } from './OpsFrame';
 
 export function SettingsPage({ state, session, lang, coreReady, notify, onSettings, onBarcodeProduct, deviceInfo = [], extra = null }: { deviceInfo?: Array<[string, string]>; extra?: React.ReactNode; state: PersistedState; session: SessionUser; lang: Lang; coreReady: boolean; notify: (text: string) => void; onBarcodeProduct?: (p: Product) => void; onSettings: (settings: StoreSettings) => Promise<void> }) {
@@ -45,6 +46,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
     { id: 'catalog', icon: ShoppingBag, name: text('Kataloq', 'Каталог', 'Catalog'), hint: text('Məhsullar və kateqoriyalar', 'Товары и категории', 'Products and categories') },
     { id: 'printer', icon: Printer, name: text('Printer', 'Принтер', 'Printer'), hint: text('Tapın, seçin və yoxlayın', 'Поиск, выбор и проверка', 'Find, select and test') },
     { id: 'barcode', icon: Barcode, name: text('Barkod və etiket', 'Штрихкоды и этикетки', 'Barcodes and labels'), hint: text('Etiket printeri və kod yaratma', 'Принтер этикеток и создание кодов', 'Label printer and code generation') },
+    { id: 'scale', icon: Scale, name: text('Tərəzi', 'Весы', 'Scale'), hint: text('Tərəzi barkodu və etiketi', 'Штрихкод и этикетка весов', 'Scale barcode and label') },
     { id: 'receipt', icon: ReceiptText, name: text('Çek dizaynı', 'Дизайн чека', 'Receipt design'), hint: text('Loqo, QR və önizləmə', 'Логотип, QR и просмотр', 'Logo, QR and preview') },
     { id: 'stations', icon: Boxes, name: text('Stansiyalar', 'Станции', 'Stations'), hint: text('Əlavə çap nöqtələri', 'Дополнительная печать', 'Additional print stations') },
     { id: 'hardware', icon: CreditCard, name: text('Ödəniş cihazları', 'Платёжные устройства', 'Payment devices'), hint: text('Terminal, pul qutusu və fiskal', 'Терминал, ящик и фискализация', 'Terminal, drawer and fiscal') },
@@ -89,6 +91,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
       )}
       {section === 'catalog' && <div className="settings-embedded"><OpsFrame lang={lang} catalogOnly session={session} notify={notify}/></div>}
       {(section === 'printer' || section === 'receipt') && <ReceiptDesignCard key={section} session={session} lang={lang} panel={section}/>}
+      {section === 'scale' && <ScaleSettings session={session} lang={lang} products={state.products} notify={notify}/>}
       {section === 'barcode' && <BarcodeSettings session={session} lang={lang} notify={notify} onProduct={onBarcodeProduct}/>}
       {section === 'stations' && <KitchenStationsCard settings={state.settings} products={state.products} session={session} lang={lang} notify={notify} onSave={(kitchenStations) => { void onSettings({ ...state.settings, kitchenStations }).then(() => notify(text('Saxlanıldı', 'Сохранено', 'Saved'))).catch((error: Error) => notify(error.message)); }}/>}
       {section === 'hardware' && <HardwareSettingsCard includePrinter={false} session={session} lang={lang} notify={notify}/>}

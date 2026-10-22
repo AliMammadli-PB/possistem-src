@@ -1357,13 +1357,16 @@ function registerIpc() {
   // LAN label scale (1.5.51): Mallar → Tərəziyə çıxış; ops-engine resends goods on every change.
   const scaleCfg = () => opsEngine.settings().scaleLan || {};
   const scaleUser = (event, input) => { assertTrusted(event); requireSession(input?.sessionToken, ['manager', 'warehouse']); };
-  ipcMain.handle('market:scale:get', (event, input) => { scaleUser(event, input); const c = scaleCfg(); return { ip: c.ip || '', prefix: c.prefix || '20', auto: c.auto !== false, last: c.last || '' }; });
+  ipcMain.handle('market:scale:get', (event, input) => { scaleUser(event, input); const c = scaleCfg(); return { ip: c.ip || '', prefix: c.prefix || '20', auto: c.auto !== false, last: c.last || '', labelNo: Number(c.labelNo) || 0 }; });
   ipcMain.handle('market:scale:set', (event, input) => {
     scaleUser(event, input);
     const ip = String(input?.ip || '').trim();
     if (ip && !require('node:net').isIPv4(ip)) throw new Error('Tərəzinin IP ünvanı düzgün deyil');
     const prefix = /^2\d$/.test(String(input?.prefix)) ? String(input.prefix) : '20';
-    opsEngine.saveSettings({ scaleLan: { ...scaleCfg(), ip, prefix, auto: input?.auto !== false, sig: '' } });
+    // 1.5.61: the scale's print format per PLU; a caller that does not send it keeps the saved one.
+    const labelNo = input?.labelNo === undefined ? Number(scaleCfg().labelNo) || 0 : Number(input.labelNo);
+    if (!Number.isInteger(labelNo) || labelNo < 0 || labelNo > 39) throw new Error('Etiket formatı 0–39 olmalıdır');
+    opsEngine.saveSettings({ scaleLan: { ...scaleCfg(), ip, prefix, auto: input?.auto !== false, labelNo, sig: '' } });
     return true;
   });
   ipcMain.handle('market:scale:scan', async (event, input) => { scaleUser(event, input); return require('./scale-lan.cjs').scan(); });
@@ -1384,7 +1387,7 @@ function registerIpc() {
     if (!c.ip) throw new Error('Tərəzinin IP ünvanı yazılmayıb');
     const goods = await opsEngine.invoke('goods.list', {}, { timeoutMs: 60000 }).catch(() => null);
     const plu = lan.testPlu(goods?.success ? goods.data?.goods ?? [] : []);
-    const res = await lan.sendLines(c.ip, [lan.pluLine({ plu, name: 'POSSISTEM AZN TEST', priceMinor: 800 }, c.prefix)]);
+    const res = await lan.sendLines(c.ip, [lan.pluLine({ plu, name: 'POSSISTEM AZN TEST', priceMinor: 800, labelNo: Number(c.labelNo) || 0 }, c.prefix)]);
     return { plu, reply: res.reply, accepted: res.accepted === 1 };
   });
   ipcMain.handle('market:image:pick', async (event, token) => {

@@ -14,7 +14,7 @@ type Props = {
   onApproved: (managerPin: string) => Promise<void> | void;
 };
 
-export function ManagerApprovalModal({ title = 'Menecer təsdiqi', onClose, onApproved, superAdminOnly = false, lang = 'az' }: Props) {
+export function ManagerApprovalModal({ title = 'Müdir təsdiqi', onClose, onApproved, superAdminOnly = false, lang = 'az' }: Props) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -23,7 +23,7 @@ export function ManagerApprovalModal({ title = 'Menecer təsdiqi', onClose, onAp
     if(busy)return;
     setError('');
     if (!(superAdminOnly ? /^\d{10}$/ : /^\d{4,10}$/).test(pin)) {
-      setError('PIN yanlışdır');
+      setError(t('Kod yanlışdır','Неверный код','Wrong code'));
       return;
     }
     setBusy(true);
@@ -31,7 +31,7 @@ export function ManagerApprovalModal({ title = 'Menecer təsdiqi', onClose, onAp
       await onApproved(pin);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setError(/icazə|approval|permission|PIN/i.test(message) ? t('Şifrə yanlışdır və ya təsdiq icazəsi yoxdur','Неверный пароль или нет права подтверждения','Invalid password or approval permission') : message);
+      setError(/icazə|approval|permission|PIN/i.test(message) ? t('Müdir kodu yanlışdır və ya təsdiq icazəsi yoxdur','Неверный код руководителя или нет права подтверждения','Wrong manager code or no approval right') : message);
     } finally { setBusy(false); }
   };
   return (
@@ -40,12 +40,12 @@ export function ManagerApprovalModal({ title = 'Menecer təsdiqi', onClose, onAp
         <header>
           <div>
             <h3>{title}</h3>
-            <p>{superAdminOnly?t('Superadminin 10 rəqəmli şifrəsi','10-значный пароль суперадминистратора','Superadmin’s 10-digit password'):'Məhdud əməliyyat üçün menecer PIN'}</p>
+            <p>{superAdminOnly?t('Müdirin 10 rəqəmli kodu','10-значный код руководителя','Manager’s 10-digit code'):t('Silmə, ləğv və qaytarma üçün müdir kodu (müdirin PIN-i və ya 10 rəqəmli kod)','Код руководителя для удаления, отмены и возврата (PIN руководителя или 10-значный код)','Manager code for delete, void and return (manager PIN or 10-digit code)')}</p>
           </div>
-          <button type="button" disabled={busy} onClick={onClose} aria-label="Bağla"><X /></button>
+          <button type="button" disabled={busy} onClick={onClose} aria-label={t('Bağla','Закрыть','Close')}><X /></button>
         </header>
         <label className="field">
-          <span>PIN</span>
+          <span>{t('Müdir kodu','Код руководителя','Manager code')}</span>
           <input
             autoFocus
             type="password"
@@ -57,8 +57,8 @@ export function ManagerApprovalModal({ title = 'Menecer təsdiqi', onClose, onAp
         </label>
         {error && <p className="form-error">{error}</p>}
         <div className="modal-actions">
-          <button type="button" disabled={busy} onClick={onClose}>Ləğv et</button>
-          <button type="button" className="modal-primary" disabled={busy} onClick={() => void submit()}><KeyRound />Təsdiq et</button>
+          <button type="button" disabled={busy} onClick={onClose}>{t('Bağla','Закрыть','Close')}</button>
+          <button type="button" className="modal-primary" disabled={busy} onClick={() => void submit()}><KeyRound />{t('Təsdiqlə','Подтвердить','Confirm')}</button>
         </div>
       </div>
     </div>

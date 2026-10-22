@@ -21,6 +21,15 @@ declare global {
       permissions: {get(sessionToken:string):Promise<any>;save(sessionToken:string,role:string,permissions:string[],expectedVersion:number):Promise<any>};
       branches:{selection(sessionToken:string):Promise<unknown>;manage(sessionToken:string,operation:Record<string,unknown>):Promise<unknown>;assign(sessionToken:string,deviceId:string,name:string|{branchId:string}):Promise<unknown>;list(sessionToken:string):Promise<unknown>;rpc(sessionToken:string,deviceId:string,calls:unknown[]):Promise<unknown>;stock?(sessionToken:string):Promise<{at:number;own:import('./BranchStockView').StockSnapshot|null;branches:import('./BranchStockView').StockSnapshot[]}>;queueEdits?(sessionToken:string,deviceId:string,requestId:string,edits:unknown[],note?:string):Promise<{queued:boolean;online:boolean;commandIds:string[]}>;edits?(sessionToken:string,deviceId:string):Promise<any>;cancelEdit?(sessionToken:string,id:string):Promise<unknown>};
       branchContext(sessionToken: string): Promise<{ registerId: string; branchName: string; objectId: string }>;
+      /** LAN label scale (Dahua TM-A / TM-F, port 4001). */
+      scale?: {
+        get(sessionToken: string): Promise<{ ip: string; prefix: string; auto: boolean; last: string; labelNo?: number }>;
+        set(sessionToken: string, cfg: { ip: string; prefix: string; auto: boolean; labelNo?: number }): Promise<boolean>;
+        scan(sessionToken: string): Promise<{ networks: string[]; found: string[] }>;
+        send(sessionToken: string): Promise<{ sent: number; total: number; skipped?: string[]; refused?: string[]; unchanged?: boolean }>;
+        test(sessionToken: string): Promise<{ plu: number; reply: string; accepted: boolean }>;
+        diagnose(sessionToken: string): Promise<{ log: string; plus: string[] }>;
+      };
       staff: {
         list(): Promise<StaffProfile[]>; save(sessionToken: string, profile: Partial<StaffProfile>, pin: string): Promise<StaffProfile>;
         remove(sessionToken: string, id: string): Promise<{ ok: boolean }>;

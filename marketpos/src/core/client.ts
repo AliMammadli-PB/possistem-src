@@ -183,6 +183,11 @@ export const marketCoreClient = {
     update: (id: string, name: string, active: boolean, actorId?: string) =>
       call('warehouse.update', { id, name, active, actorId }),
   },
+  /** 1.5.61: scale label barcode rules and a dry run of one label. */
+  scale: {
+    rules: () => call<{ rules: unknown }>('scale.rules', {}),
+    tryBarcode: (barcode: string) => call<Record<string, unknown>>('scale.tryBarcode', { barcode }),
+  },
   settings: {
     set: (settings: unknown, actorId?: string) => call('settings.set', { settings, actorId }),
     setValue: (key: string, value: unknown, actorId: string, role: string) => call('settings.setValue', { key, value, actorId, role }),

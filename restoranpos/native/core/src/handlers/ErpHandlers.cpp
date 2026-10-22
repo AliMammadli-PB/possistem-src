@@ -255,9 +255,32 @@ void registerErp(const ContextPtr& ctx) {
         }
         const Money asMinor = asNumber >= 0 ? static_cast<Money>(std::llround(asNumber * 100)) : -1;
 
+        // 1.5.61: what was actually sold (Market sales booked here, net of returns). The stock
+        // figures above shrink as goods leave; this profit grows with every sale. Revenue is the
+        // receipt line after the receipt's own discount; the cost is today's unit cost.
+        std::map<std::string, std::pair<std::int64_t, Money>> sold;  // good -> (qtyMilli, revenueMinor)
+        {
+            auto s = ctx->db().prepare(
+                "WITH m AS (SELECT reference_id AS o, ingredient_id AS g, "
+                "    -SUM(CASE WHEN qty_delta_milli < 0 THEN qty_delta_milli ELSE 0 END) AS outq, "
+                "    SUM(CASE WHEN qty_delta_milli > 0 THEN qty_delta_milli ELSE 0 END) AS backq "
+                "  FROM stock_movements WHERE kind = 'sale' AND (:warehouse = '' OR warehouse_id = :warehouse) "
+                "  GROUP BY reference_id, ingredient_id) "
+                "SELECT m.g, SUM(m.outq - m.backq), "
+                "  SUM(CASE WHEN m.outq > 0 THEN CAST(ROUND(COALESCE(li.total, 0) * 1.0 * (m.outq - m.backq) / m.outq "
+                "      * CASE WHEN COALESCE(o.subtotal_minor, 0) > 0 THEN o.total_minor * 1.0 / o.subtotal_minor ELSE 1 END) AS INTEGER) ELSE 0 END) "
+                "FROM m JOIN external_sales e ON e.order_id = m.o AND e.kind = 'sale' "
+                "JOIN orders o ON o.id = m.o "
+                "LEFT JOIN (SELECT order_id, substr(product_id, 5) AS g, SUM(line_total_minor) AS total FROM order_items "
+                "  WHERE product_id LIKE 'ext-%' GROUP BY order_id, product_id) li ON li.order_id = m.o AND li.g = m.g "
+                "GROUP BY m.g");
+            s.bind(":warehouse", warehouseId);
+            while (s.step()) sold[s.columnText(0)] = {s.columnInt(1), s.columnInt(2)};
+        }
+
         Json out = Json::array();
-        Money costTotal = 0, saleTotal = 0;
-        std::int64_t qtyTotal = 0;
+        Money costTotal = 0, saleTotal = 0, soldTotal = 0, soldCostTotal = 0;
+        std::int64_t qtyTotal = 0, soldQtyTotal = 0;
         for (auto& row : rows) {
             const auto cat = row.value("categoryId", std::string{});
             if (!categoryId.empty() && !allowed.count(cat)) continue;
@@ -283,14 +306,27 @@ void registerErp(const ContextPtr& ctx) {
             row["costValueMinor"] = positive * cost / 1000;
             row["saleValueMinor"] = positive * price / 1000;
             row["profitMinor"] = positive * (price - cost) / 1000;
+            const auto soldIt = sold.find(row.value("id", std::string{}));
+            const std::int64_t soldQty = soldIt == sold.end() ? 0 : std::max<std::int64_t>(0, soldIt->second.first);
+            const Money soldMinor = soldIt == sold.end() ? 0 : std::max<Money>(0, soldIt->second.second);
+            const Money soldCost = soldQty * cost / 1000;
+            row["soldQtyMilli"] = soldQty;
+            row["soldMinor"] = soldMinor;
+            row["soldCostMinor"] = soldCost;
+            row["soldProfitMinor"] = soldMinor - soldCost;
             costTotal += positive * cost / 1000;
             saleTotal += positive * price / 1000;
             qtyTotal += qty;
+            soldQtyTotal += soldQty;
+            soldTotal += soldMinor;
+            soldCostTotal += soldCost;
             out.push_back(row);
         }
         return Json{{"goods", out}, {"method", method},
                     {"totals", Json{{"count", out.size()}, {"qtyMilli", qtyTotal}, {"costMinor", costTotal},
-                                    {"saleMinor", saleTotal}, {"profitMinor", saleTotal - costTotal}}}};
+                                    {"saleMinor", saleTotal}, {"profitMinor", saleTotal - costTotal},
+                                    {"soldQtyMilli", soldQtyTotal}, {"soldMinor", soldTotal},
+                                    {"soldCostMinor", soldCostTotal}, {"soldProfitMinor", soldTotal - soldCostTotal}}}};
     });
 
     // A good's own price, plus a price in each branch where it differs.

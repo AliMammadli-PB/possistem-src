@@ -444,10 +444,30 @@ nlohmann::json resolveScaleBarcode(db::Database& db, const std::string& barcodeI
                           {"costMinor", product.at("cost_minor")},
                           {"category", product.at("category")}};
     if (mode == "PRICE") {
-      out["embeddedPriceMinor"] = raw;
-      // qty 1 piece with embedded price
+      // The label carries the total in money digits (Dahua's factory barcodes 1-6: T.Price).
+      // `decimals` is the money precision there; qəpik are 2 decimals.
+      std::int64_t priceMinor = raw;
+      for (int i = decimals; i < 2; ++i) priceMinor *= 10;
+      for (int i = 2; i < decimals; ++i) priceMinor /= 10;
+      out["embeddedPriceMinor"] = priceMinor;
       out["qty"] = 1;
-      out["unitPriceMinor"] = raw;
+      out["unitPriceMinor"] = priceMinor;
+      const auto unitPrice = product.at("price_minor").get<std::int64_t>();
+      const auto unit = product.value("unit", std::string{});
+      // 1.5.61: a weighed good becomes a weighed line, its weight taken back from the total
+      // (the closest gram whose price rounds to the label's total), so the basket, stock and
+      // receipt get kg instead of "1 piece at the total". Pieces keep the old behaviour.
+      if (unitPrice > 0 && priceMinor > 0 && (unit == "kq" || unit == "kg")) {
+        const std::int64_t guess = (priceMinor * 1000 + unitPrice / 2) / unitPrice;
+        std::int64_t best = std::max<std::int64_t>(1, guess);
+        std::int64_t bestGap = std::llabs(roundedMoneyValue(unitPrice, best) - priceMinor);
+        for (std::int64_t q = std::max<std::int64_t>(1, guess - 3); q <= guess + 3; ++q) {
+          const auto gap = std::llabs(roundedMoneyValue(unitPrice, q) - priceMinor);
+          if (gap < bestGap) { best = q; bestGap = gap; }
+        }
+        out["qtyMilli"] = best;
+        out["lineTotalMinor"] = roundedMoneyValue(unitPrice, best);
+      }
     } else {
       // WEIGHT: raw / scale = kg; express qty as milli-units (×1000)
       out["qtyMilli"] = (raw * 1000) / scale;
@@ -2529,10 +2549,34 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
                           {"status", "not_configured"},
                           {"supported", nlohmann::json::array({"wolt", "bolt", "custom"})}};
   });
+  // 1.5.61: the scale barcode rules as the till reads them, and a dry run of one label.
+  server.on("scale.rules", [&db](const nlohmann::json&) {
+    return nlohmann::json{{"rules", settingJson(db, "scaleBarcodeRules", nlohmann::json::array())}};
+  });
+  server.on("scale.tryBarcode", [&db](const nlohmann::json& p) {
+    auto r = resolveScaleBarcode(db, requireString(p, "barcode"));
+    if (r.is_null()) throw PosError("E_NOT_FOUND", "Bu barkod tərəzi qaydalarına uyğun gəlmir");
+    return r;
+  });
   server.on("settings.setValue", [&db](const nlohmann::json& p) {
     requirePermission(db, p, "MANAGE_SETTINGS");
     const auto key = requireString(p, "key");
-    if (key != "stockPolicy" && key != "loyaltyRateBps" && key != "backupRetentionDays") throw PosError("E_VALIDATION", "setting is not editable");
+    if (key != "stockPolicy" && key != "loyaltyRateBps" && key != "backupRetentionDays" && key != "scaleBarcodeRules") throw PosError("E_VALIDATION", "setting is not editable");
+    if (key == "scaleBarcodeRules") {
+      // 1.5.61: Parametrlər → Tərəzi barkodu. Only well-formed rules reach the scan path.
+      const auto& rules = p.at("value");
+      if (!rules.is_array() || rules.empty() || rules.size() > 20) throw PosError("E_VALIDATION", "Tərəzi barkodu: 1–20 qayda olmalıdır");
+      for (const auto& r : rules) {
+        if (!r.is_object()) throw PosError("E_VALIDATION", "Tərəzi barkodu: qayda yanlışdır");
+        const auto prefix = r.value("prefix", std::string{});
+        if (prefix.empty() || prefix.size() > 3 || !std::all_of(prefix.begin(), prefix.end(), [](unsigned char c) { return std::isdigit(c); }))
+          throw PosError("E_VALIDATION", "Tərəzi barkodu: prefiks 1–3 rəqəm olmalıdır");
+        const int ps = r.value("pluStart", -1), pl = r.value("pluLen", -1), vs = r.value("valueStart", -1), vl = r.value("valueLen", -1), dec = r.value("decimals", -1);
+        const auto mode = r.value("mode", std::string{});
+        if (ps < static_cast<int>(prefix.size()) || pl < 1 || pl > 7 || vs < ps + pl || vl < 1 || vl > 6 || vs + vl > 12 || dec < 0 || dec > 3 || (mode != "WEIGHT" && mode != "PRICE"))
+          throw PosError("E_VALIDATION", "Tərəzi barkodu: sahələr 13 rəqəmə sığmır");
+      }
+    }
     const auto value = p.at("value").is_string() && key == "stockPolicy" ? p.at("value").dump() : p.at("value").is_string() ? p.at("value").get<std::string>() : p.at("value").dump();
     sqlite3_stmt* stmt = nullptr; sqlite3_prepare_v2(db.raw(), "INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", -1, &stmt, nullptr); sqlite3_bind_text(stmt,1,key.c_str(),-1,SQLITE_TRANSIENT); sqlite3_bind_text(stmt,2,value.c_str(),-1,SQLITE_TRANSIENT); sqlite3_step(stmt); sqlite3_finalize(stmt);
     audit(db,p.value("actorId","system"),"SETTING_CHANGE",key); return nlohmann::json{{"key",key},{"value",value}};
