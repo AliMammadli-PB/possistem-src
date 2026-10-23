@@ -1055,3 +1055,24 @@ button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .mp-chat-form button{min-height:48px;padding:0 18px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font:inherit;font-weight:700;cursor:pointer;box-shadow:0 3px 0 #1e3a8a}
 .mp-chat-form button:disabled{opacity:.5;box-shadow:none;cursor:default}
 .mp-chat-phone{margin:0;padding:0 18px 14px;font-size:12px;color:#56637a}
+/* 1.5.64: files support sends in the chat */
+.mp-chat-file{display:grid;gap:8px;min-width:0}
+.mp-chat-thumb{display:block;padding:0;border:0;border-radius:8px;background:#f1f5f9;cursor:zoom-in;overflow:hidden;max-width:100%}
+.mp-chat-thumb img{display:block;max-width:100%;max-height:240px;object-fit:contain}
+.mp-chat-file-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.mp-chat-file-name{display:inline-flex;align-items:center;gap:6px;min-width:0;font-size:13px}
+.mp-chat-file-name b{overflow-wrap:anywhere}.mp-chat-file-name small{color:#56637a;font-weight:600;white-space:nowrap}
+.mp-chat-file-row button{min-height:40px;padding:0 14px;border:1px solid #1d4ed8;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:700;font-size:13px;cursor:pointer}
+.mp-chat-file-row button:disabled{opacity:.6;cursor:wait}
+.mp-chat-file-error{color:#b42318;font-size:12px}
+.mp-chat-zoom{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.86);cursor:zoom-out}
+.mp-chat-zoom img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;background:#fff}
+.mp-chat-zoom button{position:absolute;top:14px;right:14px;width:48px;height:48px;border:0;border-radius:50%;background:#fff;color:#0f172a;font-size:26px;cursor:pointer}
+/* 1.5.64: owner sign-in — password eye inside the field */
+.ps-rest-gate-card label .ps-pass-field{position:relative;display:block;color:inherit}
+.ps-pass-field .ps-rest-gate-input{padding-right:4.2rem}
+.ps-pass-eye{position:absolute;top:calc(0.5rem + 0.45rem);right:0.45rem;display:grid;place-items:center;width:2.95rem;height:2.95rem;border:0;border-radius:12px;background:transparent;color:rgba(226,232,240,.78);cursor:pointer}
+.ps-pass-eye:hover{background:rgba(255,255,255,.08);color:#fff}
+.ps-pass-eye[aria-pressed="true"]{color:#93c5fd}
+.ps-pass-eye:focus-visible{outline:3px solid #8ab9ff;outline-offset:2px}
+.mp-support-line:only-child,.mp-support-line span:only-child{font-size:15px;color:#fff}

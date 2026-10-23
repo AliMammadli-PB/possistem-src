@@ -114,6 +114,8 @@ contextBridge.exposeInMainWorld('marketSystem', {
     active: () => ipcRenderer.invoke('market:support:active'),
     send: (ticketId, body) => ipcRenderer.invoke('market:support:send', { ticketId, body }),
     messages: (ticketId, after) => ipcRenderer.invoke('market:support:messages', { ticketId, after }),
+    /** 1.5.64: a file support attached to the chat; images come back as a data URL, `open` opens it. */
+    file: (attachmentId, fileName, mimeType, open = false) => ipcRenderer.invoke('market:support:file', { attachmentId, fileName, mimeType, open }),
   },
   tenant: {
     status: () => ipcRenderer.invoke('market:tenant:status'),

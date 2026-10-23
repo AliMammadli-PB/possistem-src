@@ -841,6 +841,10 @@ function readLastCoreError() {
 async function downloadSupportAttachment(attachmentId, fileName) {
   const state = loadSecureState();
   if (!state.activation?.serverDeviceId) throw new Error('Cihaz aktivləşdirilməyib');
+  // 1.5.64: a file already fetched for this ticket is shown again without another download.
+  const cachedName = path.basename(String(fileName || 'file')).replace(/[\\/:*?"<>|]/g, '_').slice(0, 120) || 'file';
+  const cached = path.join(userDataFile('support'), `${attachmentId}-${cachedName}`);
+  if (existsSync(cached)) return cached;
   const response = await fetch(controlApi('/market-pos/support/attachment'), {
     method: 'POST',
     headers: { accept: 'application/octet-stream', 'content-type': 'application/json' },
@@ -1207,6 +1211,24 @@ function registerIpc() {
     if (!body) throw new Error('Mesaj boşdur');
     if (!input?.ticketId) return supportCall('/customer/support/request', { method: 'POST', body: JSON.stringify({ message: body }) });
     return supportCall(`/customer/support/tickets/${supportId(input.ticketId)}/messages`, { method: 'POST', body: JSON.stringify({ body }) });
+  });
+  // 1.5.64: a file support sent in the chat (message meta.attachment). Works before a staff PIN,
+  // like the chat itself; the download is signed with this device. Images up to 15 MB come back as
+  // a data URL to show in the chat; `open` hands the saved file to the OS.
+  ipcMain.handle('market:support:file', async (event, input) => {
+    assertTrusted(event);
+    const id = String(input?.attachmentId || '');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Fayl identifikatoru düzgün deyil');
+    const savedTo = await downloadSupportAttachment(id, input?.fileName);
+    if (input?.open) {
+      const openError = await shell.openPath(savedTo);
+      return { savedTo, opened: !openError, error: openError || null };
+    }
+    const mime = String(input?.mimeType || '').toLowerCase();
+    const image = /^image\/(png|jpe?g|gif|webp|bmp)$/.test(mime) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(savedTo);
+    if (!image || statSync(savedTo).size > 15 * 1024 * 1024) return { savedTo, dataUrl: null };
+    const type = /^image\//.test(mime) ? mime : `image/${(path.extname(savedTo).slice(1).toLowerCase().replace('jpg', 'jpeg')) || 'png'}`;
+    return { savedTo, dataUrl: `data:${type};base64,${readFileSync(savedTo).toString('base64')}` };
   });
   ipcMain.handle('market:support:messages', async (event, input) => {
     assertTrusted(event);

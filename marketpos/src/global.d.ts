@@ -48,6 +48,7 @@ declare global {
         active(): Promise<{ ticket: import('./SupportChat').SupportTicket | null; messages: import('./SupportChat').SupportMessage[] }>;
         send(ticketId: string | null, body: string): Promise<unknown>;
         messages(ticketId: string, after?: string): Promise<import('./SupportChat').SupportMessage[] | { messages: import('./SupportChat').SupportMessage[] }>;
+        file?(attachmentId: string, fileName: string, mimeType: string, open?: boolean): Promise<{ savedTo: string; dataUrl?: string | null; opened?: boolean; error?: string | null }>;
       };
       tenant: {
         status(): Promise<import('./types').TenantStatus>;

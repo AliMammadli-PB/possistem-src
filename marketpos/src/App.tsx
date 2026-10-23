@@ -864,9 +864,9 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
   );
 }
 
-// Technical support before the owner account is signed in: no account yet, so the chat cannot open — show the phone.
+// Only where the desktop bridge is missing (browser preview): the label, as on the PIN screen, no number.
 function SupportLine({ lang }: { lang: Lang }) {
-  return <p className="mp-support-line"><span>{tr(lang, 'techSupport')}</span><strong>051 333 35 55</strong></p>;
+  return <p className="mp-support-line"><span>{tr(lang, 'techSupport')}</span></p>;
 }
 
 function TenantLoginScreen({ lang, onSuccess }: { lang: Lang; setLang: (lang: Lang) => void; onSuccess: (tenant: TenantStatus) => void }) {
@@ -929,12 +929,17 @@ function TenantLoginScreen({ lang, onSuccess }: { lang: Lang; setLang: (lang: La
           </label>
           <label>
             <span>{tr(lang, 'tenantPassword')}</span>
-            <input type={showPassword?"text":"password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="ps-rest-gate-input" required disabled={busy} />
+            {/* 1.5.64: the show/hide toggle sits inside the field, as an eye, instead of a separate pale button. */}
+            <span className="ps-pass-field">
+              <input type={showPassword?"text":"password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="ps-rest-gate-input" required disabled={busy} />
+              <button type="button" className="ps-pass-eye" aria-pressed={showPassword} disabled={busy} onClick={()=>setShowPassword(v=>!v)} aria-label={lang==='ru'?(showPassword?'Скрыть пароль':'Показать пароль'):lang==='en'?(showPassword?'Hide password':'Show password'):(showPassword?'Parolu gizlət':'Parolu göstər')} title={lang==='ru'?(showPassword?'Скрыть пароль':'Показать пароль'):lang==='en'?(showPassword?'Hide password':'Show password'):(showPassword?'Parolu gizlət':'Parolu göstər')}>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{showPassword ? <><path d="M17.9 17.9A10.4 10.4 0 0 1 12 20c-7 0-10-8-10-8a18 18 0 0 1 5.1-6.1"/><path d="M9.9 4.2A9.6 9.6 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.2 3.2"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2"/><path d="m2 2 20 20"/></> : <><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8Z"/><circle cx="12" cy="12" r="3"/></>}</svg>
+              </button>
+            </span>
           </label>
-          <button type="button" aria-pressed={showPassword} disabled={busy} onClick={()=>setShowPassword(v=>!v)} style={{minHeight:48,background:'#eff5ff',border:'1px solid #c2d5f0',borderRadius:12,color:'#164b91',fontWeight:700,padding:'10px 14px'}}>{lang==='ru'?(showPassword?'Скрыть пароль':'Показать пароль'):lang==='en'?(showPassword?'Hide password':'Show password'):(showPassword?'Parolu gizlət':'Parolu göstər')}</button>
           {error && <p className="ps-rest-gate-error" role="alert">{error}</p>}
           <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : tr(lang, 'gateSignIn')}</button>
-          <SupportLine lang={lang} />
+          {window.marketSystem?.support ? <SupportButton lang={lang} variant="gate" /> : <SupportLine lang={lang} />}
         </form>
       </div>
     </div>
