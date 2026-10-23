@@ -37,6 +37,13 @@ export function verifyMarketModules({archive = false} = {}) {
       expected.add(path.relative(MARKET, resolved).replaceAll(path.sep, '/'));
     }
   }
+  // 1.5.65: SUNMI is loaded through a computed path, which the require scan above cannot see.
+  // 1.5.64 shipped without electron/sunmi and the till did not open; name the files outright.
+  for (const name of ['electron.cjs', 'service.cjs', 'protocol.cjs', 'receipt.cjs', 'journal.cjs']) {
+    const file = `electron/sunmi/${name}`;
+    if (!fs.existsSync(path.join(MARKET, file))) throw new Error(`Missing ${file} (copy restoranpos/integrations/sunmi first)`);
+    expected.add(file);
+  }
   if (archive) {
     if (!fs.existsSync(packagePath)) throw new Error(`Missing packaged app: ${packagePath}`);
     const members = new Set(asar.listPackage(packagePath).map(name=>name.replace(/^\//,'')));

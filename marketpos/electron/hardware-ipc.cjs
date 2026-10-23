@@ -42,8 +42,22 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   const fiscalProvider = new MockFiscalProvider();
   const path = require('node:path');
   const {safeStorage} = require('electron');
-  const sunmiModule = require('node:fs').existsSync(path.join(__dirname,'sunmi/electron.cjs')) ? './sunmi/electron.cjs' : '../../restoranpos/integrations/sunmi/electron.cjs';
-  const sunmi = require(sunmiModule).registerSunmi({ipcMain,app,safeStorage,assertTrusted,actor:currentSunmiActor,invoke:(method,payload)=>coreSupervisor.invoke(method,payload),getDbPath:()=>coreSupervisor.dbPath});
+  // 1.5.65: SUNMI ships in electron/sunmi (copied by package-market-win.mjs). 1.5.64 was built
+  // without it; the old fallback pointed at the developer's tree, the require threw, and the till
+  // never opened a window. A packaged app now never looks outside itself, and a missing SUNMI only
+  // switches fiscal printing off instead of stopping the whole program.
+  const sunmiOptions = {ipcMain,app,safeStorage,assertTrusted,actor:currentSunmiActor,invoke:(method,payload)=>coreSupervisor.invoke(method,payload),getDbPath:()=>coreSupervisor.dbPath};
+  let sunmi;
+  try {
+    sunmi = require('node:fs').existsSync(path.join(__dirname,'sunmi/electron.cjs')) || app.isPackaged
+      ? require('./sunmi/electron.cjs').registerSunmi(sunmiOptions)
+      : require(path.join(__dirname, '..', '..', 'restoranpos', 'integrations', 'sunmi', 'electron.cjs')).registerSunmi(sunmiOptions); // dev tree only
+  } catch (error) {
+    console.error('[sunmi] not available, fiscal SUNMI disabled:', error?.message || error);
+    const off = {enabled:false,printLocalCopy:false};
+    ipcMain.handle('possistem:sunmi', (event) => { assertTrusted(event); return {ok:true,data:{config:off,jobs:[],canManage:false,unavailable:true}}; });
+    sunmi = {service:{get:()=>off,documentStatus:()=>null,history:()=>[]},process:async()=>({enabled:false})};
+  }
 
   let terminalProvider = new ManualTerminalProvider();
 
