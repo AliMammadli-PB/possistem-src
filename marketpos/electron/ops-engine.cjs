@@ -371,6 +371,9 @@ class OpsEngine {
     const admin = await this.actor();
     if (!admin) throw new Error('Anbar sistemi hazır deyil');
     const perms = await this.invoke('permissions.list', {}, { timeoutMs: 8000 });
+    // 1.5.66: a warehouse that is not running answered with an empty rights list, and the remote
+    // screen said "Bu bölmələr üçün səlahiyyətiniz yoxdur" to the owner. Say what is wrong instead.
+    if (!perms.success) return perms;
     let keys = [];
     if (perms.success) for (const list of Object.values(perms.data?.groups || {})) for (const p of Array.isArray(list) ? list : []) if (p?.key) keys.push(String(p.key));
     if (Array.isArray(rights)) {

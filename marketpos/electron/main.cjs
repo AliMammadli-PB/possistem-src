@@ -840,11 +840,26 @@ function readLastCoreError() {
  */
 async function downloadSupportAttachment(attachmentId, fileName) {
   const state = loadSecureState();
-  if (!state.activation?.serverDeviceId) throw new Error('Cihaz aktivləşdirilməyib');
   // 1.5.64: a file already fetched for this ticket is shown again without another download.
   const cachedName = path.basename(String(fileName || 'file')).replace(/[\\/:*?"<>|]/g, '_').slice(0, 120) || 'file';
   const cached = path.join(userDataFile('support'), `${attachmentId}-${cachedName}`);
   if (existsSync(cached)) return cached;
+  // 1.5.66: the chat runs on the owner account, and so does its file: GET
+  // /customer/support/attachments/:id with the tenant token (checked live). The device-signed route
+  // stays as the fallback for a till without a tenant session.
+  if (state.tenant?.token) {
+    const owned = await fetch(controlApi(`/customer/support/attachments/${attachmentId}`), {
+      headers: { authorization: `Bearer ${state.tenant.token}` },
+      signal: AbortSignal.timeout(120000),
+    }).catch(() => null);
+    if (owned?.ok) {
+      mkdirSync(userDataFile('support'), { recursive: true });
+      writeFileSync(cached, Buffer.from(await owned.arrayBuffer()), { mode: 0o600 });
+      return cached;
+    }
+    if (owned && owned.status !== 404 && owned.status !== 401) throw new Error(`Fayl yüklənmədi (${owned.status})`);
+  }
+  if (!state.activation?.serverDeviceId) throw new Error('Fayl açılmadı: sahibkar hesabına daxil olun');
   const response = await fetch(controlApi('/market-pos/support/attachment'), {
     method: 'POST',
     headers: { accept: 'application/octet-stream', 'content-type': 'application/json' },
@@ -1204,11 +1219,34 @@ function registerIpc() {
     return data;
   };
   const supportId = (value) => { const id = String(value || ''); if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Sorğu tapılmadı'); return id; };
-  ipcMain.handle('market:support:active', async (event) => { assertTrusted(event); return supportCall('/customer/support/active'); });
+  // 1.5.66: on the owner sign-in screen there is no tenant token yet (the chat said "Error invoking
+  // remote method ... əvvəlcə sahibkar hesabına daxil olun"). An activated till then writes through
+  // its own signed device channel; a till that was never activated gets a plain notice, not an error.
+  const tenantSession = () => Boolean(loadSecureState().tenant?.token);
+  const deviceActivated = () => Boolean(loadSecureState().activation?.serverDeviceId);
+  const deviceThread = async () => {
+    try {
+      const data = await callMarketSupport('/market-pos/support/active', {});
+      return { ticket: data?.ticket ?? null, messages: Array.isArray(data?.messages) ? data.messages : [], channel: 'device' };
+    } catch (error) {
+      if (error?.status && error.status < 500) return { ticket: null, messages: [], channel: 'device' };
+      throw error;
+    }
+  };
+  ipcMain.handle('market:support:active', async (event) => {
+    assertTrusted(event);
+    if (tenantSession()) return supportCall('/customer/support/active');
+    if (deviceActivated()) return deviceThread();
+    return { ticket: null, messages: [], channel: 'none', notice: 'signin' };
+  });
   ipcMain.handle('market:support:send', async (event, input) => {
     assertTrusted(event);
     const body = String(input?.body || '').trim().slice(0, 4000);
     if (!body) throw new Error('Mesaj boşdur');
+    if (!tenantSession()) {
+      if (!deviceActivated()) throw new Error('Yazışmaq üçün əvvəlcə sahibkar hesabına daxil olun. Təcili hal: 051 333 35 55');
+      return callMarketSupport('/market-pos/support/request', { message: body, diagnostics: collectSupportDiagnostics() });
+    }
     if (!input?.ticketId) return supportCall('/customer/support/request', { method: 'POST', body: JSON.stringify({ message: body }) });
     return supportCall(`/customer/support/tickets/${supportId(input.ticketId)}/messages`, { method: 'POST', body: JSON.stringify({ body }) });
   });
@@ -1232,6 +1270,11 @@ function registerIpc() {
   });
   ipcMain.handle('market:support:messages', async (event, input) => {
     assertTrusted(event);
+    if (!tenantSession()) {
+      if (!deviceActivated()) return { messages: [] };
+      const since = input?.after && !Number.isNaN(Date.parse(input.after)) ? Date.parse(input.after) : 0;
+      return { messages: (await deviceThread()).messages.filter((m) => Date.parse(m.createdAt) > since) };
+    }
     const after = input?.after && !Number.isNaN(Date.parse(input.after)) ? `?after=${encodeURIComponent(new Date(input.after).toISOString())}` : '';
     return supportCall(`/customer/support/tickets/${supportId(input?.ticketId)}/messages${after}`);
   });
@@ -1945,7 +1988,20 @@ function createSyncService() {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('market:sync:changed', status);
     },
     onBranchContext: ({branchId,branchName}) => {const state=loadSecureState();if(state.activation.cloudBranchId!==branchId||state.activation.cloudBranchName!==branchName||!state.activation.branchScopeKnown){state.activation.cloudBranchId=branchId;state.activation.cloudBranchName=branchName;state.activation.branchScopeKnown=true;saveSecureState(state);}},
-    onCoreBatch: payload => opsEngine.remoteBatch(payload),
+    // 1.5.66: the site sends branch work to this till. A till that was once marked "not the warehouse
+    // PC" and has no other till of its branch on the LAN is the warehouse - take the role back
+    // instead of refusing ("Bu kassa anbar kompüteri deyil") every request from the site.
+    onCoreBatch: async payload => {
+      if (!opsEngine.isHost() && !(syncService?.peers?.size > 0)) {
+        console.warn('[ops] no other till of this branch on the LAN: this till serves the warehouse again');
+        opsEngine.saveSettings({ host: true });
+        await startOps(loadSecureState().activation?.customerId || '_default');
+      } else if (opsEngine.isHost() && opsEngine.core.state !== 'ready') {
+        // The warehouse core stopped (crash, update): start it rather than answer "not ready".
+        await startOps(loadSecureState().activation?.customerId || '_default').catch((error) => console.error('[ops] start for remote batch', error?.message || error));
+      }
+      return opsEngine.remoteBatch(payload);
+    },
     onReport: async (report) => {
       // A remote X/Z must not be reported as done when the output only went to
       // the local stub file: the owner would see a success in the web panel and

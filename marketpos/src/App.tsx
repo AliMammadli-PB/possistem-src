@@ -382,7 +382,8 @@ export default function App() {
       const sentFail = readCommandIds(FAIL_PENDING_KEY).slice(-40);
       const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
       const sales = state.sales.filter((sale) => !sale.refunded && sale.createdAt >= dayStart.getTime());
-      const dailySalesMinor = sales.reduce((sum, sale) => sum + sale.totalMinor, 0);
+      // 1.5.66: partial returns come off the day's sales, as in the books and the Z report.
+      const dailySalesMinor = sales.reduce((sum, sale) => sum + sale.totalMinor - Math.min(Math.max(0, sale.totalMinor), (sale.refunds ?? []).reduce((n, r) => n + r.lines.reduce((m, l) => m + (Math.trunc(l.amountMinor) || 0), 0), 0)), 0);
       const cashMinor = sales.reduce((sum, sale) => sum + (sale.payment.method === 'card' ? 0 : sale.payment.cashMinor ?? sale.payment.amountMinor), 0);
       const cardMinor = sales.reduce((sum, sale) => sum + (sale.payment.method === 'cash' ? 0 : sale.payment.cardMinor ?? sale.payment.amountMinor), 0);
       const lowStock = state.products.filter((product) => product.active && stockOf(product) <= product.minStock);
@@ -486,7 +487,10 @@ export default function App() {
     };
     void push();
     const timer = window.setInterval(() => void push(), 30000);
-    return () => { active = false; window.clearInterval(timer); };
+    // 1.5.66: a Z close (or any closed shift) reaches the owner portal at once, not up to 30 s later.
+    const pushNow = () => { window.setTimeout(() => void push(), 300); };
+    window.addEventListener('market:push-now', pushNow);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('market:push-now', pushNow); };
   }, [session, coreReady]);
 
   const login = async (pin: string) => {

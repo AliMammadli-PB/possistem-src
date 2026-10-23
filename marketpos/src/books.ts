@@ -40,18 +40,29 @@ export function marketBooks(state: PersistedState, cashMovements?: Array<{ id: s
   let profit = 0;
   // One index per call: a product lookup per sold line was O(lines × products).
   const productsById = new Map(state.products.map((row) => [row.id, row]));
+  // 1.5.66: weighed lines count their weight (0.310 kg, not 1 kg), line and receipt discounts and
+  // partial returns come off, so the portal's "Qazanc" matches the Z report.
+  const refundedOf = (sale: PersistedState['sales'][number]) => (sale.refunds ?? []).reduce((sum, r) => sum + r.lines.reduce((n, l) => n + (Math.trunc(l.amountMinor) || 0), 0), 0);
   for (const sale of today) {
-    let cost = 0;
-    for (const line of sale.items) {
+    const gross = sale.items.map((line) => {
       const product = productsById.get(line.productId);
-      const name = clip(product?.name.az || line.productId, 160);
-      const row = sold.get(name) ?? { name, qty: 0, total: 0 };
-      row.qty += Math.max(0, Math.trunc(line.qty) || 0);
-      row.total += Math.max(0, Math.trunc((product?.priceMinor ?? 0) * line.qty) || 0);
-      sold.set(name, row);
-      cost += (product?.costMinor ?? 0) * line.qty;
+      const units = line.qtyMilli ? line.qtyMilli / 1000 : line.qty;
+      return { line, product, units, value: Math.max(0, Math.round((product?.priceMinor ?? 0) * units) - (Math.trunc(line.discountMinor ?? 0) || 0)) };
+    });
+    const grossTotal = gross.reduce((sum, row) => sum + row.value, 0);
+    const refunded = Math.min(Math.max(0, sale.totalMinor), refundedOf(sale));
+    const kept = sale.totalMinor > 0 ? (sale.totalMinor - refunded) / sale.totalMinor : 0;
+    let cost = 0;
+    for (const row of gross) {
+      const name = clip(row.product?.name.az || row.line.productId, 160);
+      const entry = sold.get(name) ?? { name, qty: 0, total: 0 };
+      entry.qty += Math.max(0, Math.trunc(row.line.qty) || 0);
+      // The receipt total already carries its discount; each line gets its share of it.
+      entry.total += Math.max(0, Math.round((grossTotal > 0 ? (row.value / grossTotal) * sale.totalMinor : 0) * kept));
+      sold.set(name, entry);
+      cost += (row.product?.costMinor ?? 0) * row.units * kept;
     }
-    profit += sale.totalMinor - cost;
+    profit += sale.totalMinor - refunded - cost;
   }
   const cash = today.reduce((sum, sale) => sum + (sale.payment.method === 'card' ? 0 : sale.payment.cashMinor ?? sale.payment.amountMinor), 0);
   const card = today.reduce((sum, sale) => sum + (sale.payment.method === 'cash' ? 0 : sale.payment.cardMinor ?? sale.payment.amountMinor), 0);
@@ -66,7 +77,7 @@ export function marketBooks(state: PersistedState, cashMovements?: Array<{ id: s
     ...(finance ? { payments: finance.payments.slice(0, 5000).map((row) => ({ id: clip(row.id, 80), partyType: row.partyType, partyId: clip(row.partyId, 80), partyName: clip(row.partyName, 120), amountMinor: Math.trunc(row.amountMinor) || 0, note: clip(row.note || '', 160), createdAt: Math.trunc(row.createdAt) || 0 })) } : {}),
     purchases: state.purchaseOrders.slice(0, 5000).map((order) => ({ id: clip(order.id, 64), number: clip(order.id, 40), supplierName: clip(order.supplier || 'Təchizatçı', 80), warehouseId: clip(order.warehouseId, 64), status: order.status, totalMinor: order.lines.reduce((sum, line) => sum + line.qty * line.costMinor, 0), createdAt: Math.trunc(order.createdAt) || 0 })),
     ...(cashMovements ? { cashMovements: cashMovements.slice(0, 5000).map((row) => ({ id: clip(row.id, 64), kind: clip(row.kind, 32), amountMinor: Math.trunc(row.amountMinor) || 0, reason: clip(row.reason || '', 160), createdAt: Math.trunc(row.createdAt) || 0 })) } : {}),
-    daily: { sales: Math.max(0, today.reduce((sum, sale) => sum + sale.totalMinor, 0)), cash: Math.max(0, cash), card: Math.max(0, card), count: today.length, profit: Math.trunc(profit) || 0 },
+    daily: { sales: Math.max(0, today.reduce((sum, sale) => sum + sale.totalMinor - Math.min(Math.max(0, sale.totalMinor), refundedOf(sale)), 0)), cash: Math.max(0, cash), card: Math.max(0, card), count: today.length, profit: Math.trunc(profit) || 0 },
     turnover: [...sold.values()].sort((left, right) => right.qty - left.qty).slice(0, 30),
   };
 }

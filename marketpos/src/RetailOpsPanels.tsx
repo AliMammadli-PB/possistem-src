@@ -141,7 +141,12 @@ export function RegistersOpsPage({
       }, managerPin ? { managerPin } : undefined) as Record<string, unknown>;
       setXReport(report);
       await onRefresh();
-      notify(`Z bağlanış · fərq ${money(Number(report.differenceMinor || 0), lang)}`);
+      // 1.5.66: the Z report comes out of the receipt printer and reaches the owner portal at once.
+      let printed = '';
+      try { if (!window.marketSystem?.printer?.report) throw new Error('printer yoxdur'); await window.marketSystem.printer.report(session.sessionToken, { ...report, reportType: 'Z', registerName: selected.name }); printed = ' · çek çap olundu'; }
+      catch (error) { printed = ` · çek çap olunmadı: ${error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '') : String(error)}`; }
+      window.dispatchEvent(new Event('market:push-now'));
+      notify(`Z bağlanış · fərq ${money(Number(report.differenceMinor || 0), lang)}${printed}`);
       setApproval(null);
     };
     if (!allowed.allowed) {
@@ -291,6 +296,7 @@ export function RegistersOpsPage({
               <div><small>Gözlənilən</small><b>{money(Number(xReport.expectedCashMinor || 0), lang)}</b></div>
               <div><small>Nağd satış</small><b>{money(Number(xReport.cashSalesMinor || 0), lang)}</b></div>
               <div><small>Kart satış</small><b>{money(Number(xReport.cardSalesMinor || 0), lang)}</b></div>
+              {xReport.profitMinor != null && <div><small>Qazanc (maya {money(Number(xReport.costMinor || 0), lang)})</small><b>{money(Number(xReport.profitMinor), lang)}</b></div>}
               <div><small>Daxil / çıxış / seyf</small><b>
                 {money(Number(xReport.cashInMinor || 0), lang)} · {money(Number(xReport.cashOutMinor || 0), lang)} · {money(Number(xReport.safeDropMinor || 0), lang)}
               </b></div>

@@ -54,7 +54,9 @@ function buildReceiptEscPos(receipt, opts = {}) {
   chunks.push(escPosLine('-'.repeat(width), width));
   for (const item of receipt.items || []) {
     const name = item.name || item.product_id || 'Məhsul';
-    const qty = item.qty;
+    // 1.5.66: a weighed line prints its weight ("0.310 kq x 8.00"), not "1 x 8.00 = 2.48".
+    const milli = Number(item.qty_milli ?? item.qtyMilli) || 0;
+    const qty = milli > 0 ? `${(milli / 1000).toFixed(3)} ${item.unit || 'kq'}` : item.qty;
     const line = item.line_total_minor ?? item.lineTotalMinor;
     chunks.push(escPosLine(`${name}`, width));
     chunks.push(escPosLine(`  ${qty} x ${moneyAZN(item.unit_price_minor ?? item.unitPriceMinor)}  ${moneyAZN(line)}`, width));
@@ -343,7 +345,7 @@ function buildXzReportEscPos(report, opts = {}) {
   chunks.push(escPosLine(kind === 'Z' ? 'Z HESABAT' : 'X HESABAT', width));
   chunks.push(escPosAlign(0));
   chunks.push(escPosLine('-'.repeat(width), width));
-  chunks.push(escPosLine(`Kassa: ${report.registerId || ''}`, width));
+  chunks.push(escPosLine(`Kassa: ${report.registerName || report.registerId || ''}`, width));
   if (report.openedAt) chunks.push(escPosLine(`Acilis: ${new Date(report.openedAt).toLocaleString('az-AZ')}`, width));
   if (report.closedAt) chunks.push(escPosLine(`Baglanis: ${new Date(report.closedAt).toLocaleString('az-AZ')}`, width));
   chunks.push(escPosLine(`Cek sayi: ${report.transactionCount ?? 0}`, width));
@@ -351,10 +353,22 @@ function buildXzReportEscPos(report, opts = {}) {
   chunks.push(moneyLine('Xalis', report.netSalesMinor ?? 0, width));
   chunks.push(moneyLine('Nagd', report.cashSalesMinor ?? 0, width));
   chunks.push(moneyLine('Kart', report.cardSalesMinor ?? 0, width));
+  // 1.5.66: what the shift earned and what moved through the drawer.
+  if (report.discountsMinor) chunks.push(moneyLine('Endirim', report.discountsMinor, width));
+  if (report.refundsMinor) chunks.push(moneyLine('Qaytarma', report.refundsMinor, width));
+  if (report.openingFloatMinor) chunks.push(moneyLine('Acilis qaligi', report.openingFloatMinor, width));
+  if (report.cashInMinor) chunks.push(moneyLine('Kassaya medaxil', report.cashInMinor, width));
+  if (report.cashOutMinor) chunks.push(moneyLine('Kassadan mexaric', report.cashOutMinor, width));
+  if (report.safeDropMinor) chunks.push(moneyLine('Seyfe', report.safeDropMinor, width));
   chunks.push(moneyLine('Gozlenen kassa', report.expectedCashMinor ?? 0, width));
   if (kind === 'Z') {
     chunks.push(moneyLine('Sayilan nagd', report.actualCashMinor ?? 0, width));
     chunks.push(moneyLine('Ferq', report.differenceMinor ?? 0, width));
+  }
+  if (report.costMinor !== undefined) {
+    chunks.push(escPosLine('-'.repeat(width), width));
+    chunks.push(moneyLine('Maya deyeri', report.costMinor ?? 0, width));
+    chunks.push(moneyLine('Qazanc', report.profitMinor ?? 0, width));
   }
   chunks.push(escPosLine('-'.repeat(width), width));
   chunks.push(escPosAlign(1));

@@ -64,6 +64,8 @@ declare global {
       app: { info(): Promise<{ version: string; updateUrl: string; controlUrl: string; packaged: boolean }> };
       labels?: import('./labelTypes').LabelApi;
       printer?: {
+        /** X/Z report on the receipt printer (1.5.66: printed after every local Z close). */
+        report?(sessionToken: string, report: Record<string, unknown>, widthMm?: number): Promise<unknown>;
         list(): Promise<Array<{
           id: string; name: string; widthMm: number;
           connection?: string; model?: string; status?: string;

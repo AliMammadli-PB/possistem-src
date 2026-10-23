@@ -161,6 +161,24 @@ nlohmann::json buildSessionReport(db::Database& db, const nlohmann::json& sessio
       {registerId}, {openedAt,closedBound});
   net = gross - refunds;
 
+  // 1.5.66: cost of what this shift sold and its profit, for the Z receipt and the owner portal.
+  // Weighed lines count their weight; returns take back their share of the line's cost; a sale
+  // refunded whole by an old version (no refund lines) costs nothing.
+  const auto costOfSales = db.queryInt(
+      "SELECT CAST(ROUND(COALESCE(SUM(COALESCE(si.qty_milli, si.qty * 1000) * 1.0 * COALESCE(p.avg_cost_minor, p.cost_minor, 0)), 0) / 1000.0) AS INTEGER) "
+      "FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id "
+      "WHERE s.register_id = ? AND s.created_at >= ? AND s.created_at <= ? "
+      "AND NOT (s.refunded = 1 AND NOT EXISTS (SELECT 1 FROM refund_lines r WHERE r.sale_id = s.id))",
+      {registerId}, {openedAt, closedBound});
+  const auto costReturned = db.queryInt(
+      "SELECT CAST(ROUND(COALESCE(SUM(CASE WHEN si.line_total_minor > 0 THEN r.amount_minor * 1.0 / si.line_total_minor ELSE 0 END "
+      "  * COALESCE(si.qty_milli, si.qty * 1000) * COALESCE(p.avg_cost_minor, p.cost_minor, 0)), 0) / 1000.0) AS INTEGER) "
+      "FROM refund_lines r JOIN sales s ON s.id = r.sale_id JOIN sale_items si ON si.id = r.sale_item_id "
+      "LEFT JOIN products p ON p.id = si.product_id "
+      "WHERE s.register_id = ? AND r.created_at >= ? AND r.created_at <= ?",
+      {registerId}, {openedAt, closedBound});
+  const std::int64_t cost = std::max<std::int64_t>(0, costOfSales - costReturned);
+
   auto moves = db.query("SELECT * FROM cash_movements WHERE session_id = ?", {sessionId}, {});
   std::int64_t cashIn = 0, cashOut = 0, safeDrop = 0;
   for (const auto& m : moves) {
@@ -190,6 +208,8 @@ nlohmann::json buildSessionReport(db::Database& db, const nlohmann::json& sessio
       {"cardSalesMinor", cardSales},
       {"discountsMinor", discounts},
       {"refundsMinor", refunds},
+      {"costMinor", cost},
+      {"profitMinor", net - cost},
       {"canceledSales", canceled},
       {"cashInMinor", cashIn},
       {"cashOutMinor", cashOut},

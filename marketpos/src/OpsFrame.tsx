@@ -61,7 +61,7 @@ export function OpsFrame({ session, notify, catalogOnly = false, initialTab = "g
         <section className="page-intro"><div><p>ƏMƏLİYYATLAR</p><h2>{status.available ? 'Anbar sistemi açılır…' : 'Anbar sistemi tapılmadı'}</h2>
           <span>{status.available ? `Vəziyyət: ${status.state}` : 'Proqramı yeniləyin və ya yenidən quraşdırın.'}</span></div></section>
         <button disabled={busy} onClick={refresh}><RefreshCw />Yenilə</button>
-        {session.role === 'manager' && <button disabled={busy} onClick={() => void setHost(false)}>Bu kassa anbar kompüteri deyil</button>}
+        {session.role === 'manager' && <button disabled={busy} onClick={() => { if (window.confirm('Anbar sistemi bu kassada dayandırılsın? Filialda başqa kassa anbarı işlətmirsə, saytdan gələn sorğular yenə bu kassaya düşəcək.')) void setHost(false); }}>Bu kassa anbar kompüteri deyil</button>}
       </div>
     );
   }

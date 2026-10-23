@@ -104,6 +104,8 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   ipcMain.handle('market:printer:report', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken);
     const report = input?.report || {};
+    // 1.5.66: as for remote X/Z — a stub "printer" must not report a printed Z.
+    if (printerProvider.physical === false) throw new Error('kassada printer təyin olunmayıb (Parametrlər → Printer)');
     return printerProvider.printRaw(buildXzReportEscPos(report, { widthMm: input?.widthMm || 80 }), {
       kind: String(report.reportType || 'X').toLowerCase() === 'z' ? 'z-report' : 'x-report',
     });

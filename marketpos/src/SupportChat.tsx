@@ -13,13 +13,13 @@ export type SupportTicket = { id: string; status: 'open' | 'claimed' | 'resolved
 const COPY = {
   az: { title: 'Texniki dəstək', placeholder: 'Probleminizi yazın…', send: 'Göndər', close: 'Bağla', support: 'Dəstək', you: 'Siz',
     empty: 'Probleminizi yazın — mesaj dərhal dəstək komandasına çatır.', waiting: 'Sorğunuz göndərildi. Dəstək əməkdaşı gözlənilir…',
-    claimed: 'Dəstək əməkdaşı qoşuldu — yazışa bilərsiniz.', resolved: 'Sorğu bağlanıb. Yeni mesaj yeni sorğu açacaq.', phone: 'Telefon: 051 333 35 55', offline: 'Bağlantı yoxdur. Yenidən yoxlanılır…', open: 'Aç', opening: 'Açılır…', fileFailed: 'Fayl açılmadı', enlarge: 'Böyüt' },
+    claimed: 'Dəstək əməkdaşı qoşuldu — yazışa bilərsiniz.', resolved: 'Sorğu bağlanıb. Yeni mesaj yeni sorğu açacaq.', phone: 'Telefon: 051 333 35 55', offline: 'Bağlantı yoxdur. Yenidən yoxlanılır…', signin: 'Yazışma sahibkar hesabına daxil olduqdan sonra açılır. Təcili hal üçün zəng edin: 051 333 35 55', open: 'Aç', opening: 'Açılır…', fileFailed: 'Fayl açılmadı', enlarge: 'Böyüt' },
   ru: { title: 'Техподдержка', placeholder: 'Опишите проблему…', send: 'Отправить', close: 'Закрыть', support: 'Поддержка', you: 'Вы',
     empty: 'Опишите проблему — сообщение сразу получит команда поддержки.', waiting: 'Запрос отправлен. Ожидаем специалиста…',
-    claimed: 'Специалист подключился — можно переписываться.', resolved: 'Запрос закрыт. Новое сообщение откроет новый запрос.', phone: 'Телефон: 051 333 35 55', offline: 'Нет связи. Повторяем…', open: 'Открыть', opening: 'Открывается…', fileFailed: 'Файл не открылся', enlarge: 'Увеличить' },
+    claimed: 'Специалист подключился — можно переписываться.', resolved: 'Запрос закрыт. Новое сообщение откроет новый запрос.', phone: 'Телефон: 051 333 35 55', offline: 'Нет связи. Повторяем…', signin: 'Переписка откроется после входа в аккаунт владельца. Срочно: 051 333 35 55', open: 'Открыть', opening: 'Открывается…', fileFailed: 'Файл не открылся', enlarge: 'Увеличить' },
   en: { title: 'Technical support', placeholder: 'Describe the problem…', send: 'Send', close: 'Close', support: 'Support', you: 'You',
     empty: 'Describe the problem — the support team gets it right away.', waiting: 'Request sent. Waiting for a support agent…',
-    claimed: 'A support agent joined — you can chat now.', resolved: 'Request closed. A new message opens a new request.', phone: 'Phone: 051 333 35 55', offline: 'No connection. Retrying…', open: 'Open', opening: 'Opening…', fileFailed: 'Could not open the file', enlarge: 'Enlarge' },
+    claimed: 'A support agent joined — you can chat now.', resolved: 'Request closed. A new message opens a new request.', phone: 'Phone: 051 333 35 55', offline: 'No connection. Retrying…', signin: 'Chat opens after the owner account signs in. Urgent: 051 333 35 55', open: 'Open', opening: 'Opening…', fileFailed: 'Could not open the file', enlarge: 'Enlarge' },
 };
 
 const SEEN_KEY = 'marketpos.support.seenAdmin';
@@ -69,9 +69,12 @@ function AttachmentView({ a, c, onZoom, onShown }: { a: SupportAttachment; c: ty
   );
 }
 
+const cleanError = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '');
+
 export function SupportChat({ lang, onClose }: { lang: Lang; onClose: () => void }) {
   const c = COPY[lang] ?? COPY.az;
   const [ticket, setTicket] = useState<SupportTicket | null>(null);
+  const [signin, setSignin] = useState(false);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -82,11 +85,11 @@ export function SupportChat({ lang, onClose }: { lang: Lang; onClose: () => void
 
   const load = useCallback(async () => {
     const active = await api()!.active();
-    setTicket(active.ticket); setMessages(listOf(active.messages)); setError('');
+    setTicket(active.ticket); setMessages(listOf(active.messages)); setError(''); setSignin((active as { notice?: string }).notice === 'signin');
     try { localStorage.setItem(SEEN_KEY, lastAdminAt(listOf(active.messages))); } catch { /* storage blocked */ }
   }, []);
 
-  useEffect(() => { load().catch((e: Error) => setError(e.message)); }, [load]);
+  useEffect(() => { load().catch((e: Error) => setError(cleanError(e))); }, [load]);
   // New messages every 4 s while the chat is open; the ticket status (claimed / resolved) every 12 s.
   useEffect(() => {
     let tick = 0;
@@ -114,11 +117,11 @@ export function SupportChat({ lang, onClose }: { lang: Lang; onClose: () => void
     if (!body || busy) return;
     setBusy(true); setError('');
     try { await api()!.send(ticket?.id ?? null, body); setDraft(''); await load(); }
-    catch (e) { setError((e as Error).message); }
+    catch (e) { setError(cleanError(e)); }
     finally { setBusy(false); }
   };
 
-  const status = !ticket ? c.empty : ticket.status === 'claimed' ? c.claimed : ticket.status === 'resolved' ? c.resolved : c.waiting;
+  const status = signin ? c.signin : !ticket ? c.empty : ticket.status === 'claimed' ? c.claimed : ticket.status === 'resolved' ? c.resolved : c.waiting;
   return (
     <div className="mp-chat-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <section className="mp-chat" role="dialog" aria-modal="true" aria-label={c.title}>
@@ -136,9 +139,9 @@ export function SupportChat({ lang, onClose }: { lang: Lang; onClose: () => void
         </div>
         {error && <p className="mp-chat-error" role="alert">{error}</p>}
         <form className="mp-chat-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={c.placeholder} rows={3} maxLength={4000} disabled={busy} autoFocus
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={c.placeholder} rows={3} maxLength={4000} disabled={busy || signin} autoFocus
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} />
-          <button type="submit" disabled={busy || !draft.trim()}>{busy ? '…' : c.send}</button>
+          <button type="submit" disabled={busy || signin || !draft.trim()}>{busy ? '…' : c.send}</button>
         </form>
         <p className="mp-chat-phone">{c.phone}</p>
         {zoom && <div className="mp-chat-zoom" role="dialog" aria-modal="true" aria-label={zoom.name} onMouseDown={() => setZoom(null)}><img src={zoom.src} alt={zoom.name} /><button type="button" onClick={() => setZoom(null)} aria-label={c.close}>×</button></div>}
