@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <string_view>
 namespace market::db {
-inline constexpr int kSchemaVersion = 21;
+inline constexpr int kSchemaVersion = 22;
 struct EmbeddedMigration { int version; const char* name; const char* checksum; std::string_view sql; };
 inline constexpr EmbeddedMigration kMigrations[] = {
   {1, "001_initial_schema.sql", "16074141", R"market(-- Market POS initial schema. Money is INTEGER qəpik (int64). Never REAL.
@@ -1068,8 +1068,16 @@ DELETE FROM settings WHERE key = 'pos.rolePolicyVersion';
 -- retain NULL and keep the legacy inference; existing financial values stay intact.
 ALTER TABLE sale_items ADD COLUMN qty_milli INTEGER CHECK (qty_milli IS NULL OR qty_milli > 0);
 )market"},
+  {22, "022_sunmi_outbox.sql", "af67bcdb", R"market(-- Immutable fiscal source documents are committed with the local sale/refund.
+CREATE TABLE sunmi_outbox (
+ id TEXT PRIMARY KEY, kind TEXT NOT NULL, parent_id TEXT,
+ terminal_id TEXT NOT NULL DEFAULT '', payload_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+ response_json TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE INDEX sunmi_outbox_pending ON sunmi_outbox(status,created_at);
+)market"},
 };
-inline constexpr std::size_t kMigrationCount = 21;
+inline constexpr std::size_t kMigrationCount = 22;
 struct EmbeddedSeed { const char* name; std::string_view sql; };
 inline constexpr EmbeddedSeed kSeeds[] = {
 };

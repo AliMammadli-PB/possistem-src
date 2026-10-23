@@ -17,7 +17,7 @@ const { MockFiscalProvider } = require('./hardware/fiscal');
 const { ManualTerminalProvider, MockTerminalProvider } = require('./hardware/terminal');
 
 /** Registers the hardware channels and returns the printer provider main uses elsewhere. */
-function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin, opsEngine, staffName }) {
+function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin, opsEngine, staffName, currentSunmiActor }) {
   // Printing goes through the core, which owns the device. The file and mock
   // providers stay in hardware/printer.js for tests; wiring one here is what
   // made the till report a printed receipt that never left the machine.
@@ -40,6 +40,11 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   const labels = createLabelService({ app, coreSupervisor, opsEngine });
   const allowMockHardware = mockHardwareAllowed({ isPackaged: app.isPackaged });
   const fiscalProvider = new MockFiscalProvider();
+  const path = require('node:path');
+  const {safeStorage} = require('electron');
+  const sunmiModule = require('node:fs').existsSync(path.join(__dirname,'sunmi/electron.cjs')) ? './sunmi/electron.cjs' : '../../restoranpos/integrations/sunmi/electron.cjs';
+  const sunmi = require(sunmiModule).registerSunmi({ipcMain,app,safeStorage,assertTrusted,actor:currentSunmiActor,invoke:(method,payload)=>coreSupervisor.invoke(method,payload),getDbPath:()=>coreSupervisor.dbPath});
+
   let terminalProvider = new ManualTerminalProvider();
 
   ipcMain.handle('market:printer:list', (event) => { assertTrusted(event); return printerProvider.listPrinters(); });
@@ -93,6 +98,14 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   ipcMain.handle('market:printer:receipt', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken);
     const receipt = input?.receipt || {};
+    if (sunmi.service.get().enabled && !sunmi.service.get().printLocalCopy) {
+      await sunmi.process();
+      const id=receipt.saleId||receipt.id;
+      const result=id&&sunmi.service.documentStatus('sale:'+id);
+      if(!result||result.state!=='done'||!result.result?.fiscalReceiptId)throw new Error(result?.error?.message||'Fiskal çek gözləyir. Parametrlər → SUNMI bölməsini yoxlayın.');
+      return {ok:true,provider:'sunmi',fiscal:true};
+    }
+
     return receiptOnce(receipt, async () => {
     // 1.5.1: the restaurant's receipt design (logo, QR, header from Parametrlər
     // → Çek dizaynı). The plain text receipt stays as the fallback.
@@ -184,7 +197,7 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   });
   ipcMain.handle('market:terminal:pay', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken);
-    const mode = resolveTerminalMode(String(input?.mode || 'manual'), allowMockHardware);
+    const mode = sunmi.service.get().enabled ? 'manual' : resolveTerminalMode(String(input?.mode || 'manual'), allowMockHardware);
     terminalProvider = mode === 'mock_integrated' ? new MockTerminalProvider() : new ManualTerminalProvider();
     const result = await terminalProvider.startPayment({
       amountMinor: Number(input?.amountMinor) || 0,
@@ -199,7 +212,9 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
     return result;
   });
   ipcMain.handle('market:fiscal:processPending', async (event, input) => {
-    assertTrusted(event); requireSession(input?.sessionToken, ['manager']);
+    assertTrusted(event); requireSession(input?.sessionToken);
+    if(sunmi.service.get().enabled)return sunmi.process();
+    requireSession(input?.sessionToken,['manager']);
     if (!allowMockHardware) {
       return {
         success: false,

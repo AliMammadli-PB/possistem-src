@@ -1,3 +1,4 @@
+#include "pos/services/SunmiOutbox.hpp"
 /**
  * Satışlar: every closed bill as a sales invoice.
  *
@@ -237,6 +238,7 @@ void registerSales(const ContextPtr& ctx) {
         const auto key = request.idempotencyKey;
         if (auto replay = idem.begin(key, "sales.update", request.payload)) return *replay;
 
+        services::guardSunmiEdit(*ctx, orderId);
         auto head = ctx->db().prepare(
             "SELECT status, COALESCE(customer_id, ''), account_minor, order_number, deleted_at IS NOT NULL "
             "FROM orders WHERE id = :id");
@@ -364,6 +366,7 @@ void registerSales(const ContextPtr& ctx) {
         const auto reason = getOr<std::string>(request.payload, "reason", "");
         require(!reason.empty(), "Silinmə səbəbini yazın");
         db::Transaction txn(ctx->db());
+        services::guardSunmiEdit(*ctx, orderId);
         auto head = ctx->db().prepare(
             "SELECT status, COALESCE(customer_id, ''), account_minor, order_number, deleted_at IS NOT NULL "
             "FROM orders WHERE id = :id");

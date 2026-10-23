@@ -274,6 +274,18 @@
     },
     "cart.approve": {
       "description": "Approve one exact cart revision with a privileged PIN"
+    },
+    "sunmi.pending": {
+      "auth": true,
+      "perm": "payment.take",
+      "timeout": 8000,
+      "idempotent": false
+    },
+    "sunmi.finish": {
+      "auth": true,
+      "perm": "payment.take",
+      "timeout": 8000,
+      "idempotent": true
     }
   }
 }

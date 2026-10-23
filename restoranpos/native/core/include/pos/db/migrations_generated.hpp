@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 61;
+inline constexpr int kSchemaVersion = 62;
 
 namespace detail {
 
@@ -4235,6 +4235,26 @@ CREATE INDEX IF NOT EXISTS waste_items_document ON waste_document_items(document
     return sql;
 }
 
+inline const std::string& migrationSql61() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(487);
+        s += R"MIGSQL(-- Immutable fiscal source documents are committed with the local sale/refund.
+CREATE TABLE sunmi_outbox (
+ id TEXT PRIMARY KEY, kind TEXT NOT NULL, parent_id TEXT,
+ terminal_id TEXT NOT NULL DEFAULT '', payload_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+ response_json TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE INDEX sunmi_outbox_pending ON sunmi_outbox(status,created_at);
+
+ALTER TABLE payments ADD COLUMN bank_rrn TEXT;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4789,7 +4809,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 61> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 62> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4851,6 +4871,7 @@ inline constexpr std::array<EmbeddedScript, 61> kMigrations{{
     {59, "059_automatic_cash_drawer.sql", "01e8225e", &detail::migrationSql58},
     {60, "060_transfer_rejected.sql", "ec68909a", &detail::migrationSql59},
     {61, "061_transfer_revoke_waste.sql", "0af3300f", &detail::migrationSql60},
+    {62, "062_sunmi_outbox.sql", "1fbbadd8", &detail::migrationSql61},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

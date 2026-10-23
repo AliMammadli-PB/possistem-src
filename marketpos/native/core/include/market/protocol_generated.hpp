@@ -133,6 +133,8 @@ inline constexpr std::string_view kMethods[] = {
   "cart.state",
   "cart.sync",
   "cart.approve",
+  "sunmi.pending",
+  "sunmi.finish",
 };
-inline constexpr std::size_t kMethodCount = 101;
+inline constexpr std::size_t kMethodCount = 103;
 }  // namespace market::protocol

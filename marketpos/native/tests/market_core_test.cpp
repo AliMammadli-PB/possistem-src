@@ -255,6 +255,15 @@ TEST_CASE("core binary: ping barcode sale stock refund", "[ipc]") {
   REQUIRE(sale["success"] == true);
   REQUIRE(sale["data"]["totalMinor"] == 190);
   const std::string saleId = sale["data"]["id"].get<std::string>();
+  writeLine({{"requestId","sunmi-source"},{"method","sunmi.pending"},{"protocolVersion",1},{"timestamp",1},{"payload",{{"since",0}}}});
+  const auto fiscalSource=readFrame();
+  REQUIRE(fiscalSource["success"]==true);
+  REQUIRE(fiscalSource["data"].size()==1);
+  REQUIRE(fiscalSource["data"][0]["id"]=="sale:"+saleId);
+  REQUIRE(fiscalSource["data"][0]["totalMinor"]==190);
+  REQUIRE(fiscalSource["data"][0]["items"][0]["quantityMilli"]==2000);
+  REQUIRE(fiscalSource["data"][0]["items"][0]["name"]=="Test");
+
 
   writeLine({{"requestId", "4"},
              {"method", "inventory.getStock"},

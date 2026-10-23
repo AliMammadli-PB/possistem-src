@@ -1,3 +1,4 @@
+#include "pos/services/SunmiOutbox.hpp"
 #include <vector>
 
 #include "pos/printing/KitchenStations.hpp"
@@ -1025,6 +1026,7 @@ void registerOrders(const ContextPtr& ctx) {
                     unmerge.exec();
                 }
 
+                services::queueSunmiSale(*ctx, orderId);
                 orders.logEvent(orderId, "order.closed", Json{{"totalMinor", totals.total}});
                 ctx->enqueueSync("order", orderId, "update", Json{{"status", "closed"}});
                 ctx->audit("order.close", "order", orderId, Json{{"totalMinor", totals.total}});

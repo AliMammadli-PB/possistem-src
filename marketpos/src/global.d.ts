@@ -8,6 +8,7 @@ type DisplayPreset = { id: string; label: string; mode: 'fullscreen' | 'windowed
 
 declare global {
   interface Window {
+    sunmiApi?: {onStatus?(listener:(value:{state:string;message:string})=>void):()=>void;call(input:Record<string,unknown>):Promise<{ok:boolean;data:{config:{enabled:boolean};jobs:Array<{state:string}>};error?:{message:string}}>};
     /** Əməliyyatlar - the warehouse system (electron/ops-engine.cjs). */
     marketOps?: {
       invoke(input: { sessionToken: string; method: string; payload?: unknown; idempotencyKey?: string; timeoutMs?: number }): Promise<PosResult<unknown>>;

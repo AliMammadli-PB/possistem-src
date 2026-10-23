@@ -185,3 +185,25 @@ TEST_CASE("a paid dish draws its ingredients from the store's lots", "[stock][lo
     REQUIRE(lot.columnInt(0) == 700);
     REQUIRE(lot.columnInt(1) == 1);
 }
+
+TEST_CASE("SUNMI source snapshot commits with payment, preserves amounts and is replay safe", "[sunmi]") {
+ StockFixture f;pos::handlers::registerSunmi(f.fixture().contextPtr());
+ const auto [orderId, meat]=f.burgerOrder(2);
+ f.call("payments.createCash",pos::Json{{"orderId",orderId},{"amountMinor",1400},{"tenderedMinor",2000}});
+ auto pending=f.call("sunmi.pending",pos::Json{{"since",0}});
+ REQUIRE(pending.size()==1);
+ REQUIRE(pending[0]["totalMinor"]==1400);
+ REQUIRE(pending[0]["payment"]["cashMinor"]==1400);
+ REQUIRE(pending[0]["items"][0]["quantityMilli"]==2000);
+ REQUIRE(pending[0]["items"][0]["name"].is_string());
+ REQUIRE_THROWS(f.call("payments.createCash",pos::Json{{"orderId",orderId},{"amountMinor",1400}}));
+ REQUIRE(f.call("sunmi.pending",pos::Json{{"since",0}}).size()==1);
+ const auto id=pending[0]["id"].get<std::string>();
+ f.call("sunmi.finish",pos::Json{{"id",id},{"status","success"},{"result",pos::Json{{"fiscalReceiptId","device-result"}}}});
+ REQUIRE(f.call("sunmi.pending",pos::Json{{"since",0}}).empty());
+}
+TEST_CASE("refused payment never commits a SUNMI source document", "[sunmi]") {
+ StockFixture f;pos::handlers::registerSunmi(f.fixture().contextPtr());const auto [orderId, meat]=f.burgerOrder(1);
+ REQUIRE_THROWS(f.call("payments.createCash",pos::Json{{"orderId",orderId},{"amountMinor",999999},{"tenderedMinor",999999}}));
+ REQUIRE(f.call("sunmi.pending",pos::Json{{"since",0}}).empty());
+}

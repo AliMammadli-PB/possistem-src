@@ -119,6 +119,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-platform-auth.mjs',
   'apply-restaurant-platform-pin.mjs',
   'apply-restaurant-buildstamp.mjs',
+  'apply-restaurant-sunmi.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -150,6 +151,8 @@ function copy(from, to) {
 }
 
 function stageRenderer() {
+  copy('sunmi-renderer.js', path.join(STAGE, 'sunmi-renderer.js'));
+
   fs.cpSync(path.join(ROOT, 'assets/nav'), path.join(STAGE, 'assets/nav'), {recursive:true});
   copy('index.js', path.join(STAGE, 'index.js'));
   copy('index.html', path.join(STAGE, 'index.html'));
@@ -161,6 +164,8 @@ function stageRenderer() {
 }
 
 function buildOut() {
+  fs.cpSync(path.join(ROOT,'integrations/sunmi'),path.join(OUT,'main/sunmi'),{recursive:true});
+
   copy('cloud-branches/object-selection.cjs', path.join(OUT,'main','object-selection.cjs'));
   copy('cloud-branches/client.cjs', path.join(OUT, 'main', 'cloud-branches.cjs'));
   copy('cloud-branches/methods.json', path.join(OUT, 'main', 'cloud-branches-methods.json'));

@@ -1,3 +1,4 @@
+/* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
 /* POS_LICENSE_AREA_TABS_v1 */
@@ -14913,7 +14914,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.9 · edf94ed";
+const _PS_BUILD = "1.9.10 · 9e31470";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -23074,6 +23075,7 @@ const SettingsSectionCtx = reactExports.createContext(null);
 
 function settingsSections(t) {
   return [
+    {id:"sunmi",label:"SUNMI",hint:psAdminText("Fiskal kassa","Mali kasa","Fiscal register"),icon:ReceiptText,tone:"blue"},
     { id: "restaurant", label: "Restoran", hint: "Hesab və məlumat", icon: Store, tone: "blue" },
     { id: "screen", label: "Ekran və dil", hint: "Görünüş və touch", icon: SlidersHorizontal, tone: "purple" },
     { id: "printer", label: "Printer", hint: "Cihazları qoşun", icon: ReceiptText, tone: "green" },
@@ -28511,6 +28513,7 @@ function SettingsPage() {
         )) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSectionCtx.Provider, { value: settingsSection, children:
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-section": settingsSection, className: "ps-settings-stack pane active", children: [
+      settingsSection === "sunmi" && jsxRuntimeExports.jsx("div", {"data-sunmi-settings":""}),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsAccordion, { id: "restaurant", title: t.settings.sectionRestaurant, hint: t.settings.sectionRestaurantHint, children: [
       tenant && hasPermission("settings.manage") ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "account-ribbon", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "avatar", children: String(tenant.customerName || tenant.email || "?").trim().charAt(0).toUpperCase() || "?" }),

@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 release*/
 *.exe
@@ -28,3 +28,7 @@ marketpos/native/build-*/
 marketpos/build/offline/
 
 .impeccable/
+
+# Native and staged SUNMI build output
+marketpos/native/build/
+marketpos/electron/sunmi/

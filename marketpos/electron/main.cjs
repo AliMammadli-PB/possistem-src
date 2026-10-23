@@ -1582,6 +1582,7 @@ function registerIpc() {
   ipcMain.handle('market:invoke', async (event, input) => {
     assertTrusted(event);
     const method = String(input?.method || '');
+    if(method.startsWith('sunmi.')||method==='fiscal.updateStatus')return opsFail('E_FORBIDDEN','Daxili fiskal əməliyyatdır');
     if (!method) return { success: false, error: { code: 'E_VALIDATION', message: 'method required', retryable: false } };
     if(method==='inventory.transfer')return {success:false,error:{code:'PERMISSION_DENIED',message:'Anbar → Yerdəyişmələr qaiməsindən istifadə edin',retryable:false}};
     // Rights are POSSISTEM's to set (roles.applyPolicy from the control plane);
@@ -1873,6 +1874,7 @@ function registerIpc() {
 
   printerProvider = registerHardwareIpc({
     ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin, opsEngine,
+    currentSunmiActor: () => requireSession(currentSessionToken),
     staffName: (id) => loadSecureState().staff.find((row) => row.id === id)?.name || '',
   });
 }

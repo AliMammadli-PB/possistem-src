@@ -10,6 +10,7 @@
 #include "pos/services/Idempotency.hpp"
 #include "pos/services/OrderService.hpp"
 #include "pos/services/PaymentService.hpp"
+#include "pos/services/SunmiOutbox.hpp"
 #include "pos/services/RefundService.hpp"
 #include "pos/services/SplitBillService.hpp"
 
@@ -23,10 +24,19 @@ std::shared_ptr<spdlog::logger> logger() {
 
 using services::PaymentStatus;
 
+void captureSunmiRrn(Context& ctx,const std::string& orderId,const Json& payload){
+ const auto rrn=getOr<std::string>(payload,"rrn","");if(rrn.empty())return;
+ require(rrn.size()==12&&std::all_of(rrn.begin(),rrn.end(),[](unsigned char c){return c>='0'&&c<='9';}),"Bank RRN must have 12 digits");
+ auto s=ctx.db().prepare("UPDATE payments SET bank_rrn=:rrn WHERE order_id=:id AND method='card' AND status='approved' AND bank_rrn IS NULL");s.bind(":rrn",rrn).bind(":id",orderId);s.exec();
+}
+
 /** Queues the customer receipt once an order is fully settled. */
 void queueReceiptIfSettled(Context& ctx, const std::string& orderId) {
     services::PaymentService payments(ctx);
     if (payments.outstanding(orderId) > 0 || payments.unresolvedCount(orderId) > 0) return;
+
+    services::queueSunmiSale(ctx, orderId);
+    if (ctx.setting("sunmi.suppressLocalReceipt", "0") == "1") return;
 
     auto existing = ctx.db().prepare(
         "SELECT COUNT(*) FROM print_jobs WHERE order_id = :orderId AND kind = 'customer_receipt'");
@@ -194,6 +204,7 @@ void registerPayments(const ContextPtr& ctx) {
                 services::SplitBillService(*ctx).markPartPaid(
                     getOr<std::string>(request.payload, "splitPartId", ""), paymentId, amountMinor);
                 payments.refreshOrderPaymentStatus(orderId);
+                captureSunmiRrn(*ctx, orderId, request.payload);
                 queueReceiptIfSettled(*ctx, orderId);
 
                 ctx->auditRequired("payment.cash", "payment", paymentId,
@@ -286,7 +297,8 @@ void registerPayments(const ContextPtr& ctx) {
                             getOr<std::string>(request.payload, "splitPartId", ""), paymentId,
                             amountMinor);
                         payments.refreshOrderPaymentStatus(orderId);
-                        queueReceiptIfSettled(*ctx, orderId);
+                        captureSunmiRrn(*ctx, orderId, request.payload);
+                queueReceiptIfSettled(*ctx, orderId);
                         ctx->auditRequired("payment.card_approved", "payment", paymentId,
                                    Json{{"orderId", orderId}, {"amountMinor", amountMinor}});
                         break;
@@ -433,7 +445,8 @@ void registerPayments(const ContextPtr& ctx) {
 
                 payments.refreshOrderPaymentStatus(orderId);
                 if (target == PaymentStatus::Approved) {
-                    queueReceiptIfSettled(*ctx, orderId);
+                    captureSunmiRrn(*ctx, orderId, request.payload);
+                queueReceiptIfSettled(*ctx, orderId);
                     shouldPrint = true;
                 }
 
@@ -573,7 +586,8 @@ void registerPayments(const ContextPtr& ctx) {
                                         {"cardAmountMinor", prepared.cardAmountMinor}});
                 idempotency.complete(request.idempotencyKey, result, "payment",
                                      prepared.paymentId);
-                if (approved) queueReceiptIfSettled(*ctx, orderId);
+                if (approved) captureSunmiRrn(*ctx, orderId, request.payload);
+                queueReceiptIfSettled(*ctx, orderId);
                 txn.commit();
             }
 
@@ -683,7 +697,7 @@ void registerPayments(const ContextPtr& ctx) {
                 }
 
                 result = refunds.createRefund(paymentId, amountMinor, reason, approver,
-                                              request.idempotencyKey, lines);
+                                              request.idempotencyKey, lines, getOr<std::string>(request.payload,"rrn",""));
                 payments.refreshOrderPaymentStatus(orderId);
                 result["order"] = services::OrderService(*ctx).load(orderId);
                 idempotency.complete(request.idempotencyKey, result, "refund",
