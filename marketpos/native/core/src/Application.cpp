@@ -1,3 +1,4 @@
+#include "SunmiOutbox.hpp"
 #include <map>
 #include <set>
 #include "market/Application.hpp"
@@ -1140,6 +1141,7 @@ nlohmann::json completeSale(db::Database& db, const nlohmann::json& payload,bool
     if (!requestKey.empty()) db.execBound(
       "INSERT INTO sale_submissions(request_key, request_json, sale_id) VALUES (?,?,?)",
       {requestKey, fingerprint, saleId});
+    sunmi::sale(db, saleId, payload.value("payment",nlohmann::json::object()).value("terminalRef",std::string{}));
     completeCart(db,payload);
     audit(db, cashierId, "SALE_COMPLETE", receiptNo);
     if(ownTransaction)db.commit();
@@ -1204,6 +1206,7 @@ nlohmann::json refundSale(db::Database& db,const nlohmann::json& p,bool ownTrans
       }
       recordRefundCashOut(db, rows[0], remainingMoney, refundId, actor);
       db.execBound("UPDATE sales SET refunded = 1 WHERE id = ?", {saleId});
+      sunmi::refund(db, saleId, refundId, p.value("rrn",std::string{}));
       audit(db, actor, "SALE_REFUND", rows[0].at("receipt_no").get<std::string>());
       if(ownTransaction)db.commit();
     } catch (...) {

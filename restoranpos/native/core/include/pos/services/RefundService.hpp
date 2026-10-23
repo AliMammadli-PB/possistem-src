@@ -45,7 +45,7 @@ public:
      */
     Json createRefund(const std::string& paymentId, Money amountMinor, std::string_view reason,
                       const std::string& approvedBy, const std::string& idempotencyKey = "",
-                      const std::vector<RefundLine>& lines = {});
+                      const std::vector<RefundLine>& lines = {}, const std::string& bankRrn = "");
     Json listForPayment(const std::string& paymentId);
 
 private:

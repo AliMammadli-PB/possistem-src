@@ -1387,7 +1387,8 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
             warnings.push(why ? `${tr(lang, 'salePrintFailed')} — ${why}` : tr(lang, 'salePrintFailed'));
           }
           try {
-            await marketCoreClient.fiscal.enqueue({
+            const sunmi=await window.sunmiApi?.call({action:'get'});
+            if(!sunmi?.ok||!sunmi.data.config.enabled) await marketCoreClient.fiscal.enqueue({
               saleId: sale.id,
               kind: 'sale',
               idempotencyKey: `sale:${sale.id}`,

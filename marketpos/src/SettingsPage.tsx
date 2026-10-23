@@ -49,6 +49,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
     { id: 'scale', icon: Scale, name: text('Tərəzi', 'Весы', 'Scale'), hint: text('Tərəzi barkodu və etiketi', 'Штрихкод и этикетка весов', 'Scale barcode and label') },
     { id: 'receipt', icon: ReceiptText, name: text('Çek dizaynı', 'Дизайн чека', 'Receipt design'), hint: text('Loqo, QR və önizləmə', 'Логотип, QR и просмотр', 'Logo, QR and preview') },
     { id: 'stations', icon: Boxes, name: text('Stansiyalar', 'Станции', 'Stations'), hint: text('Əlavə çap nöqtələri', 'Дополнительная печать', 'Additional print stations') },
+    { id: 'sunmi', icon: CreditCard, name: 'SUNMI', hint: text('Fiskal kassa', 'Фискальная касса', 'Fiscal register') },
     { id: 'hardware', icon: CreditCard, name: text('Ödəniş cihazları', 'Платёжные устройства', 'Payment devices'), hint: text('Terminal, pul qutusu və fiskal', 'Терминал, ящик и фискализация', 'Terminal, drawer and fiscal') },
     { id: 'display', icon: Monitor, name: text('Ekran', 'Экран', 'Display'), hint: text('Ölçü və miqyas', 'Размер и масштаб', 'Size and scale') },
     { id: 'license', icon: ShieldCheck, name: text('Lisenziya', 'Лицензия', 'Licence'), hint: text('Hesab və aktivasiya', 'Аккаунт и активация', 'Account and activation') },
@@ -94,6 +95,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
       {section === 'scale' && <ScaleSettings session={session} lang={lang} products={state.products} notify={notify}/>}
       {section === 'barcode' && <BarcodeSettings session={session} lang={lang} notify={notify} onProduct={onBarcodeProduct}/>}
       {section === 'stations' && <KitchenStationsCard settings={state.settings} products={state.products} session={session} lang={lang} notify={notify} onSave={(kitchenStations) => { void onSettings({ ...state.settings, kitchenStations }).then(() => notify(text('Saxlanıldı', 'Сохранено', 'Saved'))).catch((error: Error) => notify(error.message)); }}/>}
+      {section === 'sunmi' && <div data-sunmi-settings=""/>}
       {section === 'hardware' && <HardwareSettingsCard includePrinter={false} session={session} lang={lang} notify={notify}/>}
       {section === 'display' && (
       <section className="panel-card settings-card"><div className="panel-title">

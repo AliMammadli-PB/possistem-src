@@ -1003,6 +1003,9 @@ RenderedReceipt ReceiptBuilder::periodReport(Timestamp from, Timestamp to) {
 }
 
 RenderedReceipt ReceiptBuilder::xzReport(const Json& canonical, const std::string& kind) {
+    if (!canonical.contains("sales") || !canonical["sales"].is_object())
+        throw PosError("E_INVALID_REQUEST", "A canonical X/Z report snapshot is required");
+
     const auto config = settings();
     const int width = config.charsPerLine;
     // Reports always show the manat sign so thermal raster never prints "?".

@@ -34,6 +34,7 @@ void registerTables(const ContextPtr& ctx);
 void registerOrders(const ContextPtr& ctx);
 void registerKitchen(const ContextPtr& ctx);
 void registerPayments(const ContextPtr& ctx);
+void registerSunmi(const ContextPtr& ctx);
 void registerPrinting(const ContextPtr& ctx);
 /** Stock, recipes, suppliers and purchasing. */
 void registerInventory(const ContextPtr& ctx);

@@ -1,3 +1,4 @@
+#include "SunmiOutbox.hpp"
 #include "market/MoneyValue.hpp"
 #include <limits>
 #include "market/RetailOps.hpp"
@@ -1731,6 +1732,19 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
     return nlohmann::json{{"ok", true}};
   });
 
+  server.on("sunmi.pending", [&db](const nlohmann::json& p) {
+    nlohmann::json out=nlohmann::json::array();
+    const auto rows=db.query("SELECT payload_json FROM sunmi_outbox WHERE status IN ('pending','failed','unknown') AND created_at>=? ORDER BY created_at,id LIMIT 100",{}, {p.value("since",std::int64_t{0})});
+    for(const auto& r:rows)out.push_back(nlohmann::json::parse(r.at("payload_json").get<std::string>()));return out;
+  });
+  server.on("sunmi.finish", [&db](const nlohmann::json& p) {
+    const auto state=requireString(p,"status"),id=requireString(p,"id");
+    if(state!="success"&&state!="failed"&&state!="unknown"&&state!="blocked"&&state!="pending")throw PosError("E_VALIDATION","Invalid SUNMI state");
+    db.execBound("UPDATE sunmi_outbox SET status=?,response_json=?,updated_at=? WHERE id=? AND status<>'success'",{state,p.value("result",nlohmann::json::object()).dump(),std::to_string(nowMs()),id});
+    if(state=="success"&&id.rfind("sale:",0)==0)db.execBound("UPDATE sales SET fiscal_status='success' WHERE id=?",{id.substr(5)});
+    audit(db,"sunmi","SUNMI_RESULT",id+":"+state);return nlohmann::json{{"ok",true}};
+  });
+
   // --- Fiscal queue ---
   server.on("fiscal.enqueue", [&db](const nlohmann::json& p) {
     const std::string id = newId("fq");
@@ -1957,6 +1971,7 @@ void registerRetailHandlers(ipc::StdioServer& server, db::Database& db) {
         }
       }
       recordRefundCashOut(db, sales[0], refundTotal, refundId, actor);
+      sunmi::refund(db, saleId, refundId, p.value("rrn",std::string{}));
       audit(db, actor, "PARTIAL_REFUND", saleId + " " + std::to_string(refundTotal));
       db.commit();
     } catch (...) {

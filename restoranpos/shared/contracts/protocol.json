@@ -1544,6 +1544,18 @@
     "receipt.renderExternal": {
       "auth": true,
       "timeout": 15000
+    },
+    "sunmi.pending": {
+      "auth": true,
+      "perm": "payment.take",
+      "timeout": 8000,
+      "idempotent": false
+    },
+    "sunmi.finish": {
+      "auth": true,
+      "perm": "payment.take",
+      "timeout": 8000,
+      "idempotent": true
     }
   },
   "$eventComment": "Pushed from C++ to Electron main unsolicited (no requestId), then relayed to the renderer.",

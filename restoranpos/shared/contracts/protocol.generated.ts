@@ -419,6 +419,8 @@ export const METHODS = [
   'sales.recordExternal',
   'sales.recordExternalRefund',
   'receipt.renderExternal',
+  'sunmi.pending',
+  'sunmi.finish',
 ] as const;
 export type MethodName = (typeof METHODS)[number];
 
@@ -688,6 +690,8 @@ export const METHOD_META: Record<MethodName, MethodMeta> = {
   'sales.recordExternal': { auth: true, perm: 'sales.edit', timeout: 3000, idempotent: true },
   'sales.recordExternalRefund': { auth: true, perm: 'sales.edit', timeout: 3000, idempotent: true },
   'receipt.renderExternal': { auth: true, perm: null, timeout: 15000, idempotent: false },
+  'sunmi.pending': { auth: true, perm: 'payment.take', timeout: 8000, idempotent: false },
+  'sunmi.finish': { auth: true, perm: 'payment.take', timeout: 8000, idempotent: true },
 };
 
 export const EVENTS = [

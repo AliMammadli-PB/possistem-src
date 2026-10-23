@@ -133,6 +133,8 @@ export type MethodName =
   | 'cart.state'
   | 'cart.sync'
   | 'cart.approve'
+  | 'sunmi.pending'
+  | 'sunmi.finish'
 ;
 
 export type EventName =
@@ -270,6 +272,8 @@ export const METHOD_NAMES = [
   'cart.state',
   'cart.sync',
   'cart.approve',
+  'sunmi.pending',
+  'sunmi.finish',
 ] as const;
 
 export const METHOD_META: Record<MethodName, { description?: string }> = {
@@ -374,4 +378,6 @@ export const METHOD_META: Record<MethodName, { description?: string }> = {
   'cart.state': { description: "Read persistent current cart" },
   'cart.sync': { description: "Track cart revision and protected reductions" },
   'cart.approve': { description: "Approve one exact cart revision with a privileged PIN" },
+  'sunmi.pending': { description: undefined },
+  'sunmi.finish': { description: undefined },
 };

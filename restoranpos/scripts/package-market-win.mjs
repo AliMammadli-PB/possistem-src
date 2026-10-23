@@ -55,6 +55,7 @@ if (!signingConfigured) {
   process.stdout.write('[market-package] WARNING: unsigned local build; Windows SmartScreen may warn.\n');
 }
 
+fs.cpSync(path.join(ROOT,'integrations/sunmi'),path.join(MARKET,'electron/sunmi'),{recursive:true});
 verifyMarketModules();
 await generateIcon();
 run(process.execPath, [path.join(ROOT, 'scripts', 'build-market-core.mjs')]);

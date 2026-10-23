@@ -1,6 +1,22 @@
 Market POS — mənbə ağacının vəziyyəti
 =====================================
-Son yenilənmə: 2026-09-24
+Son yenilənmə: 2026-10-23
+
+AKTUAL BURAXILIŞ — 1.5.63
+--------------------------
+Bu qovluq 1.5.63 build-inin mənbəyidir. Eyni mənbə açıq GitHub branch-indədir:
+
+  https://github.com/AliMammadli-PB/possistem-src/tree/codex/sunmi-caspos-20261023/marketpos
+
+Yerli mənbə yolu:
+  /home/panda/Desktop/possistem(restoranpos)/artifacts/sunmi-integration-20261023/source/marketpos
+
+Build:
+  cd ../restoranpos && node scripts/package-market-win.mjs --allow-unsigned
+  node scripts/publish-release.mjs market
+
+Installerlər 1.5.63 feed-inə yayımlanıb: https://possistem.az/marketpos/updates/
+Qeyd: bu pilot/yerli build imzasızdır; Windows SmartScreen xəbərdarlığı göstərə bilər.
 
 1.4.x GRAFT EDİLDİ — 1.4.7 (24 sentyabr 2026)
 ----------------------------------------------

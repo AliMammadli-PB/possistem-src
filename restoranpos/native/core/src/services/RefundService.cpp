@@ -1,4 +1,5 @@
 #include "pos/services/RefundService.hpp"
+#include "pos/services/SunmiOutbox.hpp"
 
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
@@ -53,7 +54,7 @@ struct LinePrice {
 Json RefundService::createRefund(const std::string& paymentId, Money amountMinor,
                                  std::string_view reason, const std::string& approvedBy,
                                  const std::string& idempotencyKey,
-                                 const std::vector<RefundLine>& lines) {
+                                 const std::vector<RefundLine>& lines, const std::string& bankRrn) {
     if (reason.empty()) {
         throw PosError(std::string(protocol::err::kValidation), "A refund reason is required");
     }
@@ -216,6 +217,8 @@ Json RefundService::createRefund(const std::string& paymentId, Money amountMinor
         mark.bind(":now", now).bind(":id", paymentId);
         mark.exec();
     }
+
+    queueSunmiRefund(ctx_, orderId, refundId, refundAmount, method, bankRrn);
 
     ctx_.auditRequired("payment.refund", "refund", refundId,
                        Json{{"paymentId", paymentId},
