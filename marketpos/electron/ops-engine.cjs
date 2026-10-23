@@ -271,7 +271,15 @@ class OpsEngine {
   isHost() { return this.settings().host !== false; }
 
   async start(customerId) {
-    if (this.core.state === 'ready' || this.core.state === 'starting') return;
+    if (this.startPromise) return this.startPromise;
+    if (this.core.state === 'ready') return;
+    this.startPromise = this.startCore(customerId);
+    try { await this.startPromise; this.startError = null; }
+    catch (error) { this.startError = error?.message || String(error); throw error; }
+    finally { this.startPromise = null; }
+  }
+
+  async startCore(customerId) {
     this.admin = null;
     this.customerId = customerId || '';
     this.adoptSharedSettings();
@@ -290,6 +298,7 @@ class OpsEngine {
   status() {
     const settings = this.settings();
     return { host: this.isHost(), state: this.core.state, available: Boolean(this.core.resolveCorePath()), catalogPending: Boolean(this.reconcilePromise || this.catalogTimer), catalogError: this.catalogError,
+      startError: this.startError || null,
       // What did not reach the warehouse and why, for the Əməliyyatlar screen.
       parked: Object.entries(settings.parked || {}).slice(-20).map(([key, row]) => ({ key, error: row?.error || '', at: row?.at || 0 })),
       linked: Object.keys(settings.links || {}).length, errors: this.syncErrors || {} };

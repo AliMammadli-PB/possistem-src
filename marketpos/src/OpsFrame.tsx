@@ -5,7 +5,7 @@ import { settingsText } from './settingsText';
 import { HardwareSettingsCard } from './RetailOpsPanels';
 import type { Lang, SessionUser } from './types';
 
-type OpsStatus = { host: boolean; state: string; available: boolean; catalogPending?: boolean; catalogError?: string | null; errors?: Record<string, string>; parked?: { key: string; error: string; at: number }[]; linked?: number };
+type OpsStatus = { host: boolean; state: string; available: boolean; startError?: string | null; catalogPending?: boolean; catalogError?: string | null; errors?: Record<string, string>; parked?: { key: string; error: string; at: number }[]; linked?: number };
 
 /**
  * Əməliyyatlar (1.5.0): the restaurant's warehouse system - Mallar,
@@ -33,7 +33,8 @@ export function OpsFrame({ session, notify, catalogOnly = false, initialTab = "g
       const res = await window.marketOps!.sync(session.sessionToken);
       if (!res.success) notify(res.error?.message || 'Sinxron alınmadı');
       refresh();
-    } finally { setBusy(false); }
+    } catch (error) { notify(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
   };
 
   if (!window.marketOps) return <div className="module-page"><p>Əməliyyatlar yalnız MarketPos proqramında açılır.</p></div>;
@@ -59,9 +60,8 @@ export function OpsFrame({ session, notify, catalogOnly = false, initialTab = "g
     return (
       <div className="module-page ops-host-card">
         <section className="page-intro"><div><p>ƏMƏLİYYATLAR</p><h2>{status.available ? 'Anbar sistemi açılır…' : 'Anbar sistemi tapılmadı'}</h2>
-          <span>{status.available ? `Vəziyyət: ${status.state}` : 'Proqramı yeniləyin və ya yenidən quraşdırın.'}</span></div></section>
-        <button disabled={busy} onClick={refresh}><RefreshCw />Yenilə</button>
-        {session.role === 'manager' && <button disabled={busy} onClick={() => { if (window.confirm('Anbar sistemi bu kassada dayandırılsın? Filialda başqa kassa anbarı işlətmirsə, saytdan gələn sorğular yenə bu kassaya düşəcək.')) void setHost(false); }}>Bu kassa anbar kompüteri deyil</button>}
+          <span>{status.startError || (status.available ? `Vəziyyət: ${status.state}` : 'Proqramı yeniləyin və ya yenidən quraşdırın.')}</span></div></section>
+        <button className="primary-action" disabled={busy} onClick={() => void resync()}><RefreshCw />{busy ? 'Qoşulur…' : 'Anbara yenidən qoşul'}</button>
       </div>
     );
   }

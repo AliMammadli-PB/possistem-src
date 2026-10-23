@@ -717,6 +717,9 @@ button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .ops-frame { display: block; width: 100%; height: calc(100vh - 110px); min-height: 520px; border: 0; border-radius: 18px; background: #fff; }
 .ops-host-card { display: grid; gap: 14px; align-content: start; }
 .ops-host-card > button { justify-self: start; }
+.ops-host-card{padding:24px;background:#fff;border:1px solid #cddff4;border-radius:16px;color:#173457}
+.ops-host-card>button{min-height:48px;padding:12px 20px;border:1px solid #adc8ee;border-radius:12px;display:flex;align-items:center;gap:10px;font:inherit;font-weight:700}
+.ops-frame[hidden]{display:none!important}
 /* Parametrlər → Çek dizaynı (1.5.1): the receipt settings span the whole row. */
 .receipt-design-card { grid-column: 1 / -1; }
 .receipt-design-hint { margin: 0 0 10px; color: #64748b; font-size: 13px; }
@@ -976,11 +979,14 @@ button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .operations-workspace .page-intro>div:first-child{display:none}
 .operations-workspace .page-intro:not(:has(>button)){display:none}
 .operations-workspace .page-intro{justify-content:flex-end}
+.operations-workspace .ops-host-card .page-intro,.operations-workspace .ops-host-card .page-intro>div:first-child{display:block}
+.operations-workspace .ops-host-card .page-intro h2{margin:8px 0;font-size:24px;color:#173457}
+.operations-workspace .ops-host-card .page-intro span{display:block;line-height:1.6;overflow-wrap:anywhere}
 .topbar .branch-pill select{border:0;background:transparent;font:inherit;font-weight:700;color:inherit;min-height:0;padding:0;max-width:220px}
 /* 1.5.33: POSSISTEM's 10-digit PIN on the same pad; object switch at the right of the Əməliyyatlar row; device info in Parametrlər. */
 .mp-staff-pin-dots:has(.mp-staff-pin-cell:nth-child(5)){gap:.35rem}
 .mp-staff-pin-dots:has(.mp-staff-pin-cell:nth-child(5)) .mp-staff-pin-cell{width:2.15rem;height:2.7rem;border-radius:.7rem}
-.operations-workspace>.operations-tabs .operations-object{margin-left:auto;flex:0 0 auto;display:flex;align-items:center;padding-left:12px}
+.operations-workspace>.operations-tabs .operations-object{margin-left:auto;flex:0 0 auto;display:flex;align-items:center;padding:4px 0 4px 12px;position:sticky;right:-18px;background:#fff;z-index:2;box-shadow:-8px 0 12px #ffffff}
 .operations-object select{min-height:46px;border:1px solid #c6d8ea;border-radius:12px;background:#f5f9fd;color:#183452;font-weight:700;padding:0 12px;max-width:260px}
 .settings-device-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;margin:0}
 .settings-device-info div{background:#f5f9fd;border:1px solid #d6e4f1;border-radius:12px;padding:12px 14px;min-width:0}

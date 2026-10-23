@@ -1826,6 +1826,10 @@ function registerIpc() {
     const docsOnly = !opsRole && (await can('DOCS_VIEW') || await can('DOCS_CREATE') || await can('DOCS_EDIT') || await can('DOCS_DELETE') || await can('MANAGE_USERS') || await can('EDIT_STOCK') || await can('RECEIVE_PURCHASE') || await can('STOCK_ADJUSTMENT'));
     if (!opsRole && !docsOnly) return opsFail('E_FORBIDDEN', 'Əməliyyatlara icazəniz yoxdur');
     if (!(await require('./operation-access.cjs').allowsOperation(String(input?.method || ''), input?.payload || {}, can))) return opsFail('E_FORBIDDEN', 'Bu əməliyyat üçün icazəniz yoxdur');
+    if (opsEngine.core.state !== 'ready') {
+      try { await opsEngine.start(loadSecureState().activation?.customerId || '_default'); }
+      catch (error) { return opsFail('E_CORE_DOWN', error?.message || 'Anbar sistemi açıla bilmədi'); }
+    }
     if(input?.method==='cashAccounts.list')await opsEngine.syncOwnerObject();
     if(staff.objectId&&staff.objectId===staff.branchId&&staff.branchId===loadSecureState().activation.cloudBranchId){
       const local=await opsEngine.branchContext();staff={...staff,objectId:local.objectId||staff.objectId};
@@ -1933,7 +1937,7 @@ function registerIpc() {
     requireSession(input?.sessionToken, ['manager', 'warehouse']);
     // "Yenidən göndər": receipts set aside after failed tries get another go.
     opsEngine.retryParked();
-    try { await opsEngine.flushCatalog({ timeoutMs: 20000 }); return opsOk(opsEngine.status()); }
+    try { await opsEngine.start(loadSecureState().activation?.customerId || '_default'); await opsEngine.flushCatalog({ timeoutMs: 20000 }); return opsOk(opsEngine.status()); }
     catch (error) { return opsFail('E_SYNC', error?.message || String(error)); }
   });
 

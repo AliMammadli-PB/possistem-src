@@ -1,0 +1,21 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { OpsEngine } = require('../electron/ops-engine.cjs');
+(async () => {
+  const engine = Object.create(OpsEngine.prototype);
+  engine.core = { state: 'stopped' };
+  let starts = 0, release;
+  engine.startCore = async () => { starts++; await new Promise(resolve => { release = resolve; }); engine.core.state = 'ready'; };
+  const a = engine.start('tenant'), b = engine.start('tenant');
+  assert.equal(starts, 1, 'Concurrent UI and remote calls share a single core startup');
+  release(); await Promise.all([a,b]);
+  await engine.start('tenant'); assert.equal(starts,1);
+  engine.core.state = 'crashed';
+  engine.startCore = async () => { throw Error('Database cannot open'); };
+  await assert.rejects(engine.start('tenant'), /Database cannot open/);
+  assert.equal(engine.startError, 'Database cannot open');
+  engine.startCore = async () => { engine.core.state = 'ready'; starts++; };
+  await engine.start('tenant'); assert.equal(engine.startError,null);
+  assert.equal(starts,2,'Failure releases the startup lock for a real retry');
+  console.log('PASS startup deduplication, ready fast path, visible failure and crash recovery');
+})().catch(error => { console.error(error); process.exitCode=1; });
