@@ -1,0 +1,13 @@
+--- a/apps/owner-web/src/receipt.css
++++ b/apps/owner-web/src/receipt.css
+@@ -194,7 +194,9 @@
+ .workbench h1,.insight-heading h1,.auth-product-copy h1,.auth-panel-inner>h2{text-decoration:underline;text-decoration-color:var(--r-signal);text-decoration-thickness:.14em;text-underline-offset:.1em;text-decoration-skip-ink:none}
+ /* KPIs: one strip split by perforation. */
+ .insight-metrics{gap:0;background:var(--r-surface);border:1px solid var(--r-rule);border-radius:10px;overflow:hidden}
+-.workbench .insight-metric{border:0;border-radius:0;background:transparent}
++.workbench .insight-metric,.portal-main .insight-metric{border:0;border-radius:0;background:var(--r-surface);color:var(--r-ink)}
++.portal-main .insight-metric>strong{color:var(--r-ink)!important}
++.portal-main .payment-ring>div{background:var(--r-surface);color:var(--r-ink)}
+ .insight-metric+.insight-metric{border-left:1px dashed var(--r-rule-strong)}
+ @media(max-width:1250px){.insight-metric:nth-child(odd){border-left:0}.insight-metric:nth-child(n+3){border-top:1px dashed var(--r-rule-strong)}}
+ /* Sign-in: the light hero of the home page instead of a dark band. */

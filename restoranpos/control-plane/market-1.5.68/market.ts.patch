@@ -1,0 +1,36 @@
+--- a/apps/api/src/routes/market.ts
++++ b/apps/api/src/routes/market.ts
+@@ -203,7 +203,8 @@
+   nonce: z.string().regex(/^[0-9a-fA-F]{32}$/).optional(),
+   deviceSignature: z.string().regex(/^[0-9a-fA-F]{128}$/).optional(),
+   snapshot: z.object({
+-    storeName: z.string().min(1).max(120),
++    // Older tills allow an empty shop name in Settings; it must not discard sales.
++    storeName: z.string().max(120),
+     terminalName: z.string().min(1).max(80),
+     branchName: z.string().max(200).optional(),
+     terminalNameUpdatedAt: z.number().int().nonnegative().optional(),
+@@ -2469,7 +2470,11 @@
+     },
+     async (req, reply) => {
+       const body = parseBody(MarketHeartbeatSchema, req.body ?? {}, reply);
+-      if (!body) return;
++      if (!body) {
++        const invalid = MarketHeartbeatSchema.safeParse(req.body ?? {});
++        if (!invalid.success) req.log.warn({ fields: invalid.error.issues.map(issue => ({ path: issue.path.join('.'), code: issue.code })) }, 'market_heartbeat_invalid_fields');
++        return;
++      }
+ 
+       const [device] = await app.db
+         .select()
+@@ -2567,7 +2572,9 @@
+         terminalNameUpdatedAt: terminalNameUpdatedAt.getTime(),
+       };
+ 
+-      await app.db
++      // A license-only ping carries synthetic zero totals. It must update device
++      // presence without replacing the last real sales report (including zero-sale days).
++      if (body.snapshot.terminalName !== 'license-check') await app.db
+         .insert(marketPosSnapshots)
+         .values({
+           deviceId: device.id,

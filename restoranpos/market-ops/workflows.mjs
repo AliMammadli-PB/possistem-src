@@ -44,7 +44,7 @@ function PsMarketProductPicker({items,value,onChange,disabled}){const h=psH,[sea
   if(a<0||b<0)throw Error('Expense actions missing');
   return s.slice(0,a)+'jsxRuntimeExports.jsx(PsMarketDocActions,{row:{...m,type:"expense",name:m.reason}})'+s.slice(b);
  });
- section('OpsIncome',s=>s.replace('h("span", { className: "flex gap-1" },','h("span", { className: "flex gap-1" },jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>psMarketOpenDoc({...d,type:"income",createdAt:d.docAt},"view"),children:psMarketWords("Bax","Просмотр","View")}),'));
+ section('OpsIncome',s=>s.replaceAll('Cəmi qazanc','Digər gəlirlər').replaceAll('+ Qazanc','+ Digər gəlir').replaceAll('Bu dövrdə qazanc yoxdur','Bu dövrdə əlavə gəlir qaiməsi yoxdur').replace('h("span", { className: "flex gap-1" },','h("span", { className: "flex gap-1" },jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>psMarketOpenDoc({...d,type:"income",createdAt:d.docAt},"view"),children:psMarketWords("Bax","Просмотр","View")}),'));
  // Only the outer operations entry manages tills/users; inner cash ledger remains reachable by its direct URL.
  source=source.replace('tab.id === "costing" || tab.id === "delivery"','tab.id === "costing" || tab.id === "delivery"');
  source=source.replaceAll('"+ Yeni mal"','psMarketWords("+ Yeni məhsul","+ Новый товар","+ New product")').replaceAll('"Yeni mal"','psMarketWords("Yeni məhsul","Новый товар","New product")').replaceAll('"+ Mal"','psMarketWords("+ Yeni məhsul","+ Новый товар","+ New product")').replaceAll('"İnventarizasiya"','psMarketWords("Sayım","Пересчёт","Stock count")');

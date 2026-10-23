@@ -3,6 +3,7 @@ import { Check, Pencil, Plus, Trash2, UserCog } from 'lucide-react';
 import { Field, Modal, RoleAvatar } from './forms';
 import { roleLabel, tr } from './i18n';
 import type { Lang, Role, SessionUser, StaffProfile } from './types';
+import './users1568.css';
 
 type Places = { offline?:boolean; warning?:string; warehouses?: {id:string;name:string;objectId?:string}[]; objects: { id: string; name: string;localObjectId?:string }[]; registers: { id: string; name: string; objectId: string }[] };
 const ROLES: Role[] = ['manager', 'head_cashier', 'cashier', 'warehouse'];
@@ -64,8 +65,8 @@ export function UsersPage({ session, canManage, staff, lang, onChanged, notify }
   const objectName = (id?: string) => places.objects.find((o) => o.id === id)?.name;
   const kassaNames = (ids: string[]) => ids.map((id) => places.registers.find((r) => r.id === id)?.name ?? id).join(', ');
   return <div className="module-page users-page">
-    <section className="page-intro"><div><p>{tr(lang, 'kickerRoles').toLocaleUpperCase(lang)}</p><h2>{tr(lang, 'staff')}</h2><span>{staff.filter((row) => row.active).length} {tr(lang, 'active').toLowerCase()}</span></div>
-      {can && <button className="primary-action" onClick={() => setEditing('new')}><Plus />{w.add}</button>}</section>
+    <header className="users-section-heading"><UserCog/><div><h2>{tr(lang, 'staff')}</h2><p>{staff.filter((row) => row.active).length} {tr(lang, 'active').toLowerCase()} · {w.object} / {w.kassas}</p></div>
+      {can && <button className="primary-action" onClick={() => setEditing('new')}><Plus />{w.add}</button>}</header>
     {!can && <p className="form-error">{w.noRights}</p>}
     <p className="label-hint users-note">{w.fromPossistem}</p>
     {error && <p className="form-error" role="alert">{error}</p>}

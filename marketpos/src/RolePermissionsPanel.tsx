@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ShieldCheck, RefreshCw } from 'lucide-react';
 import { marketCoreClient } from './core/client';
 import type { Lang } from './types';
+import './users1568.css';
 
 type Group = {key:string;label:string;permissions:{key:string;label:string;hint?:string}[]};
 type Role = {name:string;permissions:string[]};
@@ -29,10 +30,10 @@ export function RolePermissionsPanel({superAdmin=false,sessionToken,lang='az'}:{
     catch(e){setError((e as Error).message);}finally{setBusy(false);}
   };
   const locked=(key:string)=>!superAdmin||busy||Boolean(policy?.entitlements&&!policy.entitlements.unrestricted&&!policy.entitlements.allowed.includes(key));
-  return <section className="module-page role-permissions"><section className="page-intro"><div><p>{t('SƏLAHİYYƏTLƏR','ПРАВА ДОСТУПА','PERMISSIONS')}</p><h2>{t('Rollar və səlahiyyətlər','Роли и права','Roles and permissions')}</h2><span>{superAdmin?t('Bölmələrə giriş və əməliyyat hüquqları ayrıdır. Dəyişikliklər bu sahibkarın Market kassalarına tətbiq olunur.','Доступ к разделам и действиям настраивается отдельно. Изменения применяются к Market-кассам владельца.','Section access and actions are separate. Changes apply to the owner’s Market tills.'):t('İcazələri yalnız superadmin dəyişir.','Права изменяет только суперадминистратор.','Only the superadmin can change permissions.')}</span></div><ShieldCheck/></section>
+  return <section className="module-page role-permissions"><header className="users-section-heading"><ShieldCheck/><div><h2>{t('Rollar və səlahiyyətlər','Роли и права','Roles and permissions')}</h2><p>{superAdmin?t('Bölmələrə giriş və əməliyyat hüquqları ayrıdır. Dəyişikliklər bu sahibkarın Market kassalarına tətbiq olunur.','Доступ к разделам и действиям настраивается отдельно. Изменения применяются к Market-кассам владельца.','Section access and actions are separate. Changes apply to the owner’s Market tills.'):t('Rolun icazələrinə baxış. Dəyişiklikləri superadmin saxlayır.','Просмотр прав роли. Изменения сохраняет суперадминистратор.','View role permissions. Changes are saved by the superadmin.')}</p></div></header>
     <button type="button" disabled={busy} onClick={()=>void load()}><RefreshCw/>{t('Yenilə','Обновить','Refresh')}</button>
     {error&&<p className="form-error" role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
-    {policy?<><div className="role-chips">{ROLES.map(key=><button key={key} type="button" disabled={busy} className={role===key?'primary-action':''} onClick={()=>{setRole(key);setNotice('');}}>{roleLabel(key)}</button>)}</div>
+    {policy?<><div className="role-chips" aria-label={t('Rol seçin','Выберите роль','Select a role')}>{ROLES.map(key=><button key={key} type="button" aria-pressed={role===key} disabled={busy} className={role===key?'primary-action':''} onClick={()=>{setRole(key);setNotice('');}}>{roleLabel(key)}</button>)}</div>
     <div className="role-editor">{policy.catalogue.map(group=><fieldset className="role-group" key={group.key} disabled={busy}><legend>{group.label}</legend>{superAdmin&&<button type="button" disabled={busy} onClick={()=>{const keys=group.permissions.map(p=>p.key).filter(k=>!locked(k));const all=keys.every(k=>draft.includes(k));setDraft(prev=>all?prev.filter(k=>!keys.includes(k)):[...new Set([...prev,...keys])]);}}>{t('Hamısını seç / bağla','Выбрать / снять все','Select / clear all')}</button>}{group.permissions.map(p=><label className="role-permission" key={p.key}><input type="checkbox" checked={draft.includes(p.key)} disabled={locked(p.key)} onChange={()=>setDraft(prev=>prev.includes(p.key)?prev.filter(k=>k!==p.key):[...prev,p.key])}/><span>{p.label}{p.hint&&<small>{p.hint}</small>}</span></label>)}</fieldset>)}
     {superAdmin&&<div className="role-actions"><button type="button" className="primary-action" disabled={busy} onClick={()=>void save()}>{busy?'…':t('İcazələri saxla','Сохранить права','Save permissions')}</button></div>}</div></>:!error&&<p role="status">{t('Yüklənir…','Загрузка…','Loading…')}</p>}
   </section>;

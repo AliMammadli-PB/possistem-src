@@ -1,6 +1,7 @@
 import './workflow1535.css';
 import { useEffect, useState, useRef, cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { OpsFrame } from './OpsFrame';
+import { ProfitSummary } from './ProfitSummary';
 import { TransfersPage } from './TransfersPage';
 import { DocumentsPage } from './DocumentsPage';
 import { BranchStockView, BranchRegisters, type BranchStockMode } from './BranchStockView';
@@ -66,6 +67,7 @@ export function OperationsWorkspace({session,lang,notify,initial='warehouse',reg
   {remote&&<iframe ref={remoteFrame} hidden={!current.frame} className="ops-frame" title={remote.name} src={`./cloud-branches/${remote.product==='market'?'remote-market':'remote'}/index.html?device=${encodeURIComponent(remote.deviceId)}&product=${remote.product}&lang=${lang}#/operations?tab=${remoteTab.current}`}/>}
   {!remote&&current.id==='stock'&&session.role==='manager'&&<div className="branch-stock-switch"><button type="button" aria-pressed={!localStock} onClick={()=>setLocalStock(false)}>{t('Filialların qalıqları','Остатки филиалов','Branch stock')}</button><button type="button" aria-pressed={localStock} onClick={()=>setLocalStock(true)}>{t('Bu filialın anbarı','Склад этого филиала','This branch warehouse')}</button></div>}
   {!remote&&current.id==='kassa'&&session.role==='manager'&&<BranchRegisters lang={lang} token={session.sessionToken}/>}
+  {!remote&&current.id==='income'&&<ProfitSummary lang={lang}/>}
   {!remote&&current.id==='stock'&&session.role==='manager'&&!localStock?<BranchStockView lang={lang} token={session.sessionToken} mode={{kind:'all'}}/>:!remote&&(current.frame
    ?<OpsFrame key={`${current.id}-${cashRevision}`} lang={lang} session={session} notify={notify} initialTab={current.id}/>
    :current.id==='transfers'?<TransfersPage session={session} lang={lang}/>

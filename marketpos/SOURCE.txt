@@ -2,9 +2,9 @@ Market POS — mənbə ağacının vəziyyəti
 =====================================
 Son yenilənmə: 2026-10-23
 
-AKTUAL BURAXILIŞ — 1.5.67
+AKTUAL BURAXILIŞ — 1.5.68
 --------------------------
-Bu qovluq 1.5.67 build-inin mənbəyidir. Eyni mənbə GitHub əsas branch-indədir:
+Bu qovluq 1.5.68 build-inin mənbəyidir. Eyni mənbə GitHub əsas branch-indədir:
 
   https://github.com/AliMammadli-PB/possistem-src/tree/main/marketpos
 
