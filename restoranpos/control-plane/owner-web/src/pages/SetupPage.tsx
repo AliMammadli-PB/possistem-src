@@ -1,0 +1,21 @@
+import {useCallback,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {getOnboarding,dashboard,verifySetup,ownerProductLabels} from '../api';
+import {useAuth} from '../auth/AuthContext';
+import {usePolling} from '../hooks/usePolling';
+import {Icon} from '../ui/Icon';
+export default function SetupPage(){
+ const {selectedProduct,availableProducts,customer}=useAuth(),product=selectedProduct||availableProducts[0]||'restaurant';
+ const load=useCallback(async()=>{const [setup,status]=await Promise.all([getOnboarding(),dashboard(product)]);return {setup,status};},[product]),state=usePolling(load,15000),[checking,setChecking]=useState(false),[message,setMessage]=useState('');
+ const setup=state.data?.setup,status=state.data?.status,connected=status?.connection.connected;
+ const verify=async()=>{if(checking)return;setChecking(true);setMessage('');try{const result=await verifySetup();setMessage(result.verified?'Seçilmiş POS-un bağlantısı təsdiqləndi.':result.reason||'POS hələ siqnal göndərməyib.');await state.reload();}catch(error){setMessage((error as Error).message);}finally{setChecking(false);}};
+ return <div className="insight-page"><header className="insight-heading"><div><span className="insight-eyebrow">{ownerProductLabels[product]} · QURAŞDIRMA</span><h1>POS-unuzu işə hazırlayın.</h1><p>Seçilmiş proqram üçün yükləmə, quraşdırma və bağlantı yoxlaması.</p></div><Link className="insight-button" to="/downloads"><Icon name="download"/>Yükləmələr</Link></header>
+ {state.error&&<p className="insight-warning" role="alert">{state.error.message} <button onClick={()=>void state.reload()}>Yenidən yoxla</button></p>}
+ {state.loading?<div className="insight-loading">Quraşdırma məlumatları yüklənir…</div>:<>
+ <section className="insight-context"><div><span className="context-product"><Icon name="monitor"/>{ownerProductLabels[product]}</span><span>{setup?.license?.status==='active'?'Lisenziya aktivdir':'Lisenziya vəziyyətini yoxlayın'}</span></div><span className={'connection-pill '+(connected?'online':'')}>{connected?'POS onlayndır':status?.connection.everConnected?'POS oflayndır':'İlk bağlantı gözlənilir'}</span></section>
+ <div className="setup-three"><article className="setup-task"><span>01</span><h2>Doğru proqramı yükləyin</h2><p>Bu hesabda seçilmiş məhsul <strong>{ownerProductLabels[product]}</strong>-dur. Quraşdırıcı da həmin məhsula aiddir.</p><p>Son versiya: <strong>{setup?.setup?.version||'Məlumat alınmadı'}</strong></p><Link to="/downloads">Quraşdırıcını seç <Icon name="arrow-right" size={17}/></Link></article><article className="setup-task"><span>02</span><h2>Kompüterdə quraşdırın</h2><p>Windows quraşdırıcısını açın. POS-a <strong>{customer?.email}</strong> hesabı ilə daxil olun, işləyəcəyiniz filialı seçin.</p><p>Birdən çox POS varsa, onların hər biri öz lisenziyasına uyğun açılır.</p><Link to="/support?topic=setup">Quraşdırma dəstəyi <Icon name="arrow-right" size={17}/></Link></article><article className="setup-task"><span>03</span><h2>Bağlantını yoxlayın</h2><p>POS-u açıq və internetə bağlı saxlayın. Satış və anbar məlumatları serverə göndərildikdən sonra saytda görünəcək.</p><button className="insight-button primary" disabled={checking} onClick={()=>void verify()}><Icon name="refresh" size={17}/>{checking?'Yoxlanılır…':'POS bağlantısını yoxla'}</button></article></div>
+ {message&&<p className="insight-warning" role="status">{message}</p>}
+ <section className="insight-card"><div className="insight-card-head"><div><span className="insight-eyebrow">SEÇİLMİŞ POS</span><h2>Bağlantı məlumatı</h2></div><Link to="/">İdarə panelinə keç <Icon name="arrow-right" size={16}/></Link></div><div className="setup-connected-list"><div><span>Proqram versiyası</span><strong>{status?.connection.appVersion||'Hələ qoşulmayıb'}</strong></div><div><span>Kompüter</span><strong>{status?.connection.hostname||'—'}</strong></div><div><span>Son siqnal</span><strong>{status?.connection.lastSeenAt?new Date(status.connection.lastSeenAt).toLocaleString('az-AZ'):'Siqnal gəlməyib'}</strong></div></div><p style={{fontSize:12,marginTop:18}}>Bağlantı göstəricisi seçilmiş POS-a aiddir. Başqa proqramın quraşdırılmış olması bu proqramı qoşulmuş kimi göstərmir.</p></section>
+ </>}
+ </div>;
+}

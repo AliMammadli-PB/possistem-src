@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-*/
+.env
+.env.*
+*.bak*
+public/warehouse-20261020/
+graft/
