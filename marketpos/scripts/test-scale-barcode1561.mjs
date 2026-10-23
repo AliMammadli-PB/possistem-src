@@ -43,7 +43,7 @@ try {
   await Promise.race([started, new Promise((_, rej) => setTimeout(() => rej(Error('core did not start')), 20000))]);
   const now = Date.now();
   const product = (id, plu, unit, priceMinor) => ({ id, sku: id, barcode: '', plu, name: { az: id, ru: id, en: id }, category: 'Meyvə', unit, priceMinor, costMinor: 100, minStock: 0, taxRate: 0, supplier: '', warehouseStock: { 'wh-sales': 100 }, image: { kind: 'url', url: '' }, active: true, createdAt: now });
-  ok(await ask('state.importLegacy', { snapshot: { warehouses: [{ id: 'wh-sales', code: 'ZAL', name: 'Sales', active: true }], registers: [], products: [product('alma', '00012', 'kq', 800), product('su', '00013', 'əd', 150)], settings: { storeName: 'QA', defaultWarehouseId: 'wh-sales' } } }));
+  ok(await ask('state.importLegacy', { snapshot: { warehouses: [{ id: 'wh-sales', code: 'ZAL', name: 'Sales', active: true }], registers: [], products: [product('alma', '00012', 'kq', 800), product('su', '00013', 'əd', 150), product('bahali', '00014', 'kq', 3500)], settings: { storeName: 'QA', defaultWarehouseId: 'wh-sales' } } }));
 
   // Default rules (019): weight labels.
   let r = ok(await ask('barcode.resolve', { barcode: ean('200001200310') }));
@@ -73,6 +73,7 @@ try {
   ok(await ask('settings.setValue', { key: 'scaleBarcodeRules', value: rules(5, 5, 'PRICE', 2) }));
   assert.equal((await ask('barcode.resolve', { barcode: ean('200001200000') })).success, false);
   assert.equal((await ask('barcode.resolve', { barcode: ean('200001300149') })).success, false);
+  assert.equal((await ask('barcode.resolve', { barcode: ean('200001400248') })).success, false, 'Do not silently change 2.48 to 2.49 when no whole gram yields the label total');
   ok(await ask('settings.setValue', { key: 'scaleBarcodeRules', value: rules(4, 6, 'PRICE', 2) }));
   // Bad rules never reach the scan path.
   for (const value of [[], [{ prefix: '2a', pluStart: 2, pluLen: 5, valueStart: 7, valueLen: 5, decimals: 3, mode: 'WEIGHT' }], rules(5, 6, 'WEIGHT', 3), rules(5, 5, 'PIECE', 3)]) {
