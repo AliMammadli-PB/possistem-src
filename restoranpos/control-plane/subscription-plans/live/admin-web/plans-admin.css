@@ -1,0 +1,9 @@
+
+/* Tariflər page */
+.plans-admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; align-items: start; }
+.plans-admin-card { display: grid; gap: .8rem; padding: 1.1rem; border: 1px solid var(--border); border-radius: 14px; background: rgba(16, 15, 13, .45); }
+.plans-admin-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.plans-admin-head h2 { margin: 0; font-size: 1.15rem; }
+.plans-admin-field { display: grid; gap: .35rem; }
+.plans-admin-field > span { color: var(--muted); font-size: .8rem; }
+.plans-admin-notice { margin: 0 0 1rem; color: var(--cream); }

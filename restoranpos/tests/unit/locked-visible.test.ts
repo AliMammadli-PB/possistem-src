@@ -24,7 +24,7 @@ describe('restaurant till', () => {
   });
 
   it('keeps every İdarə card and Əməliyyat tab', () => {
-    expect(bundle).toContain('].map((l) => ({ ...l, locked: !(l.show && _psArea(l.to)) }))');
+    expect(bundle).toContain('].map((l) => ({ ...l, locked: !(l.show && (l.to === "/branches" || _psArea(l.to))) }))');
     expect(bundle).toContain('children: _psTabs.map((tab) =>');
     expect(bundle).toContain('onClick: () => tab.show ? setActive(tab.id) : _psDenied()');
   });
@@ -57,7 +57,10 @@ describe('refusal toast answers a person, not a background read', () => {
 
 describe('market till', () => {
   it('renders every screen in the sidebar and refuses the locked ones', () => {
-    expect(market).not.toContain('const nav = allNav.filter(');
+    // 1.5.29: Kassalar and İstifadəçilər live inside Əməliyyatlar (OperationsWorkspace);
+    // those two are the only entries the sidebar leaves out - nothing is hidden by rights.
+    expect(market).toContain("const nav = allNav.filter(item => item.id !== 'registers' && item.id !== 'staff');");
+    expect(market).toContain("initial={view === 'registers' ? 'registers' : view === 'staff' ? 'users' : 'warehouse'}");
     expect(market).toContain("onClick={() => locked ? deny() : safeSetView(id)}");
   });
 

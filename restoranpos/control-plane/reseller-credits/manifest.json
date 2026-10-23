@@ -1,0 +1,94 @@
+[
+ {
+  "path": "apps/api/src/lib/reseller-terms.ts",
+  "base": null,
+  "next": "46c72ed92897437297b47646807152d1"
+ },
+ {
+  "path": "apps/api/src/lib/reseller-terms.test.ts",
+  "base": null,
+  "next": "184388340332a86ab038aeb4a99ec2ab"
+ },
+ {
+  "path": "apps/api/src/lib/license-envelope.ts",
+  "base": null,
+  "next": "1adda61853d5a715a2cce315b0e54989"
+ },
+ {
+  "path": "apps/api/src/lib/provision.ts",
+  "base": null,
+  "next": "17ac3b85ed2ad527f0b03d5e490bb13e",
+  "note": "base must be regenerated after rename-possistem.sh runs"
+ },
+ {
+  "path": "apps/api/src/plugins/reseller-auth.ts",
+  "base": null,
+  "next": "fde437a915179292b0cd0ed2009b53bc",
+  "note": "base must be regenerated after rename-possistem.sh runs"
+ },
+ {
+  "path": "apps/api/src/routes/reseller-portal.ts",
+  "base": null,
+  "next": "0b9084e43569e796cf4433579cececa3",
+  "note": "base must be regenerated after rename-possistem.sh runs"
+ },
+ {
+  "path": "apps/api/src/routes/resellers.ts",
+  "base": null,
+  "next": "c956730a3d4570d2c2950d655ea0c9d8",
+  "note": "base must be regenerated after rename-possistem.sh runs"
+ },
+ {
+  "path": "apps/api/src/routes/devices.ts",
+  "base": null,
+  "next": "83dfb8910828473bf528e98d655b6c85",
+  "note": "base must be regenerated after rename-possistem.sh runs"
+ },
+ {
+  "path": "apps/api/src/routes/market.ts",
+  "base": null,
+  "next": "7e5a8969850e0811712375e54ca0f878",
+  "note": "base must be regenerated after rename-possistem.sh runs"
+ },
+ {
+  "path": "packages/contracts/src/index.ts",
+  "base": null,
+  "next": "3ab3339caa9a45ef9de2811549975042",
+  "note": "base must be regenerated after rename-possistem.sh runs"
+ },
+ {
+  "path": "apps/reseller-web/src/api.ts",
+  "base": "0ca8336c708a76aba02a7bafaf3e0ff2",
+  "next": "a284d917180b95a8b8a1ab4654874bca"
+ },
+ {
+  "path": "apps/reseller-web/src/App.tsx",
+  "base": "9b50bc927e36522fa861b656edcba355",
+  "next": "85ec907fd3886d82c852bc8242e44dfb"
+ },
+ {
+  "path": "apps/reseller-web/src/styles.css",
+  "base": "df7d625e5617e98387e9144df82bb709",
+  "next": "5b17894c866ea3c7e750125124c24933"
+ },
+ {
+  "path": "apps/admin-web/src/pages/AdminPanelsPage.tsx",
+  "base": "e123c10b2a2389ea71d1fa82baaaa65e",
+  "next": "adb785eff849e2ba9e0458c179717665"
+ },
+ {
+  "path": "apps/admin-web/src/pages/SalesPage.tsx",
+  "base": "041abc2a28145235413a270257e5cbce",
+  "next": "16dc1c193f376434e9ba727b373f7d45"
+ },
+ {
+  "path": "apps/admin-web/src/i18n/az.ts",
+  "base": "111a8e3cf4bd4be759693e2a948155ac",
+  "next": "e7f60e9b6b272f49bd2b4f8e2b83b769"
+ },
+ {
+  "path": "apps/admin-web/src/styles.css",
+  "base": "a35928e898ae584c9f75fdbd64c904e4",
+  "next": "328186ee0ab56f01d42deffa94c57585"
+ }
+]

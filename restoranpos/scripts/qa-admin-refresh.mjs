@@ -27,7 +27,7 @@ try {
  const search=page.getByRole('searchbox',{name:'Bölmə axtar',exact:true});
  await search.fill('təchizat');assert.equal(await page.locator('.ps-hub-link').count(),2);
  await search.fill('zzzz-no-match');assert.equal(await page.locator('.ps-empty-state').count(),1);
- await page.getByRole('button',{name:'Axtarışı təmizlə'}).click();assert.equal(await page.locator('.ps-hub-link').count(),6);
+ await page.getByRole('button',{name:'Axtarışı təmizlə'}).click();assert.equal(await page.locator('.ps-hub-link').count(),7);
  await navigate('/operations?tab=stock');
  await page.getByRole('button',{name:'+ Yeni məhsul',exact:true}).click();
  const dialog=page.getByRole('dialog');await dialog.waitFor();

@@ -1,0 +1,62 @@
+{
+  "standart": {
+    "az": {
+      "name": "Standart",
+      "badge": "",
+      "tagline": "1 obyekt / filial",
+      "features": ["Satış və kassa", "Məhsul / menyu idarəsi", "Anbar və stok", "Çek çapı", "Əsas hesabatlar", "Oflayn işləmə"]
+    },
+    "en": {
+      "name": "Standard",
+      "badge": "",
+      "tagline": "1 location / branch",
+      "features": ["Sales and till", "Product / menu management", "Inventory and stock", "Receipt printing", "Basic reports", "Works offline"]
+    },
+    "ru": {
+      "name": "Стандарт",
+      "badge": "",
+      "tagline": "1 точка / филиал",
+      "features": ["Продажи и касса", "Управление товарами / меню", "Склад и остатки", "Печать чеков", "Базовые отчёты", "Работа офлайн"]
+    }
+  },
+  "biznes": {
+    "az": {
+      "name": "Biznes",
+      "badge": "Populyar",
+      "tagline": "Bir neçə kassa",
+      "features": ["Standartın hamısı", "İşçi və rol idarəsi", "Növbə idarəsi", "Geniş hesabatlar", "Uzaqdan idarəetmə", "Telefondan idarəetmə", "Sistemdaxili bildirişlər", "Prioritet dəstək"]
+    },
+    "en": {
+      "name": "Business",
+      "badge": "Popular",
+      "tagline": "Multiple tills",
+      "features": ["Everything in Standard", "Staff and role management", "Shift management", "Extended reports", "Remote management", "Manage from your phone", "In-app notifications", "Priority support"]
+    },
+    "ru": {
+      "name": "Бизнес",
+      "badge": "Популярный",
+      "tagline": "Несколько касс",
+      "features": ["Всё из тарифа Стандарт", "Сотрудники и роли", "Управление сменами", "Расширенные отчёты", "Удалённое управление", "Управление с телефона", "Внутренние уведомления", "Приоритетная поддержка"]
+    }
+  },
+  "premium": {
+    "az": {
+      "name": "Premium",
+      "badge": "",
+      "tagline": "Bir neçə filial",
+      "features": ["Biznesin hamısı", "Mərkəzi idarəetmə", "Filiallararası anbar", "Ətraflı analitika", "Avtomatik bulud backup", "Tam bərpa / disaster recovery", "Prioritet / sürətli dəstək"]
+    },
+    "en": {
+      "name": "Premium",
+      "badge": "",
+      "tagline": "Multiple branches",
+      "features": ["Everything in Business", "Central management", "Inter-branch inventory", "Advanced analytics", "Automatic cloud backup", "Full restore / disaster recovery", "Priority / fast support"]
+    },
+    "ru": {
+      "name": "Премиум",
+      "badge": "",
+      "tagline": "Несколько филиалов",
+      "features": ["Всё из тарифа Бизнес", "Централизованное управление", "Склад между филиалами", "Детальная аналитика", "Автоматический облачный бэкап", "Полное восстановление / disaster recovery", "Приоритетная / быстрая поддержка"]
+    }
+  }
+}

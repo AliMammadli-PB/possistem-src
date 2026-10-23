@@ -90,7 +90,7 @@ const ready = (async () => {
   await seedDemo(async (method, payload) => coreCall(method, payload));
   // The site's deep links (?signedIn=1#/admin/...) open a screen already signed in.
   if (new URLSearchParams(location.search).get('signedIn') === '1') {
-    const login = coreCall('auth.login', { userId: '', pin: '1234' });
+    const login = coreCall('auth.login', { userId: '', pin: '5678' });
     if (login.success) session = login.data.session;
   }
   coreStatus = { ...coreStatus, state: 'ready', seq: 2, coreVersion: '__APP_VERSION__', stage: { key: 'ready', message: 'System ready', progress: 100 } };
@@ -109,7 +109,7 @@ function setSession(next) {
 
 async function invoke({ method, payload, options }) {
   await ready;
-  const body = payload ?? {};
+  const body = method === 'auth.login' && payload?.pin === '1234' ? { ...payload, pin: '5678' } : payload ?? {};
   switch (method) {
     case '__app.info':
       return ok({ version: '__APP_VERSION__', electron: '', chrome: '', node: '', platform: 'win32', isDev: false, dbPath: '', logDir: '', corePath: '' });
@@ -130,6 +130,14 @@ async function invoke({ method, payload, options }) {
     case 'files.saveText':
     case 'files.savePdf':
       return NOT_IN_DEMO();
+    case 'auth.adminPrefix':
+      return ok({ extended: false });
+    case 'auth.listUsers':
+      return ok({ users: [] });
+    case 'branches.cloudSelection':
+      return ok({ required: false, objects: [], branches: [], current: { name: 'Demo Restoran' } });
+    case 'branches.cloudList':
+      return ok({ objects: [], branches: [] });
     case 'tenant.status':
       return ok(TENANT);
     default:
@@ -182,6 +190,8 @@ const ipcRenderer = {
   },
 };
 
+// Same renderer, isolated sample tenant: no real account/location picker.
+window.__psCloudBranchMode = true;
 const electron = {
   ipcRenderer,
   contextBridge: {

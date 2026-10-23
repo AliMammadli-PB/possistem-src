@@ -29,7 +29,11 @@ describe('the refund screen', () => {
     const route = bundle.slice(bundle.indexOf('path: "/refund"') - 400,
                                bundle.indexOf('path: "/refund"'));
     expect(route).toContain('permission: "payment.refund"');
-    expect(bundle).toContain('label: "Geri qaytarma", icon: ReceiptText, show: hasPermission("payment.refund")');
+    const hub=bundle.slice(bundle.indexOf('function AdminHubPage()'),bundle.indexOf('const LOGO_RASTER_WIDTH'));
+    expect(hub).toContain('to: "/refund"');
+    expect(hub).toContain('show:hasPermission("payment.refund")');
+    const sidebar=bundle.slice(bundle.indexOf('  const serviceLinks = ['),bundle.indexOf('  const visible ='));
+    expect(sidebar).not.toContain('to: "/refund"');
   });
 
   it('reaches the core through every layer', () => {

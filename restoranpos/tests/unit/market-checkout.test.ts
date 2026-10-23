@@ -28,12 +28,17 @@ describe('native checkout catalogue is authoritative',()=>{
  });
  it('still imports browser-era data into an empty native database',async()=>{
   const importLegacy=vi.fn(async()=>native),setState=vi.fn();
-  await task('migrate',{marketCoreClient:{getState:async()=>({products:[]}),importLegacy},cancelled:false,setState,loadState:()=>native,localStorage:{getItem:()=>null,setItem:vi.fn()},LEGACY_MIGRATED_KEY:'legacy',CATALOG_SYNC_KEY:'catalog',CATALOG_SYNC_TOKEN:'v1'});
+  await task('migrate',{marketCoreClient:{getState:async()=>({products:[]}),importLegacy},cancelled:false,setState,legacyState:native,localStorage:{getItem:()=>null,setItem:vi.fn()},LEGACY_MIGRATED_KEY:'legacy',CATALOG_SYNC_KEY:'catalog',CATALOG_SYNC_TOKEN:'v1'});
   expect(importLegacy).toHaveBeenCalledOnce();expect(setState).toHaveBeenCalledWith(native);
+ });
+ it('a fresh install never imports an invented browser catalogue',async()=>{
+  const importLegacy=vi.fn(),setState=vi.fn();
+  await task('migrate',{marketCoreClient:{getState:async()=>({products:[]}),importLegacy},legacyState:null,cancelled:false,setState,localStorage:{getItem:()=>null,setItem:vi.fn()},LEGACY_MIGRATED_KEY:'legacy',CATALOG_SYNC_KEY:'catalog',CATALOG_SYNC_TOKEN:'v1'});
+  expect(importLegacy).not.toHaveBeenCalled();expect(setState).toHaveBeenCalledWith({products:[],schemaVersion:5});
  });
  it('failed legacy import keeps native state instead of creating an in-memory seed',async()=>{
   const setState=vi.fn(),setItem=vi.fn();
-  await task('migrate',{marketCoreClient:{getState:async()=>({products:[]}),importLegacy:async()=>{throw Error('denied')}},cancelled:false,setState,loadState:()=>native,localStorage:{getItem:()=>null,setItem},LEGACY_MIGRATED_KEY:'legacy',CATALOG_SYNC_KEY:'catalog',CATALOG_SYNC_TOKEN:'v1'});
+  await task('migrate',{marketCoreClient:{getState:async()=>({products:[]}),importLegacy:async()=>{throw Error('denied')}},cancelled:false,setState,legacyState:native,localStorage:{getItem:()=>null,setItem},LEGACY_MIGRATED_KEY:'legacy',CATALOG_SYNC_KEY:'catalog',CATALOG_SYNC_TOKEN:'v1'});
   expect(setState).not.toHaveBeenCalled();expect(setItem).not.toHaveBeenCalled();
  });
 });

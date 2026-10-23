@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { seedDemo } from './seed.js';
+import { seedDemo, DEMO_STAFF } from './seed.js';
 
 const [restaurantDir, marketDir] = process.argv.slice(2);
 if (!restaurantDir || !marketDir) throw new Error('usage: smoke.mjs <restaurant-wasm-dir> <market-wasm-dir>');
@@ -37,7 +37,7 @@ restaurant.FS.mkdirTree('/data');
 restaurant.ccall('pos_boot', 'string', ['string'], ['/data/pos.db']);
 const pos = caller(restaurant, 'pos_call');
 await seedDemo(async (method, payload) => pos(method, payload));
-const login = pos('auth.login', { userId: '', pin: '1234' });
+const login = pos('auth.login', { userId: '', pin: DEMO_STAFF[0].pin });
 assert.equal(login.success, true, JSON.stringify(login.error));
 const tables = pos('tables.list', {});
 assert.equal(tables.data.tables.filter((t) => t.orderId).length, 4, 'four open bills on the floor');

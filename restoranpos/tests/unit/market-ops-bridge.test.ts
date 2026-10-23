@@ -44,7 +44,7 @@ describe('sales: a Market receipt as the warehouse books it', () => {
 
   it('only books products that came from Mallar', () => {
     const lines = ops.saleLines([{ productId: 'ops-ing-1', qty: 2, unitPriceMinor: 100, lineTotalMinor: 200 }, { productId: 'p-old', qty: 1, unitPriceMinor: 50, lineTotalMinor: 50 }]);
-    expect(lines).toEqual([{ ingredientId: 'ing-1', qtyMilli: 2000, unitPriceMinor: 100, totalMinor: 200 }]);
+    expect(lines).toEqual([{ productId: 'ops-ing-1', ingredientId: 'ing-1', qtyMilli: 2000, unitPriceMinor: 100, totalMinor: 200 }]);
   });
 });
 

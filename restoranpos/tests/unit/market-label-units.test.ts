@@ -1,6 +1,6 @@
 /**
  * Market label designer: the same layout typed in mm, inches or printer dots
- * lands on the same whole dots (marketpos/src/labelUnits.ts).
+ * preserves fractional printer dots until rasterization (marketpos/src/labelUnits.ts).
  */
 import { describe, expect, it } from 'vitest';
 import { dotsToUnit, mmToUnit, moveSteps, paperUnit, roundUnit, unitToDots, unitToMm } from '../../../marketpos/src/labelUnits';
@@ -13,12 +13,12 @@ describe('label units', () => {
     expect(paperUnit('dot')).toBe('mm');
   });
 
-  it('turns a typed length into whole printer dots at 203 and 300 DPI', () => {
+  it('preserves fine lengths at the supported printer dot densities', () => {
     expect(unitToDots(2.5, 203, 'mm')).toBe(20);
     expect(unitToDots(2.5, 300, 'mm')).toBe(30);
-    expect(unitToDots(0.1, 203, 'in')).toBe(20);
+    expect(unitToDots(0.1, 203, 'in')).toBeCloseTo(20.32);
     expect(unitToDots(-16, 203, 'dot')).toBe(-16);
-    expect(unitToDots(0.13, 203, 'mm')).toBe(1);
+    expect(unitToDots(0.13, 203, 'mm')).toBeCloseTo(1.04);
   });
 
   it('shows dots back in the chosen unit', () => {
