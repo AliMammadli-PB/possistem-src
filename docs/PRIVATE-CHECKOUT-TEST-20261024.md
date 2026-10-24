@@ -8,11 +8,21 @@ Bu ünvan mövcud **admin** hesabıdır. Hesabın parolu dəyişdirilməyib, eyn
 
 1. Mövcud admin hesabınızla daxil olun.
 2. [Məhsullar → Sınaq](https://possistem.az/mehsul/avadanliq/?q=S%C4%B1naq) səhifəsini açın.
-3. **Sınaq məhsulu — real ödəniş deyil** kartında **Test sifarişi yarat** seçin.
-4. Miqdarı seçin, simulyasiya təsdiqini işarələyin; **Uğurlu sınağı yoxla** və ya **Uğursuz sınağı yoxla** düyməsini basın.
-5. Nəticə və son 10 şəxsi sınaq həmin səhifədə görünür. Birbaşa keçid: [Test sifarişi](https://possistem.az/odenis/sinaq/).
+3. **Sınaq məhsulu — şəxsi kart ödənişi** kartında **Test sifarişi yarat** seçin. Birbaşa keçid: [Kartla ödəniş sınağı](https://possistem.az/odenis/sinaq/).
+4. Real yoxlama üçün **Epoint ilə real kart ödənişi** bölməsində 1 AZN tutulacağını təsdiqləyin və **Kartla 1,00 ₼ ödə** seçin. Epoint fakturasından bankın kart səhifəsinə keçin.
+5. Pulsuz sınaqlar üçün **Pulsuz simulyasiya və əvvəlki sınaqlar** bölməsini açın. Bu bölmə real pul tutmur və son 10 simulyasiyanı göstərir.
 
-Göstərilən nominal qiymət **1 AZN/ədəd**, real tutulma **0 AZN**-dir. Kart rekvizitləri alınmır. Bu, real bank ödənişini və Epoint-in merchant yoxlamasını əvəz etmir; real ödəniş üçün işlək merchant konfiqurasiyası və public/private açarlar lazımdır. Mövcud real ödəniş/recurring parametrləri bağlı saxlanılıb.
+## Real kart ödənişi — sonrakı yoxlama
+
+İstifadəçinin CAPTCHA yoxlamasından sonra Epoint kabinetinə yenidən daxil olundu. API dəyişiklikləri hələ moderasiyadadır; kabinet yalnız açıq açarı göstərir, serverdə məxfi açar yoxdur. Bununla belə **Link ilə Ödəniş** işləyir. Kabinetdə yalnız 1 AZN-lik, birdəfəlik şəxsi yoxlama fakturası **291546** yaradıldı. SMS/email göndərilmədi. Girişsiz fakturada Possistem və 1.00 AZN təsdiqləndi; **Ödəniş** düyməsi `https://ecomm.pashabank.az` bank domenində kart formasını açdı. Kart daxil edilmədi və pul tutulmadı.
+
+Faktura URL-i repo və açıq kataloqa yazılmır; qorunan server konfiqurasiyasındakı `EPOINT_PRIVATE_TEST_PAYMENT_URL` vasitəsilə yalnız icazəli hesabın checkout context-inə qaytarılır. Yalnız HTTPS, dəqiq `epoint.az` hostu və `/az/inv/p/<token>` yolu qəbul olunur; credentials, başqa port, query və fragment rədd edilir. Epoint fakturası özü paylaşılabilən linkdir: linki bilən şəxs bank səhifəsini aça bilər. Saytdakı görünmə məhdudiyyəti bank səhifəsində hesab yoxlaması demək deyil.
+
+Bu real faktura **sabit 1 AZN**-dir; simulyasiya miqdarı ona təsir etmir. Məhsulun nominal qiyməti dəyişərsə faktura seçimi gizlənir. Quraşdırılmış faktura öz-özünə yenisi ilə əvəz olunmur. Bir dəfə ödəmisinizsə, təkrar ödəməyin; nəticə Epoint kabinetində yoxlanılmalıdır.
+
+API imzalı callback/status yoxlaması hələ hazır açarlarla işləmədiyindən bu hosted ödəniş sayt sifarişini və abunəliyi avtomatik təsdiqləmir. Simulyasiya `paid` statusuna çevrilmir. API onlayn satış və recurring parametrləri bağlı, POS istifadəsi əvvəlki qaydada qalır. Avtomatik inteqrasiya üçün Epoint məxfi açarı və ayrıca real ödəniş/status/geri qaytarma yoxlaması lazımdır.
+
+Kart rekvizitləri yalnız bank səhifəsində daxil edilir. **Pulsuz simulyasiya** üçün nominal qiymət 1 AZN/ədəd, real tutulma 0 AZN-dir.
 
 ## Sərhədlər
 
@@ -33,3 +43,11 @@ Göstərilən nominal qiymət **1 AZN/ədəd**, real tutulma **0 AZN**-dir. Kart
 - Sayt/API yayımlandı; POS və APK üçün yeni binary tələb olunmur.
 
 Sınağı sonradan bağlamaq üçün yalnız `billing_test_products` daxilində bu məhsulun `enabled` sahəsini false etmək kifayətdir. Real ödəniş parametrlərini dəyişmək lazım deyil.
+
+## Hosted faktura əlavəsinin yoxlanması
+
+- API və Next production build-ləri yerli və serverdə keçdi; ayrıca PostgreSQL bazasında **28 test** keçdi. Yeni yoxlama faktura URL-inin host/yol məhdudiyyətlərini, yalnız icazəli context-dən görünməsini və yanlış URL-in gizlənməsini əhatə edir.
+- Chromium 151 ilə canlı səhifədə anonim 404, Ali hesabına real fakturanın göstərilməsi, ayrıca məbləğ təsdiqi olmadan düymənin bağlı olması, təsdiqdən sonra dəqiq Epoint fakturasına keçid, çıxışdan sonra 404 və 360/390/1366 px görünüşləri yoxlanıldı. Bank tutulması/3DS və geri qaytarma həyata keçirilməyib.
+- Şəkillər: `artifacts/epoint-real-payment-20261024/` (iş sahəsinin kökündə). Yeni DB miqrasiyası tələb olunmur.
+- API əvvəlki yığımı və qorunan env ehtiyatı `/opt/possistem-pos-control/backups/hosted-payment-20261024/`, əvvəlki Next yığımı `/var/www/possistem/.hosted-payment-20261024/.next` altındadır.
+- Bu seçimi bağlamaq üçün env-dən `EPOINT_PRIVATE_TEST_PAYMENT_URL` silinib API yenidən başladılır; faktura ayrıca Epoint kabinetindən ləğv edilə bilər. Simulyasiya isə əvvəlki kimi ayrıca qalır.

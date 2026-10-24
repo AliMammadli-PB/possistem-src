@@ -4,6 +4,7 @@ import {sql} from 'drizzle-orm';
 import {BillingError} from './domain.js';
 import {query,type Executor} from './store.js';
 import type {Db} from '@milioner/database';
+import {hostedTestPayment} from './hosted-test-payment.js';
 
 export const TEST_PRODUCT_ID='possistem-private-checkout-test';
 const EMAIL='ali.mammadli@possistem.az';
@@ -25,14 +26,15 @@ async function product(db:Executor,actor:Actor|null){
 export async function testCatalogProduct(db:Executor,req:FastifyRequest){
  const p=await product(db,testActor(req));if(!p)return null;
  const image='/assets/brands/logo.png';
- return {id:p.id,name:p.name,slug:p.id,sku:'TEST-ONLY',description:'Açar və kart olmadan sifariş axınının simulyasiyası. Real pul tutulmur, mal təhvil verilmir və abunəlik açılmır.',shortDescription:'Yalnız hesabınız üçün sınaq · 0 ₼ tutulur',brand:'Possistem',category:'Sınaq',categorySlug:'sinaq',parentCategory:'Ticarət avadanlıqları',parentCategorySlug:'ticaret-avadanliqlari',subCategory:'Sınaq',image,images:[image],inStock:true,stockQuantity:10,isHotDeal:false,price:p.price_minor/100,isTest:true};
+ const hosted=p.price_minor===100?hostedTestPayment():null;
+ return {id:p.id,name:hosted?'Sınaq məhsulu — şəxsi kart ödənişi':p.name,slug:p.id,sku:'TEST-ONLY',description:hosted?'Epoint linki ilə 1 AZN real kart ödənişi və ayrıca pulsuz simulyasiya. Abunəlik avtomatik açılmır.':'Açar və kart olmadan sifariş axınının simulyasiyası. Real pul tutulmur, mal təhvil verilmir və abunəlik açılmır.',shortDescription:hosted?'Yalnız hesabınız üçün · Epoint ilə 1 ₼ real ödəniş':'Yalnız hesabınız üçün sınaq · 0 ₼ tutulur',brand:'Possistem',category:'Sınaq',categorySlug:'sinaq',parentCategory:'Ticarət avadanlıqları',parentCategorySlug:'ticaret-avadanliqlari',subCategory:'Sınaq',image,images:[image],inStock:true,stockQuantity:10,isHotDeal:false,price:p.price_minor/100,isTest:true};
 }
 function serialize(row:Row){return {id:row.id,orderNo:'TEST-'+row.id.slice(0,8).toUpperCase(),productId:row.product_id,qty:row.qty,amountMinor:row.amount_minor,status:row.status,createdAt:row.created_at,mode:'simulation' as const,chargedMinor:0,currency:'AZN',provider:null};}
 export async function testShopContext(db:Db,req:FastifyRequest){
  const actor=testActor(req),p=await testCatalogProduct(db,req);
  if(!actor||!p)throw new BillingError('test_not_found','Sınaq məhsulu tapılmadı.',404);
  const rows=await query<Row>(db,sql`SELECT * FROM billing_test_orders WHERE actor_kind=${actor.kind} AND actor_id=${actor.id}::uuid ORDER BY created_at DESC LIMIT 10`);
- return {mode:'simulation',email:actor.email,csrfToken:actor.csrf,product:p,orders:rows.map(serialize),notice:'Bu sınaqdır. Epoint çağırılmır, kart məlumatı alınmır və real pul tutulmur.'};
+ return {mode:'simulation',email:actor.email,csrfToken:actor.csrf,product:p,hostedPayment:p.price===1?hostedTestPayment():null,orders:rows.map(serialize),notice:'Aşağıdakı simulyasiya Epoint-i çağırmır, kart məlumatı almır və real pul tutmur.'};
 }
 export async function simulateCheckout(db:Db,req:FastifyRequest,input:{productId:string;qty:number;outcome:'success'|'failure';requestId:string}){
  const actor=testActor(req);

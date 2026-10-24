@@ -251,6 +251,8 @@ async function privateTestApp(){
 }
 test('private test product is visible only to its authenticated account, never through email headers or a shared cache',async()=>{
  const {TEST_PRODUCT_ID}=await import('./test-shop.js'),app=await privateTestApp();
+ const priorHostedUrl=process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL;
+ process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL='https://epoint.az/az/inv/p/Fixture123';
  try{
   for(const headers of [{},{authorization:'FixtureOther'},{'x-email':'ali.mammadli@possistem.az'}]){
    const listing=await app.inject({url:'/pos/api/public/products?email=ali.mammadli@possistem.az',headers});assert.equal(listing.statusCode,200);assert.equal(listing.json().products.some((p:{id:string})=>p.id===TEST_PRODUCT_ID),false);
@@ -259,8 +261,11 @@ test('private test product is visible only to its authenticated account, never t
   }
   const listing=await app.inject({url:'/pos/api/public/products',headers:{authorization:'FixtureAli'}});assert.match(String(listing.headers['cache-control']),/private.*no-store/);assert.match(String(listing.headers.vary),/Cookie/);
   const product=listing.json().products.find((p:{id:string})=>p.id===TEST_PRODUCT_ID);assert.equal(product.isTest,true);assert.equal(product.price,1);
-  assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}})).json().mode,'simulation');
- }finally{await app.close();}
+  const context=(await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}})).json();assert.equal(context.mode,'simulation');assert.equal(context.hostedPayment.url,process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL);assert.equal(context.hostedPayment.verification,'manual');assert.equal(context.hostedPayment.amountMinor,100);
+  assert.equal(JSON.stringify(listing.json()).includes('Fixture123'),false,'invoice URL is available only in the private checkout context');
+  process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL='https://evil.invalid/pay';
+  assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}})).json().hostedPayment,null);
+ }finally{if(priorHostedUrl===undefined)delete process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL;else process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL=priorHostedUrl;await app.close();}
 });
 test('keyless test checkout is CSRF-protected, idempotent and cannot write real payments, stock or subscriptions',async()=>{
  const {TEST_PRODUCT_ID}=await import('./test-shop.js'),app=await privateTestApp();
