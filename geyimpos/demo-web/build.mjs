@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { publishBrowserAssets } from '../../restoranpos/demo-web/browser-assets.mjs';
 /**
  * Packs Geyim POS for the possistem.az live demo:
  *   dist/ (the Vite build) + the Geyim core built to WebAssembly + a bridge
@@ -95,3 +96,5 @@ html = html
   .replace(bundleTag[0], `<script type="module" src="./demo/${bridge}"></script>\n    ${bundleTag[0]}`);
 fs.writeFileSync(indexPath, html);
 process.stdout.write(`[geyim demo-web] ${OUT}\n`);
+
+publishBrowserAssets(OUT, JSON.parse(fs.readFileSync(path.join(ROOT,'package.json'),'utf8')).version);

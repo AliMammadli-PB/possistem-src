@@ -48,4 +48,15 @@ if (!bundleTag) throw new Error('index.html: bundle script tag not found');
 fs.writeFileSync(indexPath, html
   .replace(/<title>[^<]*<\/title>/, '<title>possistem · Restoran idarəetməsi</title>')
   .replace(bundleTag[0], `<script type="module" src="./portal/${name}"></script>\n    ${bundleTag[0]}`));
+// Browser caches must never pair the new bridge with an old renderer or CSS.
+let freshHtml = fs.readFileSync(indexPath, 'utf8');
+for (const rel of ['assets/index-BsrHjfOR.js', 'possistem-system.css']) {
+  const file = path.join(OUT, rel);
+  const hash = createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0, 12);
+  const parsed = path.parse(rel);
+  const fresh = path.join(parsed.dir, `${parsed.name}-${hash}${parsed.ext}`).replaceAll('\\', '/');
+  fs.copyFileSync(file, path.join(OUT, fresh));
+  freshHtml = freshHtml.replaceAll(`./${rel}`, `./${fresh}`);
+}
+fs.writeFileSync(indexPath, freshHtml);
 process.stdout.write(`[portal-web] ${path.relative(process.cwd(), OUT)} (${version}, ${methods.length} methods)\n`);

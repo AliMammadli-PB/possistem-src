@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cashChange, canAccess, findBarcode, findLoyaltyCustomer, normalizeLoyaltyCard, parseMoneyInput } from '../../../marketpos/src/domain';
-import { initialProducts } from '../../../marketpos/src/data';
+import { initialProducts } from '../../../marketpos/src/data.demo';
 
 describe('market POS domain', () => {
   it('calculates cash change in qəpik', () => expect(cashChange(4300, 5000)).toBe(700));

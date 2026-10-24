@@ -10,6 +10,7 @@ function fixture(registers:any[],accounts:any[],cashNames={}) {
  engine.invoke=vi.fn(async(method:string)=>method==='cashAccounts.list'?ok({accounts}):ok({}));return engine;
 }
 describe('stable warehouse/register cash identities',()=>{
+ it('never creates a financial account for a clean unused installation',async()=>{const e=fixture([],[]);await syncRegisters(e);await syncWarehouseLedger(e);expect(e.invoke).toHaveBeenCalledTimes(1);expect(e.invoke).toHaveBeenCalledWith('cashAccounts.list',{});expect(e.registers.size).toBe(0)});
  it('links every sale register before feeding money',async()=>{const e=fixture([{id:'r1',name:'Till1'}],[]);await syncRegisters(e);expect(e.invoke).toHaveBeenLastCalledWith('cashAccounts.syncMarket',{registers:[{id:'r1',name:'Till1'}],movements:[]},{timeoutMs:60000});expect(e.registers.get('r1')).toBe('Till1')});
  it('reuses a warehouse till with exactly the same unique label',async()=>{const e=fixture([{id:'r1',name:'Till1'}],[{id:'a1',name:'Till1',kind:'till',terminalId:''}]);await syncRegisters(e);expect(e.market.invoke).toHaveBeenCalledTimes(1);expect(e.invoke.mock.calls.at(-1)[1].registers[0].accountId).toBe('a1')});
  it('creates a closed sale register for a new unassigned warehouse till',async()=>{const e=fixture([],[{id:'a1',name:'New',kind:'till',terminalId:''}]);await syncRegisters(e);expect(e.market.invoke).toHaveBeenCalledWith('cash.bridgeRegister',expect.objectContaining({id:'ops-cash-a1',name:'New'}));expect(e.invoke.mock.calls.at(-1)[1].registers[0].accountId).toBe('a1')});

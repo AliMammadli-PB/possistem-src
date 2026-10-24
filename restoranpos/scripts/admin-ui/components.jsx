@@ -13,7 +13,7 @@ function psAdminRoute(path) {
 function PsAdminFrame({ children }) {
   const { t } = useI18n();
   const { pathname, search } = useLocation();
-  const pages = {'/settings':t.nav.settings,'/admin/catalog':t.nav.catalog,'/admin/staff':t.nav.staff,'/admin/tables':t.nav.adminTables,'/admin/reports':t.nav.reports,'/admin/cash':t.nav.cash,'/admin/backup':psAdminText('Ehtiyat nüsxə','Yedekleme','Backup'),'/admin/gifts':t.nav.gifts,'/dashboard':t.nav.dashboard,'/reconcile':t.nav.reconcile,'/audit':t.nav.audit,'/diagnostics':t.nav.diagnostics,'/settings/license':t.nav.license,'/support':t.nav.support};
+  const pages = { "/branches": psAdminText("Obyektlər", "İşletmeler", "Locations"), "/refund": psAdminText("Geri qaytarma", "İade", "Returns"),'/settings':t.nav.settings,'/admin/catalog':t.nav.catalog,'/admin/staff':t.nav.staff,'/admin/tables':t.nav.adminTables,'/admin/reports':t.nav.reports,'/admin/cash':t.nav.cash,'/admin/backup':psAdminText('Ehtiyat nüsxə','Yedekleme','Backup'),'/admin/gifts':t.nav.gifts,'/dashboard':t.nav.dashboard,'/reconcile':t.nav.reconcile,'/audit':t.nav.audit,'/diagnostics':t.nav.diagnostics,'/settings/license':t.nav.license,'/support':t.nav.support};
   const ops = {stock:['Anbar','Stok','Inventory'],suppliers:['Təchizat','Tedarik','Purchasing'],costing:['Kalkulyasiya','Maliyet','Costing'],vendors:['Təchizatçılar','Tedarikçiler','Suppliers'],guests:['Müştərilər','Müşteriler','Customers'],reservations:['Rezervasiya','Rezervasyon','Reservations'],delivery:['Çatdırılma','Teslimat','Delivery'],roster:['İş qrafiki','Çalışma takvimi','Schedule'],export:['İxrac','Dışa aktar','Export']};
   const title = pathname === '/operations' ? psAdminText(...(ops[new URLSearchParams(search).get('tab')] || ops.stock)) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
@@ -26,13 +26,15 @@ function PsAdminHub({ links }) {
   const [query, setQuery] = reactExports.useState('');
   const [activeTone, setActiveTone] = reactExports.useState('blue');
   const groups = [
-    { title: psAdminText('Gündəlik idarəetmə', 'Günlük yönetim', 'Daily management'), hint: psAdminText('Menyu, heyət və gündəlik işlər', 'Menü, ekip ve günlük işler', 'Menu, team and daily work'), tone: 'blue', paths: ['/dashboard','/admin/catalog','/admin/staff','/operations?tab=roster','/admin/tables','/admin/gifts'] },
+    { title: psAdminText('Gündəlik idarəetmə', 'Günlük yönetim', 'Daily management'), hint: psAdminText('Menyu, heyət və gündəlik işlər', 'Menü, ekip ve günlük işler', 'Menu, team and daily work'), tone: 'blue', paths: ['/branches','/dashboard','/admin/catalog','/admin/staff','/operations?tab=roster','/admin/tables','/admin/gifts'] },
     { title: psAdminText('Anbar və təchizat', 'Stok ve tedarik', 'Inventory & purchasing'), hint: psAdminText('Məhsullar, alışlar və tərəfdaşlar', 'Ürünler, alımlar ve iş ortakları', 'Products, purchases and partners'), tone: 'green', paths: ['/operations?tab=stock','/operations?tab=suppliers','/operations?tab=vendors'] },
-    { title: psAdminText('Müştəri xidmətləri', 'Müşteri hizmetleri', 'Guest services'), hint: psAdminText('Qonaqların hər mərhələdə yanında', 'Misafirleriniz için her adımda', 'Everything for your guests'), tone: 'purple', paths: ['/operations?tab=guests','/operations?tab=reservations','/operations?tab=delivery'] },
+    { title: psAdminText('Müştəri xidmətləri', 'Müşteri hizmetleri', 'Guest services'), hint: psAdminText('Qonaqların hər mərhələdə yanında', 'Misafirleriniz için her adımda', 'Everything for your guests'), tone: 'purple', paths: ['/refund','/operations?tab=guests','/operations?tab=reservations','/operations?tab=delivery'] },
     { title: psAdminText('Maliyyə və hesabat', 'Finans ve raporlar', 'Finance & reporting'), hint: psAdminText('Gəlirlər, ödənişlər və nəzarət', 'Gelir, ödemeler ve denetim', 'Revenue, payments and oversight'), tone: 'amber', paths: ['/admin/cash','/admin/reports','/reconcile','/audit'] },
     { title: psAdminText('Sistem', 'Sistem', 'System'), hint: psAdminText('Cihaz, təhlükəsizlik və sazlamalar', 'Cihaz, güvenlik ve ayarlar', 'Device, security and preferences'), tone: 'slate', paths: ['/settings','/admin/backup','/settings/license','/diagnostics'] }
   ];
   const descriptions = {
+    '/branches': ['Obyektlər, anbarlar, kassalar və uzaqdan idarə','İşletmeler, stoklar, kasalar ve uzaktan yönetim','Locations, stock, tills and remote management'],
+    '/refund': ['Çek üzrə qaytarma və ödənişin geri verilməsi','Fiş üzerinden iade ve geri ödeme','Receipt returns and refunds'],
     '/dashboard': ['Günün əsas göstəriciləri','Günün temel göstergeleri','Today at a glance'],
     '/admin/catalog': ['Məhsullar, qiymətlər və kateqoriyalar','Ürünler, fiyatlar ve kategoriler','Products, pricing and categories'],
     '/admin/staff': ['Heyət və giriş səlahiyyətləri','Ekip ve erişim izinleri','Team and access permissions'],

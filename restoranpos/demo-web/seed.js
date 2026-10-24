@@ -7,7 +7,7 @@
  * Elvin 2222, Nigar 3333.
  */
 export const DEMO_STAFF = [
-  { name: 'Admin', pin: '1234', role: 'administrator' },
+  { name: 'Admin', pin: '5678', role: 'administrator' },
   { name: 'Elvin', pin: '2222', role: 'waiter' },
   { name: 'Nigar', pin: '3333', role: 'waiter' },
 ];
@@ -43,8 +43,9 @@ export async function seedDemo(call) {
   };
   const signIn = (pin) => must('auth.login', { userId: '', pin });
 
-  // 9001 is the shipped PIN and must be replaced on first sign-in
-  await must('auth.login', { userId: '', pin: '9001', newPin: DEMO_STAFF[0].pin });
+  // Exercise the real first-run PIN change, then keep the sample admin private
+  // to this in-memory database. The web bridge maps the advertised 1234 demo PIN.
+  await must('auth.login', { userId: '', pin: '1234', newPin: DEMO_STAFF[0].pin });
   for (const [key, value] of [
     ['restaurant.name', 'Demo Restoran'],
     ['printer.receipt', 'virtual'],

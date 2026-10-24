@@ -147,6 +147,12 @@ async function invoke({ method, payload, options }) {
   await ready;
   const body = payload ?? {};
   switch (method) {
+    case 'branches.list': {
+      try {
+        const res=await fetch(`${API}/customer/pos/branches${DEVICE?'?deviceId='+encodeURIComponent(DEVICE):''}`,{credentials:'same-origin',headers:{accept:'application/json'}});
+        const data=await res.json();return res.ok?ok(data):fail('E_PORTAL',data.error||'Filiallar yüklənmədi');
+      }catch{return fail('E_NETWORK','Filiallar yüklənmədi');}
+    }
     case '__app.info':
       return ok({ version: '__APP_VERSION__', electron: '', chrome: '', node: '', platform: 'web', isDev: false, dbPath: '', logDir: '', corePath: '' });
     case 'license.status':

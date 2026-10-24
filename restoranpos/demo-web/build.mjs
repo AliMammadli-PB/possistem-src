@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { publishBrowserAssets } from './browser-assets.mjs';
 /**
  * Packs the restaurant till for the possistem.az live demo:
  *   out/renderer (the assembled UI) + the core built to WebAssembly + a bridge
@@ -78,3 +79,5 @@ fs.writeFileSync(
     .replace(bundleTag[0], `<script type="module" src="./demo/${bridge}"></script>\n    ${bundleTag[0]}`),
 );
 process.stdout.write(`[demo-web] ${path.relative(process.cwd(), OUT)}\n`);
+
+publishBrowserAssets(OUT, JSON.parse(fs.readFileSync(path.join(ROOT,'package.json'),'utf8')).version);
