@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {BillingError} from './domain.js';
 import {query,type Executor} from './store.js';
 import type {Db} from '@milioner/database';
-import {hostedTestPayment} from './hosted-test-payment.js';
+import {hostedTestPayment,repeatableTestPayment} from './hosted-test-payment.js';
 
 export const TEST_PRODUCT_ID='possistem-private-checkout-test';
 const EMAIL='ali.mammadli@possistem.az';
@@ -26,7 +26,7 @@ async function product(db:Executor,actor:Actor|null){
 export async function testCatalogProduct(db:Executor,req:FastifyRequest){
  const p=await product(db,testActor(req));if(!p)return null;
  const image='/assets/brands/logo.png';
- const hosted=p.price_minor===100?hostedTestPayment():null;
+ const hosted=p.price_minor===100?(repeatableTestPayment()??hostedTestPayment()):null;
  return {id:p.id,name:hosted?'Sınaq məhsulu — şəxsi kart ödənişi':p.name,slug:p.id,sku:'TEST-ONLY',description:hosted?'Epoint linki ilə 1 AZN real kart ödənişi və ayrıca pulsuz simulyasiya. Abunəlik avtomatik açılmır.':'Açar və kart olmadan sifariş axınının simulyasiyası. Real pul tutulmur, mal təhvil verilmir və abunəlik açılmır.',shortDescription:hosted?'Yalnız hesabınız üçün · Epoint ilə 1 ₼ real ödəniş':'Yalnız hesabınız üçün sınaq · 0 ₼ tutulur',brand:'Possistem',category:'Sınaq',categorySlug:'sinaq',parentCategory:'Ticarət avadanlıqları',parentCategorySlug:'ticaret-avadanliqlari',subCategory:'Sınaq',image,images:[image],inStock:true,stockQuantity:10,isHotDeal:false,price:p.price_minor/100,isTest:true};
 }
 function serialize(row:Row){return {id:row.id,orderNo:'TEST-'+row.id.slice(0,8).toUpperCase(),productId:row.product_id,qty:row.qty,amountMinor:row.amount_minor,status:row.status,createdAt:row.created_at,mode:'simulation' as const,chargedMinor:0,currency:'AZN',provider:null};}
@@ -34,9 +34,10 @@ export async function testShopContext(db:Db,req:FastifyRequest){
  const actor=testActor(req),p=await testCatalogProduct(db,req);
  if(!actor||!p)throw new BillingError('test_not_found','Sınaq məhsulu tapılmadı.',404);
  const rows=await query<Row>(db,sql`SELECT * FROM billing_test_orders WHERE actor_kind=${actor.kind} AND actor_id=${actor.id}::uuid ORDER BY created_at DESC LIMIT 10`);
- const hosted=p.price===1?hostedTestPayment():null;
- const receipt=hosted?(await query<{paid_at:string|Date;provider_invoice_id:string}>(db,sql`SELECT paid_at,provider_invoice_id FROM billing_private_hosted_receipts WHERE invoice_url_sha256=${createHash('sha256').update(hosted.url).digest('hex')} AND product_id=${p.id} AND amount_minor=${hosted.amountMinor} AND currency='AZN'`))[0]:null;
- return {mode:'simulation',email:actor.email,csrfToken:actor.csrf,product:p,hostedPayment:hosted?{...hosted,url:receipt?null:hosted.url,status:receipt?'paid':'awaiting_payment',paidAt:receipt?.paid_at??null,invoiceId:receipt?.provider_invoice_id??null}:null,orders:rows.map(serialize),notice:'Aşağıdakı simulyasiya Epoint-i çağırmır, kart məlumatı almır və real pul tutmur.'};
+ const repeatable=p.price===1?repeatableTestPayment():null,hosted=repeatable??(p.price===1?hostedTestPayment():null);
+ const receipt=hosted&&!repeatable?(await query<{paid_at:string|Date;provider_invoice_id:string}>(db,sql`SELECT paid_at,provider_invoice_id FROM billing_private_hosted_receipts WHERE invoice_url_sha256=${createHash('sha256').update(hosted.url).digest('hex')} AND product_id=${p.id} AND amount_minor=${hosted.amountMinor} AND currency='AZN'`))[0]:null;
+ const receipts=await query<{paid_at:string|Date;provider_invoice_id:string;amount_minor:number}>(db,sql`SELECT paid_at,provider_invoice_id,amount_minor FROM billing_private_hosted_receipts WHERE product_id=${p.id} AND currency='AZN' ORDER BY paid_at DESC LIMIT 10`);
+ return {mode:'simulation',email:actor.email,csrfToken:actor.csrf,product:p,hostedPayment:hosted?{...hosted,repeatable:!!repeatable,url:receipt?null:hosted.url,status:repeatable?'ready':receipt?'paid':'awaiting_payment',paidAt:receipt?.paid_at??null,invoiceId:receipt?.provider_invoice_id??null}:null,hostedReceipts:receipts.map(r=>({invoiceId:r.provider_invoice_id,paidAt:r.paid_at,amountMinor:r.amount_minor})),orders:rows.map(serialize),notice:'Aşağıdakı simulyasiya Epoint-i çağırmır, kart məlumatı almır və real pul tutmur.'};
 }
 export async function simulateCheckout(db:Db,req:FastifyRequest,input:{productId:string;qty:number;outcome:'success'|'failure';requestId:string}){
  const actor=testActor(req);

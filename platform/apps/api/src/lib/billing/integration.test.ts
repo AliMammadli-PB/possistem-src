@@ -279,6 +279,15 @@ test('manually verified hosted receipt closes the exact invoice without changing
   for(const table of ['billing_orders','billing_period_grants','billing_subscriptions','billing_test_orders'])assert.equal((await db.$client.unsafe('SELECT * FROM '+table)).length,0,table);
  }finally{if(prior===undefined)delete process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL;else process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL=prior;await app.close();}
 });
+test('reusable static checkout remains ready after prior verified payments, without inventing new paid records',async()=>{
+ const app=await privateTestApp(),prior=process.env.EPOINT_PRIVATE_TEST_REPEATABLE_PAYMENT_URL,url='https://epoint.az/az/inv/p/Static123';process.env.EPOINT_PRIVATE_TEST_REPEATABLE_PAYMENT_URL=url;
+ try{
+  await db.execute(sql`INSERT INTO billing_private_hosted_receipts(invoice_url_sha256,product_id,provider_invoice_id,provider_transaction_id,amount_minor,paid_at,verification_source) VALUES(${createHash('sha256').update(url).digest('hex')},'possistem-private-checkout-test','123','fixture-transaction',100,now(),'epoint_merchant_dashboard')`);
+  for(let i=0;i<3;i++){const response=await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}}),context=response.json();assert.equal(response.statusCode,200);assert.equal(context.hostedPayment.status,'ready');assert.equal(context.hostedPayment.repeatable,true);assert.equal(context.hostedPayment.url,url);assert.equal(context.hostedPayment.amountMinor,100);assert.equal(context.hostedPayment.paidAt,null);assert.equal(context.hostedReceipts.length,1);assert.equal(context.hostedReceipts[0].invoiceId,'123');}
+  for(const headers of [{},{authorization:'FixtureOther'}])assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers})).statusCode,404);
+  assert.equal((await query(db,sql`SELECT * FROM billing_private_hosted_receipts`)).length,1);assert.equal((await query(db,sql`SELECT * FROM billing_period_grants`)).length,0);assert.equal((await query(db,sql`SELECT * FROM billing_orders`)).length,0);assert.equal(sent.length,0);
+ }finally{if(prior===undefined)delete process.env.EPOINT_PRIVATE_TEST_REPEATABLE_PAYMENT_URL;else process.env.EPOINT_PRIVATE_TEST_REPEATABLE_PAYMENT_URL=prior;await app.close();}
+});
 test('keyless test checkout is CSRF-protected, idempotent and cannot write real payments, stock or subscriptions',async()=>{
  const {TEST_PRODUCT_ID}=await import('./test-shop.js'),app=await privateTestApp();
  const body={mode:'simulation',accepted:true,productId:TEST_PRODUCT_ID,qty:2,outcome:'success',requestId:randomUUID()};

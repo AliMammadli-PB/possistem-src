@@ -9,7 +9,7 @@ Bu ünvan mövcud **admin** hesabıdır. Hesabın parolu dəyişdirilməyib, eyn
 1. Mövcud admin hesabınızla daxil olun.
 2. [Məhsullar → Sınaq](https://possistem.az/mehsul/avadanliq/?q=S%C4%B1naq) səhifəsini açın.
 3. **Sınaq məhsulu — şəxsi kart ödənişi** kartında **Test sifarişi yarat** seçin. Birbaşa keçid: [Kartla ödəniş sınağı](https://possistem.az/odenis/sinaq/).
-4. **Epoint ilə real kart ödənişi** bölməsində faktura #291546 üçün **Ödənildi** görünür. Bu faktura artıq real 1 AZN ilə ödənilib; təkrar ödəniş düyməsi çıxarılıb.
+4. **Epoint ilə real kart ödənişi** bölməsində razılığı işarələyib **Yeni 1 ₼ kart ödənişi** seçin. Hər tamamladığınız sınaq real 1 AZN tutur. Sayta qayıdanda düymə növbəti ayrıca təsdiqlə yenidən işləyir. Əvvəlki #291546 ödənişi aşağıda ayrıca tarixçədədir.
 5. Pulsuz sınaqlar üçün **Pulsuz simulyasiya və əvvəlki sınaqlar** bölməsini açın. Bu bölmə real pul tutmur və son 10 simulyasiyanı göstərir.
 
 ## Real kart ödənişi — sonrakı yoxlama
@@ -53,3 +53,23 @@ Sınağı sonradan bağlamaq üçün yalnız `billing_test_products` daxilində 
 - Bu seçimi bağlamaq üçün env-dən `EPOINT_PRIVATE_TEST_PAYMENT_URL` silinib API yenidən başladılır; faktura ayrıca Epoint kabinetindən ləğv edilə bilər. Simulyasiya isə əvvəlki kimi ayrıca qalır.
 
 Real qəbzdən sonra əvvəlki Next yığımı `/var/www/possistem/.hosted-receipt-20261024/.next` altında saxlanıldı. Miqrasiyadan əvvəl DB ehtiyatı `backups/hosted-payment-20261024/pre-receipt-migration.dump` faylıdır (serverdə, root 0600).
+
+## Təkrar 1 AZN sınaqları — statik link
+
+Son istək: şəxsi test səhifəsindən hər dəfə yenidən 1 AZN kart ödənişi etmək.
+
+Epoint kabinetində **Statik** bölməsindən ayrıca **291552** linki yaradıldı. Məbləğ **1.00 AZN**, alıcı Ali Mammadli, təsvir təkrar şəxsi sınaqdır; abunəlik və avtomatik tutulma deyil. Telefon və email göndərişi edilmədi. Standart bir günlük son tarix providerin təqvimindən **24.10.2036** tarixinə dəyişdirildi və redaktə pəncərəsində yenidən oxunaraq saxlandığı təsdiqləndi.
+
+Eyni statik link iki ayrı girişsiz brauzer kontekstində açıldı: hər açılış PAŞA Bankda **ayrı əməliyyat identifikatoru** ilə **1.00 AZN** kart formasına keçdi. Agent kart daxil etmədi və bu iki yoxlamada tutulma təsdiqləmədi. Bu, real bank səhifəsinə təkrar keçidi təsdiqləyir; sonrakı tutulmaların uğuru müştərinin bank təsdiqindən asılıdır.
+
+- Yeni qorunan konfiqurasiya: `EPOINT_PRIVATE_TEST_REPEATABLE_PAYMENT_URL`. URL repo/HTML-ə yazılmır, yalnız icazəli checkout context-dən qaytarılır. Əvvəlki bir dəfəlik konfiqurasiya və #291546 qəbzi saxlanılır.
+- Statik link olduqda context `repeatable: true`, `status: ready` qaytarır. Əvvəlki real qəbzlər yeni ödəniş girişini bağlamır və hazır girişin özü ödənilmiş sayılmır.
+- **Yeni 1 ₼ kart ödənişi** düyməsi ayrıca razılıqdan sonra context-i yenidən yoxlayıb Epoint-ə keçir. Geri qayıdanda razılıq sıfırlanır; istənilən növbəti sınaq üçün yenidən işarələnir. Avtomatik tutulma yoxdur.
+- Keçmiş təsdiqlənmiş qəbzlər ayrıca **Yoxlanılmış əvvəlki ödənişlər** altında qalır. Yeni bank ödənişləri bu tarixçəyə avtomatik əlavə olunmuş kimi göstərilmir; API məxfi açarı olmadan merchant kabinetində ayrıca doğrulama tələb olunur. Epoint öz bank qəbzini göstərir.
+- Statik linki açmaq, context oxumaq və sınağı təkrarlamaq saytın real sifarişini, stokunu və ya ödənilmiş abunəlik müddətini yaratmır.
+- Yeni DB miqrasiyası yoxdur. API və sayt production build-ləri keçdi, ayrı PostgreSQL bazasında **31 test** keçdi. Yeni ssenarilər: ayrıca statik URL yoxlaması; əvvəlki qəbzlə belə təkrar girişin hazır qalması, şəxsi girişin qorunması və əsassız maliyyə qeydi yazılmaması.
+- API əvvəlki yığımı və env ehtiyatı serverdə `backups/repeatable-payment-20261024/`, əvvəlki sayt yığımı `.repeatable-payment-20261024/.next` altında saxlanılır.
+
+İstifadə: [şəxsi sınaq səhifəsi](https://possistem.az/odenis/sinaq/) → 1 AZN təsdiqi → **Yeni 1 ₼ kart ödənişi** → Epoint-də **Ödəniş** → bank təsdiqi. Başqa sınaq üçün sayta qayıdın. Hər tamamlanan sınaq həqiqətən 1 AZN tutur.
+
+Canlı saytda Chromium 151.0.7922.34 ilə 360/390/1366 px, anonim/çıxış 404, əvvəlki qəbzin saxlanılması və sayt → Epoint → geri dönüş ardıcıl iki dəfə yoxlanıldı. Hər geri dönüşdə yeni razılıq tələb olunur. JavaScript xətası və üfüqi daşma yoxdur. Ekranlar iş sahəsində `artifacts/epoint-repeatable-payment-20261024/` altındadır. Müvəqqəti yoxlama sessiyası və Epoint giriş sessiyası təmizləndi.

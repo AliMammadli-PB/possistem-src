@@ -8,3 +8,9 @@ export function hostedTestPayment(raw=process.env.EPOINT_PRIVATE_TEST_PAYMENT_UR
   return {url:url.href,amountMinor:100,currency:'AZN' as const,verification:'manual' as const};
  }catch{return null;}
 }
+// Only configure this after confirming it is a reusable static merchant link.
+// A single-invoice receipt must never disable this separate payment entry.
+export function repeatableTestPayment(raw=process.env.EPOINT_PRIVATE_TEST_REPEATABLE_PAYMENT_URL){
+ const payment=hostedTestPayment(raw??'');
+ return payment?{...payment,repeatable:true as const}:null;
+}
