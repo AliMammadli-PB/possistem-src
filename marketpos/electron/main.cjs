@@ -405,7 +405,8 @@ async function createEncryptedBackup(reason = 'manual') {
 
 function assertTrusted(event) {
   const url = event.senderFrame?.url || '';
-  if (!url.startsWith(APP_ORIGIN)) throw new Error('Etibarsız tətbiq sorğusu');
+  let trusted=false;try{const a=new URL(url),b=new URL(APP_ORIGIN);trusted=a.protocol===b.protocol&&a.hostname===b.hostname&&a.port===b.port&&!a.username&&!a.password;}catch{}
+  if (!trusted || !mainWindow || event.sender !== mainWindow.webContents) throw new Error('Etibarsız tətbiq sorğusu');
 }
 
 /**
@@ -947,6 +948,7 @@ async function initAutoUpdater() {
     autoUpdater.on('download-progress', (p) => setUpdateStatus({ state: 'downloading', percent: Math.round(p.percent) }));
     autoUpdater.on('update-downloaded', (info) => setUpdateStatus({ state: 'downloaded', version: info.version }));
     autoUpdater.on('error', updateErrorStatus);
+  require('./secure-updater.cjs').attach(autoUpdater,{app:'market',feed:UPDATE_URL});
     setTimeout(() => void autoUpdater.checkForUpdates().catch(() => {}), 8000);
     setInterval(() => void autoUpdater.checkForUpdates().catch(() => {}), 30 * 60 * 1000);
   } catch (error) { updateErrorStatus(error); }
@@ -1096,6 +1098,7 @@ async function forgetPreviousAccount(state) {
 }
 
 function registerIpc() {
+  require('./ipc-budget.cjs').install(ipcMain);
   ipcMain.handle('market:billing:status',async event=>{
     assertTrusted(event);const state=loadSecureState();if(!state.tenant?.token)throw Error('Hesaba daxil olun');
     const response=await fetch(controlApi('/billing/desktop/status'),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+state.tenant.token},body:JSON.stringify({product:'market'}),signal:AbortSignal.timeout(10000)});
@@ -1975,7 +1978,7 @@ function createWindow() {
   });
   mainWindow.setMenu(null);
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  mainWindow.webContents.on('will-navigate', (event, url) => { if (!url.startsWith(APP_ORIGIN)) event.preventDefault(); });
+  mainWindow.webContents.on('will-navigate', (event, url) => { try { const a=new URL(url),b=new URL(APP_ORIGIN); if(a.protocol!==b.protocol||a.hostname!==b.hostname||a.port!==b.port||a.username||a.password)event.preventDefault(); }catch{event.preventDefault();} });
   mainWindow.webContents.on('before-input-event', (event, input) => { if (input.type === 'keyDown' && input.key === 'F11') { event.preventDefault(); toggleFullscreen(); } });
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => { if (level >= 2) console.error(`[renderer] ${message} (${sourceId}:${line})`); });
   mainWindow.webContents.on('did-fail-load', (_event, code, description, url) => console.error(`[renderer] load failed ${code}: ${description} (${url})`));

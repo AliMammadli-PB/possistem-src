@@ -46,13 +46,14 @@ async function complete(orderId:string,overrides:Record<string,unknown>={}){
   return billing.callback(data,sign(data,config.privateKey));
 }
 before(async()=>{
-  await db.$client.unsafe('CREATE TABLE customers(id uuid PRIMARY KEY,name text,email text,active boolean DEFAULT true); CREATE TABLE licenses(id uuid PRIMARY KEY,customer_id uuid REFERENCES customers(id),plan text,features jsonb,status text,valid_until timestamptz,updated_at timestamptz DEFAULT now()); CREATE TABLE activation_keys(id uuid PRIMARY KEY,license_id uuid REFERENCES licenses(id),expires_at timestamptz,revoked_at timestamptz);');
+  await db.$client.unsafe('CREATE TABLE customers(id uuid PRIMARY KEY,name text,email text,active boolean DEFAULT true,password_hash text); CREATE TABLE customer_sessions(id uuid,customer_id uuid); CREATE TABLE licenses(id uuid PRIMARY KEY,customer_id uuid REFERENCES customers(id),plan text,features jsonb,status text,valid_until timestamptz,updated_at timestamptz DEFAULT now()); CREATE TABLE activation_keys(id uuid PRIMARY KEY,license_id uuid REFERENCES licenses(id),expires_at timestamptz,revoked_at timestamptz);');
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0042_epoint_billing.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0043_security_subscription_rollout.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
   await db.$client.unsafe('TRUNCATE billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
   await db.execute(sql`INSERT INTO customers(id,name,email) VALUES(${cid}::uuid,'Fixture owner','fixture@example.invalid'),(${other}::uuid,'Other owner','other@example.invalid')`);
-  await db.execute(sql`UPDATE billing_settings SET enabled=true,recurring_enabled=true,pickup_address='Fixture pickup',delivery_fee_minor=NULL,legal='{"version":"v1"}'::jsonb`);
+  await db.execute(sql`UPDATE billing_settings SET enforcement_enabled=true,enabled=true,recurring_enabled=true,pickup_address='Fixture pickup',delivery_fee_minor=NULL,legal='{"version":"v1"}'::jsonb`);
   sent=[];responseMode='redirect';
 });
 after(async()=>{await db.$client.end();rmSync(temporary,{recursive:true,force:true});});
@@ -182,4 +183,57 @@ test('account removal archives billing history and disables further renewals',as
  assert.equal((await query(db,sql`SELECT * FROM billing_orders WHERE id=${o.id}::uuid`)).length,1);
  const [l]=await query<{status:string}>(db,sql`SELECT status FROM licenses WHERE customer_id=${cid}::uuid`);assert.equal(l!.status,'revoked');
  sent=[];await billing.renew(sid);assert.equal(sent.length,0);
+});
+
+test('self-registration and registration OTP are blocked before any account write',async()=>{
+ const {default:Fastify}=await import('fastify'),{customerAuthRoutes}=await import('../../routes/customer-auth.js');
+ const app=Fastify();app.decorate('db',db);await app.register(customerAuthRoutes,{prefix:'/pos/api'});
+ try{
+  for(const [url,payload] of [['/customer-auth/register',{}],['/customer-auth/check-email',{email:'fixture@example.invalid'}],['/customer-auth/otp/send',{email:'new@example.invalid',purpose:'register'}]] as const){
+   const r=await app.inject({method:'POST',url:'/pos/api'+url,payload});assert.equal(r.statusCode,403,r.body);assert.equal(r.json().code,'REGISTRATION_DISABLED');
+  }
+  assert.equal((await query(db,sql`SELECT id FROM customers`)).length,2);
+ }finally{await app.close();}
+});
+test('signed sessions reject password-change replay, durable revocation, tampering and disabled accounts',async()=>{
+ const {default:Fastify}=await import('fastify'),{tenantRequestGuard,resolveTenantToken}=await import('../../routes/tenant.js'),{env}=await import('../../env.js');
+ const {createHmac,createHash}=await import('node:crypto');
+ const make=(iat=Date.now(),client='owner')=>{const b=Buffer.from(JSON.stringify({customerId:cid,email:'fixture@example.invalid',client,iat,exp:Date.now()+3600000,jti:randomUUID()})).toString('base64url');return 't1.'+b+'.'+createHmac('sha256',env.sessionSecret).update(b).digest('base64url');};
+ const app=Fastify();app.decorate('db',db);app.addHook('preHandler',async(r,p)=>tenantRequestGuard(app,r,p));app.get('/probe',async(r,p)=>resolveTenantToken(r.headers.authorization?.slice(7))?{ok:true}:p.code(401).send({error:'Unauthorized'}));
+ const get=(t:string)=>app.inject({url:'/probe',headers:{authorization:'Bearer '+t}});
+ try{
+  const original=make();assert.equal((await get(original)).statusCode,200);
+  assert.equal((await get(original+'x')).statusCode,401);
+  assert.equal((await get(make(Date.now(),'billing'))).statusCode,401);
+  await db.execute(sql`INSERT INTO customer_sessions(id,customer_id) VALUES(${randomUUID()}::uuid,${cid}::uuid)`);
+  await new Promise(r=>setTimeout(r,5));await db.execute(sql`UPDATE customers SET password_hash='fixture-changed-hash' WHERE id=${cid}::uuid`);
+  assert.equal((await get(original)).statusCode,401);assert.equal((await query(db,sql`SELECT * FROM customer_sessions WHERE customer_id=${cid}::uuid`)).length,0);
+  const fresh=make();assert.equal((await get(fresh)).statusCode,200);
+  await db.execute(sql`INSERT INTO tenant_session_revocations(token_hash,expires_at) VALUES(${createHash('sha256').update(fresh).digest('hex')},now()+interval '1 hour')`);
+  assert.equal((await get(fresh)).statusCode,401);
+  const another=make();await db.execute(sql`UPDATE customers SET active=false WHERE id=${cid}::uuid`);assert.equal((await get(another)).statusCode,401);
+ }finally{await app.close();}
+});
+test('setup access is a bounded lease and does not create a payment or paid period',async()=>{
+ const {licenseBilling}=await import('./service.js');const {lid}=await seed();
+ await db.execute(sql`UPDATE billing_settings SET enforcement_enabled=false,enabled=false`);
+ const b=await licenseBilling(db,lid);assert.equal(b?.billingEnforced,false);assert.equal(b?.paidUntil,null);assert.equal(b?.billingStatus,'awaiting_payment');
+ assert.ok(new Date(b!.accessUntil!).getTime()>Date.now()+6*86400000);
+ assert.equal((await query(db,sql`SELECT id FROM billing_orders`)).length,0);
+ assert.equal((await query(db,sql`SELECT order_id FROM billing_period_grants`)).length,0);
+});
+
+test('logout only stores verified sessions and persists revocation for a fresh process',async()=>{
+ const {default:Fastify}=await import('fastify'),{tenantRoutes}=await import('../../routes/tenant.js'),{env}=await import('../../env.js');
+ const {createHmac,createHash}=await import('node:crypto');
+ const app=Fastify();app.decorate('db',db);await app.register(tenantRoutes);
+ try{
+  const before=(await query(db,sql`SELECT token_hash FROM tenant_session_revocations`)).length;
+  const bad=await app.inject({method:'POST',url:'/tenant/logout',headers:{authorization:'Bearer t1.invalid.forged'}});assert.equal(bad.statusCode,200);
+  assert.equal((await query(db,sql`SELECT token_hash FROM tenant_session_revocations`)).length,before);
+  const payload=Buffer.from(JSON.stringify({customerId:cid,email:'fixture@example.invalid',client:'owner',iat:Date.now(),exp:Date.now()+3600000,jti:randomUUID()})).toString('base64url');
+  const token='t1.'+payload+'.'+createHmac('sha256',env.sessionSecret).update(payload).digest('base64url');
+  const good=await app.inject({method:'POST',url:'/tenant/logout',headers:{authorization:'Bearer '+token}});assert.equal(good.statusCode,200);
+  const hash=createHash('sha256').update(token).digest('hex');assert.equal((await query(db,sql`SELECT token_hash FROM tenant_session_revocations WHERE token_hash=${hash}`)).length,1);
+ }finally{await app.close();}
 });

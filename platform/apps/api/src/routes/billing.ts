@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { env } from '../env.js';
 import { requireCustomer } from '../plugins/customer-auth.js';
 import { requireSuperadmin, currentUser } from '../plugins/auth.js';
@@ -110,7 +110,8 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     const config=epointConfig();return {settings:await billing.settings(),configured:Boolean(config),liveVerified:Boolean(config?.liveVerified),callbackUrl:'https://possistem.az/pos/api/billing/epoint/callback'};
   }));
   app.patch('/admin/billing/settings',admin(async(actor,req)=>{
-    const b=z.object({enabled:z.boolean(),recurringEnabled:z.boolean(),pickupAddress:z.string().trim().max(1000),deliveryFeeMinor:z.number().int().min(0).max(MAX_MINOR).nullable(),legal:z.object({version:z.string().trim().max(100),sellerName:z.string().trim().max(300),voen:z.string().trim().max(30),address:z.string().trim().max(1000),phone:z.string().trim().max(50),subscriptionTerms:z.string().max(20000),refundTerms:z.string().max(20000),deliveryTerms:z.string().max(20000),privacyPolicy:z.string().max(20000)})}).parse(req.body);
+    const b=z.object({enabled:z.boolean(),recurringEnabled:z.boolean(),enforcementEnabled:z.boolean().default(false),pickupAddress:z.string().trim().max(1000),deliveryFeeMinor:z.number().int().min(0).max(MAX_MINOR).nullable(),legal:z.object({version:z.string().trim().max(100),sellerName:z.string().trim().max(300),voen:z.string().trim().max(30),address:z.string().trim().max(1000),phone:z.string().trim().max(50),subscriptionTerms:z.string().max(20000),refundTerms:z.string().max(20000),deliveryTerms:z.string().max(20000),privacyPolicy:z.string().max(20000)})}).parse(req.body);
+    if(b.enforcementEnabled&&!b.enabled)throw new BillingError('enforcement_requires_payments','Məcburi abunəlik üçün yoxlanılmış onlayn ödəniş açıq olmalıdır.');
     if(b.enabled){
       const config=epointConfig();if(!config?.liveVerified)throw new BillingError('live_not_verified','Epoint açarları və real bank yoxlaması serverdə təsdiqlənməlidir.');
       if(Object.values(b.legal).some(v=>!v.trim())||!b.pickupAddress)throw new BillingError('legal_required','Satıcı məlumatları və ödəniş şərtlərini tamamlayın.');
@@ -124,7 +125,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
         if(previous?.legal.version===b.legal.version&&!same(previous.legal))throw new BillingError('terms_version_used','Şərtlərin yeni versiyasını yazın.');
         await tx.execute(sql`INSERT INTO billing_terms(version,content) VALUES(${b.legal.version},${JSON.stringify(b.legal)}::jsonb) ON CONFLICT DO NOTHING`);
       }
-      await tx.execute(sql`UPDATE billing_settings SET enabled=${b.enabled},recurring_enabled=${b.recurringEnabled},pickup_address=${b.pickupAddress},delivery_fee_minor=${b.deliveryFeeMinor},legal=${JSON.stringify(b.legal)}::jsonb,updated_at=now() WHERE id=true`);
+      await tx.execute(sql`UPDATE billing_settings SET enforcement_enabled=${b.enforcementEnabled},enabled=${b.enabled},recurring_enabled=${b.recurringEnabled},pickup_address=${b.pickupAddress},delivery_fee_minor=${b.deliveryFeeMinor},legal=${JSON.stringify(b.legal)}::jsonb,updated_at=now() WHERE id=true`);
       await event(tx,actor,'billing.settings','settings',{enabled:b.enabled,recurringEnabled:b.recurringEnabled,termsVersion:b.legal.version});
     });return {ok:true};
   }));

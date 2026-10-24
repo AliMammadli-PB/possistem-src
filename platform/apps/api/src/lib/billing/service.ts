@@ -13,7 +13,7 @@ type Order = {
   consent_id:string|null; save_card_consent:boolean; expires_at:string|Date|null;
 };
 type Attempt = {id:string;order_id:string;provider_order_id:string;kind:string;status:string;transaction_id:string|null;redirect_url:string|null;created_at:string|Date};
-export type Settings = {enabled:boolean;recurring_enabled:boolean;pickup_address:string;delivery_fee_minor:number|string|null;legal:Record<string,unknown>};
+export type Settings = {enforcement_enabled:boolean;enabled:boolean;recurring_enabled:boolean;pickup_address:string;delivery_fee_minor:number|string|null;legal:Record<string,unknown>};
 export type Shipping = {kind:'pickup'|'delivery';name:string;phone:string;address:string};
 type QuotePayload = {items:{id:string;name:string;qty:number;unitPriceMinor:number}[];shipping:Shipping;deliveryFeeMinor:number;partnerProof?:string;termsVersion:string};
 const iso=(value:string|Date)=>new Date(value).toISOString();
@@ -36,9 +36,9 @@ export class Billing {
   }
 
   async listSubscriptions(customerId:string){
-    const rows=await query<Subscription>(this.db,sql`SELECT * FROM billing_subscriptions WHERE customer_id=${customerId}::uuid ORDER BY product`);
+    const rows=await query<Subscription & {has_paid_subscription:boolean}>(this.db,sql`SELECT s.*,EXISTS(SELECT 1 FROM billing_period_grants g WHERE g.subscription_id=s.id) AS has_paid_subscription FROM billing_subscriptions s WHERE s.customer_id=${customerId}::uuid ORDER BY product`);
     const settings=await this.settings(),gateway=this.gateway();
-    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),priceVersion:s.price_version,autoRenew:s.auto_renew,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
+    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,hasPaidSubscription:s.has_paid_subscription,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),setupAccess:!settings.enforcement_enabled,priceVersion:s.price_version,autoRenew:s.auto_renew,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),enforcementEnabled:settings.enforcement_enabled,recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
   }
 
   async configureSubscription(actor:string,input:{customerId:string;product:string;monthlyAmountMinor:number;enabled:boolean;startsAt?:string}){
@@ -439,8 +439,10 @@ export class Billing {
 }
 
 export async function licenseBilling(db:Executor,licenseId:string){
+  const [settings]=await query<Settings>(db,sql`SELECT * FROM billing_settings WHERE id=true`);
+  const enforced=Boolean(settings?.enforcement_enabled&&settings.enabled&&epointConfig()?.liveVerified);
   const [sub]=await query<Subscription>(db,sql`SELECT s.* FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id WHERE b.license_id=${licenseId}::uuid AND s.enabled=true`);
-  return sub?{billingStatus:subscriptionState(sub.enabled,sub.paid_until),paidUntil:sub.paid_until?iso(sub.paid_until):null,monthlyAmountMinor:Number(sub.monthly_amount_minor),subscriptionId:sub.id,paymentUrl:billUrl}:null;
+  return sub?{billingEnforced:enforced,accessUntil:!enforced?new Date(Date.now()+7*86400000).toISOString():null,billingStatus:subscriptionState(sub.enabled,sub.paid_until),paidUntil:sub.paid_until?iso(sub.paid_until):null,monthlyAmountMinor:Number(sub.monthly_amount_minor),subscriptionId:sub.id,paymentUrl:billUrl}:null;
 }
 
 export function startBillingWorker(billing:Billing,log:{warn:(data:unknown,message:string)=>void}){

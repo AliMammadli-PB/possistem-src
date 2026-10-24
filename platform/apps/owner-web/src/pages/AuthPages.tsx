@@ -177,11 +177,6 @@ export function LoginPage() {
     setInfo('');
     setBusy(true);
     try {
-      const check = await api.checkEmail(email.trim());
-      if (!check.exists) {
-        setError('Bu e-poçtla hesab tapılmadı. Əvvəlcə hesab yaradın.');
-        return;
-      }
       const result = await api.sendOtp(email.trim(), 'login');
       setOtpSent(true);
       setInfo(result.message);
@@ -247,7 +242,7 @@ export function LoginPage() {
           )}
         </form>
       )}
-      <p className="auth-switch">Hesabınız yoxdur? <Link to="/register">Hesab yaradın</Link></p>
+      <p className="auth-switch">Müştəri hesabını administrator yaradır. Sizə verilmiş hesabla daxil olun.</p>
     </AuthShell>
   );
 }
@@ -379,8 +374,7 @@ export function ForgotPasswordPage() {
     setError('');
     setChecked(null);
     try {
-      const result = await checkEmail(email.trim());
-      setChecked(result);
+      setChecked({exists:true,message:'Hesab mövcuddursa, seçdiyiniz bərpa üsulu ilə təlimat göndəriləcək.'});
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Yoxlama alınmadı.');
     } finally {
@@ -419,7 +413,7 @@ export function ForgotPasswordPage() {
       {sent === 'reset' ? (
         <SuccessState
           title="E-poçtunuzu yoxlayın"
-          description="Şifrə yeniləmə keçidi göndərildi. Keçid 30 dəqiqə etibarlıdır. Spam qovluğunu da yoxlayın."
+          description="Hesab mövcuddursa, şifrə yeniləmə keçidi göndərildi. Spam qovluğunu da yoxlayın."
           action={<LinkButton to="/login" variant="primary">Girişə qayıdın</LinkButton>}
         />
       ) : sent === 'otp' ? (
@@ -438,7 +432,7 @@ export function ForgotPasswordPage() {
             </form>
           ) : checked.exists ? (
             <div className="auth-form">
-              <Alert tone="info" title="Hesab tapıldı">{checked.message}</Alert>
+              <Alert tone="info" title="Girişin bərpası">{checked.message}</Alert>
               <Button type="button" variant="primary" loading={busy} onClick={() => void sendReset()}>Şifrəmi dəyiş (keçid göndər)</Button>
               <Button type="button" variant="secondary" loading={busy} onClick={() => void sendLoginCode()}>Giriş kodu göndər</Button>
               <Button type="button" variant="ghost" onClick={() => navigate('/login')}>Şifrəmlə daxil ol</Button>

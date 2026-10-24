@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, BarChart3, Boxes, Check,
-  ChevronRight, CircleDollarSign, Cloud, CloudOff, 
+  ChevronRight, CircleDollarSign, Cloud, CloudOff,
   Expand, FileClock, LockKeyhole, LogOut, Minus,
   PackageSearch, Pause, Plus, ReceiptText,
   RotateCcw, Settings, ShieldCheck, ShoppingBag,
@@ -24,6 +24,7 @@ import {
   CustomersPage, FiscalBadge, PlatformStubsPage,
   RegistersOpsPage, ReportsOpsPage,
 } from './RetailOpsPanels';
+import { ProductWorkPage } from './ProductWorkPage';
 import { OperationsWorkspace } from './OperationsWorkspace';
 import { ManagementPage } from './ManagementPage';
 import { ReturnsPage } from './ReturnsPage';
@@ -125,6 +126,7 @@ function narrowByStation(access: string[] | null, station: string | undefined): 
 
 
 export default function App() {
+  const [operationsInitial,setOperationsInitial]=useState('catalog');
   const [legacyState] = useState(() => readPersistedState(localStorage, STORE_KEY));
   const [state, setState] = useState<PersistedState>(() => (marketCoreClient.available() ? null : legacyState) ?? createInitialState());
   const [coreReady, setCoreReady] = useState(false);
@@ -657,6 +659,8 @@ export default function App() {
     // latest quantities are pulled in behind it (the core announces the change
     // and the screen refreshes) - waiting for that here is what made Satış open
     // late, or not at all when the sync failed.
+    if((next==='settings'||next==='management')&&viewAllowed('ops')){setOperationsInitial(next);setView('ops');return;}
+    if(next==='ops')setOperationsInitial('catalog');
     setView(next);
     if (next !== 'sale' || view === 'sale' || !coreReady) return;
     void (async () => {
@@ -721,7 +725,7 @@ export default function App() {
     <div className="market-shell">
       <aside className="rail">
         <button className="brand-mark" onClick={() => safeSetView('dashboard')} aria-label="MarketPos ana səhifə"><span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" /></span><span>MarketPos</span></button>
-        <nav>{nav.filter(({ id }) => allowedViews.includes(id) || id === 'returns' && allowedViews.includes('sale')).map(({ id, icon: Icon }) => <button key={id} data-view={id} className={view === id || (id === 'management' && view === 'branches') ? 'active' : ''} onClick={() => safeSetView(id)} title={viewLabel(id, lang)}><Icon /><span>{viewLabel(id, lang)}</span></button>)}</nav>
+        <nav>{nav.filter(({ id }) => !['settings','management'].includes(id) && (allowedViews.includes(id) || id === 'returns' && allowedViews.includes('sale'))).map(({ id, icon: Icon }) => <button key={id} data-view={id} className={view === id || (id === 'management' && view === 'branches') ? 'active' : ''} onClick={() => safeSetView(id)} title={viewLabel(id, lang)}><Icon /><span>{viewLabel(id, lang)}</span></button>)}</nav>
         <button className="rail-user" type="button" onClick={() => void logout()} title={t('logout')} aria-label={t('logout')}>
           <RoleAvatar role={session.role} name={session.name} compact />
           <span><b>{session.name}</b><small>{t('logout')}</small></span>
@@ -747,7 +751,12 @@ export default function App() {
           {view === 'sale' && <SalePage canDiscount={has(['SALE_DISCOUNT'])} state={state} setState={setState} session={session} lang={lang} cart={cart} setCart={setCart} cloudConnected={cloudConnected} notify={setNotice} coreReady={coreReady} onRefresh={refreshFromCore} audit={mutate} />}
           {view === 'management' && <ManagementPage lang={lang} views={allowedViews} onView={safeSetView}/> }
           {view === 'branches' && (session.role === 'manager' || superAdmin) && <iframe className="ops-frame branch-hub-frame" title={t('branches')} src={`./cloud-branches/hub.html?lang=${lang}${superAdmin ? '' : '&locked=1'}`}/> }
-          {['ops','registers','staff'].includes(view) && <OperationsWorkspace key={view + (remote?.deviceId ?? '') + (stockView ? JSON.stringify(stockView) : '')} remote={view === 'ops' ? remote : null} stockView={view === 'ops' ? stockView : null} can={has} objectSwitch={view === 'ops' ? objectSwitch : null} session={session} lang={lang} notify={setNotice} initial={view === 'registers' ? 'registers' : view === 'staff' ? 'users' : 'warehouse'} canUsers={userAdmin || superAdmin} registers={<RegistersOpsPage state={state} staff={staff} session={session} lang={lang} coreReady={coreReady} onAdd={() => setRegisterModal(true)} onToggle={toggleRegister} onRefresh={refreshFromCore} notify={setNotice}/>} users={<><UsersPage session={session} canManage={userAdmin} staff={staff} lang={lang} onChanged={setStaff} notify={setNotice}/>{session.role === 'manager' && <RolePermissionsPanel actorRole={session.role} superAdmin={superAdmin} sessionToken={session.sessionToken} lang={lang}/>}</>} />}
+          {<div hidden={!['ops','registers','staff'].includes(view)} style={{height:'100%',minHeight:0}}><OperationsWorkspace key={ (remote?.deviceId ?? '') + (stockView ? JSON.stringify(stockView) : '')} remote={view === 'ops' ? remote : null} stockView={view === 'ops' ? stockView : null} can={has} objectSwitch={view === 'ops' ? objectSwitch : null} session={session} lang={lang} notify={setNotice} extraSections={[...(has(['CREATE_PRODUCT'])&&has(['OPS_GOODS'])&&coreReady?[{id:'new-product',name:'Yeni məhsul',content:<ProductWorkPage state={state} session={session} lang={lang} onRefresh={refreshFromCore} notify={setNotice}/>}]:[]),...(allowedViews.includes('settings')&&viewAllowed('settings')?[{id:'settings',name:viewLabel('settings',lang),content:<SettingsPage deviceInfo={deviceInfo} extra={branchAdmin} onBarcodeProduct={(product) => setState(previous => ({ ...previous, products: previous.products.map(p => p.id === product.id ? product : p) }))} state={state} session={session} lang={lang} coreReady={coreReady} notify={setNotice} onSettings={async (settings) => {
+                if (coreReady && marketCoreClient.available()) {
+                  await marketCoreClient.settings.set(settings, session.id);
+                  await refreshFromCore();
+                } else mutate((previous) => ({ ...previous, settings }), 'SETTINGS_SAVE', settings.storeName);
+          }} />}]:[]),...(allowedViews.includes('management')&&viewAllowed('management')?[{id:'management',name:viewLabel('management',lang),content:<ManagementPage lang={lang} views={allowedViews} onView={safeSetView}/>}]:[])]} initial={view === 'registers' ? 'registers' : view === 'staff' ? 'users' : operationsInitial} canUsers={userAdmin || superAdmin} registers={<RegistersOpsPage state={state} staff={staff} session={session} lang={lang} coreReady={coreReady} onAdd={() => setRegisterModal(true)} onToggle={toggleRegister} onRefresh={refreshFromCore} notify={setNotice}/>} users={<><UsersPage session={session} canManage={userAdmin} staff={staff} lang={lang} onChanged={setStaff} notify={setNotice}/>{session.role === 'manager' && <RolePermissionsPanel actorRole={session.role} superAdmin={superAdmin} sessionToken={session.sessionToken} lang={lang}/>}</>} /></div>}
           {view === 'returns' && <ReturnsPage state={state} staff={staff} lang={lang} coreReady={coreReady} onRefund={refundSale} />}
           {view === 'reports' && <ReportsOpsPage state={state} staff={staff} lang={lang} coreReady={coreReady} />}
           {view === 'customers' && <CustomersPage session={session} lang={lang} coreReady={coreReady} notify={setNotice} />}
@@ -1456,7 +1465,7 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
 
   return (
     <div className={`sale-layout ${state.settings.showProductImages === true ? "" : "sale-without-images"}`}>
-      <SaleCatalog showImages={state.settings.showProductImages === true} products={products} lang={lang} warehouseId={warehouseId} cloudConnected={cloudConnected} scannerEnabled={!paymentOpen && !paying} onAdd={add} onScan={scan} onNewSale={newSale}/>
+      <SaleCatalog showImages={state.settings.showProductImages === true} products={products} sales={state.sales} quickKey={session.id} lang={lang} warehouseId={warehouseId} cloudConnected={cloudConnected} scannerEnabled={!paymentOpen && !paying} onAdd={add} onScan={scan} onNewSale={newSale}/>
       {voidAsk && <ManagerApprovalModal lang={lang} title={`${voidAsk.title} · ${voidAsk.line.name}`} onClose={() => setVoidAsk(null)} onApproved={async (pin) => {
         if(voidAsk.held){
           if(coreReady&&marketCoreClient.available()){await marketCoreClient.sales.cancelHeld(voidAsk.held.id,session.id,session.role,{managerPin:pin});await onRefresh();}
@@ -1556,9 +1565,9 @@ function MobilePage({ state, staff, lang, cloudConnected }: { state: PersistedSt
 }
 
 function MarketBilling({compact=false}:{compact?:boolean}){
- const [data,setData]=useState<{subscriptions:{monthlyAmountMinor:number;paidUntil:string|null;state:string}[];billingOnly:boolean}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const [data,setData]=useState<{subscriptions:{monthlyAmountMinor:number;paidUntil:string|null;state:string;hasPaidSubscription?:boolean}[];billingOnly:boolean;paymentsAvailable:boolean;enforcementEnabled?:boolean}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  useEffect(()=>{if(!window.marketSystem?.billing)return;let alive=true;const load=()=>window.marketSystem!.billing.status().then(d=>{if(alive)setData(d);}).catch(()=>{});void load();const t=setInterval(()=>{if(document.visibilityState==='visible')void load();},15000);return()=>{alive=false;clearInterval(t);};},[]);
  const sub=data?.subscriptions[0];if(!sub)return null;
- if(compact&&sub.state==='active')return null;
- return <aside style={{padding:'12px 18px',background:'#eaf2ff',color:'#173c75',border:'1px solid #bad1f4',borderRadius:8,fontSize:13,display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',gridColumn:'1 / -1'}}><strong>Market POS · {(sub.monthlyAmountMinor/100).toFixed(2)} ₼ / ay</strong><span>{sub.state==='active'?'Ödənilib · '+(sub.paidUntil?new Date(sub.paidUntil).toLocaleString():''):'İstifadə üçün ödəniş tələb olunur'}</span><button type="button" disabled={busy} onClick={()=>{setBusy(true);setError('');void window.marketSystem?.billing.open().catch(e=>setError(String(e.message||e))).finally(()=>setBusy(false));}}>Ödənişə keç</button>{data?.billingOnly&&sub.state==='active'&&<span>Ödəniş təsdiqləndi. Hesabdan çıxıb yenidən daxil olun.</span>}{error&&<span role="alert">{error}</span>}</aside>;
+ if(compact&&sub.state==='active'&&sub.hasPaidSubscription)return null;
+ return <aside style={{padding:'12px 18px',background:'#eaf2ff',color:'#173c75',border:'1px solid #bad1f4',borderRadius:8,fontSize:13,display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',gridColumn:'1 / -1'}}><strong>Market POS · {(sub.monthlyAmountMinor/100).toFixed(2)} ₼ / ay</strong><span>{sub.state==='active'&&sub.hasPaidSubscription?'Ödənilib · '+(sub.paidUntil?new Date(sub.paidUntil).toLocaleString():''):data?.enforcementEnabled?'Abunə olun':'Abunə olun · hazırlıq dövründə istifadəyə davam edə bilərsiniz'}</span><button type="button" disabled={busy||!data?.paymentsAvailable} onClick={()=>{setBusy(true);setError('');void window.marketSystem?.billing.open().catch(e=>setError(String(e.message||e))).finally(()=>setBusy(false));}}>{data?.paymentsAvailable?'Abunə ol':'Ödəniş hazırlanır'}</button>{data?.billingOnly&&sub.state==='active'&&<span>Ödəniş təsdiqləndi. Hesabdan çıxıb yenidən daxil olun.</span>}{error&&<span role="alert">{error}</span>}</aside>;
 }

@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { devices, licenses } from '@milioner/database';
 import { parseBody } from '../lib/validate.js';
 import { requireCustomer } from '../plugins/customer-auth.js';

@@ -1,3 +1,4 @@
+import {withinBudget} from './lib/request-budget.js';
 import Fastify from 'fastify';
 import { billingRoutes } from './routes/billing.js';
 import { supportServiceRoutes } from './routes/support-service.js';
@@ -14,7 +15,7 @@ import { customerAuthPlugin } from './plugins/customer-auth.js';
 import { authRoutes } from './routes/auth.js';
 import { deviceRoutes, activationRoutes } from './routes/devices.js';
 import { healthRoutes, dashboardRoutes, settingsRoutes } from './routes/misc.js';
-import { tenantRoutes } from './routes/tenant.js';
+import { tenantRoutes, tenantRequestGuard } from './routes/tenant.js';
 import { ownerRoutes } from './routes/owner.js';
 import { resellerRoutes, salesRoutes } from './routes/resellers.js';
 import { resellerPortalRoutes } from './routes/reseller-portal.js';
@@ -45,6 +46,8 @@ export async function buildApp() {
     // Only nginx runs in front of the API. It overwrites X-Forwarded-For with
     // a validated client address (including Cloudflare's real-IP ranges).
     trustProxy: ['127.0.0.1', '::1'],
+    bodyLimit: 1024*1024,
+    maxParamLength: 500,
   });
 
   // `origin: true` reflected any Origin with credentials attached, so every
@@ -88,9 +91,22 @@ export async function buildApp() {
       parts: 9,
     },
   });
+  app.setErrorHandler((error,req,reply)=>{
+    const problem=error as Error&{statusCode?:number;code?:string};
+    const status=Number(problem.statusCode)||500;
+    if(status>=500){req.log.error({err:error},'request_failed');return reply.code(500).send({error:'Sorğu tamamlanmadı.',code:'INTERNAL_ERROR',requestId:req.id});}
+    return reply.code(status).send({error:status===413?'Sorğu ölçü limitini keçir.':problem.message,code:problem.code});
+  });
+  app.addHook('preValidation',async(req,reply)=>{if(!withinBudget(req.body))return reply.code(413).send({error:'Sorğunun ölçüsü və ya dərinliyi limiti keçir.',code:'INPUT_BUDGET_EXCEEDED'});});
+  app.addHook('onSend',async(req,reply,payload)=>{
+    reply.header('X-Content-Type-Options','nosniff');
+    if(req.headers.authorization||req.customer||req.user)reply.header('Cache-Control','private, no-store');
+    return payload;
+  });
   await app.register(dbPlugin);
   await app.register(authPlugin);
   await app.register(customerAuthPlugin);
+  app.addHook('preHandler',async(req,reply)=>tenantRequestGuard(app,req,reply));
 
   loadOrCreateSigningKeys();
 

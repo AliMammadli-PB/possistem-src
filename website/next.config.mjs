@@ -4,10 +4,12 @@ const nextConfig = {
   poweredByHeader: false,
   images: {
     unoptimized: true,
+    dangerouslyAllowSVG: false,
   },
   async redirects(){return ['/pricing','/qiymet','/qiymetler','/paketler','/package-builder','/plans'].map(source=>({source,destination:'/mehsul/avadanliq/',permanent:false}));},
   async headers() {
     return [
+      {source:'/:path*',headers:[{key:'X-Content-Type-Options',value:'nosniff'},{key:'Referrer-Policy',value:'strict-origin-when-cross-origin'},{key:'Content-Security-Policy',value:"frame-ancestors 'self'; base-uri 'self'; object-src 'none'"},{key:'Permissions-Policy',value:'camera=(), microphone=(), geolocation=()'}]},
       {
         source: '/((?!_next|assets).*)',
         headers: [{ key: 'Cache-Control', value: 'no-cache, must-revalidate' }],

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const RoleSchema = z.enum(['superadmin', 'admin']);
 export type Role = z.infer<typeof RoleSchema>;

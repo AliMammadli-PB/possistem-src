@@ -1,3 +1,5 @@
+> **24.10.2026:** [Security review, 50 AZN staged subscriptions and current release instructions](docs/SECURITY-REVIEW-20261024.md). Canonical sources: `platform/`, `website/`, `marketpos/`, `restoranpos/`.
+
 # possistem — Restoran, Market, Geyim, Aptek və Topdan POS
 
 Mənbə kodu: beş oflayn işləyən Windows kassa proqramı. Hamısı Electron qabığıdır və yerli

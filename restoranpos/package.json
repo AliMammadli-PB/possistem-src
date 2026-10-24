@@ -1,7 +1,7 @@
 {
   "name": "possistem",
   "productName": "possistem",
-  "version": "1.9.11",
+  "version": "1.9.14",
   "description": "possistem restaurant POS (Electron + React + C++20 sidecar)",
   "author": "possistem",
   "license": "UNLICENSED",
@@ -73,7 +73,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^43.7.5",
+    "electron": "43.8.3",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.25.12",
     "eslint": "^9.39.5",
@@ -97,11 +97,12 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.18.2",
-    "zod": "^4.4.3",
+    "zod": "4.6.6",
     "zustand": "^5.0.14"
   },
   "overrides": {
     "js-yaml": "^4.3.2",
-    "@xmldom/xmldom": "^0.8.15"
+    "@xmldom/xmldom": "^0.8.15",
+    "webcrypto-core": "1.9.2"
   }
 }

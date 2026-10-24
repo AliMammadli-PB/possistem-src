@@ -13,6 +13,8 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +31,11 @@ const app = process.argv[2];
 if (!APPS[app]) throw new Error(`usage: publish-release.mjs ${Object.keys(APPS).join('|')}`);
 const { release, feed } = APPS[app]();
 
+const versionCheck=spawnSync(process.execPath,[path.join(ROOT,'scripts/check-versions.mjs')],{stdio:'inherit'});
+if(versionCheck.status!==0)throw Error('Source/runtime versions disagree; publication refused.');
+const receipt=JSON.parse(fs.readFileSync(path.join(release,'build-security.json'),'utf8'));
+if(receipt.app!==app||receipt.electronVersion!==JSON.parse(fs.readFileSync(path.join(ROOT,'package.json'),'utf8')).devDependencies.electron)throw Error('Built Electron runtime does not match the intended release; publication refused.');
+
 const yml = fs.readFileSync(path.join(release, 'latest.yml'), 'utf8');
 const version = /^version:\s*(\S+)/m.exec(yml)?.[1];
 const exe = /^path:\s*(\S+)/m.exec(yml)?.[1];
@@ -43,6 +50,15 @@ function run(cmd, args) {
   return r.status === 0;
 }
 
+// Keep this private key off the website server and outside the repository.
+const keyFile=process.env.POSSISTEM_UPDATE_SIGNING_KEY||path.join(os.homedir(),'.local/share/possistem/windows-update-signing.pem');
+if(!fs.existsSync(keyFile))throw Error('Protected Windows update signing key missing; publication refused.');
+const payload={app,version,file:exe,sha512:crypto.createHash('sha512').update(fs.readFileSync(path.join(release,exe))).digest('base64'),size:fs.statSync(path.join(release,exe)).size};
+if(receipt.version!==version||receipt.sha512!==payload.sha512)throw Error('Build receipt does not match the installer; publication refused.');
+const signature=crypto.sign(null,Buffer.from(JSON.stringify(payload)),fs.readFileSync(keyFile)).toString('base64');
+const signed=path.join(release,'signed.json');fs.writeFileSync(signed,JSON.stringify({payload,signature})+'\n');
+
+
 // Large uploads to the VPS can drop mid-transfer; --partial resumes.
 let uploaded = false;
 for (let attempt = 1; attempt <= 5 && !uploaded; attempt += 1) {
@@ -50,6 +66,7 @@ for (let attempt = 1; attempt <= 5 && !uploaded; attempt += 1) {
   if (!uploaded) console.error(`[publish] upload attempt ${attempt} failed, retrying`);
 }
 if (!uploaded) throw new Error('upload failed');
+if(!run('ssh',['pos',`mkdir -p ${feed}/v/${version}`])||!run('scp',['-q',signed,`pos:${feed}/v/${version}/signed.json`]))throw Error('Signed manifest publication failed; feed unchanged.');
 if (!run('scp', ['-q', path.join(release, 'latest.yml'), `pos:${feed}/latest.yml.new`])) throw new Error('latest.yml upload failed');
 
 const remote = [

@@ -6,13 +6,23 @@ import { SaleProductGrid } from './SaleProductGrid';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { tr } from './i18n';
 import { money } from './format';
-import type { Lang, Product } from './types';
+import type { Lang, Product, Sale } from './types';
 
 /** Search/scanner input never rerenders the basket or the app shell. */
-export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouseId, showImages = false, cloudConnected, scannerEnabled, onAdd, onScan, onNewSale }: {
-  products: Product[]; lang: Lang; warehouseId: string; showImages?: boolean; cloudConnected: boolean; scannerEnabled: boolean;
+export const SaleCatalog = memo(function SaleCatalog({ products, sales=[], quickKey="default", lang, warehouseId, showImages = false, cloudConnected, scannerEnabled, onAdd, onScan, onNewSale }: {
+  products: Product[]; sales?: Sale[]; quickKey?:string; lang: Lang; warehouseId: string; showImages?: boolean; cloudConnected: boolean; scannerEnabled: boolean;
   onAdd: (product: Product) => void; onScan: (value: string, inputValue?: string) => void; onNewSale: () => boolean;
 }) {
+  const [categoriesHidden,setCategoriesHidden]=useState(false);
+  const [pinned,setPinned]=useState<string[]>(()=>{try{const value=JSON.parse(localStorage.getItem('market-quick-'+quickKey)||'[]');return Array.isArray(value)?value.filter(x=>typeof x==='string').slice(0,12):[];}catch{return [];}});
+  useEffect(()=>{try{localStorage.setItem('market-quick-'+quickKey,JSON.stringify(pinned));}catch{}},[pinned,quickKey]);
+  const quickProducts=useMemo(()=>{
+    const scores=new Map<string,number>();
+    for(const sale of sales.filter(s=>!s.refunded))for(const line of sale.items)scores.set(line.productId,(scores.get(line.productId)||0)+(line.qtyMilli?line.qtyMilli/1000:line.qty));
+    const common=products.filter(p=>/salafan|selofan|kilok|paket|po[sş]et/i.test(Object.values(p.name).join(' '))).map(p=>p.id);
+    const ids=[...pinned,...common,...[...scores].sort((a,b)=>b[1]-a[1]).map(x=>x[0])];
+    return [...new Set(ids)].map(id=>products.find(p=>p.id===id)).filter((p):p is Product=>Boolean(p)).slice(0,12);
+  },[pinned,products,sales]);
   const [query, setQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [keypadOpen, setKeypadOpen] = useState(false);
@@ -61,7 +71,7 @@ export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouse
   useBarcodeScanner({ onScan: scan });
   const add = useCallback((product: Product) => { onAdd(product); setQuery(''); setSearchQuery(''); }, [onAdd]);
   return <>
-      <aside className="catalog-aisles">
+      <aside className="catalog-aisles" hidden={categoriesHidden}>
         <h2>{tr(lang, 'catalogAisles')}</h2>
         <CatalogAisleNav
           lang={lang}
@@ -74,7 +84,7 @@ export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouse
         />
       </aside>
       <section className="catalog-pane">
-        <div className="sale-toolbar">
+        <div className="sale-toolbar"><button type="button" className="catalog-aisles-toggle" aria-pressed={categoriesHidden} onClick={()=>setCategoriesHidden(x=>!x)}>{categoriesHidden?'Kateqoriyaları göstər':'Kateqoriyaları gizlət'}</button>
           <label className="search-box">
             <Search />
             <input ref={inputRef} data-scanner="allow" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.defaultPrevented) { event.preventDefault(); scan(event.currentTarget.value); } }} placeholder={tr(lang, 'search')} />
@@ -95,6 +105,7 @@ export const SaleCatalog = memo(function SaleCatalog({ products, lang, warehouse
             <button className={quick === 'weighted' ? 'active' : ''} aria-pressed={quick === 'weighted'} onClick={() => setQuick(quick === 'weighted' ? null : 'weighted')}><Scale /><span>Kilo məhsul</span></button>
           </div>
         </div>
+        <section className="quick-products" aria-label="Sürətli məhsullar"><header><span>Sürətli satış · bir toxunuşla əlavə et</span><select aria-label="Sürətli satışa məhsul əlavə et" value="" onChange={e=>{const id=e.target.value;if(id)setPinned(old=>[id,...old.filter(x=>x!==id)].slice(0,12));}}><option value="">+ Məhsulu bərkid</option>{products.map(p=><option key={p.id} value={p.id}>{p.name[lang]}</option>)}</select></header><div className="quick-product-list">{quickProducts.map(p=><div className="quick-product-tile" key={p.id}><button type="button" disabled={!scannerEnabled} onClick={()=>add(p)}><strong>{p.name[lang]}</strong><span>{money(p.priceMinor,lang)} · +1</span></button>{pinned.includes(p.id)&&<button type="button" className="quick-pin-remove" aria-label={`${p.name[lang]} bərkitməsini götür`} onClick={()=>setPinned(old=>old.filter(id=>id!==p.id))}>×</button>}</div>)}</div>{!quickProducts.length&&<small>Salafan və tez satılan malları yuxarıdakı siyahıdan bərkidin.</small>}</section>
         <SaleProductGrid showImages={showImages} products={filtered} lang={lang} warehouseId={warehouseId} money={money} onAdd={add} />
       </section>
   </>;

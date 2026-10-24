@@ -2,6 +2,7 @@
 /** Build verified NSIS and portable Windows executables for Market POS. */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import {writeReleaseReceipt} from './release-receipt.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
@@ -106,3 +107,5 @@ for (const file of expected) {
   if (fs.statSync(file).size < 10 * 1024 * 1024) fail(`Suspiciously small artifact: ${file}`);
   process.stdout.write(`[market-package] ready: ${file}\n`);
 }
+
+writeReleaseReceipt({release:RELEASE,app:path.basename(MARKET).replace(/pos$/,''),version:marketVersion,installer:expected[0],config:path.resolve(MARKET,builderConfig)});

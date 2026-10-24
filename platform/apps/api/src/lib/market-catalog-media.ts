@@ -46,7 +46,7 @@ export async function encodeMarketCatalogWebp(buffer: Buffer) {
   if (buffer.length > MAX_MARKET_IMAGE_BYTES) {
     throw new Error('too-large');
   }
-  return sharp(buffer)
+  return sharp(buffer, {limitInputPixels:20_000_000,failOn:'error'})
     .rotate()
     .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 82 })
@@ -54,7 +54,7 @@ export async function encodeMarketCatalogWebp(buffer: Buffer) {
 }
 
 export async function encodeMarketCatalogDisplay(buffer: Buffer) {
-  return sharp(buffer)
+  return sharp(buffer, {limitInputPixels:20_000_000,failOn:'error'})
     .rotate()
     .resize({ width: 720, height: 720, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 70 })

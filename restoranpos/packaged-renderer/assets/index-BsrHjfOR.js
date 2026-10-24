@@ -14914,7 +14914,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.11 · ecff46a";
+const _PS_BUILD = "1.9.14 · 2e4b30b";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -27460,7 +27460,7 @@ class PsAdminRecoveryBoundary extends React.Component {
 function PsAdminFrame({ children }) {
   const { t } = useI18n();
   const { pathname, search } = useLocation();
-  const pages = { "/settings": t.nav.settings, "/admin/catalog": t.nav.catalog, "/admin/staff": t.nav.staff, "/admin/tables": t.nav.adminTables, "/admin/reports": t.nav.reports, "/admin/cash": t.nav.cash, "/admin/backup": psAdminText("Ehtiyat n\xFCsx\u0259", "Yedekleme", "Backup"), "/admin/gifts": t.nav.gifts, "/dashboard": t.nav.dashboard, "/reconcile": t.nav.reconcile, "/audit": t.nav.audit, "/diagnostics": t.nav.diagnostics, "/settings/license": t.nav.license, "/support": t.nav.support };
+  const pages = { "/branches": psAdminText("Obyektl\u0259r", "\u0130\u015Fletmeler", "Locations"), "/refund": psAdminText("Geri qaytarma", "\u0130ade", "Returns"), "/settings": t.nav.settings, "/admin/catalog": t.nav.catalog, "/admin/staff": t.nav.staff, "/admin/tables": t.nav.adminTables, "/admin/reports": t.nav.reports, "/admin/cash": t.nav.cash, "/admin/backup": psAdminText("Ehtiyat n\xFCsx\u0259", "Yedekleme", "Backup"), "/admin/gifts": t.nav.gifts, "/dashboard": t.nav.dashboard, "/reconcile": t.nav.reconcile, "/audit": t.nav.audit, "/diagnostics": t.nav.diagnostics, "/settings/license": t.nav.license, "/support": t.nav.support };
   const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["Partnyorlar", "Partnerler", "Partners"], sales: ["Satışlar", "Satışlar", "Sales"], purchases: ["Alışlar", "Alımlar", "Purchases"], objects: ["Obyektlər", "Şubeler", "Branches"], kassa: ["Kassalar", "Kasalar", "Tills"], salary: ["Maaşlar", "Maaşlar", "Salaries"], expenses: ["Xərclər", "Giderler", "Expenses"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
   const title = pathname === "/operations" ? psAdminText(...ops[new URLSearchParams(search).get("tab")] || ops.stock) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
@@ -27470,13 +27470,15 @@ function PsAdminHub({ links }) {
   const [query, setQuery] = reactExports.useState("");
   const [activeTone, setActiveTone] = reactExports.useState("blue");
   const groups = [
-    { title: psAdminText("G\xFCnd\u0259lik idar\u0259etm\u0259", "G\xFCnl\xFCk y\xF6netim", "Daily management"), hint: psAdminText("Menyu, hey\u0259t v\u0259 g\xFCnd\u0259lik i\u015Fl\u0259r", "Men\xFC, ekip ve g\xFCnl\xFCk i\u015Fler", "Menu, team and daily work"), tone: "blue", paths: ["/dashboard", "/admin/catalog", "/admin/staff", "/admin/tables", "/admin/gifts"] },
+    { title: psAdminText("G\xFCnd\u0259lik idar\u0259etm\u0259", "G\xFCnl\xFCk y\xF6netim", "Daily management"), hint: psAdminText("Menyu, hey\u0259t v\u0259 g\xFCnd\u0259lik i\u015Fl\u0259r", "Men\xFC, ekip ve g\xFCnl\xFCk i\u015Fler", "Menu, team and daily work"), tone: "blue", paths: ["/branches", "/dashboard", "/admin/catalog", "/admin/staff", "/admin/tables", "/admin/gifts"] },
     { title: psAdminText("Anbar v\u0259 t\u0259chizat", "Stok ve tedarik", "Inventory & purchasing"), hint: psAdminText("M\u0259hsullar, al\u0131\u015Flar v\u0259 t\u0259r\u0259fda\u015Flar", "\xDCr\xFCnler, al\u0131mlar ve i\u015F ortaklar\u0131", "Products, purchases and partners"), tone: "green", paths: ["/operations?tab=stock", "/operations?tab=purchases", "/operations?tab=vendors"] },
-    { title: psAdminText("M\xFC\u015Ft\u0259ri xidm\u0259tl\u0259ri", "M\xFC\u015Fteri hizmetleri", "Guest services"), hint: psAdminText("Qonaqlar\u0131n h\u0259r m\u0259rh\u0259l\u0259d\u0259 yan\u0131nda", "Misafirleriniz i\xE7in her ad\u0131mda", "Everything for your guests"), tone: "purple", paths: ["/operations?tab=delivery"] },
+    { title: psAdminText("M\xFC\u015Ft\u0259ri xidm\u0259tl\u0259ri", "M\xFC\u015Fteri hizmetleri", "Guest services"), hint: psAdminText("Qonaqlar\u0131n h\u0259r m\u0259rh\u0259l\u0259d\u0259 yan\u0131nda", "Misafirleriniz i\xE7in her ad\u0131mda", "Everything for your guests"), tone: "purple", paths: ["/refund", "/operations?tab=delivery"] },
     { title: psAdminText("Maliyy\u0259 v\u0259 hesabat", "Finans ve raporlar", "Finance & reporting"), hint: psAdminText("G\u0259lirl\u0259r, \xF6d\u0259ni\u015Fl\u0259r v\u0259 n\u0259zar\u0259t", "Gelir, \xF6demeler ve denetim", "Revenue, payments and oversight"), tone: "amber", paths: ["/operations?tab=sales", "/admin/cash", "/admin/reports", "/reconcile", "/audit"] },
     { title: psAdminText("Sistem", "Sistem", "System"), hint: psAdminText("Cihaz, t\u0259hl\xFCk\u0259sizlik v\u0259 sazlamalar", "Cihaz, g\xFCvenlik ve ayarlar", "Device, security and preferences"), tone: "slate", paths: ["/settings", "/admin/backup", "/settings/license", "/diagnostics"] }
   ];
   const descriptions = {
+    "/branches": ["Obyektl\u0259r, anbarlar, kassalar v\u0259 uzaqdan idar\u0259", "\u0130\u015Fletmeler, stoklar, kasalar ve uzaktan y\xF6netim", "Locations, stock, tills and remote management"],
+    "/refund": ["\xC7ek \xFCzr\u0259 qaytarma v\u0259 \xF6d\u0259ni\u015Fin geri verilm\u0259si", "Fi\u015F \xFCzerinden iade ve geri \xF6deme", "Receipt returns and refunds"],
     "/dashboard": ["G\xFCn\xFCn \u0259sas g\xF6st\u0259ricil\u0259ri", "G\xFCn\xFCn temel g\xF6stergeleri", "Today at a glance"],
     "/admin/catalog": ["M\u0259hsullar, qiym\u0259tl\u0259r v\u0259 kateqoriyalar", "\xDCr\xFCnler, fiyatlar ve kategoriler", "Products, pricing and categories"],
     "/admin/staff": ["Hey\u0259t v\u0259 giri\u015F s\u0259lahiyy\u0259tl\u0259ri", "Ekip ve eri\u015Fim izinleri", "Team and access permissions"],

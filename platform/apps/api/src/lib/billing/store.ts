@@ -29,8 +29,11 @@ export async function attachManagedLicense(db: Executor, input: {customerId:stri
   if (!sub) return; // legacy licences are not enrolled implicitly
   if (monthlyAmountMinor !== undefined && Number(sub.monthly_amount_minor) !== monthlyAmountMinor) throw new BillingError('amount_conflict','Bu proqramın mövcud aylıq haqqını Abunəliklər bölməsindən dəyişin.');
   await db.execute(sql`INSERT INTO billing_license_links(subscription_id,license_id) VALUES(${sub.id}::uuid,${licenseId}::uuid) ON CONFLICT DO NOTHING`);
-  await db.execute(sql`UPDATE licenses SET features=COALESCE(features,'{}'::jsonb)||'{"billingManaged":true,"offlineGraceDays":0}'::jsonb,status=CASE WHEN ${sub.paid_until ? new Date(sub.paid_until).toISOString() : null}::timestamptz>now() THEN 'active' ELSE 'billing_pending' END, valid_until=COALESCE(${sub.paid_until ? new Date(sub.paid_until).toISOString() : null}::timestamptz,now()), updated_at=now() WHERE id=${licenseId}::uuid`);
-  await db.execute(sql`UPDATE activation_keys SET expires_at=COALESCE(${sub.paid_until ? new Date(sub.paid_until).toISOString() : null}::timestamptz,now()) WHERE license_id=${licenseId}::uuid`);
+  const [rollout]=await query<{enforcement_enabled:boolean}>(db,sql`SELECT enforcement_enabled FROM billing_settings WHERE id=true`);
+  const accessEnd=!rollout?.enforcement_enabled?new Date(Date.now()+7*86400000):sub.paid_until?new Date(sub.paid_until):new Date();
+  const active=accessEnd.getTime()>Date.now();
+  await db.execute(sql`UPDATE licenses SET features=COALESCE(features,'{}'::jsonb)||'{"billingManaged":true,"offlineGraceDays":0}'::jsonb,status=${active?'active':'billing_pending'},valid_until=${accessEnd.toISOString()}::timestamptz,updated_at=now() WHERE id=${licenseId}::uuid`);
+  await db.execute(sql`UPDATE activation_keys SET expires_at=${accessEnd.toISOString()}::timestamptz WHERE license_id=${licenseId}::uuid`);
   await event(db,'admin','subscription.license.link',sub.id,{licenseId,newCustomer:input.newCustomer});
 }
 

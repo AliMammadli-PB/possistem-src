@@ -13,7 +13,7 @@ import { inflateRawSync } from 'node:zlib';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { bigint, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { activationKeys, branches, customers, devices, licenses } from '@milioner/database';
 import { verifyPassword } from '@milioner/security';
 import { signDeviceCommand } from '../lib/command-signing.js';

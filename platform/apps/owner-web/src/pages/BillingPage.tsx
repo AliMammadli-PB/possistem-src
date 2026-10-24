@@ -35,7 +35,7 @@ export default function BillingPage(){
     <header className="bill-heading"><div><span className="bill-eyebrow">HESAB VƏ ÖDƏNİŞLƏR</span><h1>Abunəlikləriniz</h1><p>Proqramlarınızın aylıq haqqı, istifadə müddəti və ödəniş tarixçəsi.</p></div><button type="button" onClick={()=>void load()} disabled={Boolean(busy)}>Yenilə</button></header>
     {error&&<p className="bill-alert error" role="alert">{error}<button type="button" onClick={()=>void load()}>Yenidən yoxla</button></p>}
     {message&&<p className="bill-alert" role="status">{message}</p>}
-    {data&&!data.paymentsAvailable&&<p className="bill-alert">Onlayn ödəniş hazırda aktivləşdirilməyib. Admin aylıq haqqınızı təyin etdikdən və Epoint qoşulduqdan sonra bu bölmədən ödəyə biləcəksiniz.</p>}
+    {data&&!data.paymentsAvailable&&<p className="bill-alert">Abunə olun · aylıq 50 ₼. Ödəniş sistemi hazırlanır; hazırda proqramdan istifadəni davam edə bilərsiniz. Ödəniş imkanı açıldıqda burada görünəcək.</p>}
     {!data&&!error&&<p role="status">Abunəliklər yüklənir…</p>}
     {data?.subscriptions.length===0&&<section className="bill-panel"><h2>Aylıq abunəlik təyin edilməyib</h2><p>Mövcud lisenziyalarınız saxlanılır. Admin sizi aylıq ödəniş sisteminə ayrıca qoşacaq.</p></section>}
     <div className="bill-subscriptions">{data?.subscriptions.map(s=><section className="bill-panel" key={s.id}>

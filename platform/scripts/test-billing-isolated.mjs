@@ -20,6 +20,6 @@ const psql=query=>{
 psql('CREATE DATABASE '+quoted(name)+' OWNER '+quoted(decodeURIComponent(original.username)));
 try{
   const testUrl=new URL(original);testUrl.pathname='/'+name;
-  const result=spawnSync(path.join(root,'apps/api/node_modules/.bin/tsx'),['--test','apps/api/src/lib/billing/domain.test.ts','apps/api/src/lib/billing/integration.test.ts'],{cwd:root,stdio:'inherit',env:{...process.env,NODE_ENV:'development',BILLING_TEST_DATABASE_URL:testUrl.toString()}});
+  const result=spawnSync(path.join(root,'apps/api/node_modules/.bin/tsx'),['--test','apps/api/src/lib/request-budget.test.ts','apps/api/src/lib/billing/domain.test.ts','apps/api/src/lib/billing/integration.test.ts'],{cwd:root,stdio:'inherit',env:{...process.env,NODE_ENV:'development',BILLING_TEST_DATABASE_URL:testUrl.toString()}});
   process.exitCode=result.status??1;
 }finally{psql('DROP DATABASE '+quoted(name)+' WITH (FORCE)');}

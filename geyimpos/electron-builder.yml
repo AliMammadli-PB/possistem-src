@@ -2,7 +2,7 @@ appId: com.possistem.geyim.pos
 productName: GeyimPos
 executableName: GeyimPos
 copyright: Copyright © 2026 Ali Mammadli / possistem
-electronVersion: 43.7.5
+electronVersion: 43.8.3
 directories:
   output: release
   buildResources: build

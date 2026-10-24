@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { and, asc, desc, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
 import { gamecenterAgents, gamecenterPcCommands, gamecenterPcs } from '@milioner/database';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { env } from '../env.js';
 
 const DEFAULT_PC_COUNT = 67;

@@ -113,6 +113,17 @@ function publicCustomer(customer: typeof customers.$inferSelect) {
 }
 
 export async function customerAuthRoutes(app: FastifyInstance) {
+  // Customer accounts are provisioned by administrators. Block legacy clients
+  // before OTP delivery or any account lookup/write, including direct API calls.
+  app.addHook('preHandler', async (req, reply) => {
+    const route = req.routeOptions.url ?? '';
+    const purpose = (req.body as { purpose?: unknown } | null)?.purpose;
+    if (route.endsWith('/customer-auth/register') || route.endsWith('/customer-auth/check-email') ||
+        (route.endsWith('/customer-auth/otp/send') && purpose === 'register')) {
+      return reply.code(403).send({ code: 'REGISTRATION_DISABLED', error: 'Hesabları yalnız administrator yaradır. Giriş üçün sizə verilmiş hesabı istifadə edin.' });
+    }
+  });
+
   // Unknown accounts take the same Argon2 path as wrong passwords.
   const dummyPasswordHash = await hashPassword('milioner-customer-invalid-sentinel');
 

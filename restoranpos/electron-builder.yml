@@ -2,7 +2,7 @@ appId: com.cyberplus.maisonaurelia.pos
 productName: possistem
 executableName: possistem
 copyright: Copyright © 2026 Ali Mammadli / possistem
-electronVersion: 43.7.5
+electronVersion: 43.8.3
 directories:
   # Versioned dir avoids EBUSY when release/win-unpacked is locked by a running app.
   output: release-${version}

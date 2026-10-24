@@ -68,7 +68,7 @@ export function SetupPage() {
               <T k="setup.text.024" />
             </p>
             <div className="hero-actions">
-              <Link className="marketing-button primary" href="/pos/app/register">
+              <Link className="marketing-button primary" href="/pos/app/login">
                 <T k="setup.text.025" />
               </Link>
               <Link className="marketing-button secondary" href="/pos/app/login">
@@ -234,7 +234,7 @@ export function SetupPage() {
             </p>
           </div>
           <div>
-            <Link className="marketing-button primary" href="/pos/app/register">
+            <Link className="marketing-button primary" href="/pos/app/login">
               <T k="setup.text.082" />
             </Link>
             <Link className="marketing-button secondary" href="/destek/">

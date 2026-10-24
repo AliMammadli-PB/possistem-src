@@ -11,7 +11,7 @@ export async function billingLicenseRefresh(db:Db,deviceId:string){
  if(!row||row.device.status==='revoked'||['revoked','suspended'].includes(row.license.status))return null;
  const billing=await licenseBilling(db,row.license.id);if(!billing)return null;
  const keys=loadOrCreateSigningKeys(),l=row.license,d=row.device;
- if(billing.paidUntil)l.validUntil=new Date(billing.paidUntil);
- const payload={licenseId:l.id,customerId:l.customerId,customerEmail:row.customer.email,plan:l.plan,seats:l.seats,features:{...(l.features??{}),billingManaged:true,offlineGraceDays:0},deviceId:d.id,deviceFingerprint:d.deviceFingerprint,devicePublicKey:d.devicePublicKey,validUntil:l.validUntil?.toISOString()??null,expiresAt:l.validUntil?.getTime()??0,status:billing.billingStatus==='active'?'active':'expired',offlineGraceDays:0,...billing};
+ if(billing.accessUntil||billing.paidUntil)l.validUntil=new Date((billing.accessUntil||billing.paidUntil)!);
+ const payload={licenseId:l.id,customerId:l.customerId,customerEmail:row.customer.email,plan:l.plan,seats:l.seats,features:{...(l.features??{}),billingManaged:true,offlineGraceDays:0},deviceId:d.id,deviceFingerprint:d.deviceFingerprint,devicePublicKey:d.devicePublicKey,validUntil:l.validUntil?.toISOString()??null,expiresAt:l.validUntil?.getTime()??0,status:!billing.billingEnforced||billing.billingStatus==='active'?'active':'expired',offlineGraceDays:0,...billing};
  return {license:{id:l.id,customerId:l.customerId,status:payload.status,plan:l.plan,seats:l.seats,validUntil:payload.validUntil,features:payload.features,...billing},device:d,signedLicense:signLicensePayload(keys.privateKey,payload,keys.publicKey),signingKey:{algorithm:'Ed25519',keyId:deriveKeyId(keys.publicKey),publicKeyHex:toHex(keys.publicKey)}};
 }

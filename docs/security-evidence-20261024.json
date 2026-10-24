@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-24",
+  "bankLiveTest": false,
+  "physicalAndroidTest": false,
+  "physicalWindowsTerminalTest": false,
+  "apiPostgresTests": {
+    "passed": 24,
+    "failed": 0,
+    "isolated": true
+  },
+  "marketSecurityTests": {
+    "passed": 6,
+    "failed": 0
+  },
+  "androidJvm": {
+    "flavors": 3,
+    "testsPerFlavor": 12,
+    "failed": 0
+  },
+  "browser": {
+    "engine": "Chromium 151.0.7922.34",
+    "fixtureViews": 20,
+    "widths": [
+      360,
+      390,
+      768,
+      1366,
+      1920
+    ]
+  },
+  "restaurantWine": {
+    "billing": {
+      "tests": 1,
+      "assertions": 7
+    },
+    "payment": {
+      "tests": 10,
+      "assertions": 58
+    }
+  },
+  "dependencies": {
+    "platform": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0
+    },
+    "restaurant": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "market": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "website": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  }
+}

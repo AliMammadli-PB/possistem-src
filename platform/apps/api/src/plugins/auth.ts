@@ -111,6 +111,7 @@ export const authPlugin = fp(async (app) => {
     req.csrfToken = row.csrfToken;
 
     const path = pathOnly(req.url);
+    if(row.user.mustChangePassword&&!['/pos/api/auth/me','/pos/api/auth/logout','/pos/api/auth/change-password'].includes(path))return reply.code(403).send({error:'Əvvəlcə şifrənizi dəyişin.',code:'PASSWORD_CHANGE_REQUIRED'});
     if (CSRF_EXEMPT.has(path)) return;
     if (ADMIN_CSRF_SKIP_PREFIXES.some((prefix) => path.startsWith(prefix))) return;
     // Customer chat uses the customer CSRF cookie. An admin session in the

@@ -21,7 +21,7 @@ export async function saveChatAvatar(customerId: string, input: Buffer): Promise
   await mkdir(chatAvatarDir(), { recursive: true });
   const target = chatAvatarFile(customerId);
 
-  const processed = await sharp(input, { failOn: 'none' })
+  const processed = await sharp(input, { limitInputPixels: 20_000_000, failOn: 'error' })
     .rotate()
     .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover', position: 'centre' })
     .avif({ quality: 45, effort: 4 })

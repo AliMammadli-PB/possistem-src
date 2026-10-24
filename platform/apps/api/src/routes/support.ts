@@ -2,7 +2,7 @@ import { existsSync, createReadStream } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { currentUser, requireSuperadmin } from '../plugins/auth.js';
 import { resolveTenantToken } from './tenant.js';
 import { clientIp, parseBody } from '../lib/validate.js';

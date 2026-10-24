@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { ZodType, ZodTypeDef } from 'zod';
+import type { ZodType, ZodTypeDef } from 'zod/v3';
 
 /**
  * Şemanın *çıktı* tipini döner.

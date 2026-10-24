@@ -30,7 +30,7 @@ export async function saveChatUpload(input: Buffer): Promise<{ id: string; url: 
   if (!input.length) throw new Error('empty_image');
   await mkdir(chatUploadDir(), { recursive: true });
   const id = randomUUID();
-  const processed = await sharp(input, { failOn: 'none', sequentialRead: true })
+  const processed = await sharp(input, { limitInputPixels: 20_000_000, failOn: 'error', sequentialRead: true })
     .rotate()
     .resize(MAX_EDGE, MAX_EDGE, { fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 78 })

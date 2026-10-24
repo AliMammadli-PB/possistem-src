@@ -38,3 +38,14 @@ fs.mkdirSync(path.join(root,'out/main'),{recursive:true});fs.copyFileSync(path.j
 fs.copyFileSync(path.join(root,'billing-renderer.js'),path.join(root,'packaged-renderer/billing-renderer.js'));
 let html=fs.readFileSync(path.join(root,'index.html'),'utf8');if(!html.includes('billing-renderer.js')){html=html.replace('</head>','<script defer src="./billing-renderer.js"></script>\n</head>');fs.writeFileSync(path.join(root,'index.html'),html);}
 console.log('Restaurant billing, signed expiry and read-only access ready');
+
+// Signed update authorization is installed before the deferred updater starts.
+const updateGuard="/* POSSISTEM_SIGNED_UPDATES_20261024 */";
+let signedMain=fs.readFileSync(mainFile,'utf8');
+if(!signedMain.includes(updateGuard)){signedMain+='\n'+updateGuard+"\nrequire('./secure-updater.cjs').attach(require('electron-updater').autoUpdater,{app:'restaurant',feed:'https://possistem.az/pos-updates/'});\n";fs.writeFileSync(mainFile,signedMain);}
+for(const file of ['secure-updater.cjs','update-public-key.cjs'])fs.copyFileSync(path.join(root,'../marketpos/electron',file),path.join(root,'out/main',file));
+
+let budgetMain=fs.readFileSync(mainFile,'utf8');
+if(!budgetMain.includes('/* POSSISTEM_INPUT_BUDGET */'))budgetMain+="\n/* POSSISTEM_INPUT_BUDGET */ require('./ipc-budget.cjs').install(require('electron').ipcMain);\n";
+
+fs.writeFileSync(mainFile,budgetMain);fs.copyFileSync(path.join(root,'../marketpos/electron/ipc-budget.cjs'),path.join(root,'out/main/ipc-budget.cjs'));

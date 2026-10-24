@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm';
 import { signLicensePayload } from '@milioner/security';
 import { loadOrCreateSigningKeys } from '../lib/keys.js';
 import { writeAudit } from '../lib/audit.js';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { clientIp, parseBody } from '../lib/validate.js';
 import { requireCustomer } from '../plugins/customer-auth.js';
 import { requireSuperadmin } from '../plugins/auth.js';

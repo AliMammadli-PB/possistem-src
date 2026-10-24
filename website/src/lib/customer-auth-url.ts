@@ -7,5 +7,5 @@ export function customerLoginUrl(returnPath = '/'): string {
 
 export function customerRegisterUrl(returnPath = '/'): string {
   const next = returnPath.startsWith('http') ? returnPath : `${SITE_ORIGIN}${returnPath.startsWith('/') ? returnPath : `/${returnPath}`}`;
-  return `/pos/app/register?next=${encodeURIComponent(next)}`;
+  return `/pos/app/login?next=${encodeURIComponent(next)}`;
 }

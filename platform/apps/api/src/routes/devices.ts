@@ -3,7 +3,7 @@ import { licenseBilling } from '../lib/billing/service.js';
 import { createPublicKey, timingSafeEqual, verify as verifySignature } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { eq, and, desc, ne, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   ActivationLookupSchema,
   ActivationRedeemSchema,
@@ -220,8 +220,8 @@ export async function redeemWithKey(
 
   const license = await expireLicenseIfNeeded(tx, keyRow.licenseId);
   const managed = license ? await licenseBilling(tx,license.id) : null;
-  if(managed&&managed.billingStatus!=='active')return {error:'Aylıq abunəlik ödənilməyib',status:403 as const};
-  if(license&&managed?.paidUntil)license.validUntil=new Date(managed.paidUntil);
+  if(managed?.billingEnforced&&managed.billingStatus!=='active')return {error:'Aylıq abunəlik ödənilməyib',status:403 as const};
+  if(license&&managed){if(!managed.billingEnforced&&!['revoked','suspended'].includes(license.status))license.status='active';if(managed.accessUntil||managed.paidUntil)license.validUntil=new Date((managed.accessUntil||managed.paidUntil)!);}
   if (!license || license.status !== 'active') {
     return { error: 'License inactive or expired', status: 403 as const };
   }

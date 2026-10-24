@@ -12,6 +12,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import {writeReleaseReceipt} from './release-receipt.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -123,4 +124,5 @@ if (installerSize < 1024 * 1024) {
 }
 log(`installer ok: ${installerPath} (${(installerSize / (1024 * 1024)).toFixed(2)} MB)`);
 
+writeReleaseReceipt({release:releaseDir,app:'restaurant',version:pkg.version,installer:installerPath,config:path.join(ROOT,'electron-builder.yml')});
 log('DONE');

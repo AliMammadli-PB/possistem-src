@@ -2,7 +2,7 @@ import {registerWarehousePortal} from './warehouse-portal.js';
 import {cloudBranchRoutes} from './cloud-branches.js';
 import { inflateRawSync } from 'node:zlib';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { eq } from 'drizzle-orm';
 import { ownerFloorSnapshots } from '@milioner/database';
 import { requireCustomer } from '../plugins/customer-auth.js';

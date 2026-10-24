@@ -33,6 +33,7 @@ type SignedPayload = {
   email: string;
   client: string;
   exp: number;
+  iat?: number;
   jti: string;
 };
 
@@ -163,8 +164,8 @@ export async function tenantRoutes(app: FastifyInstance) {
           )
           .limit(1);
         if (!productLicense) {
-          const [managed] = await billingQuery(app.db,sql`SELECT s.id FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id JOIN licenses l ON l.id=b.license_id WHERE s.customer_id=${customer.id}::uuid AND s.product=${requestedProduct} AND s.enabled=true AND l.status NOT IN ('revoked','suspended') LIMIT 1`);
-          if (managed) billingOnly = true;
+          const [managed] = await billingQuery(app.db,sql`SELECT l.id FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id JOIN licenses l ON l.id=b.license_id WHERE s.customer_id=${customer.id}::uuid AND s.product=${requestedProduct} AND s.enabled=true AND l.status NOT IN ('revoked','suspended') LIMIT 1`);
+          if (managed) { const details=await licenseBilling(app.db,String((managed as {id:unknown}).id)); billingOnly=details?.billingEnforced!==false; }
           else return reply.code(403).send({
             /* geyim-product: login */
             error: `Bu hesab üçün ${({ restaurant: 'Restoran POS', market: 'Market POS', geyim: 'Geyim POS', aptek: 'Aptek POS' /* aptek-product */, topdan: 'Topdan POS' /* topdan-product */ } as Record<string, string>)[requestedProduct]} lisenziyası yoxdur`,
@@ -257,6 +258,7 @@ export async function tenantRoutes(app: FastifyInstance) {
         email: customer.email ?? email,
         client: billingOnly ? 'billing' : client,
         exp: expiresAt,
+        iat: Date.now(),
         jti,
       });
       pruneTokens();
@@ -308,7 +310,9 @@ export async function tenantRoutes(app: FastifyInstance) {
       typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')
         ? auth.slice(7).trim()
         : null;
-    if (raw) {
+    if (raw && resolveTenantToken(raw, true)) {
+      await app.db.execute(sql`DELETE FROM tenant_session_revocations WHERE expires_at<=now()`);
+      await app.db.execute(sql`INSERT INTO tenant_session_revocations(token_hash,expires_at) VALUES(${hashSessionToken(raw)},now()+interval '12 hours') ON CONFLICT DO NOTHING`);
       tenantTokens.delete(hashSessionToken(raw));
       if (raw.startsWith('t1.')) {
         try {
@@ -372,4 +376,14 @@ export async function tenantRoutes(app: FastifyInstance) {
       paymentUrl,
     };
   });
+}
+
+// Checked on every bearer request: deactivation, password changes and logout
+// remain effective across process restarts, including the billing-only session.
+export async function tenantRequestGuard(app:FastifyInstance,req:import('fastify').FastifyRequest,reply:import('fastify').FastifyReply){
+ const auth=req.headers.authorization;if(typeof auth!=='string'||!/^Bearer /i.test(auth))return;
+ const raw=auth.slice(7).trim(),who=resolveTenantToken(raw,true);if(!who)return;
+ let issuedAt=0;try{issuedAt=Number(JSON.parse(Buffer.from(raw.split('.')[1]??'','base64url').toString()).iat)||0;}catch{}
+ const [row]=await billingQuery<{active:boolean;auth_epoch:string|Date;revoked:boolean}>(app.db,sql`SELECT c.active,c.auth_epoch,EXISTS(SELECT 1 FROM tenant_session_revocations r WHERE r.token_hash=${hashSessionToken(raw)} AND r.expires_at>now()) AS revoked FROM customers c WHERE c.id=${who.customerId}::uuid`);
+ if(!row||!row.active||row.revoked||new Date(row.auth_epoch).getTime()>issuedAt)return reply.code(401).send({error:'Sessiya bitib. Yenidən daxil olun.'});
 }

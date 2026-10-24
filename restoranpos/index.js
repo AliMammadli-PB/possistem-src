@@ -312,3 +312,8 @@ async function _psPlatformLogin(payload){
  if(!/^\d{4}$/.test(pin))return d('E_VALIDATION','Yerli PIN 4, POSSISTEM PIN-i 10 rəqəm olmalıdır');
  return null;
 }
+
+/* POSSISTEM_SIGNED_UPDATES_20261024 */
+require('./secure-updater.cjs').attach(require('electron-updater').autoUpdater,{app:'restaurant',feed:'https://possistem.az/pos-updates/'});
+
+/* POSSISTEM_INPUT_BUDGET */ require('./ipc-budget.cjs').install(require('electron').ipcMain);

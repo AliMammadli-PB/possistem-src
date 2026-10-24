@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { access } from 'node:fs/promises';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { customers, featureFlags } from '@milioner/database';
 import { parseBody, clientIp } from '../lib/validate.js';
 import { requireSuperadmin, currentUser, requireAuth } from '../plugins/auth.js';

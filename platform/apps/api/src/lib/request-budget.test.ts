@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {withinBudget} from './request-budget.js';
+test('request budget accepts a realistic product batch but rejects allocation bombs',()=>{assert.equal(withinBudget({products:Array.from({length:500},(_,i)=>({id:i,name:'Mal',price:800,qty:5}))}),true);assert.equal(withinBudget({items:Array(5001).fill(null)}),false);assert.equal(withinBudget({text:'x'.repeat(2*1024*1024)}),false);});
+test('deep and wide payloads cannot reach schema validation',()=>{let v:unknown=null;for(let i=0;i<40;i++)v={next:v};assert.equal(withinBudget(v),false);assert.equal(withinBudget(Object.fromEntries(Array.from({length:5001},(_,i)=>[i,null]))),false);});

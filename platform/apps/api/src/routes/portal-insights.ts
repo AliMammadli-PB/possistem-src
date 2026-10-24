@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import type {FastifyInstance} from 'fastify';
 import {sql} from 'drizzle-orm';
-import {z} from 'zod';
+import {z} from 'zod/v3';
 import {requireCustomer} from '../plugins/customer-auth.js';
 import {surfaceAccess} from './access.js';
 import {areaAllowed} from '../lib/access-areas.js';

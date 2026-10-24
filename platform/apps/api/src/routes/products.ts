@@ -188,7 +188,7 @@ export async function adminProductRoutes(app: FastifyInstance) {
 
       let webp: Buffer;
       try {
-        webp = await sharp(buffer)
+        webp = await sharp(buffer, {limitInputPixels:20_000_000,failOn:'error'})
           .rotate()
           .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
           .webp({ quality: 82 })

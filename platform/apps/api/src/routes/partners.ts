@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { generateSessionToken, generateCsrfToken, hashSessionToken, hashPassword, verifyPassword } from '@milioner/security';
 import { env } from '../env.js';
 import { parseBody, clientIp } from '../lib/validate.js';

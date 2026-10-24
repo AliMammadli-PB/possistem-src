@@ -2,7 +2,7 @@
   "name": "marketpos",
   "productName": "MarketPos",
   "private": true,
-  "version": "1.5.69",
+  "version": "1.5.71",
   "description": "Offline-first retail market POS (AZ/RU/EN)",
   "main": "electron/main.cjs",
   "scripts": {
@@ -12,12 +12,13 @@
     "build:core": "cmake --build native/build --config Release",
     "test:core": "ctest --test-dir native/build --output-on-failure",
     "test:sync": "node scripts/test-market-sync-resilience.mjs",
-    "test": "npm run typecheck && npm run test:core && npm run test:sync",
-    "package:win": "npm --prefix ../restoranpos run market:package:win"
+    "test": "npm run typecheck && npm run test:core && npm run test:sync && npm run test:security",
+    "package:win": "npm --prefix ../restoranpos run market:package:win",
+    "test:security": "node scripts/test-billing1569.cjs && node scripts/test-signed-updates.cjs"
   },
   "dependencies": {
-    "electron-updater": "^6.6.2",
-    "bwip-js": "4.11.4"
+    "bwip-js": "4.11.4",
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "@fontsource-variable/manrope": "5.3.0",
@@ -26,7 +27,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "5.2.0",
-    "electron": "^43.7.5",
+    "electron": "43.8.3",
     "lucide-react": "1.28.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

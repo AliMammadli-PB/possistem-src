@@ -1,7 +1,7 @@
 import {archiveBillingCustomer} from '../lib/billing/store.js';
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   CustomerEmailUpdateSchema,
   ResellerCreateSchema,

@@ -3,7 +3,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {inflateRawSync} from 'node:zlib';
 import type {FastifyInstance} from 'fastify';
 import {sql} from 'drizzle-orm';
-import {z} from 'zod';
+import {z} from 'zod/v3';
 import {resolveTenantToken} from './tenant.js';
 import {surfaceAccess} from './access.js';
 import {areaAllowed} from '../lib/access-areas.js';

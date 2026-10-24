@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { parseBody } from '../lib/validate.js';
 import { requireSuperadmin } from '../plugins/auth.js';
 

@@ -1,3 +1,5 @@
+> Cari 50 ₼ qiyməti, açarsız istifadənin davamı və yeni versiyalar üçün [24.10.2026 təhlükəsizlik buraxılışına](SECURITY-REVIEW-20261024.md) baxın. Aşağıdakı sənəd əvvəlki Epoint buraxılışının tarixçəsidir.
+
 # Epoint və fərdi aylıq abunəliklər — 24.10.2026
 
 ## Hazır olanlar

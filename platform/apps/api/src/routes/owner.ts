@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import {
   OwnerBotMessageSchema,

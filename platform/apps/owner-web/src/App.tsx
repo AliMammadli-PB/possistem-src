@@ -126,7 +126,7 @@ export default function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
-          <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
+          <Route path="/register" element={<PublicOnly><Navigate to="/login" replace /></PublicOnly>} />
           <Route path="/forgot-password" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
           <Route path="/reset-password" element={<PublicOnly><ResetPasswordPage /></PublicOnly>} />
 
