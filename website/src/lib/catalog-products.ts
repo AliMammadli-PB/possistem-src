@@ -1,5 +1,7 @@
+import {adminAuthHeaders} from './admin-session';
 export type CatalogProduct = {
   id: string;
+  isTest?: boolean;
   name: string;
   slug: string;
   sku: string;
@@ -27,7 +29,8 @@ export type CatalogResponse = {
   products: CatalogProduct[];
 };
 
-export function productDetailPath(product: Pick<CatalogProduct, 'id'>) {
+export function productDetailPath(product: Pick<CatalogProduct, 'id'|'isTest'>) {
+  if(product.isTest)return '/odenis/sinaq/';
   return `/mehsul/avadanliq/${encodeURIComponent(product.id)}/`;
 }
 
@@ -45,7 +48,8 @@ export function hasPublicPrice(product: Pick<CatalogProduct, 'price'>): product 
 
 export async function fetchPublicCatalog(): Promise<CatalogResponse> {
   const res = await fetch('/pos/api/public/products', {
-    headers: { Accept: 'application/json' },
+    headers: adminAuthHeaders({ Accept: 'application/json' }),
+    credentials: 'include',
     cache: 'no-store',
   });
   if (!res.ok) {
@@ -56,7 +60,8 @@ export async function fetchPublicCatalog(): Promise<CatalogResponse> {
 
 export async function fetchPublicProduct(id: string): Promise<CatalogProduct> {
   const res = await fetch(`/pos/api/public/products/${encodeURIComponent(id)}`, {
-    headers: { Accept: 'application/json' },
+    headers: adminAuthHeaders({ Accept: 'application/json' }),
+    credentials: 'include',
     cache: 'no-store',
   });
   if (!res.ok) {

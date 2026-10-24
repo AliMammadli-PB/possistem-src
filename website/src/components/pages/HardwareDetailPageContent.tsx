@@ -207,7 +207,7 @@ export function HardwareDetailPageContent({ productId }: HardwareDetailPageConte
                 ) : null}
 
                 <div className="hardware-detail-actions">
-                  {priced ? (
+                  {product.isTest?<Link className="marketing-button primary" href="/odenis/sinaq/">Test sifarişi yarat</Link>:priced ? (
                     <button
                       type="button"
                       className="marketing-button primary"

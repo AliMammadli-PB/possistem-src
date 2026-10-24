@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import {useAdminSession} from '@/components/providers/AdminSessionProvider';
+import {useCustomerSession} from '@/components/providers/CustomerSessionProvider';
 import { useI18n } from '@/components/providers/I18nProvider';
 import { fetchPublicCatalog, type CatalogProduct } from '@/lib/catalog-products';
 import {
@@ -16,6 +18,7 @@ import { HardwareCard } from './HardwareCard';
 
 export function HardwareCatalog() {
   const { t } = useI18n();
+  const adminSession=useAdminSession(),customerSession=useCustomerSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedParent = searchParams.get('bolme');
@@ -37,6 +40,7 @@ export function HardwareCatalog() {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setProducts([]);
       setError(null);
       try {
         const data = await fetchPublicCatalog();
@@ -50,7 +54,7 @@ export function HardwareCatalog() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [adminSession.authenticated,adminSession.email,customerSession.authenticated,customerSession.email]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {

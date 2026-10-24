@@ -1,3 +1,4 @@
+import {testCatalogProduct,TEST_PRODUCT_ID} from '../lib/billing/test-shop.js';
 import { importCatalog, overlayCommerce, updateCommerceProduct } from '../lib/billing/catalog.js';
 import { BillingError } from '../lib/billing/domain.js';
 import { randomUUID } from 'node:crypto';
@@ -23,8 +24,10 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 export async function publicProductRoutes(app: FastifyInstance) {
-  app.get('/public/products', async () => {
-    const products = await overlayCommerce(app.db,await listPublicTradeProducts());
+  app.get('/public/products', async (req,reply) => {
+    reply.header('Cache-Control','private, no-store').header('Vary','Cookie, x-admin-session');
+    const testProduct=await testCatalogProduct(app.db,req);
+    const products = [...(testProduct?[testProduct]:[]),...await overlayCommerce(app.db,await listPublicTradeProducts())];
     const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort((a, b) =>
       a.localeCompare(b, 'az'),
     );
@@ -56,6 +59,8 @@ export async function publicProductRoutes(app: FastifyInstance) {
 
   app.get('/public/products/:id', async (req, reply) => {
     const id = (req.params as { id: string }).id;
+    reply.header('Cache-Control','private, no-store').header('Vary','Cookie, x-admin-session');
+    if(id===TEST_PRODUCT_ID){const product=await testCatalogProduct(app.db,req);return product?{product}:reply.code(404).send({error:'Məhsul tapılmadı.'});}
     const product = await getPublicTradeProduct(id);
     if (!product) return reply.code(404).send({ error: 'Məhsul tapılmadı.' });
     return { product: (await overlayCommerce(app.db,[product]))[0] };

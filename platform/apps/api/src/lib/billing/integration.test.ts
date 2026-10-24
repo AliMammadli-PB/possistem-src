@@ -49,9 +49,10 @@ before(async()=>{
   await db.$client.unsafe('CREATE TABLE customers(id uuid PRIMARY KEY,name text,email text,active boolean DEFAULT true,password_hash text); CREATE TABLE customer_sessions(id uuid,customer_id uuid); CREATE TABLE licenses(id uuid PRIMARY KEY,customer_id uuid REFERENCES customers(id),plan text,features jsonb,status text,valid_until timestamptz,updated_at timestamptz DEFAULT now()); CREATE TABLE activation_keys(id uuid PRIMARY KEY,license_id uuid REFERENCES licenses(id),expires_at timestamptz,revoked_at timestamptz);');
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0042_epoint_billing.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0043_security_subscription_rollout.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0044_private_checkout_test.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
-  await db.$client.unsafe('TRUNCATE billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
+  await db.$client.unsafe('TRUNCATE billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
   await db.execute(sql`INSERT INTO customers(id,name,email) VALUES(${cid}::uuid,'Fixture owner','fixture@example.invalid'),(${other}::uuid,'Other owner','other@example.invalid')`);
   await db.execute(sql`UPDATE billing_settings SET enforcement_enabled=true,enabled=true,recurring_enabled=true,pickup_address='Fixture pickup',delivery_fee_minor=NULL,legal='{"version":"v1"}'::jsonb`);
   sent=[];responseMode='redirect';
@@ -236,4 +237,51 @@ test('logout only stores verified sessions and persists revocation for a fresh p
   const good=await app.inject({method:'POST',url:'/tenant/logout',headers:{authorization:'Bearer '+token}});assert.equal(good.statusCode,200);
   const hash=createHash('sha256').update(token).digest('hex');assert.equal((await query(db,sql`SELECT token_hash FROM tenant_session_revocations WHERE token_hash=${hash}`)).length,1);
  }finally{await app.close();}
+});
+
+async function privateTestApp(){
+ const {default:Fastify}=await import('fastify'),{billingRoutes}=await import('../../routes/billing.js'),{publicProductRoutes}=await import('../../routes/products.js');
+ const app=Fastify();app.decorate('db',db);
+ for(const name of ['user','customer','csrfToken','customerCsrfToken'])app.decorateRequest(name,null);
+ app.addHook('preHandler',async req=>{
+  if(req.headers.authorization==='FixtureAli') {req.user={id:cid,email:'ali.mammadli@possistem.az',active:true,mustChangePassword:false,role:'superadmin'};req.csrfToken='private-test-csrf';}
+  if(req.headers.authorization==='FixtureOther'){req.user={id:other,email:'other@example.invalid',active:true,mustChangePassword:false,role:'superadmin'};req.csrfToken='other-csrf';}
+ });
+ await app.register(billingRoutes,{billing,worker:false,prefix:'/pos/api'});await app.register(publicProductRoutes,{prefix:'/pos/api'});return app;
+}
+test('private test product is visible only to its authenticated account, never through email headers or a shared cache',async()=>{
+ const {TEST_PRODUCT_ID}=await import('./test-shop.js'),app=await privateTestApp();
+ try{
+  for(const headers of [{},{authorization:'FixtureOther'},{'x-email':'ali.mammadli@possistem.az'}]){
+   const listing=await app.inject({url:'/pos/api/public/products?email=ali.mammadli@possistem.az',headers});assert.equal(listing.statusCode,200);assert.equal(listing.json().products.some((p:{id:string})=>p.id===TEST_PRODUCT_ID),false);
+   assert.equal((await app.inject({url:'/pos/api/public/products/'+TEST_PRODUCT_ID,headers})).statusCode,404);
+   assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers})).statusCode,404);
+  }
+  const listing=await app.inject({url:'/pos/api/public/products',headers:{authorization:'FixtureAli'}});assert.match(String(listing.headers['cache-control']),/private.*no-store/);assert.match(String(listing.headers.vary),/Cookie/);
+  const product=listing.json().products.find((p:{id:string})=>p.id===TEST_PRODUCT_ID);assert.equal(product.isTest,true);assert.equal(product.price,1);
+  assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}})).json().mode,'simulation');
+ }finally{await app.close();}
+});
+test('keyless test checkout is CSRF-protected, idempotent and cannot write real payments, stock or subscriptions',async()=>{
+ const {TEST_PRODUCT_ID}=await import('./test-shop.js'),app=await privateTestApp();
+ const body={mode:'simulation',accepted:true,productId:TEST_PRODUCT_ID,qty:2,outcome:'success',requestId:randomUUID()};
+ const post=(payload:unknown=body,csrf='private-test-csrf',auth='FixtureAli')=>app.inject({method:'POST',url:'/pos/api/billing/test/checkout',headers:{authorization:auth,'x-csrf-token':csrf},payload});
+ try{
+  await db.execute(sql`UPDATE billing_settings SET enabled=false,recurring_enabled=false`);
+  assert.equal((await post(body,'wrong')).statusCode,403);assert.equal((await post(body,'other-csrf','FixtureOther')).statusCode,404);
+  assert.equal((await post({...body,amountMinor:1})).statusCode,400);assert.equal((await post({...body,mode:'real'})).statusCode,400);
+  const results=await Promise.all(Array.from({length:4},()=>post()));for(const r of results){assert.equal(r.statusCode,200,r.body);assert.equal(r.json().mode,'simulation');assert.equal(r.json().chargedMinor,0);assert.equal(r.json().amountMinor,200);assert.equal(r.json().status,'simulated_success');}
+  assert.equal(new Set(results.map(r=>r.json().id)).size,1);assert.equal((await post({...body,qty:3})).statusCode,409);
+  assert.equal((await post({...body,outcome:'failure',requestId:randomUUID()})).json().status,'simulated_failure');
+  for(const table of ['billing_orders','billing_attempts','billing_period_grants','billing_subscriptions'])assert.equal((await db.$client.unsafe('SELECT * FROM '+table)).length,0,table);
+  assert.equal((await query(db,sql`SELECT sum(reserved_qty)::int total FROM billing_catalog`))[0]?.total??0,0);assert.equal(sent.length,0);
+  assert.equal((await query(db,sql`SELECT id FROM billing_test_orders`)).length,2);
+ }finally{await app.close();}
+});
+test('private test SKU cannot enter the real quote or checkout path even with a forged stored quote',async()=>{
+ const {TEST_PRODUCT_ID}=await import('./test-shop.js');
+ await assert.rejects(()=>billing.quote(cid,[{id:TEST_PRODUCT_ID,qty:1}],{kind:'pickup',name:'Fixture',phone:'0500000000',address:''}),e=>(e as BillingError).code==='test_product');
+ const payload={items:[{id:TEST_PRODUCT_ID,qty:1,name:'Test',unitPriceMinor:100}],shipping:{kind:'pickup',name:'Fixture',phone:'0500000000',address:''},deliveryFeeMinor:0,termsVersion:'v1'};
+ const [q]=await query<{id:string}>(db,sql`INSERT INTO billing_quotes(customer_id,payload,amount_minor) VALUES(${cid}::uuid,${JSON.stringify(payload)}::jsonb,100) RETURNING id`);
+ await assert.rejects(()=>billing.shopCheckout(cid,q!.id,randomUUID(),'v1'),e=>(e as BillingError).code==='test_product');assert.equal(sent.length,0);assert.equal((await query(db,sql`SELECT id FROM billing_orders`)).length,0);
 });

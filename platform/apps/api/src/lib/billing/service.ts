@@ -1,3 +1,4 @@
+import {TEST_PRODUCT_ID} from './test-shop.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Db } from '@milioner/database';
@@ -87,6 +88,7 @@ export class Billing {
   }
 
   async quote(customerId:string,items:{id:string;qty:number}[],shipping:Shipping,partnerProof?:string){
+    if(items.some(i=>i.id===TEST_PRODUCT_ID))reject('test_product','Sınaq məhsulu yalnız simulyasiya səhifəsində istifadə olunur.',400);
     const settings=await this.settings();await importCatalog(this.db);
     const special=await trustedPartnerPrices(this.db,customerId,partnerProof);
     if(shipping.kind==='delivery'&&settings.delivery_fee_minor===null)reject('delivery_unavailable','Çatdırılma hazırda aktiv deyil.');
@@ -114,6 +116,7 @@ export class Billing {
       const [quote]=await query<{payload:QuotePayload;amount_minor:string}>(tx,sql`SELECT * FROM billing_quotes WHERE id=${quoteId}::uuid AND customer_id=${customerId}::uuid AND expires_at>now()`);
       if(!quote)reject('quote_expired','Qiymət təklifini yeniləyin.');
       const p=quote!.payload;
+      if(p.items.some(i=>i.id===TEST_PRODUCT_ID))reject('test_product','Sınaq məhsulu real ödənişə göndərilmir.',400);
       if(!termsVersion||termsVersion!==p.termsVersion)reject('terms_changed','Sifariş şərtlərini oxuyub təsdiqləyin.');
       const special=await trustedPartnerPrices(tx,customerId,p.partnerProof);
       const [settings]=await query<Settings>(tx,sql`SELECT * FROM billing_settings WHERE id=true FOR SHARE`);

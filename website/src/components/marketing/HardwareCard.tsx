@@ -38,6 +38,7 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
         )}
       </Link>
       <div className="hardware-card-body">
+        {product.isTest&&<p className="hardware-card-meta"><strong>Şəxsi sınaq · real pul tutulmur</strong></p>}
         {product.category ? <p className="hardware-card-meta">{product.category}</p> : null}
         <h3>
           <Link href={href}>{product.name}</Link>
@@ -48,7 +49,7 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
           <p className="hardware-card-price hardware-card-price--soon">{t('hardware.cta.quote')}</p>
         )}
         <div className="hardware-card-actions">
-          {priced ? (
+          {product.isTest?<Link href="/odenis/sinaq/" className="marketing-button primary">Test sifarişi yarat</Link>:priced ? (
             <button
               type="button"
               className="marketing-button primary"

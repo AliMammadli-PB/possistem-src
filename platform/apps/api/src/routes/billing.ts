@@ -1,3 +1,4 @@
+import {testShopContext,simulateCheckout} from '../lib/billing/test-shop.js';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { sql } from 'drizzle-orm';
@@ -40,6 +41,11 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   const admin=(fn:(actor:string,req:FastifyRequest,reply:FastifyReply)=>Promise<unknown>)=>guarded(async(req,reply)=>{if(!requireSuperadmin(req,reply))return;return fn(currentUser(req).id,req,reply);});
 
   app.post('/billing/epoint/callback',{config:{rateLimit:{max:600,timeWindow:'1 minute'}}},guarded(async(req)=>{const b=req.body as {data?:unknown;signature?:unknown};return billing.callback(b?.data,b?.signature);}));
+  app.get('/billing/test/context',guarded(async req=>testShopContext(app.db,req)));
+  app.post('/billing/test/checkout',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},guarded(async req=>{
+    const input=z.object({mode:z.literal('simulation'),accepted:z.literal(true),productId:z.string().min(1).max(150),qty:z.number().int().min(1).max(10),outcome:z.enum(['success','failure']),requestId:uuid}).strict().parse(req.body);
+    return simulateCheckout(app.db,req,input);
+  }));
   app.get('/billing/options',guarded(async()=>{const s=await billing.settings();return {pickupAddress:s.pickup_address,deliveryAvailable:s.delivery_fee_minor!==null,deliveryFeeMinor:s.delivery_fee_minor===null?null:Number(s.delivery_fee_minor),legal:s.legal,paymentsAvailable:s.enabled&&Boolean(billing.gateway()?.config.liveVerified)};}));
   app.get('/billing/terms',guarded(async(req)=>{
     const version=String((req.query as {version?:string}).version??'').slice(0,100);
