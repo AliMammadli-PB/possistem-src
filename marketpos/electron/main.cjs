@@ -1104,10 +1104,11 @@ function registerIpc() {
     const response=await fetch(controlApi('/billing/desktop/status'),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+state.tenant.token},body:JSON.stringify({product:'market'}),signal:AbortSignal.timeout(10000)});
     const data=await response.json();if(!response.ok)throw Error(data.error||'Ödəniş məlumatı alınmadı');return data;
   });
-  ipcMain.handle('market:billing:open',async event=>{
+  ipcMain.handle('market:billing:open',async (event,mode='manual')=>{
+    if(!['manual','automatic'].includes(mode))throw Error('Ödəniş üsulu düzgün deyil');
     assertTrusted(event);const state=loadSecureState();if(!state.tenant?.token)throw Error('Hesaba daxil olun');
     const response=await fetch(controlApi('/billing/desktop/handoff'),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+state.tenant.token},body:JSON.stringify({product:'market'}),signal:AbortSignal.timeout(10000)});
-    const data=await response.json();if(!response.ok)throw Error(data.error||'Ödəniş açıla bilmədi');await shell.openExternal(billingPolicy.paymentUrl(data.url));return {opened:true};
+    const data=await response.json();if(!response.ok)throw Error(data.error||'Ödəniş açıla bilmədi');const target=new URL(billingPolicy.paymentUrl(data.url));target.searchParams.set('mode',mode);await shell.openExternal(target.toString());return {opened:true};
   });
   ipcMain.handle('market:staff:list', (event) => { assertTrusted(event); return loadSecureState().staff.map(publicStaff); });
   ipcMain.handle('market:auth:login', async (event, input) => {

@@ -11,6 +11,7 @@ import {
 
 import { createInitialState, readPersistedState } from './data';
 import { ChangePinScreen } from './ChangePinScreen';
+import {MarketBilling,SubscriptionPaymentScreen} from './MarketBilling';
 import { printStationTickets } from './KitchenStations';
 import { canAccess, findBarcode, parseMoneyInput, ROLE_VIEWS, stockOf } from './domain';
 import { auditActionLabel, auditDetailLabel, roleLabel, tr, unitLabel, viewLabel } from './i18n';
@@ -126,6 +127,8 @@ function narrowByStation(access: string[] | null, station: string | undefined): 
 
 
 export default function App() {
+  const [subscriptionPrompt,setSubscriptionPrompt]=useState(false);
+  const promptedExpiry=useRef(0);
   const [operationsInitial,setOperationsInitial]=useState('catalog');
   const [legacyState] = useState(() => readPersistedState(localStorage, STORE_KEY));
   const [state, setState] = useState<PersistedState>(() => (marketCoreClient.available() ? null : legacyState) ?? createInitialState());
@@ -532,7 +535,8 @@ export default function App() {
         const status = await window.marketSystem!.activation.refresh();
         if (!alive) return;
         if ((status as ActivationStatus & { inventory?: boolean }).inventory === false) setInventoryOn(false);
-        if(status.mode==='expired'){setNotice('Abunəlik müddəti bitib. Məlumatlara baxış açıqdır; yeni əməliyyat üçün ödəniş edin.');return;}
+        if(status.mode==='active'){promptedExpiry.current=0;setSubscriptionPrompt(false);}
+        if(status.mode==='expired'){if(promptedExpiry.current!==status.validUntil){promptedExpiry.current=status.validUntil;setSubscriptionPrompt(true);}setNotice('Abunəlik müddəti bitib. Məlumatlara baxış açıqdır; yeni əməliyyat üçün ödəniş edin.');return;}
         if (status.mode === 'revoked') {
           if (session) await window.marketSystem!.auth.logout(session.sessionToken).catch(() => false);
           setSession(null);
@@ -723,6 +727,7 @@ export default function App() {
 
   return (
     <div className="market-shell">
+      {subscriptionPrompt&&<SubscriptionPaymentScreen lang={lang} onClose={()=>setSubscriptionPrompt(false)} onCheck={()=>{void window.marketSystem?.activation.refresh().then(status=>{if(status.mode==='active'&&status.validUntil>Date.now()){setSubscriptionPrompt(false);setNotice('Ödəniş təsdiqləndi. Satışa davam edə bilərsiniz.');}else setNotice('Ödəniş hələ təsdiqlənməyib.');}).catch(()=>setNotice('Bağlantını yoxlayıb yenidən sınayın.'));}}/>}
       <aside className="rail">
         <button className="brand-mark" onClick={() => safeSetView('dashboard')} aria-label="MarketPos ana səhifə"><span className="ps-brand-mark"><img src="./assets/brand-mark.png" alt="" /></span><span>MarketPos</span></button>
         <nav>{nav.filter(({ id }) => !['settings','management'].includes(id) && (allowedViews.includes(id) || id === 'returns' && allowedViews.includes('sale'))).map(({ id, icon: Icon }) => <button key={id} data-view={id} className={view === id || (id === 'management' && view === 'branches') ? 'active' : ''} onClick={() => safeSetView(id)} title={viewLabel(id, lang)}><Icon /><span>{viewLabel(id, lang)}</span></button>)}</nav>
@@ -743,7 +748,7 @@ export default function App() {
             <button className="icon-button" onClick={() => void window.marketSystem?.display.toggleFullscreen()} title="F11"><Expand /></button>
           </div>
         </header>
-        <MarketBilling compact={view!=='settings'}/>
+        <MarketBilling compact={view!=='settings'} lang={lang} onManage={()=>setSubscriptionPrompt(true)}/>
 
         <main className={`page-area${view==='branches'||view==='ops'&&remote?' branch-page-area':''}`}>
           <LockedArea locked={!viewAllowed(view)} onDenied={deny}>
@@ -811,6 +816,10 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
   const [tenant, setTenant] = useState<TenantStatus | null>(null);
   const [activation, setActivation] = useState<ActivationStatus | null>(null);
   const [ready, setReady] = useState(!window.marketSystem);
+  const [allowReadOnly,setAllowReadOnly]=useState(false);
+  const [billingInfo,setBillingInfo]=useState<{subscriptions:{state:string;hasPaidSubscription?:boolean}[];enforcementEnabled?:boolean}|null>(null);
+  useEffect(()=>{if(!tenant?.authenticated){setBillingInfo(null);return;}let alive=true;const load=()=>{void window.marketSystem?.billing.status().then(value=>{if(alive)setBillingInfo(value);}).catch(()=>{});};load();const timer=setInterval(load,15000);return()=>{alive=false;clearInterval(timer);};},[tenant?.authenticated,tenant?.authenticated?tenant.email:'']);
+
 
   useEffect(() => {
     if (!window.marketSystem) return;
@@ -850,10 +859,11 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
       <TenantLoginScreen
         lang={lang}
         setLang={setLang}
-        onSuccess={(next) => setTenant(next)}
+        onSuccess={(next) => {setAllowReadOnly(false);setTenant(next);}}
       />
     );
   }
+  if(tenant.billingOnly||!allowReadOnly&&billingInfo?.subscriptions[0]&&!billingInfo.subscriptions[0].hasPaidSubscription||!allowReadOnly&&activation?.mode==='expired'&&Boolean((activation as ActivationStatus&{licenseProof?:unknown}).licenseProof))return <SubscriptionPaymentScreen lang={lang} closeLabel={activation?.mode==='active'?(lang==='ru'?'Продолжить':lang==='en'?'Continue':'Davam et'):undefined} onClose={!tenant.billingOnly&&licenseAllowsPin(activation)?()=>setAllowReadOnly(true):undefined} onCheck={()=>{void window.marketSystem!.billing.status().then(async info=>{if(info.billingOnly&&info.subscriptions[0]?.state==='active'){await window.marketSystem!.tenant.logout();setTenant({authenticated:false});setActivation(null);}else setActivation(await window.marketSystem!.activation.refresh());}).catch(()=>{});}} onSwitch={()=>{void window.marketSystem?.tenant.logout().then(()=>{setTenant({authenticated:false});setActivation(null);});}}/>;
   if (!licenseAllowsPin(activation)) {
     return (
       <ActivationGateScreen
@@ -1043,7 +1053,7 @@ function ActivationGateScreen({
             <div><dt>{tr(lang, 'licenseValidUntil')}</dt><dd>{activation?.validUntil ? new Date(activation.validUntil).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ') : '—'}</dd></div>
             <div><dt>{licenseModeLabel(lang, activation?.mode)}</dt><dd>{tr(lang, 'licenseBlocked')}</dd></div>
           </dl>
-          <MarketBilling/>
+          <MarketBilling lang={lang}/>
           {message && <p className="ps-rest-gate-error" role="alert">{message}</p>}
           <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : lang === 'ru' ? 'Проверить снова' : lang === 'en' ? 'Try again' : 'Yenidən yoxla'}</button>
           <div className="ps-rest-gate-links">
@@ -1562,12 +1572,4 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
 function MobilePage({ state, staff, lang, cloudConnected }: { state: PersistedState; staff: StaffProfile[]; lang: Lang; cloudConnected: boolean }) {
   const sales = state.sales.filter((sale) => !sale.refunded); const revenue = sales.reduce((sum, sale) => sum + sale.totalMinor, 0); const low = state.products.filter((product) => stockOf(product) <= product.minStock);
   return <div className="module-page mobile-module"><section className="page-intro"><div><p>POSSISTEM.AZ / MARKETPOS</p><h2>{tr(lang, 'ownerLive')}</h2><span>{tr(lang, 'remoteNote')}</span></div><div className={`connection ${cloudConnected ? 'online' : ''}`}>{cloudConnected ? <Cloud /> : <CloudOff />}{cloudConnected ? tr(lang, 'connected') : tr(lang, 'offline')}</div></section><section className="mobile-showcase"><div className="phone-frame"><div className="phone-notch" /><header><div><small>{tr(lang, 'kickerOwner').toLocaleUpperCase(lang)}</small><h3>{state.settings.storeName}</h3></div><span className={cloudConnected ? 'online-dot' : ''} /></header><div className="phone-content"><p>Bugün · Canlı baxış</p><article className="phone-revenue"><small>{tr(lang, 'todaySales')}</small><strong>{money(revenue, lang)}</strong><span>{sales.length} çek</span></article><div className="phone-kpis"><span><small>{tr(lang, 'transactions')}</small><b>{sales.length}</b></span><span><small>{tr(lang, 'openRegisters')}</small><b>{state.registers.filter((row) => row.status === 'open').length}</b></span><span><small>{tr(lang, 'low')}</small><b>{low.length}</b></span><span><small>{tr(lang, 'staff')}</small><b>{staff.filter((row) => row.active).length}</b></span></div><h4>Kassalar</h4>{state.registers.map((register) => <div className="phone-row" key={register.id}><span className={register.status === 'open' ? 'online-dot' : ''} /><p><b>{register.name}</b><small>{staff.find((row) => row.id === register.operatorId)?.name ?? 'Bağlı'}</small></p><strong>{money(state.sales.filter((sale) => sale.registerId === register.id && !sale.refunded).reduce((sum, sale) => sum + sale.totalMinor, 0), lang)}</strong></div>)}<h4>Kritik stok</h4>{low.slice(0, 3).map((product) => <div className="phone-row" key={product.id}><ProductVisual image={product.image} compact alt={product.name[lang]} accent={product.accent} /><p><b>{product.name[lang]}</b><small>{product.sku}</small></p><strong className="danger">{stockOf(product)}</strong></div>)}</div><nav><span><Activity />Panel</span><span><ReceiptText />Satış</span><span><Boxes />Stok</span><span><Settings />Ayar</span></nav></div><div className="mobile-copy"><span><Smartphone /></span><h3>Mağaza cibinizdə</h3><p>Satış məbləği, kassa vəziyyəti, kassir performansı və kritik stoklar sahibkar hesabında telefon ölçüsünə uyğun göstərilir.</p><ul><li><Check />30 saniyəlik canlı sinxron</li><li><Check />POS offline olsa növbə saxlanılır</li><li><Check />Hər müştəri üçün ayrı tenant məlumatı</li><li><Check />AZ / RU / EN interfeys</li></ul><div className="portal-address"><Cloud /><span>Sahibkar ünvanı<b>possistem.az/marketpos</b></span></div></div></section></div>;
-}
-
-function MarketBilling({compact=false}:{compact?:boolean}){
- const [data,setData]=useState<{subscriptions:{monthlyAmountMinor:number;paidUntil:string|null;state:string;hasPaidSubscription?:boolean}[];billingOnly:boolean;paymentsAvailable:boolean;enforcementEnabled?:boolean}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- useEffect(()=>{if(!window.marketSystem?.billing)return;let alive=true;const load=()=>window.marketSystem!.billing.status().then(d=>{if(alive)setData(d);}).catch(()=>{});void load();const t=setInterval(()=>{if(document.visibilityState==='visible')void load();},15000);return()=>{alive=false;clearInterval(t);};},[]);
- const sub=data?.subscriptions[0];if(!sub)return null;
- if(compact&&sub.state==='active'&&sub.hasPaidSubscription)return null;
- return <aside style={{padding:'12px 18px',background:'#eaf2ff',color:'#173c75',border:'1px solid #bad1f4',borderRadius:8,fontSize:13,display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',gridColumn:'1 / -1'}}><strong>Market POS · {(sub.monthlyAmountMinor/100).toFixed(2)} ₼ / ay</strong><span>{sub.state==='active'&&sub.hasPaidSubscription?'Ödənilib · '+(sub.paidUntil?new Date(sub.paidUntil).toLocaleString():''):data?.enforcementEnabled?'Abunə olun':'Abunə olun · hazırlıq dövründə istifadəyə davam edə bilərsiniz'}</span><button type="button" disabled={busy||!data?.paymentsAvailable} onClick={()=>{setBusy(true);setError('');void window.marketSystem?.billing.open().catch(e=>setError(String(e.message||e))).finally(()=>setBusy(false));}}>{data?.paymentsAvailable?'Abunə ol':'Ödəniş hazırlanır'}</button>{data?.billingOnly&&sub.state==='active'&&<span>Ödəniş təsdiqləndi. Hesabdan çıxıb yenidən daxil olun.</span>}{error&&<span role="alert">{error}</span>}</aside>;
 }

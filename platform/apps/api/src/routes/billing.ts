@@ -56,7 +56,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   app.get('/customer/billing/orders',customer(async id=>({orders:await billing.orders(id)})));
   app.get('/customer/billing/orders/:id',customer(async(id,req)=>billing.order(id,idOf(req))));
   app.post('/customer/billing/subscriptions/:id/checkout',customer(async(id,req)=>{
-    const body=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean().default(false),termsVersion:z.string().max(100).optional()}).parse(req.body);
+    const body=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean().default(false),paymentMode:z.enum(['manual','automatic']).optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);
     return billing.subscriptionCheckout(id,idOf(req),body,req.ip);
   }));
   app.post('/customer/billing/subscriptions/:id/consent',customer(async(id,req)=>billing.consent(id,idOf(req),z.object({enabled:z.boolean(),priceVersion:z.number().int().positive().optional(),termsVersion:z.string().max(100).optional()}).parse(req.body),req.ip)));
@@ -170,7 +170,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   });
   app.get('/billing/site',site(async who=>{const result=await billing.listSubscriptions(who.customerId);return {...result,subscriptions:result.subscriptions.filter(s=>s.product===who.product),csrfToken:who.csrf};}));
   app.post('/billing/site/checkout',site(async(who,req)=>{
-    const b=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean(),termsVersion:z.string().max(100).optional()}).parse(req.body);
+    const b=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean(),paymentMode:z.enum(['manual','automatic']).optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);
     const [sub]=await query<{id:string}>(app.db,sql`SELECT id FROM billing_subscriptions WHERE customer_id=${who.customerId}::uuid AND product=${who.product}`);
     if(!sub)throw new BillingError('subscription_missing','Abunəlik yoxdur.',404);
     return billing.subscriptionCheckout(who.customerId,sub.id,b,req.ip);

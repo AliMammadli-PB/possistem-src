@@ -51,6 +51,7 @@ before(async()=>{
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0043_security_subscription_rollout.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0044_private_checkout_test.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0045_private_hosted_receipts.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0046_subscription_payment_mode.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
   await db.$client.unsafe('TRUNCATE billing_private_hosted_receipts,billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
@@ -75,6 +76,31 @@ test('same request and parallel clicks create one bank request; another customer
   assert.equal(new Set(calls.map(x=>x.id)).size,1);assert.equal(sent.length,1);
   await assert.rejects(()=>billing.order(other,calls[0]!.id));
   await assert.rejects(()=>billing.subscriptionCheckout(other,sid,{requestId:randomUUID(),priceVersion:1,saveCard:false},'127.0.0.1'));
+});
+test('explicit one-month payment withdraws auto-renew consent and preserves already paid time until confirmation',async()=>{
+ const {sid}=await seed('market',new Date(Date.now()+5*86400000).toISOString());
+ const initial=await billing.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard:true,paymentMode:'automatic',termsVersion:'v1'},'127.0.0.1');
+ await complete(initial.id,{card_id:'fixture-saved-card',card_mask:'****1111'});
+ const [before]=await query<{paid_until:string;auto_renew:boolean}>(db,sql`SELECT paid_until,auto_renew FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(before!.auto_renew,true);
+ const manual=await billing.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard:false,paymentMode:'manual',termsVersion:'v1'},'127.0.0.1');
+ const [chosen]=await query<{paid_until:string;auto_renew:boolean}>(db,sql`SELECT paid_until,auto_renew FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(String(chosen!.paid_until),String(before!.paid_until));assert.equal(chosen!.auto_renew,false);assert.equal(sent.at(-1)?.endpoint,'request');
+ assert.equal((await query(db,sql`SELECT id FROM billing_consents WHERE subscription_id=${sid}::uuid AND withdrawn_at IS NULL`)).length,0);
+ await complete(manual.id);const [paid]=await query<{paid_until:string;auto_renew:boolean}>(db,sql`SELECT paid_until,auto_renew FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.ok(new Date(paid!.paid_until)>new Date(before!.paid_until));assert.equal(paid!.auto_renew,false);
+});
+test('explicit modes require matching consent and terms; changing mode cannot reuse another payment request',async()=>{
+ const {sid}=await seed(),requestId=randomUUID();
+ for(const input of [{saveCard:false,paymentMode:'automatic' as const,termsVersion:'v1'},{saveCard:true,paymentMode:'manual' as const,termsVersion:'v1'},{saveCard:false,paymentMode:'manual' as const,termsVersion:'old'}])await assert.rejects(()=>billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,...input},'127.0.0.1'));
+ assert.equal(sent.length,0);
+ await billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,saveCard:true,paymentMode:'automatic',termsVersion:'v1'},'127.0.0.1');assert.equal(sent.at(-1)?.endpoint,'card-registration-with-pay');
+ await assert.rejects(()=>billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,saveCard:false,paymentMode:'manual',termsVersion:'v1'},'127.0.0.1'),e=>(e as BillingError).code==='request_conflict');
+ assert.equal((await query(db,sql`SELECT id FROM billing_orders`)).length,1);assert.equal(sent.length,1);
+});
+test('failed automatic renewal leaves the expired subscription blocked and visible for payment recovery',async()=>{
+ const {sid}=await seed('market',new Date(Date.now()-10000).toISOString());
+ const initial=await billing.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard:true,paymentMode:'automatic',termsVersion:'v1'},'127.0.0.1');await complete(initial.id,{card_id:'fixture-saved-card'});
+ await db.execute(sql`UPDATE billing_subscriptions SET paid_until=now()-interval '1 minute' WHERE id=${sid}::uuid`);responseMode='decline';await billing.renew(sid);
+ const status=await billing.listSubscriptions(cid),sub=status.subscriptions.find(s=>s.id===sid)!;assert.equal(sub.state,'expired');assert.equal(sub.lastPaymentStatus,'failed');assert.equal(sub.autoRenew,true);assert.equal(sub.paymentMode,'automatic');assert.ok(new Date(sub.paidUntil!)<new Date());
+ assert.equal((await query(db,sql`SELECT order_id FROM billing_period_grants`)).length,1,'failed renewal cannot grant another month');
 });
 test('wrong amount, merchant and signature never activate a subscription',async()=>{
   const {sid}=await seed(),o=await checkout(sid);

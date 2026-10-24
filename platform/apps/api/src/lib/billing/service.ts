@@ -11,7 +11,7 @@ import { trustedPartnerPrices } from './partner.js';
 type Order = {
   id:string; order_no:string; customer_id:string; kind:'subscription'|'shop'; subscription_id:string|null;
   amount_minor:number|string; price_version:number|null; status:string; paid_at:string|Date|null;
-  consent_id:string|null; save_card_consent:boolean; expires_at:string|Date|null;
+  consent_id:string|null; save_card_consent:boolean; expires_at:string|Date|null; payment_mode?:'manual'|'automatic'|null;
 };
 type Attempt = {id:string;order_id:string;provider_order_id:string;kind:string;status:string;transaction_id:string|null;redirect_url:string|null;created_at:string|Date};
 export type Settings = {enforcement_enabled:boolean;enabled:boolean;recurring_enabled:boolean;pickup_address:string;delivery_fee_minor:number|string|null;legal:Record<string,unknown>};
@@ -37,9 +37,9 @@ export class Billing {
   }
 
   async listSubscriptions(customerId:string){
-    const rows=await query<Subscription & {has_paid_subscription:boolean}>(this.db,sql`SELECT s.*,EXISTS(SELECT 1 FROM billing_period_grants g WHERE g.subscription_id=s.id) AS has_paid_subscription FROM billing_subscriptions s WHERE s.customer_id=${customerId}::uuid ORDER BY product`);
+    const rows=await query<Subscription & {has_paid_subscription:boolean;last_payment_status:string|null}>(this.db,sql`SELECT s.*,EXISTS(SELECT 1 FROM billing_period_grants g WHERE g.subscription_id=s.id) AS has_paid_subscription,(SELECT o.status FROM billing_orders o WHERE o.subscription_id=s.id ORDER BY o.created_at DESC LIMIT 1) AS last_payment_status FROM billing_subscriptions s WHERE s.customer_id=${customerId}::uuid ORDER BY product`);
     const settings=await this.settings(),gateway=this.gateway();
-    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,hasPaidSubscription:s.has_paid_subscription,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),setupAccess:!settings.enforcement_enabled,priceVersion:s.price_version,autoRenew:s.auto_renew,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),enforcementEnabled:settings.enforcement_enabled,recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
+    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,hasPaidSubscription:s.has_paid_subscription,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),setupAccess:!settings.enforcement_enabled,priceVersion:s.price_version,autoRenew:s.auto_renew,paymentMode:s.auto_renew?'automatic':'manual',lastPaymentStatus:s.last_payment_status,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),enforcementEnabled:settings.enforcement_enabled,recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
   }
 
   async configureSubscription(actor:string,input:{customerId:string;product:string;monthlyAmountMinor:number;enabled:boolean;startsAt?:string}){
@@ -138,30 +138,37 @@ export class Billing {
     return this.sendCheckout(order.id,customerId);
   }
 
-  async subscriptionCheckout(customerId:string,id:string,input:{requestId:string;priceVersion:number;saveCard:boolean;termsVersion?:string},ip:string){
+  async subscriptionCheckout(customerId:string,id:string,input:{requestId:string;priceVersion:number;saveCard:boolean;paymentMode?:'manual'|'automatic';termsVersion?:string},ip:string){
+    if(input.paymentMode&&input.saveCard!==(input.paymentMode==='automatic'))reject('invalid_payment_mode','Ödəniş üsulu və avtomatik yenilənmə razılığı uyğun deyil.',400);
     const {settings}=await this.available(input.saveCard);
+    if(input.paymentMode&&(!settings.legal?.version||input.termsVersion!==settings.legal.version))reject('terms_changed','Ödəniş şərtlərini yeniləyib təsdiqləyin.');
     const order=await this.db.transaction(async tx=>{
       await lockSubscription(tx,id);
       const [sub]=await query<Subscription>(tx,sql`SELECT * FROM billing_subscriptions WHERE id=${id}::uuid AND customer_id=${customerId}::uuid AND enabled=true FOR UPDATE`);
       if(!sub)reject('subscription_missing','Abunəlik tapılmadı.',404);
       if(input.priceVersion!==sub!.price_version)reject('price_changed','Aylıq haqq dəyişib. Yeniləyib təsdiqləyin.');
-      const fingerprint=hash({id,priceVersion:input.priceVersion,saveCard:input.saveCard,termsVersion:input.termsVersion??null});
+      const fingerprint=hash({id,priceVersion:input.priceVersion,saveCard:input.saveCard,termsVersion:input.termsVersion??null,...(input.paymentMode?{paymentMode:input.paymentMode}:{})});
       const [prior]=await query<Order & {request_hash:string}>(tx,sql`SELECT * FROM billing_orders WHERE customer_id=${customerId}::uuid AND request_key=${input.requestId}::uuid`);
       if(prior){if(prior.request_hash!==fingerprint)reject('request_conflict','Əməliyyat məlumatları dəyişib.');return prior;}
       const [open]=await query<Order>(tx,sql`SELECT * FROM billing_orders WHERE subscription_id=${id}::uuid AND status IN ('awaiting_payment','processing','unknown','paid_review','refund_pending') FOR UPDATE`);
       if(open){
-        if(open.price_version===input.priceVersion&&open.save_card_consent===input.saveCard)return open;
+        if(open.price_version===input.priceVersion&&open.save_card_consent===input.saveCard&&(open.payment_mode??null)===(input.paymentMode??null))return open;
         const [active]=await query(tx,sql`SELECT id FROM billing_attempts WHERE order_id=${open.id}::uuid AND status IN ('sending','pending','redirect','unknown','succeeded')`);
         if(active)reject('payment_pending','Əvvəlki ödənişin nəticəsi gözlənilir.');
         await tx.execute(sql`UPDATE billing_orders SET status='expired',updated_at=now() WHERE id=${open.id}::uuid`);
       }
       let consentId:string|null=null;
+      if(input.paymentMode==='manual'){
+        await tx.execute(sql`UPDATE billing_subscriptions SET auto_renew=false,consent_version=NULL,updated_at=now() WHERE id=${id}::uuid`);
+        await tx.execute(sql`UPDATE billing_consents SET withdrawn_at=now() WHERE subscription_id=${id}::uuid AND withdrawn_at IS NULL`);
+        await event(tx,customerId,'subscription.manual_selected',id,{paidUntil:sub!.paid_until});
+      }
       if(input.saveCard){
         if(!settings.legal?.version||input.termsVersion!==settings.legal.version)reject('terms_changed','Avtomatik ödəniş şərtlərini təsdiqləyin.');
         const [c]=await query<{id:string}>(tx,sql`INSERT INTO billing_consents(subscription_id,price_version,amount_minor,terms_version,ip_hash) VALUES(${id}::uuid,${sub!.price_version},${sub!.monthly_amount_minor},${input.termsVersion},${hash(ip)}) RETURNING id`);consentId=c!.id;
       }
-      const [made]=await query<Order>(tx,sql`INSERT INTO billing_orders(order_no,customer_id,kind,subscription_id,price_version,billing_due_at,amount_minor,request_key,request_hash,save_card_consent,consent_id,terms_version)
-        VALUES(${'AB-'+randomUUID()},${customerId}::uuid,'subscription',${id}::uuid,${sub!.price_version},${sub!.paid_until?iso(sub!.paid_until):null}::timestamptz,${sub!.monthly_amount_minor},${input.requestId}::uuid,${fingerprint},${input.saveCard},${consentId}::uuid,${String(settings.legal.version||'')}) RETURNING *`);
+      const [made]=await query<Order>(tx,sql`INSERT INTO billing_orders(order_no,customer_id,kind,subscription_id,price_version,billing_due_at,amount_minor,request_key,request_hash,save_card_consent,consent_id,terms_version,payment_mode)
+        VALUES(${'AB-'+randomUUID()},${customerId}::uuid,'subscription',${id}::uuid,${sub!.price_version},${sub!.paid_until?iso(sub!.paid_until):null}::timestamptz,${sub!.monthly_amount_minor},${input.requestId}::uuid,${fingerprint},${input.saveCard},${consentId}::uuid,${String(settings.legal.version||'')},${input.paymentMode??null}) RETURNING *`);
       await event(tx,customerId,'subscription.invoice',made!.id,{subscriptionId:id,amountMinor:Number(made!.amount_minor)});return made!;
     });
     return this.sendCheckout(order.id,customerId);
@@ -405,13 +412,13 @@ export class Billing {
       if(!accepted)return null;
       let [order]=await query<Order>(tx,sql`SELECT * FROM billing_orders WHERE subscription_id=${id}::uuid AND status IN ('awaiting_payment','processing','unknown','paid_review','refund_pending') FOR UPDATE`);
       if(order){
-        if(order.status!=='awaiting_payment'||order.save_card_consent||order.price_version!==sub.price_version)return null;
+        if(order.status!=='awaiting_payment'||order.save_card_consent||order.payment_mode==='manual'||order.price_version!==sub.price_version)return null;
         const [a]=await query(tx,sql`SELECT id FROM billing_attempts WHERE order_id=${order.id}::uuid AND status IN ('sending','redirect','pending','unknown','succeeded')`);
         if(a)return null;
       }else{
-        const [failed]=await query<Order>(tx,sql`SELECT * FROM billing_orders WHERE subscription_id=${id}::uuid AND status='failed' AND price_version=${sub.price_version} AND billing_due_at IS NOT DISTINCT FROM ${sub.paid_until?iso(sub.paid_until):null}::timestamptz ORDER BY created_at DESC LIMIT 1 FOR UPDATE`);
+        const [failed]=await query<Order>(tx,sql`SELECT * FROM billing_orders WHERE subscription_id=${id}::uuid AND status='failed' AND payment_mode IS DISTINCT FROM 'manual' AND price_version=${sub.price_version} AND billing_due_at IS NOT DISTINCT FROM ${sub.paid_until?iso(sub.paid_until):null}::timestamptz ORDER BY created_at DESC LIMIT 1 FOR UPDATE`);
         if(failed)order=failed;
-        else [order]=await query<Order>(tx,sql`INSERT INTO billing_orders(order_no,customer_id,kind,subscription_id,price_version,billing_due_at,amount_minor,request_key,request_hash) VALUES(${'AB-'+randomUUID()},${sub.customer_id}::uuid,'subscription',${id}::uuid,${sub.price_version},${iso(sub.paid_until!)}::timestamptz,${sub.monthly_amount_minor},${randomUUID()}::uuid,${hash({id,version:sub.price_version,until:sub.paid_until})}) RETURNING *`);
+        else [order]=await query<Order>(tx,sql`INSERT INTO billing_orders(order_no,customer_id,kind,subscription_id,price_version,billing_due_at,amount_minor,request_key,request_hash,payment_mode) VALUES(${'AB-'+randomUUID()},${sub.customer_id}::uuid,'subscription',${id}::uuid,${sub.price_version},${iso(sub.paid_until!)}::timestamptz,${sub.monthly_amount_minor},${randomUUID()}::uuid,${hash({id,version:sub.price_version,until:sub.paid_until})},'automatic') RETURNING *`);
       }
       const [attempt]=await query<Attempt>(tx,sql`INSERT INTO billing_attempts(order_id,provider_order_id,kind,status) VALUES(${order!.id}::uuid,${'AUTO-'+randomUUID()},'recurring','sending') RETURNING *`);
       await tx.execute(sql`UPDATE billing_orders SET status='processing',updated_at=now() WHERE id=${order!.id}::uuid`);
