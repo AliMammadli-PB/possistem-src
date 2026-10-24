@@ -530,7 +530,8 @@ export default function App() {
         const status = await window.marketSystem!.activation.refresh();
         if (!alive) return;
         if ((status as ActivationStatus & { inventory?: boolean }).inventory === false) setInventoryOn(false);
-        if (status.mode === 'expired' || status.mode === 'revoked') {
+        if(status.mode==='expired'){setNotice('Abunəlik müddəti bitib. Məlumatlara baxış açıqdır; yeni əməliyyat üçün ödəniş edin.');return;}
+        if (status.mode === 'revoked') {
           if (session) await window.marketSystem!.auth.logout(session.sessionToken).catch(() => false);
           setSession(null);
           setCart([]);
@@ -540,7 +541,7 @@ export default function App() {
       } catch { /* offline: keep session */ }
     };
     void refreshLicense();
-    const timer = window.setInterval(() => void refreshLicense(), 5 * 60 * 1000);
+    const timer = window.setInterval(() => void refreshLicense(), 30 * 1000);
     return () => { alive = false; window.clearInterval(timer); };
   }, [session?.sessionToken, lang]);
 
@@ -738,6 +739,7 @@ export default function App() {
             <button className="icon-button" onClick={() => void window.marketSystem?.display.toggleFullscreen()} title="F11"><Expand /></button>
           </div>
         </header>
+        <MarketBilling compact={view!=='settings'}/>
 
         <main className={`page-area${view==='branches'||view==='ops'&&remote?' branch-page-area':''}`}>
           <LockedArea locked={!viewAllowed(view)} onDenied={deny}>
@@ -793,7 +795,7 @@ function licenseModeLabel(lang: Lang, mode: ActivationStatus['mode'] | undefined
 }
 
 function licenseAllowsPin(activation: ActivationStatus | null) {
-  return !!activation && activation.mode === 'active' && activation.validUntil > Date.now();
+  return !!activation && (activation.mode === 'active' && activation.validUntil > Date.now() || activation.mode==='expired'&&Boolean((activation as ActivationStatus & {licenseProof?:unknown}).licenseProof));
 }
 
 function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang) => void; staff: StaffProfile[]; onLogin: (pin: string) => Promise<void> }) {
@@ -819,7 +821,7 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
     void boot();
     const timer = window.setInterval(() => {
       void window.marketSystem?.activation.refresh().then(setActivation).catch(() => undefined);
-    }, 5 * 60 * 1000);
+    }, 30 * 1000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
 
@@ -967,7 +969,7 @@ function ActivationGateScreen({
   // PC slots on the website. Retried a few times - a network blip is not a screen.
   const clean = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason)).replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '');
   const activate = async () => {
-    if (!window.marketSystem) return;
+    if (!window.marketSystem||tenant.billingOnly) return;
     setBusy(true);
     setMessage(lang === 'ru' ? 'Активация через аккаунт…' : lang === 'en' ? 'Activating with the account…' : 'Hesab ilə aktivləşdirilir…');
     let last: unknown = null;
@@ -1032,6 +1034,7 @@ function ActivationGateScreen({
             <div><dt>{tr(lang, 'licenseValidUntil')}</dt><dd>{activation?.validUntil ? new Date(activation.validUntil).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-GB' : 'az-AZ') : '—'}</dd></div>
             <div><dt>{licenseModeLabel(lang, activation?.mode)}</dt><dd>{tr(lang, 'licenseBlocked')}</dd></div>
           </dl>
+          <MarketBilling/>
           {message && <p className="ps-rest-gate-error" role="alert">{message}</p>}
           <button type="submit" disabled={busy} className="ps-rest-gate-submit">{busy ? '…' : lang === 'ru' ? 'Проверить снова' : lang === 'en' ? 'Try again' : 'Yenidən yoxla'}</button>
           <div className="ps-rest-gate-links">
@@ -1550,4 +1553,12 @@ export function SalePage({ state, setState, session, lang, cart, setCart, cloudC
 function MobilePage({ state, staff, lang, cloudConnected }: { state: PersistedState; staff: StaffProfile[]; lang: Lang; cloudConnected: boolean }) {
   const sales = state.sales.filter((sale) => !sale.refunded); const revenue = sales.reduce((sum, sale) => sum + sale.totalMinor, 0); const low = state.products.filter((product) => stockOf(product) <= product.minStock);
   return <div className="module-page mobile-module"><section className="page-intro"><div><p>POSSISTEM.AZ / MARKETPOS</p><h2>{tr(lang, 'ownerLive')}</h2><span>{tr(lang, 'remoteNote')}</span></div><div className={`connection ${cloudConnected ? 'online' : ''}`}>{cloudConnected ? <Cloud /> : <CloudOff />}{cloudConnected ? tr(lang, 'connected') : tr(lang, 'offline')}</div></section><section className="mobile-showcase"><div className="phone-frame"><div className="phone-notch" /><header><div><small>{tr(lang, 'kickerOwner').toLocaleUpperCase(lang)}</small><h3>{state.settings.storeName}</h3></div><span className={cloudConnected ? 'online-dot' : ''} /></header><div className="phone-content"><p>Bugün · Canlı baxış</p><article className="phone-revenue"><small>{tr(lang, 'todaySales')}</small><strong>{money(revenue, lang)}</strong><span>{sales.length} çek</span></article><div className="phone-kpis"><span><small>{tr(lang, 'transactions')}</small><b>{sales.length}</b></span><span><small>{tr(lang, 'openRegisters')}</small><b>{state.registers.filter((row) => row.status === 'open').length}</b></span><span><small>{tr(lang, 'low')}</small><b>{low.length}</b></span><span><small>{tr(lang, 'staff')}</small><b>{staff.filter((row) => row.active).length}</b></span></div><h4>Kassalar</h4>{state.registers.map((register) => <div className="phone-row" key={register.id}><span className={register.status === 'open' ? 'online-dot' : ''} /><p><b>{register.name}</b><small>{staff.find((row) => row.id === register.operatorId)?.name ?? 'Bağlı'}</small></p><strong>{money(state.sales.filter((sale) => sale.registerId === register.id && !sale.refunded).reduce((sum, sale) => sum + sale.totalMinor, 0), lang)}</strong></div>)}<h4>Kritik stok</h4>{low.slice(0, 3).map((product) => <div className="phone-row" key={product.id}><ProductVisual image={product.image} compact alt={product.name[lang]} accent={product.accent} /><p><b>{product.name[lang]}</b><small>{product.sku}</small></p><strong className="danger">{stockOf(product)}</strong></div>)}</div><nav><span><Activity />Panel</span><span><ReceiptText />Satış</span><span><Boxes />Stok</span><span><Settings />Ayar</span></nav></div><div className="mobile-copy"><span><Smartphone /></span><h3>Mağaza cibinizdə</h3><p>Satış məbləği, kassa vəziyyəti, kassir performansı və kritik stoklar sahibkar hesabında telefon ölçüsünə uyğun göstərilir.</p><ul><li><Check />30 saniyəlik canlı sinxron</li><li><Check />POS offline olsa növbə saxlanılır</li><li><Check />Hər müştəri üçün ayrı tenant məlumatı</li><li><Check />AZ / RU / EN interfeys</li></ul><div className="portal-address"><Cloud /><span>Sahibkar ünvanı<b>possistem.az/marketpos</b></span></div></div></section></div>;
+}
+
+function MarketBilling({compact=false}:{compact?:boolean}){
+ const [data,setData]=useState<{subscriptions:{monthlyAmountMinor:number;paidUntil:string|null;state:string}[];billingOnly:boolean}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{if(!window.marketSystem?.billing)return;let alive=true;const load=()=>window.marketSystem!.billing.status().then(d=>{if(alive)setData(d);}).catch(()=>{});void load();const t=setInterval(()=>{if(document.visibilityState==='visible')void load();},15000);return()=>{alive=false;clearInterval(t);};},[]);
+ const sub=data?.subscriptions[0];if(!sub)return null;
+ if(compact&&sub.state==='active')return null;
+ return <aside style={{padding:'12px 18px',background:'#eaf2ff',color:'#173c75',border:'1px solid #bad1f4',borderRadius:8,fontSize:13,display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',gridColumn:'1 / -1'}}><strong>Market POS · {(sub.monthlyAmountMinor/100).toFixed(2)} ₼ / ay</strong><span>{sub.state==='active'?'Ödənilib · '+(sub.paidUntil?new Date(sub.paidUntil).toLocaleString():''):'İstifadə üçün ödəniş tələb olunur'}</span><button type="button" disabled={busy} onClick={()=>{setBusy(true);setError('');void window.marketSystem?.billing.open().catch(e=>setError(String(e.message||e))).finally(()=>setBusy(false));}}>Ödənişə keç</button>{data?.billingOnly&&sub.state==='active'&&<span>Ödəniş təsdiqləndi. Hesabdan çıxıb yenidən daxil olun.</span>}{error&&<span role="alert">{error}</span>}</aside>;
 }

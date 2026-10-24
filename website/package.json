@@ -1,0 +1,26 @@
+{
+  "name": "possistem",
+  "version": "1.0.10",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "hardware:images": "bash scripts/process-hardware-images.sh",
+    "hardware:prompts": "node scripts/print-hardware-prompts.mjs"
+  },
+  "dependencies": {
+    "flag-icons": "^7.5.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "playwright-core": "^1.49.1",
+    "typescript": "^5.7.0"
+  }
+}

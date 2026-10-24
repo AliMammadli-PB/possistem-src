@@ -138,6 +138,9 @@ const coreSupervisor = new CoreSupervisor();
 // Əməliyyatlar (1.5.0): the restaurant warehouse core, run beside the till's own.
 const { OpsEngine, ok: opsOk, fail: opsFail } = require('./ops-engine.cjs');
 const opsEngine = new OpsEngine({ market: coreSupervisor, searchDirs: [path.resolve(__dirname, '..', '..', 'restoranpos', 'native', 'build')] });
+const billingPolicy=require('./billing.cjs');
+coreSupervisor.canInvoke=(method,payload)=>billingPolicy.canInvoke(loadSecureState().activation,method,payload);
+opsEngine.core.canInvoke=coreSupervisor.canInvoke;
 function startOps(customerId) {
   return opsEngine.start(customerId).catch((err) => console.error('[ops-core] failed to start:', err instanceof Error ? err.message : err));
 }
@@ -228,6 +231,7 @@ function publicTenant(tenant) {
     customerName: tenant.customerName,
     expiresAt: tenant.expiresAt,
     paymentUrl: tenant.paymentUrl || null,
+    billingOnly:Boolean(tenant.billingOnly),billing:tenant.billing||null,
     licenses: Array.isArray(tenant.licenses) ? tenant.licenses : [],
   };
 }
@@ -948,7 +952,7 @@ async function initAutoUpdater() {
   } catch (error) { updateErrorStatus(error); }
 }
 
-function verifyOnlineLicense(body, state) {
+function verifyOnlineLicense(body, state, allowEnded=false) {
   const key = body.signingKey;
   const envelope = body.signedLicense;
   if (!key || key.algorithm !== 'Ed25519' || !envelope?.payload || !/^[0-9a-f]{128}$/i.test(envelope.signature || '') || !/^[0-9a-f]{64}$/i.test(key.publicKeyHex || '')) throw new Error('Aktivasiya cavabının imzası etibarsızdır');
@@ -959,7 +963,7 @@ function verifyOnlineLicense(body, state) {
   const publicKey = createPublicKey({ key: Buffer.concat([SPKI_PREFIX, Buffer.from(key.publicKeyHex, 'hex')]), format: 'der', type: 'spki' });
   const valid = verifySignature(null, Buffer.from(JSON.stringify(envelope.payload)), publicKey, Buffer.from(envelope.signature, 'hex'));
   if (!valid) throw new Error('Aktivasiya imzası yoxlamadan keçmədi');
-  if (envelope.payload.deviceFingerprint !== state.activation.deviceId || envelope.payload.status !== 'active') throw new Error('Lisenziya bu cihaz üçün aktiv deyil');
+  if (envelope.payload.deviceFingerprint !== state.activation.deviceId || (envelope.payload.status !== 'active' && !(allowEnded&&envelope.payload.status==='expired'&&envelope.payload.features?.billingManaged===true))) throw new Error('Lisenziya bu cihaz üçün aktiv deyil');
   if (envelope.payload.devicePublicKey && envelope.payload.devicePublicKey !== state.deviceProof.publicKeyHex) throw new Error('Lisenziya cihaz imza açarı ilə uyğun deyil');
   if (state.tenant?.customerId && String(envelope.payload.customerId || '') !== String(state.tenant.customerId)) {
     throw new Error('Aktivasiya açarı bu müştəri hesabına aid deyil');
@@ -968,13 +972,14 @@ function verifyOnlineLicense(body, state) {
   const expiresAt = Number(envelope.payload.expiresAt);
   const isoExpiry = Date.parse(String(envelope.payload.validUntil || ''));
   const validUntil = expiresAt > 0 ? expiresAt : Number.isFinite(isoExpiry) ? isoExpiry : Date.UTC(2099, 11, 31);
-  if (validUntil <= Date.now()) throw new Error('Lisenziyanın vaxtı bitib');
+  if (validUntil <= Date.now() && !allowEnded) throw new Error('Lisenziyanın vaxtı bitib');
   const features = envelope.payload.features && typeof envelope.payload.features === 'object' ? envelope.payload.features : {};
   const branding = features.branding && typeof features.branding === 'object' ? features.branding : null;
   const customerName = String(branding?.productName || body.restaurant?.name || 'Market').slice(0, 120);
   state.pinnedLicenseKey = { keyId, publicKeyHex: key.publicKeyHex };
   state.activation = {
-    mode: 'active',
+    mode: validUntil<=Date.now()?'expired':'active',
+    billingManaged:features.billingManaged===true,
     customerName,
     deviceId: state.activation.deviceId,
     serverDeviceId: body.device.id,
@@ -1004,12 +1009,13 @@ function verifyOnlineLicense(body, state) {
 function applyLicenseRefresh(state, refresh) {
   const next = Date.parse(String(refresh?.license?.validUntil || ''));
   if (!refresh?.signedLicense || !Number.isFinite(next)) return false;
-  if (state.activation.mode === 'active' && next <= state.activation.validUntil) return false;
+  if (state.activation.mode === 'active' && next <= state.activation.validUntil && refresh.signedLicense.payload?.features?.billingManaged!==true) return false;
+  if(next===state.activation.validUntil&&state.activation.billingManaged===true)return false;
   const customer = state.activation.customer || {};
   verifyOnlineLicense({
     ...refresh,
     restaurant: { name: customer.legalName || state.activation.customerName, address: customer.address, phone: customer.phone, taxId: customer.taxId },
-  }, state);
+  }, state,refresh.signedLicense.payload?.features?.billingManaged===true);
   return true;
 }
 
@@ -1090,12 +1096,22 @@ async function forgetPreviousAccount(state) {
 }
 
 function registerIpc() {
+  ipcMain.handle('market:billing:status',async event=>{
+    assertTrusted(event);const state=loadSecureState();if(!state.tenant?.token)throw Error('Hesaba daxil olun');
+    const response=await fetch(controlApi('/billing/desktop/status'),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+state.tenant.token},body:JSON.stringify({product:'market'}),signal:AbortSignal.timeout(10000)});
+    const data=await response.json();if(!response.ok)throw Error(data.error||'Ödəniş məlumatı alınmadı');return data;
+  });
+  ipcMain.handle('market:billing:open',async event=>{
+    assertTrusted(event);const state=loadSecureState();if(!state.tenant?.token)throw Error('Hesaba daxil olun');
+    const response=await fetch(controlApi('/billing/desktop/handoff'),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+state.tenant.token},body:JSON.stringify({product:'market'}),signal:AbortSignal.timeout(10000)});
+    const data=await response.json();if(!response.ok)throw Error(data.error||'Ödəniş açıla bilmədi');await shell.openExternal(billingPolicy.paymentUrl(data.url));return {opened:true};
+  });
   ipcMain.handle('market:staff:list', (event) => { assertTrusted(event); return loadSecureState().staff.map(publicStaff); });
   ipcMain.handle('market:auth:login', async (event, input) => {
     assertTrusted(event);
     const state = loadSecureState();
     if (!state.tenant?.token) throw new Error('Əvvəlcə müştəri hesabına daxil olun');
-    if (!licenseAllowsStaffLogin(state.activation)) throw new Error('Cihaz aktivləşdirilməyib');
+    if (!licenseAllowsStaffLogin(state.activation)&&!(state.activation.mode==='expired'&&state.activation.licenseProof)) throw new Error('Cihaz aktivləşdirilməyib');
     if (state.activation.customerId && state.activation.customerId !== state.tenant.customerId) {
       throw new Error('Bu kassa başqa hesabın lisenziyası ilədir — bu hesabın aktivasiya açarını daxil edin');
     }
@@ -1197,7 +1213,7 @@ function registerIpc() {
     if (!stored?.token || !stored.userId) return null;
     // The licence gate still applies — a revoked or expired licence must not be
     // bypassable just by having been logged in before.
-    if (!licenseAllowsStaffLogin(state.activation)) return null;
+    if (!licenseAllowsStaffLogin(state.activation)&&!(state.activation.mode==='expired'&&state.activation.licenseProof)) return null;
     const user = staffWithAdmin(state).find((row) => row.id === stored.userId && row.active);
     const token = user ? authSessions.restore(stored) : null;
     if (!token) {
@@ -1301,6 +1317,7 @@ function registerIpc() {
       customerName: String(customer.name || 'Market POS'),
       expiresAt: Number(payload.expiresAt) || 0,
       paymentUrl: payload.paymentUrl || null,
+      billingOnly:Boolean(payload.billingOnly),billing:payload.billing||null,
       licenses: Array.isArray(payload.licenses) ? payload.licenses : [],
     };
     if (!state.tenant.token) throw new Error('Server token qaytarmadı');

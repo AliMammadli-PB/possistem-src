@@ -1,0 +1,108 @@
+{
+  "version": "1.0",
+  "brand": "possistem",
+  "outputFormat": "PNG",
+  "background": "transparent",
+  "targetSize": { "width": 800, "height": 600, "aspectRatio": "4:3" },
+  "deployPath": "/var/www/possistem/assets/hardware/",
+  "publicSyncPath": "/var/www/possistem/public/assets/hardware/",
+  "siteFormat": "webp",
+  "masterStyle": "Professional product photography for a POS hardware catalog. Single product only, centered, 3/4 angle view, soft studio lighting, subtle shadow under the product (not a background panel). Photorealistic commercial hardware photo. No text, no logos, no watermarks, no price tags, no people, no hands. Clean edges suitable for transparent PNG cutout. Neutral white-to-light-gray product colors (black, silver, dark gray). Modern retail/restaurant POS equipment style.",
+  "negativePrompt": "colored background, gradient background, black rectangle background, dark backdrop, showroom floor, busy scene, text, logo, watermark, price, QR code, human, hand, cartoon, illustration, low quality, blurry, cropped product, multiple unrelated products",
+  "chatgptSystemPrompt": "You are a product image generator for possistem.az — a restaurant and retail POS software company in Azerbaijan. Generate each hardware image as a PNG with a fully transparent background (alpha channel). One product per image. Match the filename slug exactly. Style: clean commercial product photo, 3/4 angle, soft shadow only beneath the product. No text or branding on the image.",
+  "chatgptBatchPrompt": "Generate 12 separate PNG images with TRANSPARENT backgrounds for a POS hardware catalog. Use the master style below for every image. Output one image per product with the exact filename shown.\n\nMASTER STYLE:\nProfessional product photography, single product centered, 3/4 angle, soft studio lighting, subtle drop shadow under product only, photorealistic, no text/logos/people, transparent PNG background.\n\nPRODUCTS (filename → subject):\n1. touch-pos.png → All-in-One 15-inch touch screen POS computer on stand, Windows cashier terminal, black bezel\n2. starter-kit.png → Restaurant POS starter bundle: touch POS monitor, receipt printer, cash drawer and kitchen printer arranged as a compact group\n3. receipt-printer.png → 80mm thermal receipt printer, compact black, paper exit visible\n4. kitchen-printer.png → Same style 80mm thermal printer for kitchen tickets, wall-mount or counter style\n5. label-printer.png → Desktop barcode label printer with label roll, retail style\n6. cash-drawer.png → Metal cash drawer, top view slightly open showing coin slots\n7. barcode-scanner.png → Handheld USB barcode scanner gun, ergonomic grip\n8. customer-display.png → Customer-facing pole display showing generic total digits (no real brand)\n9. barcode-scale.png → Retail barcode weighing scale with display and printer slot\n10. data-terminal.png → Handheld Android data collection terminal with barcode reader\n11. waiter-call.png → Restaurant pager system: call button puck and wrist pager watch\n12. bank-terminal.png → Modern bank card payment terminal with contactless symbol area (generic, no bank logo)\n\nAfter each image: confirm transparent background and filename.",
+  "products": [
+    {
+      "id": "touch-pos",
+      "filename": "touch-pos.png",
+      "webp": "touch-pos.webp",
+      "titleAz": "Sensor POS kompüter",
+      "prompt": "All-in-One 15-inch touch screen POS computer on adjustable stand, Windows cashier terminal, slim black bezel, single unit, 3/4 front angle, professional product photo, transparent background PNG"
+    },
+    {
+      "id": "starter-kit",
+      "filename": "starter-kit.png",
+      "webp": "starter-kit.webp",
+      "titleAz": "Restoran başlanğıc dəsti",
+      "prompt": "Restaurant POS starter kit arranged together: touch POS monitor, 80mm receipt printer, metal cash drawer, second kitchen printer, compact group composition, catalog bundle photo, transparent background PNG"
+    },
+    {
+      "id": "receipt-printer",
+      "filename": "receipt-printer.png",
+      "webp": "receipt-printer.webp",
+      "titleAz": "80mm çek printeri",
+      "prompt": "Compact 80mm thermal receipt printer, black, USB and LAN ports suggested, paper exit slot visible, 3/4 angle, transparent background PNG"
+    },
+    {
+      "id": "kitchen-printer",
+      "filename": "kitchen-printer.png",
+      "webp": "kitchen-printer.webp",
+      "titleAz": "Mətbəx printeri",
+      "prompt": "80mm thermal kitchen ticket printer for restaurant back-of-house, sturdy black body, wall-mount tabs optional, 3/4 angle, transparent background PNG"
+    },
+    {
+      "id": "label-printer",
+      "filename": "label-printer.png",
+      "webp": "label-printer.webp",
+      "titleAz": "Barkod/etiket printeri",
+      "prompt": "Desktop barcode label printer with label roll loaded, retail market style, white and gray body, 3/4 angle, transparent background PNG"
+    },
+    {
+      "id": "cash-drawer",
+      "filename": "cash-drawer.png",
+      "webp": "cash-drawer.webp",
+      "titleAz": "Pul yeşiyi",
+      "prompt": "Metal cash drawer for POS, slightly open top view showing bill and coin compartments, matte black or dark gray, transparent background PNG"
+    },
+    {
+      "id": "barcode-scanner",
+      "filename": "barcode-scanner.png",
+      "webp": "barcode-scanner.webp",
+      "titleAz": "Barkod skaner",
+      "prompt": "Handheld barcode scanner gun, ergonomic grip, USB cable, retail checkout style, 3/4 angle, transparent background PNG"
+    },
+    {
+      "id": "customer-display",
+      "filename": "customer-display.png",
+      "webp": "customer-display.webp",
+      "titleAz": "Müştəri ekranı",
+      "prompt": "Customer pole display for POS showing generic green digits total amount, slim black pole mount, second screen for guest, transparent background PNG"
+    },
+    {
+      "id": "barcode-scale",
+      "filename": "barcode-scale.png",
+      "webp": "barcode-scale.webp",
+      "titleAz": "Barkod tərəzi",
+      "prompt": "Retail barcode weighing scale with stainless tray, label printer section, digital display, supermarket style, 3/4 angle, transparent background PNG"
+    },
+    {
+      "id": "data-terminal",
+      "filename": "data-terminal.png",
+      "webp": "data-terminal.webp",
+      "titleAz": "Data terminal",
+      "prompt": "Handheld Android data collection terminal with built-in barcode scanner, warehouse inventory device, rubberized grip, transparent background PNG"
+    },
+    {
+      "id": "waiter-call",
+      "filename": "waiter-call.png",
+      "webp": "waiter-call.webp",
+      "titleAz": "Ofisiant çağrı sistemi",
+      "prompt": "Restaurant waiter call system: round table call button puck and wrist pager watch receiver, small group product shot, transparent background PNG"
+    },
+    {
+      "id": "bank-terminal",
+      "filename": "bank-terminal.png",
+      "webp": "bank-terminal.webp",
+      "titleAz": "Bank kart terminalı",
+      "prompt": "Generic modern bank card payment terminal with contactless NFC area and keypad, no bank logo, no brand name, neutral gray device, transparent background PNG"
+    }
+  ],
+  "postProcess": [
+    "Verify alpha channel — corners must be fully transparent",
+    "Crop to product with ~8% padding",
+    "Resize to 800px width (keep aspect ratio)",
+    "Convert to WebP: cwebp -q 85 input.png -o output.webp",
+    "Copy to assets/hardware/ and public/assets/hardware/",
+    "Bump ASSET_VERSION in src/lib/assets.ts"
+  ]
+}

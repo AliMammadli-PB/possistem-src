@@ -1,0 +1,123 @@
+/* Touch layouts share the console's brand and data components. */
+.console-menu-close { display:none!important; }
+.console-shell .portal-brand-mark { object-fit:contain; border-radius:10px; }
+.console-shell .btn,.console-shell .nav-link,.console-shell .sidebar-foot .btn { min-height:48px; }
+.console-shell .console-menu { min-width:48px; min-height:48px; }
+.console-shell :is(button,a,input,select,textarea):focus-visible { outline:3px solid #2563eb; outline-offset:3px; }
+.console-shell .table-wrap:focus-visible { outline:3px solid #2563eb; }
+.console-shell :is(.muted,.console-eyebrow,.console-dashboard-context,.console-kpi>small,.console-ring-legend,.console-section-heading>a) { color:#526681; }
+.console-shell .sidebar .user-email { color:#bfd0e8; }
+.console-shell .pb-item-title { text-align:left; overflow-wrap:anywhere; }
+.console-shell .row-actions { gap:8px; }
+.console-shell .row-actions .btn { min-width:48px; }
+.console-shell :is(.card,.plans-admin-card,.product-admin-card) :is(input,select,textarea) { max-width:100%; min-width:0; }
+@media(max-width:800px) {
+  body { font-size:15px; }
+  .console-shell .topbar { min-height:72px; padding:10px 16px; gap:10px; }
+  .console-shell .console-topbar-heading { gap:10px; }
+  .console-shell .console-topbar-heading small { font-size:10px; letter-spacing:.05em; color:#526681; }
+  .console-shell .console-topbar-heading strong { font-size:14px; line-height:1.3; }
+  .console-shell .console-product select { min-width:0; max-width:160px; min-height:48px; font-size:14px; padding:10px 8px; }
+  .console-shell .main { overflow:visible; padding:24px 16px calc(32px + env(safe-area-inset-bottom)); }
+  .console-shell .sidebar { width:min(320px,88vw); padding:24px 16px; gap:12px; overscroll-behavior:contain; }
+  .console-shell .console-menu-close { display:inline-flex!important; position:absolute; top:16px; right:12px; min-width:48px; color:#e6efff; background:#243a58; border-color:#46648b; }
+  .console-shell .brand { padding-right:90px; padding-left:0; border-bottom-color:#344967; min-height:68px; }
+  .console-shell .brand-name { font-size:18px; }
+  .console-shell .brand-sub { font-size:10px; line-height:1.4; }
+  .console-shell .nav-link { padding:13px 14px; font-size:15px; gap:14px; }
+  .console-shell .sidebar-foot .btn { font-size:14px; }
+  .console-shell .sidebar-foot .user-email { font-size:13px; }
+  .console-shell .page-head,.console-shell .page-header { align-items:stretch; gap:16px; margin-bottom:20px; }
+  .console-shell .page-head h1,.console-shell .page-header h1 { font-size:28px; line-height:1.2; }
+  .console-shell :is(.page-head,.page-header)>:is(.btn,.filter-row) { width:100%; }
+  .console-shell .btn,.console-shell .chip { min-height:48px; padding:12px 14px; font-size:14px; }
+  .console-shell label { font-size:14px; line-height:1.5; }
+  .console-shell input:not([type=checkbox]):not([type=radio]),.console-shell select,.console-shell textarea { font-size:16px; min-height:50px; }
+  .console-shell input[type=checkbox],.console-shell input[type=radio] { width:22px; height:22px; margin:12px 4px; }
+  .console-shell .opt,.console-shell .small { font-size:13px; }
+  .console-shell .card { padding:18px; border-radius:14px; }
+  .console-shell .card h2 { font-size:21px; line-height:1.35; }
+  .console-shell .card h3 { font-size:18px; }
+  .console-shell .filter-row { align-items:stretch; gap:12px; }
+  .console-shell .filter-row>label { min-width:0; flex:1 1 220px; }
+  .console-shell .filter-row>.btn { flex:1 1 140px; }
+  .console-shell .table-wrap { overflow-x:auto; border-color:#cbd9ec; -webkit-overflow-scrolling:touch; }
+  .console-shell .table-wrap table { min-width:640px; }
+  .console-shell th { font-size:12px; padding:14px; color:#425c7c; }
+  .console-shell td { font-size:14px; padding:16px 14px; }
+  .console-shell .row-actions { flex-wrap:wrap; min-width:120px; }
+  .console-shell .kv { grid-template-columns:minmax(90px,.6fr) minmax(0,1fr); font-size:14px; }
+  .console-shell .kv dd { min-width:0; overflow-wrap:anywhere; }
+  .console-shell :is(.form-grid,.form-row,.plans-admin-copy-grid,.partner-form-grid,.pb-grid,.pb-target,.sales-toolbar,.support-layout) { grid-template-columns:minmax(0,1fr); }
+  .console-shell :is(.sales-grid,.products-admin-grid,.product-admin-grid,.plans-admin-grid) { grid-template-columns:1fr; }
+  .console-shell :is(.module-gate-list,.role-policy-grid) { grid-template-columns:minmax(0,1fr); }
+  .console-shell .product-admin-card { padding:16px; }
+  .console-shell .product-admin-actions { flex-wrap:wrap; gap:10px; }
+  .console-shell .product-admin-actions>* { flex:1 1 140px; }
+  .console-shell .pb-layout { grid-template-columns:1fr; }
+  .console-shell .pb-item-row { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; padding:16px; gap:14px; }
+  .console-shell .pb-order { grid-column:1; grid-row:3; gap:8px; }
+  .console-shell .pb-order .btn { min-width:48px; }
+  .console-shell .pb-item-title { grid-column:1/-1; grid-row:1; min-height:48px; font-size:16px; }
+  .console-shell .pb-price { grid-column:1; grid-row:2; width:100%; }
+  .console-shell .pb-billing { grid-column:2; grid-row:2; width:100%; }
+  .console-shell .pb-switch { grid-column:2; grid-row:3; width:100%; justify-self:end; justify-content:flex-end; }
+  .console-shell .pb-price input { width:100%; }
+  .console-shell .pb-switch { flex-direction:row; align-items:center; }
+  .console-shell .pb-head-actions { flex-wrap:wrap; width:100%; gap:10px; }
+  .console-shell .pb-head-actions>.btn { flex:1; }
+  .console-shell .pb-preview { position:static; }
+  .console-shell :is(.modal,.dialog,[role=dialog]) { max-width:100%; max-height:calc(100dvh - 24px); overflow-y:auto; scroll-padding-block:24px; }
+  .console-shell .console-dashboard-heading h1 { font-size:28px; }
+  .console-shell .console-dashboard-heading>div>p:last-child { font-size:14px; line-height:1.6; }
+  .console-shell .console-dashboard-context { font-size:13px; line-height:1.6; }
+  .console-shell .console-kpi>div>span { font-size:13px; }
+  .console-shell .console-kpi>small { font-size:12px; line-height:1.5; }
+  .console-shell .console-kpi>strong { font-size:32px; margin:16px 0 8px; }
+  .console-shell .console-ring-legend>span { font-size:13px; }
+  .console-shell .console-section-heading>a { min-height:48px; font-size:13px; }
+  .console-shell .console-section-heading h2 { font-size:20px; }
+  .console-shell .console-release p:not(.console-eyebrow),.console-shell .console-support-summary p:not(.console-eyebrow) { font-size:13px; }
+  .console-shell .console-release>.btn { margin-left:0; width:100%; }
+  .console-shell .console-customer-link b { font-size:14px; }
+  .console-shell .console-customer-link>span { font-size:12px; }
+  .console-shell .console-eyebrow { font-size:11px; }
+  .auth-page { min-height:100dvh; grid-template-columns:1fr; gap:24px; padding:32px 20px; align-content:start; }
+  .auth-brand { display:grid; grid-template-columns:54px minmax(0,1fr); gap:4px 12px; align-items:center; }
+  .auth-brand>a { grid-row:span 2; }
+  .auth-brand img.auth-logo { width:54px; height:54px; }
+  .auth-brand .auth-wordmark { font-size:28px; font-weight:800; margin:0; line-height:1.2; letter-spacing:-.04em; }
+  .auth-brand .auth-tagline { font-size:10px; letter-spacing:.08em; margin:0; }
+  .auth-brand .auth-rule { display:none; }
+  .auth-brand h1 { grid-column:1/-1; font-size:27px; margin-top:22px; line-height:1.2; }
+  .auth-brand>p:last-child { grid-column:1/-1; font-size:14px; margin:4px 0 0; }
+  .auth-card { width:100%; max-width:520px; padding:24px; margin:0 auto; border:1px solid #cbd9ec; border-radius:18px; background:#fff; gap:18px; box-shadow:none; }
+  .auth-card h2 { font-size:26px; font-weight:800; line-height:1.2; }
+  .auth-card label { font-size:14px; }
+  .auth-card input { font-size:16px; min-height:52px; }
+  .auth-card .btn { min-height:52px; font-size:16px; }
+  .auth-footnote { font-size:12px; color:#526681; }
+}
+@media(max-width:420px) {
+  .console-shell .console-topbar-heading>span { display:block; }
+  .console-shell .console-topbar-heading small { display:none; }
+  .console-shell .console-topbar-heading strong { max-width:104px; overflow-wrap:anywhere; font-size:13px; }
+  .console-shell .console-product select { max-width:143px; font-size:13px; }
+  .console-shell .console-topbar-actions .console-product select { min-width:0; }
+  .console-shell .topbar { padding-inline:12px; }
+  .console-shell .console-kpis { grid-template-columns:1fr 1fr; gap:10px; }
+  .console-shell .console-kpi { padding:16px 12px; }
+  .console-shell .console-kpi>div { flex-wrap:wrap; }
+  .console-shell .console-ring-row { flex-wrap:wrap; gap:24px; }
+  .console-shell .console-ring-legend { width:100%; }
+  .console-shell .console-ring-legend>small { max-width:none; font-size:12px; }
+}
+@media(max-height:520px) and (max-width:1000px) {
+  .auth-page { grid-template-columns:1fr 1fr; align-items:start; gap:24px; padding:20px; }
+  .auth-brand h1 { margin-top:12px; }
+  .console-shell .topbar { position:static; }
+}
+.auth-card label.auth-remember { display:flex; flex-direction:row; align-items:center; gap:12px; min-height:48px; }
+.auth-card label.auth-remember input { width:22px; height:22px; min-height:0; flex:none; margin:0; }
+.android-app-card .actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; }
+.android-app-card .actions .btn { min-height:48px; }

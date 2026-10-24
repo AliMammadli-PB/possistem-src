@@ -1,0 +1,201 @@
+{
+  "communities": {
+    "0": [
+      "leadform",
+      "leadform_fielderrors",
+      "leadform_fieldname",
+      "leadform_leadform",
+      "showcasemockcard",
+      "showcasemockcard_showcasemockcard",
+      "showcasemockcard_showcasemockcardprops",
+      "showcasewhatsappmock",
+      "showcasewhatsappmock_channelid",
+      "showcasewhatsappmock_formatsynclabel",
+      "showcasewhatsappmock_showcasewhatsappmock",
+      "supportsearch",
+      "supportsearch_articles",
+      "supportsearch_supportsearch",
+      "t",
+      "t_t",
+      "t_tprops"
+    ],
+    "1": [
+      "cartdrawer",
+      "cartdrawer_cartdrawer",
+      "cartdrawer_carttoggle",
+      "customeraccountmenu",
+      "customeraccountmenu_chevron",
+      "customeraccountmenu_customeraccountmenu",
+      "customeraccountmenu_initialsfrom",
+      "languageselector",
+      "languageselector_languages",
+      "languageselector_languageselector",
+      "siteheader",
+      "siteheader_navitems",
+      "siteheader_siteheader",
+      "siteheader_siteheaderprops",
+      "siteheader_themeglyphs"
+    ],
+    "2": [
+      "floatingwhatsapp",
+      "floatingwhatsapp_floatingwhatsapp",
+      "marketinglayout",
+      "marketinglayout_marketinglayout",
+      "marketinglayout_marketinglayoutprops",
+      "revealobserver",
+      "revealobserver_revealobserver",
+      "scrollrestoration",
+      "scrollrestoration_scrollrestoration",
+      "sitefooter",
+      "sitefooter_sitefooter",
+      "skiplink",
+      "skiplink_skiplink"
+    ],
+    "3": [
+      "publicchatroom",
+      "publicchatroom_avclass",
+      "publicchatroom_chatemptyicon",
+      "publicchatroom_formatcooldown",
+      "publicchatroom_highlightmentions",
+      "publicchatroom_initials",
+      "publicchatroom_livesupportstats",
+      "publicchatroom_msgavatar",
+      "publicchatroom_publicchatroom",
+      "publicchatroom_topic_categories"
+    ],
+    "4": [
+      "showcaseactivitymock",
+      "showcaseactivitymock_feed",
+      "showcaseactivitymock_feeditem",
+      "showcaseactivitymock_feedtone",
+      "showcaseactivitymock_formatsynclabel",
+      "showcaseactivitymock_mockicon",
+      "showcaseactivitymock_showcaseactivitymock",
+      "showcaseactivitymock_tabid"
+    ],
+    "5": [
+      "showcasedownloadsmock",
+      "showcasedownloadsmock_checkmark",
+      "showcasedownloadsmock_formatfileline",
+      "showcasedownloadsmock_requirements",
+      "showcasedownloadsmock_showcasedownloadsmock"
+    ],
+    "6": [
+      "hardwarecard",
+      "hardwarecard_hardwarecard",
+      "hardwarecatalog",
+      "hardwarecatalog_hardwarecatalog"
+    ],
+    "7": [
+      "producttabs",
+      "producttabs_producttab",
+      "producttabs_producttabs",
+      "producttabs_producttabsprops"
+    ],
+    "8": [
+      "releasecard",
+      "releasecard_parserelease",
+      "releasecard_releasecard",
+      "releasecard_releaseinfo"
+    ],
+    "9": [
+      "animatedcounter",
+      "animatedcounter_animatedcounter",
+      "animatedcounter_animatedcounterprops"
+    ],
+    "10": [
+      "producttabsbar",
+      "producttabsbar_producttab",
+      "producttabsbar_producttabsbar"
+    ],
+    "11": [
+      "themepicture",
+      "themepicture_themepicture",
+      "themepicture_themepictureprops"
+    ],
+    "12": [
+      "herocompare",
+      "herocompare_herocompare"
+    ]
+  },
+  "cohesion": {
+    "0": 0.15441176470588236,
+    "1": 0.17142857142857143,
+    "2": 0.21794871794871795,
+    "3": 0.3333333333333333,
+    "4": 0.2857142857142857,
+    "5": 0.5,
+    "6": 0.6666666666666666,
+    "7": 0.5,
+    "8": 0.6666666666666666,
+    "9": 0.6666666666666666,
+    "10": 0.6666666666666666,
+    "11": 0.6666666666666666,
+    "12": 1.0
+  },
+  "gods": [
+    {
+      "id": "t_t",
+      "label": "T()",
+      "degree": 14
+    },
+    {
+      "id": "publicchatroom_publicchatroom",
+      "label": "PublicChatRoom()",
+      "degree": 5
+    },
+    {
+      "id": "customeraccountmenu_customeraccountmenu",
+      "label": "CustomerAccountMenu()",
+      "degree": 3
+    },
+    {
+      "id": "publicchatroom_avclass",
+      "label": "avClass()",
+      "degree": 3
+    },
+    {
+      "id": "publicchatroom_initials",
+      "label": "initials()",
+      "degree": 3
+    },
+    {
+      "id": "publicchatroom_msgavatar",
+      "label": "MsgAvatar()",
+      "degree": 3
+    },
+    {
+      "id": "showcasewhatsappmock_formatsynclabel",
+      "label": "formatSyncLabel()",
+      "degree": 2
+    },
+    {
+      "id": "showcasewhatsappmock_showcasewhatsappmock",
+      "label": "ShowcaseWhatsAppMock()",
+      "degree": 2
+    },
+    {
+      "id": "cartdrawer_cartdrawer",
+      "label": "CartDrawer()",
+      "degree": 2
+    },
+    {
+      "id": "cartdrawer_carttoggle",
+      "label": "CartToggle()",
+      "degree": 2
+    }
+  ],
+  "surprises": [],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `T()` connect `T.tsx` to `SiteHeader.tsx`, `MarketingLayout.tsx`, `PublicChatRoom.tsx`, `ShowcaseActivityMock.tsx`, `ShowcaseDownloadsMock.tsx`, `HardwareCatalog.tsx`, `ReleaseCard.tsx`?",
+      "why": "High betweenness centrality (0.270) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `FieldErrors`, `FieldName`, `ShowcaseMockCardProps` to the rest of the system?",
+      "why": "22 weakly-connected nodes found - possible documentation gaps or missing edges."
+    }
+  ]
+}

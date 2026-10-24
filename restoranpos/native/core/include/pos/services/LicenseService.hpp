@@ -24,6 +24,7 @@ public:
     bool featureEnabled(std::string_view featureKey, bool defaultEnabled = true);
     void requireFeature(std::string_view featureKey);
     void requireLicensedForNewBusinessDay();
+    void requirePaidForSale();
 
 private:
     handlers::Context& ctx_;

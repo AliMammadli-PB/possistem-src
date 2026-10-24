@@ -120,6 +120,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-platform-pin.mjs',
   'apply-restaurant-buildstamp.mjs',
   'apply-restaurant-sunmi.mjs',
+  'apply-restaurant-billing.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');

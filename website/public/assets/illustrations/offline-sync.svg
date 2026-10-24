@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-labelledby="title desc">
+  <title id="title">Offline sales and later synchronization</title>
+  <desc id="desc">A point-of-sale terminal stores orders offline and synchronizes them when connectivity returns.</desc>
+  <rect width="800" height="500" rx="28" fill="#0d1118"/>
+  <rect x="64" y="74" width="312" height="352" rx="20" fill="#111721" stroke="#28313e"/>
+  <rect x="92" y="104" width="256" height="44" rx="10" fill="#171e2a"/>
+  <circle cx="116" cy="126" r="7" fill="#35b978"/>
+  <rect x="136" y="118" width="106" height="8" rx="4" fill="#7f8a99"/>
+  <g fill="#171e2a" stroke="#28313e">
+    <rect x="92" y="174" width="116" height="82" rx="12"/>
+    <rect x="232" y="174" width="116" height="82" rx="12"/>
+    <rect x="92" y="278" width="116" height="82" rx="12"/>
+    <rect x="232" y="278" width="116" height="82" rx="12"/>
+  </g>
+  <g fill="#3f7cf7">
+    <rect x="111" y="196" width="53" height="7" rx="3"/>
+    <rect x="251" y="196" width="48" height="7" rx="3"/>
+    <rect x="111" y="300" width="62" height="7" rx="3"/>
+    <rect x="251" y="300" width="40" height="7" rx="3"/>
+  </g>
+  <rect x="92" y="382" width="256" height="18" rx="9" fill="#35b978"/>
+  <path d="M421 250h102" stroke="#5aa7ff" stroke-width="5" stroke-linecap="round" stroke-dasharray="4 15"/>
+  <path d="m501 230 24 20-24 20" fill="none" stroke="#5aa7ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="552" y="126" width="184" height="248" rx="92" fill="#111721" stroke="#28313e"/>
+  <path d="M600 248a44 44 0 0 1 74-32M688 248a44 44 0 0 1-74 32" fill="none" stroke="#3f7cf7" stroke-width="7" stroke-linecap="round"/>
+  <path d="m662 198 14 18-22 3M626 298l-14-18 22-3" fill="none" stroke="#3f7cf7" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="644" cy="248" r="14" fill="#35b978"/>
+  <circle cx="644" cy="248" r="28" fill="none" stroke="#35b978" opacity=".2" stroke-width="8"/>
+</svg>

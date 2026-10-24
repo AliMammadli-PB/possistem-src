@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "pos/services/LicenseService.hpp"
 
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
@@ -56,6 +57,7 @@ void queueReceiptIfSettled(Context& ctx, const std::string& orderId) {
 }
 
 Money validateAmount(Context& ctx, const std::string& orderId, Money amountMinor) {
+    services::LicenseService(ctx).requirePaidForSale();
     require(amountMinor > 0, "The payment amount must be greater than zero");
 
     services::OrderService(ctx).recalculate(orderId);

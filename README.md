@@ -63,3 +63,7 @@ və `out/`-u yığır, sonra Electron-u açır. Restoran renderer-in TypeScript 
 sertifikatları, server deploy skriptləri.
 
 Lisenziya: [LICENSE](LICENSE) — bütün hüquqlar qorunur.
+
+## Current website and control platform (2026-10-24)
+
+The current shared API/admin/customer panel source is in [`platform/`](platform/README.md), and the current Next.js website is in [`website/`](website/README.md). Desktop source remains in `marketpos/` and `restoranpos/`. See [Epoint billing setup and release notes](docs/EPOINT-BILLING-20261024.md) before enabling live payments. Historical `control-plane` copies are not the current deployment source.

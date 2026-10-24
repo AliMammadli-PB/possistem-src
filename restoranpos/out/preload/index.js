@@ -552,3 +552,6 @@ async function _sunmiPrepareRefund(payload,market=false){
  if(original?.success&&(market?original.data?.cardMinor>0:original.data?.method==='card'))return _sunmiPreparePayment(payload,false,true);
  return payload;
 }
+
+/* POSSISTEM_BILLING_1911 */
+electron.contextBridge.exposeInMainWorld("possistemBilling",{status:()=>electron.ipcRenderer.invoke(IPC.invoke,{method:"billing.status",payload:{},options:{timeoutMs:15000}}),open:()=>electron.ipcRenderer.invoke(IPC.invoke,{method:"billing.open",payload:{},options:{timeoutMs:15000}})});

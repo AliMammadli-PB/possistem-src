@@ -255,3 +255,25 @@ TEST_CASE("item note, seat, course and hold round-trip", "[orders][items]") {
     REQUIRE(row.columnText(2) == "main");
     REQUIRE(row.columnInt(3) == 1);
 }
+
+TEST_CASE("managed subscription expiry blocks direct order and payment calls while preserving reads", "[billing]") {
+    ServiceFixture fixture;
+    pos::handlers::registerOrders(fixture.contextPtr());
+    pos::handlers::registerPayments(fixture.contextPtr());
+    auto& db=fixture.db();
+    db.exec("UPDATE license_state SET status='active',features_json='{\"billingManaged\":true}',expires_at=1 WHERE id='local'");
+    pos::ipc::Request request;
+    request.requestId=pos::crypto::uuid4();request.idempotencyKey=pos::crypto::uuid4();
+    request.method="orders.create";request.payload={{"tableId","tbl-01"},{"guestCount",1}};
+    REQUIRE_THROWS_AS(fixture.server().callHandler(request),pos::PosError);
+    auto query=db.prepare("SELECT COUNT(*) FROM orders");REQUIRE(query.step());REQUIRE(query.columnInt(0)==0);
+    request.method="orders.list";request.payload=pos::Json::object();
+    REQUIRE_NOTHROW(fixture.server().callHandler(request));
+    // No new business day is needed for this gate: even an already open
+    // application and a direct core IPC payment reach the expiry check.
+    request.method="payments.createCash";request.payload={{"orderId","missing"},{"amountMinor",100}};
+    REQUIRE_THROWS_AS(fixture.server().callHandler(request),pos::PosError);
+    db.exec("UPDATE license_state SET expires_at=4102444800000 WHERE id='local'");
+    request.method="orders.create";request.payload={{"tableId","tbl-01"},{"guestCount",1}};
+    REQUIRE_NOTHROW(fixture.server().callHandler(request));
+}

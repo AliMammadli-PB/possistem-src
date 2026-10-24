@@ -1,0 +1,159 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4
+ * Hallmark · genre: modern-minimal · macrostructure: Workbench (app) · design-system: possistem.az "kassa çeki" · designed-as-app
+ * paper oklch(97.6% .007 85) · ink oklch(22% .035 262) · accent oklch(50% .19 262) · signal oklch(88% .17 96)
+ * fonts: Space Grotesk (display) · Montserrat (body) · JetBrains Mono (figures, labels) · nav: N3 side-rail (ink band)
+ * Loaded last (main.tsx): re-points the console's hard-coded blue-on-white theme to the public site's system.
+ */
+@font-face{font-family:"Space Grotesk";font-style:normal;font-display:swap;font-weight:300 700;src:url("./assets/fonts/space-grotesk-latin-ext-wght-normal.woff2") format("woff2-variations");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Space Grotesk";font-style:normal;font-display:swap;font-weight:300 700;src:url("./assets/fonts/space-grotesk-latin-wght-normal.woff2") format("woff2-variations");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-display:swap;font-weight:400 700;src:url("./assets/fonts/jetbrains-mono-latin-ext-wght-normal.woff2") format("woff2-variations");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-display:swap;font-weight:400 700;src:url("./assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2-variations");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+/* Receipt tokens — the same values as possistem.az (src/styles/receipt.css). */
+:root{
+ --r-paper:oklch(97.6% .007 85);--r-surface:oklch(99.3% .004 85);--r-paper-2:oklch(95.2% .01 85);--r-paper-3:oklch(91.6% .014 85);
+ --r-ink:oklch(22% .035 262);--r-ink-2:oklch(35% .03 262);--r-ink-3:oklch(47% .025 262);
+ --r-rule:oklch(88% .012 85);--r-rule-strong:oklch(76% .02 85);
+ --r-blue:oklch(50% .19 262);--r-blue-hover:oklch(44% .18 262);--r-blue-deep:oklch(34% .14 262);--r-blue-soft:oklch(93.5% .035 262);--r-on-blue:oklch(99% .004 85);
+ --r-signal:oklch(88% .17 96);--r-on-signal:oklch(26% .05 85);
+ --r-band:oklch(20% .035 262);--r-band-2:oklch(25% .035 262);--r-band-text:oklch(96% .006 85);--r-band-muted:oklch(78% .025 262);--r-band-rule:oklch(34% .035 262);
+ --r-ok:oklch(55% .12 160);--r-ok-soft:oklch(94% .04 160);--r-danger:oklch(52% .17 20);--r-danger-soft:oklch(95% .03 20);--r-warn:oklch(62% .13 70);--r-warn-soft:oklch(95% .05 85);
+ --r-font:"Montserrat",system-ui,sans-serif;--r-display:"Space Grotesk","Montserrat",system-ui,sans-serif;--r-mono:"JetBrains Mono",ui-monospace,monospace;
+ --r-tooth:16px;--r-ease:cubic-bezier(.16,1,.3,1);
+ --r-tear-bottom:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) bottom/var(--r-tooth) 100% repeat-x;
+}
+html,body{overflow-x:clip}
+
+/* ── Shell ─────────────────────────────────────────── */
+:root{--bg:var(--r-paper);--surface:var(--r-surface);--elevated:var(--r-paper-2);--raised:var(--r-paper-3);--text:var(--r-ink);--cream:var(--r-ink);--muted:var(--r-ink-3);--faint:var(--r-ink-3);--border:var(--r-rule);--border-strong:var(--r-rule-strong);--gold:var(--r-blue);--gold-light:var(--r-blue-hover);--gold-dim:var(--r-ink-3);--oxblood:var(--r-blue);--ok:var(--r-ok);--danger:var(--r-danger);--warn:var(--r-warn);--display:var(--r-display);--nums:var(--r-mono);--mono:var(--r-mono)}
+body{background:var(--r-paper)!important;color:var(--r-ink);font-family:var(--r-font);font-size:14px}
+.shell.console-shell{background:var(--r-paper)}
+.console-shell .sidebar{background:var(--r-band);padding:26px 14px 18px}
+.console-shell .brand-name{font-family:var(--r-display);font-weight:700;font-size:21px;letter-spacing:-.03em;color:var(--r-band-text)}
+.console-shell .brand-sub,.console-nav-caption{font-family:var(--r-mono);font-weight:600;font-size:11px;letter-spacing:.04em;color:var(--r-band-muted)}
+.console-shell .nav{gap:2px}
+.console-shell .nav-link{border-radius:6px;min-height:46px;font-size:14px;font-weight:600;color:var(--r-band-muted)}
+.console-shell .nav-link svg{color:var(--r-band-muted)}
+.console-shell .nav-link:hover{background:var(--r-band-2);color:var(--r-band-text)}
+.console-shell .nav-link.active{background:var(--r-band-2);color:var(--r-band-text);box-shadow:inset 4px 0 0 var(--r-signal)}
+.console-shell .nav-link.active svg{color:var(--r-signal)}
+.console-shell .nav-badge{background:var(--r-signal);color:var(--r-on-signal);font-family:var(--r-mono);font-weight:700}
+.console-shell .sidebar-foot{border-color:var(--r-band-rule);border-top-style:dashed}
+.console-shell .user-email,.console-shell .sidebar .user-email{font-family:var(--r-mono);font-size:12px;color:var(--r-band-muted)}
+.console-shell .sidebar-foot .btn{background:transparent;border:1px solid var(--r-band-text);color:var(--r-band-text);box-shadow:0 4px 0 var(--r-band-rule)}
+.console-shell .topbar{background:var(--r-paper);border-bottom:2px dashed var(--r-rule-strong)}
+.console-topbar-heading small{font-family:var(--r-mono);font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--r-ink-3)}
+.console-topbar-heading strong{font-family:var(--r-display);font-size:17px;font-weight:700;color:var(--r-ink)}
+.console-live{font-family:var(--r-mono);font-size:12px;color:var(--r-ink-3)}
+.console-live i{background:var(--r-ok)}
+.console-shell .console-product select,.console-product select{background:var(--r-surface);color:var(--r-ink);border:2px solid var(--r-ink);border-radius:6px;font-size:14px;font-weight:700}
+.console-avatar{border:0;border-radius:6px;background:var(--r-ink);color:var(--r-paper);font-family:var(--r-mono)}
+.console-menu{border:2px solid var(--r-ink);background:var(--r-surface);color:var(--r-ink);border-radius:6px}
+.console-menu-open .console-scrim{background:oklch(20% .035 262 / .5)}
+
+/* ── Type ──────────────────────────────────────────── */
+.console-shell h1,.console-shell h2,.console-shell h3{font-family:var(--r-display);font-weight:700;letter-spacing:-.03em;color:var(--r-ink)}
+.console-shell .page-head h1,.console-shell .page-header h1,.console-dashboard-heading h1{font-size:clamp(30px,3.4vw,44px);line-height:1.08;letter-spacing:-.04em}
+.console-eyebrow,.console-shell .eyebrow{font-family:var(--r-mono);font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--r-ink-3)}
+.console-shell .muted,.console-shell :is(.console-eyebrow,.console-dashboard-context,.console-kpi>small,.console-ring-legend){color:var(--r-ink-3)}
+.console-dashboard-heading>div>p:last-child,.console-shell p{color:var(--r-ink-2)}
+.console-shell label{color:var(--r-ink-2);font-size:13px;font-weight:600}
+
+/* ── Surfaces: flat paper, hairline, no glow ─────────── */
+.console-shell .card,.console-kpi,.console-dashboard-context,.console-shell .table-wrap{background:var(--r-surface);border:1px solid var(--r-rule);border-radius:10px;box-shadow:none}
+.console-dashboard-context{font-family:var(--r-mono);font-size:12px;color:var(--r-ink-2)}
+.console-dashboard-context i.online{background:var(--r-ok)}
+.console-kpi>div>span{font-size:13px;font-weight:600;color:var(--r-ink-2)}
+.console-kpi i,.console-kpi.violet i,.console-kpi.teal i,.console-kpi.sky i,.console-feature-icon,.console-customer-link>span{background:var(--r-blue-soft);color:var(--r-blue);border-radius:6px}
+.console-kpi>strong,.console-ring strong{font-family:var(--r-mono);font-weight:600;letter-spacing:-.05em;color:var(--r-ink)}
+.console-kpi>small{font-size:12px}
+.console-ring>div{background:var(--r-surface)}
+.console-ring-legend i{background:var(--r-blue)}
+.console-ring-legend>span:nth-child(2) i{background:var(--r-paper-3)}
+.console-ring-legend b,.console-version-bars b{font-family:var(--r-mono);color:var(--r-ink)}
+.console-version-track{background:var(--r-paper-2);border-radius:2px}
+.console-version-track i,.console-version-bars>div:nth-child(2n) i{background:var(--r-blue);border-radius:2px}
+.console-version-bars>div:nth-child(2n) i{background:var(--r-ink)}
+.console-version-bars small{background:var(--r-signal);color:var(--r-on-signal);font-family:var(--r-mono);font-weight:700}
+.console-section-heading{padding-bottom:14px;border-bottom:2px dashed var(--r-rule-strong)}
+.console-section-heading h2{font-size:20px}
+.console-section-heading>a{color:var(--r-blue);font-size:13px;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:5px}
+.console-release small{color:var(--r-ink-3);font-family:var(--r-mono)}
+.console-release p:not(.console-eyebrow),.console-support-summary p:not(.console-eyebrow){font-size:13px;color:var(--r-ink-2)}
+
+/* ── Controls: POS keys + plain fields ───────────────── */
+.console-shell .btn{min-height:46px;border-radius:6px;font-size:13px;font-weight:700;background:var(--r-surface);color:var(--r-ink);border:1px solid var(--r-ink);box-shadow:0 3px 0 var(--r-ink);transition:transform .12s var(--r-ease),box-shadow .12s var(--r-ease)}
+.console-shell .btn:hover{background:var(--r-paper-2);border-color:var(--r-ink)}
+.console-shell .btn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--r-ink)}
+.console-shell .btn.primary,.auth-card .btn.primary{background:var(--r-blue);border-color:var(--r-blue);color:var(--r-on-blue);box-shadow:0 4px 0 var(--r-blue-deep)}
+.console-shell .btn.primary:hover,.auth-card .btn.primary:hover{background:var(--r-blue-hover);border-color:var(--r-blue-hover)}
+.console-shell .btn.primary:active,.auth-card .btn.primary:active{transform:translateY(3px);box-shadow:0 1px 0 var(--r-blue-deep)}
+.console-shell .btn.danger{background:var(--r-surface);color:var(--r-danger);border-color:var(--r-danger);box-shadow:0 3px 0 var(--r-danger)}
+.console-shell .btn:disabled,.auth-card .btn:disabled{opacity:.5;transform:none;box-shadow:none}
+.console-shell input:not([type=checkbox]):not([type=radio]),.console-shell select,.console-shell textarea{background:var(--r-surface);color:var(--r-ink);border:1px solid var(--r-rule-strong);border-radius:6px;font-size:14px}
+.console-shell input::placeholder,.console-shell textarea::placeholder{color:var(--r-ink-3)}
+.console-shell input:focus,.console-shell select:focus,.console-shell textarea:focus{outline:0;border-color:var(--r-blue);box-shadow:0 0 0 3px var(--r-blue-soft)}
+.console-shell input[type=checkbox]{accent-color:var(--r-blue)}
+.console-shell :is(button,a,input,select,textarea):focus-visible,.auth-page :is(button,a,input):focus-visible{outline:3px solid var(--r-blue);outline-offset:3px}
+
+/* Product cards in the catalogue editor */
+.console-shell .product-admin-card{background:var(--r-surface);border:1px solid var(--r-rule);border-radius:10px}
+
+/* ── Tables: printed rows ─────────────────────────────── */
+.console-shell th{background:var(--r-paper-2);color:var(--r-ink-3);font-family:var(--r-mono);font-size:11px;font-weight:600;letter-spacing:.04em;border-bottom:2px dashed var(--r-rule-strong)}
+.console-shell td{color:var(--r-ink-2);font-size:13px;border-bottom:1px dashed var(--r-rule)}
+.console-shell tr:hover td{background:var(--r-paper-2)}
+.console-customer-link b{color:var(--r-ink);font-size:13px}
+
+/* ── Feedback ─────────────────────────────────────────── */
+.console-shell .error,.auth-card .error{background:var(--r-danger-soft);border:1px solid var(--r-danger);color:var(--r-danger);border-radius:6px}
+.console-shell .notice{background:var(--r-blue-soft);color:var(--r-ink);border-color:var(--r-blue)}
+.console-shell .modal,.console-shell .dialog{background:var(--r-surface);color:var(--r-ink);border:1px solid var(--r-rule-strong);border-radius:10px}
+.console-shell .product-choice label[data-active='1']{background:var(--r-ink);border-color:var(--r-ink);color:var(--r-paper)}
+
+/* ── Sign-in: a printed slip on paper ─────────────────── */
+.auth-page{background:var(--r-paper-2)!important;color:var(--r-ink);font-family:var(--r-font)}
+.auth-brand .auth-wordmark{font-family:var(--r-display);font-weight:700;letter-spacing:-.04em;color:var(--r-ink)}
+.auth-brand .auth-wordmark::after{content:'.';color:var(--r-blue)}
+.auth-brand .auth-tagline{font-family:var(--r-mono);font-weight:600;letter-spacing:.04em;color:var(--r-ink-3);text-transform:none}
+.auth-brand h1{font-family:var(--r-display);font-weight:700;letter-spacing:-.04em;color:var(--r-ink)}
+.auth-brand>p:last-child{color:var(--r-ink-2)}
+.auth-brand .auth-rule{background:none;border-top:2px dashed var(--r-rule-strong)}
+.auth-card{background:var(--r-surface)!important;color:var(--r-ink)!important;border:0!important;border-radius:0!important;box-shadow:inset 0 6px 0 var(--r-ink)!important;padding:36px 30px 52px!important;-webkit-mask:var(--r-tear-bottom);mask:var(--r-tear-bottom)}
+.auth-card .eyebrow{font-family:var(--r-mono);font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--r-ink-3);padding-bottom:14px;border-bottom:2px dashed var(--r-rule-strong)}
+.auth-card h2{font-family:var(--r-display);font-weight:700;letter-spacing:-.03em;color:var(--r-ink)}
+.auth-card label{color:var(--r-ink-2);font-weight:600}
+.auth-card input:not([type=checkbox]){background:var(--r-surface);border:1px solid var(--r-rule-strong);border-radius:6px;color:var(--r-ink)}
+.auth-card input:focus{outline:0;border-color:var(--r-blue);box-shadow:0 0 0 3px var(--r-blue-soft)}
+.auth-card input[type=checkbox]{accent-color:var(--r-blue)}
+.auth-card .btn.primary{border-radius:6px;font-weight:700}
+.auth-footnote{font-family:var(--r-mono);font-size:12px;color:var(--r-ink-3)!important;padding-top:14px;border-top:1px dashed var(--r-rule-strong)}
+
+@media(max-width:800px){.console-shell .topbar{border-bottom-width:2px}}
+@media(prefers-reduced-motion:reduce){.console-shell .btn{transition:none}}
+
+/* ── v2 · the home page's voice: a light paper rail, yellow underline marks, one KPI strip ── */
+.console-shell .sidebar{background:var(--r-paper-2);border-right:2px dashed var(--r-rule-strong)}
+.console-shell .brand-name{color:var(--r-ink)}
+.console-shell .brand-name::after{content:'.';color:var(--r-blue)}
+.console-shell .brand-sub,.console-nav-caption{color:var(--r-ink-3)}
+.console-shell .nav-link{color:var(--r-ink-2)}
+.console-shell .nav-link svg{color:var(--r-ink-3)}
+.console-shell .nav-link:hover{background:var(--r-paper-3);color:var(--r-ink)}
+.console-shell .nav-link.active{background:transparent;color:var(--r-ink);box-shadow:none;text-decoration:underline;text-decoration-color:var(--r-signal);text-decoration-thickness:3px;text-underline-offset:7px}
+.console-shell .nav-link.active svg{color:var(--r-blue)}
+.console-shell .sidebar-foot{border-color:var(--r-rule-strong)}
+.console-shell .user-email,.console-shell .sidebar .user-email{color:var(--r-ink-3)}
+.console-shell .sidebar-foot .btn,.console-shell .sidebar .btn{background:var(--r-surface);border:1px solid var(--r-ink);color:var(--r-ink);box-shadow:0 3px 0 var(--r-ink)}
+.console-menu-open .console-scrim{background:oklch(22% .035 262 / .35)}
+/* Page titles carry the site's yellow marker. */
+.console-shell .page-head h1,.console-shell .page-header h1,.console-dashboard-heading h1,.auth-brand h1{text-decoration:underline;text-decoration-color:var(--r-signal);text-decoration-thickness:.14em;text-underline-offset:.1em;text-decoration-skip-ink:none}
+/* KPIs: one strip split by perforation, not four floating cards. */
+.console-kpis{gap:0;background:var(--r-surface);border:1px solid var(--r-rule);border-radius:10px;overflow:hidden}
+.console-kpi{border:0;border-radius:0;background:transparent}
+.console-kpi+.console-kpi{border-left:1px dashed var(--r-rule-strong)}
+@media(max-width:800px){.console-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.console-kpi:nth-child(odd){border-left:0}.console-kpi:nth-child(n+3){border-top:1px dashed var(--r-rule-strong)}}
+
+/* ── v3 · white paper, no yellow underlines (owner's request, 2026-10-21) ── */
+:root{--r-paper:oklch(100% 0 0);--r-surface:oklch(100% 0 0);--r-paper-2:oklch(97.4% .006 262);--r-paper-3:oklch(94.6% .01 262);--r-rule:oklch(91% .01 262);--r-rule-strong:oklch(82% .015 262)}
+.console-shell .nav-link.active{text-decoration:none;background:var(--r-paper-3);color:var(--r-blue)}
+.console-shell .page-head h1,.console-shell .page-header h1,.console-dashboard-heading h1,.auth-brand h1{text-decoration:none}

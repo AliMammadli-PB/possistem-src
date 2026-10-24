@@ -25,6 +25,7 @@ class CoreSupervisor extends EventEmitter {
    */
   constructor(options = {}) {
     super();
+    this.canInvoke = options.canInvoke || null;
     this.binaryName = options.binaryName || 'market-pos-core';
     this.searchDirs = options.searchDirs || [];
     this.dbFile = options.dbFile || 'market.db';
@@ -234,6 +235,7 @@ class CoreSupervisor extends EventEmitter {
    *   (actor/terminal are what the restaurant core reads to know who is acting).
    */
   invoke(method, payload = {}, options = 15000) {
+    if(this.canInvoke&&!this.canInvoke(method,payload))return Promise.resolve({success:false,data:null,error:{code:'E_SUBSCRIPTION_EXPIRED',message:'Abunəlik müddəti bitib. Yeni əməliyyat üçün aylıq haqqı ödəyin.',retryable:false}});
     const opts = typeof options === 'number' ? { timeoutMs: options } : (options || {});
     const timeoutMs = Number(opts.timeoutMs) || 15000;
     if (!this.child || !this.child.stdin.writable || this.state !== 'ready') {

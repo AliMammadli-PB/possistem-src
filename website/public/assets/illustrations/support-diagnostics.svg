@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-labelledby="title desc">
+  <title id="title">Secure diagnostics transfer</title>
+  <desc id="desc">A log file moves from a customer account to a protected support area.</desc>
+  <rect width="800" height="500" rx="28" fill="#0d1118"/>
+  <rect x="82" y="88" width="300" height="324" rx="20" fill="#111721" stroke="#28313e"/>
+  <path d="M148 140h112l56 56v148H148Z" fill="#171e2a" stroke="#3a4656" stroke-width="3"/>
+  <path d="M260 140v56h56" fill="none" stroke="#3a4656" stroke-width="3"/>
+  <rect x="182" y="232" width="98" height="9" rx="4.5" fill="#5aa7ff"/>
+  <rect x="182" y="258" width="82" height="8" rx="4" fill="#7f8a99"/>
+  <rect x="182" y="282" width="110" height="8" rx="4" fill="#7f8a99"/>
+  <circle cx="232" cy="356" r="24" fill="#3f7cf7"/>
+  <path d="M232 368v-25M220 354l12-12 12 12" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M410 250h78" stroke="#5aa7ff" stroke-width="5" stroke-linecap="round" stroke-dasharray="4 14"/>
+  <path d="m468 232 22 18-22 18" fill="none" stroke="#5aa7ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="520" y="118" width="210" height="264" rx="24" fill="#111721" stroke="#28313e"/>
+  <circle cx="625" cy="190" r="54" fill="#35b978" opacity=".13"/>
+  <path d="M625 151 672 168v34c0 33-19 56-47 71-28-15-47-38-47-71v-34Z" fill="none" stroke="#35b978" stroke-width="5"/>
+  <path d="m605 207 14 14 29-33" fill="none" stroke="#35b978" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="562" y="292" width="126" height="10" rx="5" fill="#f5f7fa"/>
+  <rect x="582" y="320" width="86" height="8" rx="4" fill="#7f8a99"/>
+</svg>

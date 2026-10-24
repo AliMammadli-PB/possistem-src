@@ -166,4 +166,14 @@ void LicenseService::requireLicensedForNewBusinessDay() {
     }
 }
 
+void LicenseService::requirePaidForSale() {
+    const auto current = status();
+    if (!current.value("features", Json::object()).value("billingManaged", false)) return;
+    const auto expiry = current.value("expiresAt", std::int64_t{0});
+    if (current.value("status", "") != "active" || expiry <= nowMs()) {
+        throw PosError(std::string(protocol::err::kLicenseExpired),
+                       "Abunəlik müddəti bitib. Yeni satış üçün aylıq haqqı ödəyin.");
+    }
+}
+
 }  // namespace pos::services

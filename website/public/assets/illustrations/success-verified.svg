@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-labelledby="title desc">
+  <title id="title">Installation verified by the server</title>
+  <desc id="desc">A point-of-sale computer, server, and green check mark represent a verified connection.</desc>
+  <rect width="800" height="500" rx="28" fill="#0d1118"/>
+  <rect x="82" y="122" width="288" height="208" rx="18" fill="#111721" stroke="#28313e" stroke-width="3"/>
+  <rect x="108" y="148" width="236" height="150" rx="10" fill="#0c1119"/>
+  <g fill="#171e2a" stroke="#28313e">
+    <rect x="130" y="174" width="82" height="46" rx="8"/>
+    <rect x="228" y="174" width="82" height="46" rx="8"/>
+    <rect x="130" y="236" width="82" height="38" rx="8"/>
+    <rect x="228" y="236" width="82" height="38" rx="8"/>
+  </g>
+  <path d="M178 330v34M140 364h76" stroke="#3a4656" stroke-width="7" stroke-linecap="round"/>
+  <path d="M400 244h82" stroke="#35b978" stroke-width="5" stroke-linecap="round" stroke-dasharray="5 14"/>
+  <circle cx="560" cy="226" r="114" fill="#111721" stroke="#28313e" stroke-width="3"/>
+  <circle cx="560" cy="226" r="78" fill="#35b978" opacity=".12"/>
+  <circle cx="560" cy="226" r="52" fill="#35b978"/>
+  <path d="m532 226 19 19 39-44" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="466" y="370" width="188" height="14" rx="7" fill="#f5f7fa"/>
+  <rect x="498" y="400" width="124" height="9" rx="4.5" fill="#7f8a99"/>
+</svg>

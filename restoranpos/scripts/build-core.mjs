@@ -233,7 +233,7 @@ function buildWithLinuxMingwCross(compilers) {
     '-DCMAKE_RC_COMPILER=x86_64-w64-mingw32-windres',
   ]);
 
-  run('cmake', ['--build', BUILD, '--parallel', '1']);
+  run('cmake', ['--build', BUILD, '--parallel', String(Math.max(1,Math.min(4,Number(process.env.POS_BUILD_JOBS)||1)))]);
 }
 
 // ---------------------------------------------------------------------- main

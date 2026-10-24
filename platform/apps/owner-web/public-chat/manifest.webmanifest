@@ -1,0 +1,28 @@
+{
+  "id": "/chat/",
+  "name": "Offline POS Chat",
+  "short_name": "MR Chat",
+  "start_url": "/chat/",
+  "scope": "/chat/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "description": "Telefondan X/Z hesabat və restoran botu.",
+  "categories": ["business", "productivity"],
+  "lang": "az",
+  "icons": [
+    {
+      "src": "/chat/mr-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/chat/mr-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

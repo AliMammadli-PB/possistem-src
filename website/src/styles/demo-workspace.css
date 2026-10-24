@@ -1,0 +1,41 @@
+/* Demo is an application viewport, with no marketing header, margins or frame. */
+.ps-demo-page.ps-demo-shell{position:fixed;inset:0;width:100%;height:100dvh;min-height:0;padding:0;overflow:hidden;background:#0c1628;font-family:'Montserrat',system-ui,sans-serif;font-weight:700;color:#f2f6ff}
+.ps-demo-canvas{position:absolute;inset:0;width:100%;height:100%;overflow:hidden}
+.ps-demo-app{display:block;width:100%;height:100%;border:0;visibility:hidden;background:#0c1628}
+.ps-demo-app.is-ready{visibility:visible}
+.ps-demo-tools{position:absolute;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:2px;padding:3px;border:1px solid #456082;background:#10213bea;border-radius:8px;box-shadow:0 4px 14px #0002}
+.ps-demo-tools button,.ps-demo-tools a{display:flex;align-items:center;justify-content:center;gap:8px;min-width:40px;min-height:40px;padding:8px;color:#f2f6ff;background:none;border:0;border-radius:5px;text-decoration:none;font:700 11px 'Montserrat',system-ui,sans-serif;cursor:pointer}
+.ps-demo-tools button:hover,.ps-demo-tools a:hover{background:#244369}
+.ps-demo-tools svg{width:17px;height:17px}
+.ps-demo-boot,.ps-demo-route-loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0c1628;color:#f2f6ff;padding:24px;text-align:center;font-family:'Montserrat',system-ui,sans-serif;font-weight:700}
+.ps-demo-boot img{background:#155ac7;border-radius:12px;padding:6px}
+.ps-demo-boot strong{font-size:22px}
+.ps-demo-boot p{font-size:13px;line-height:1.8;color:#adbed5;max-width:440px;margin:0}
+.ps-demo-boot button{border:1px solid #54759c;background:#152740;color:#f2f6ff;padding:12px 18px;min-height:48px;border-radius:6px;font:700 13px 'Montserrat',system-ui,sans-serif;cursor:pointer}
+.ps-demo-launcher{position:absolute;inset:0;z-index:10;overflow:auto;background:#0c1628;color:#f2f6ff;padding:24px 40px;display:flex;flex-direction:column}
+.ps-demo-launcher-bar{display:flex;align-items:center;justify-content:space-between;gap:20px;flex:none}
+.ps-demo-launcher .ps-brand{color:#f2f6ff;font-weight:700}
+.ps-demo-launcher-bar>a:not(.ps-brand),.ps-demo-launcher-bar>button{display:flex;align-items:center;justify-content:center;gap:10px;min-height:44px;padding:8px;color:#b3d0ff;text-decoration:none;background:none;border:0;cursor:pointer;font:700 12px 'Montserrat',system-ui,sans-serif}
+.ps-demo-launcher-bar svg{width:18px}
+.ps-demo-launcher-content{max-width:1280px;width:100%;margin:auto; padding:56px 0}
+.ps-demo-launcher .ps-kicker{color:#8ab9ff;margin:0 0 20px}
+.ps-demo-launcher h1{max-width:850px;font:700 clamp(28px,3.3vw,48px)/1.2 'Montserrat',system-ui,sans-serif;letter-spacing:-.035em;margin:0 0 18px;color:#f2f6ff}
+.ps-demo-launcher-lead{font-size:15px;line-height:1.8;font-weight:700;color:#adbed5;margin:0 0 40px}
+.ps-demo-system-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.ps-demo-system-grid>button{display:flex;flex-direction:column;align-items:flex-start;gap:24px;min-height:215px;min-width:0;padding:24px 20px;border:1px solid #2c405e;background:#111f35;color:#f2f6ff;border-radius:8px;text-align:left;cursor:pointer;font:700 15px 'Montserrat',system-ui,sans-serif;transition:border-color .15s,background .15s}
+.ps-demo-system-grid>button:hover{background:#152e50;border-color:#8ab9ff}
+.ps-demo-system-icon{display:grid;place-items:center;width:46px;height:46px;background:#1c365c;color:#8ab9ff;border-radius:7px}
+.ps-demo-system-icon svg{width:25px;height:25px}
+.ps-demo-system-grid strong{font-size:17px;font-weight:700;letter-spacing:-.02em}
+.ps-demo-system-open{display:flex;align-items:center;justify-content:space-between;width:100%;color:#adbed5;font-size:11px;margin-top:auto}
+.ps-demo-system-open svg{width:17px;height:17px}
+.ps-demo-launcher-help{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:28px}
+.ps-demo-launcher-help p{font-size:13px;color:#adbed5;margin:0}
+.ps-demo-launcher-help kbd{display:inline-block;font:700 15px 'Montserrat',system-ui,sans-serif;border:1px solid #54759c;background:#152740;color:#f2f6ff;border-radius:4px;padding:4px 12px;margin-left:7px;user-select:all}
+.ps-demo-launcher-help small{font-size:11px;line-height:1.7;color:#adbed5;max-width:390px}
+.ps-demo-shell :is(button,a):focus-visible{outline:3px solid #8ab9ff;outline-offset:4px}
+@media(max-width:1050px){.ps-demo-system-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.ps-demo-system-grid>button{min-height:160px;gap:16px}.ps-demo-launcher{padding:20px 24px}.ps-demo-launcher-content{padding:40px 0}}
+@media(max-width:600px){.ps-demo-launcher{padding:16px 18px}.ps-demo-launcher-content{padding:32px 0 20px}.ps-demo-launcher .ps-kicker{font-size:10px;margin-bottom:14px}.ps-demo-launcher h1{font-size:28px}.ps-demo-launcher-lead{font-size:12px;margin-bottom:24px}.ps-demo-system-grid{grid-template-columns:1fr;gap:9px}.ps-demo-system-grid>button{display:grid;grid-template-columns:40px 1fr auto;align-items:center;min-height:76px;gap:14px;padding:14px}.ps-demo-system-icon{width:40px;height:40px}.ps-demo-system-grid strong{font-size:15px}.ps-demo-system-open{width:auto;font-size:0;gap:0;margin:0}.ps-demo-system-open svg{width:18px}.ps-demo-launcher-help{display:block;margin-top:22px}.ps-demo-launcher-help small{display:block;margin-top:14px;font-size:10px}.ps-demo-tools{top:max(6px,env(safe-area-inset-top));gap:0;padding:2px}.ps-demo-tools button,.ps-demo-tools a{min-width:36px;min-height:38px;padding:7px}.ps-demo-tools span{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.ps-demo-system-grid>button{transition:none}}
+
+@media(max-width:900px){.ps-demo-canvas{top:48px;height:calc(100% - 48px)}.ps-demo-tools{top:0;left:0;right:0;transform:none;min-height:48px;border-radius:0;justify-content:flex-end;padding:3px 10px;box-shadow:none;border:0;border-bottom:1px solid #345479}.ps-demo-tools button:first-child{margin-right:auto}.ps-demo-tools button,.ps-demo-tools a{min-height:42px;min-width:44px}.ps-demo-tools span{font-size:12px}}

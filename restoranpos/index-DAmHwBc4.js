@@ -14914,7 +14914,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.10 · 9e31470";
+const _PS_BUILD = "1.9.11 · ecff46a";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15380,6 +15380,7 @@ function isLicensedStatus(status) {
   return status === "active" || status === "grace" || status === "legacy_grace" || status === "offline_grace";
 }
 function licenceSatisfied(data) {
+  /* POSSISTEM_BILLING_1911 */if(data.features?.billingManaged===true&&data.licenseId&&data.status!=="revoked"&&data.expiresAt>0)return true;
   const expired = typeof data.expiresAt === "number" && data.expiresAt > 0 && data.expiresAt < Date.now();
   return isLicensedStatus(data.status) && !expired;
 }

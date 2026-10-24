@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-labelledby="title desc">
+  <title id="title">Guided product setup path</title>
+  <desc id="desc">Account, business, download, installation, and server verification are shown as sequential steps.</desc>
+  <rect width="800" height="500" rx="28" fill="#0d1118"/>
+  <path d="M125 250h550" stroke="#28313e" stroke-width="8" stroke-linecap="round"/>
+  <path d="M125 250h365" stroke="#3f7cf7" stroke-width="8" stroke-linecap="round"/>
+  <g font-family="system-ui,sans-serif" text-anchor="middle">
+    <g>
+      <circle cx="125" cy="250" r="38" fill="#35b978"/>
+      <path d="m108 250 12 12 23-25" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="78" y="315" width="94" height="8" rx="4" fill="#7f8a99"/>
+    </g>
+    <g>
+      <circle cx="307" cy="250" r="38" fill="#35b978"/>
+      <path d="m290 250 12 12 23-25" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="260" y="315" width="94" height="8" rx="4" fill="#7f8a99"/>
+    </g>
+    <g>
+      <circle cx="490" cy="250" r="42" fill="#3f7cf7"/>
+      <path d="M490 226v42M474 252l16 16 16-16" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="443" y="315" width="94" height="8" rx="4" fill="#5aa7ff"/>
+    </g>
+    <g>
+      <circle cx="675" cy="250" r="38" fill="#171e2a" stroke="#3a4656" stroke-width="2"/>
+      <path d="M659 250h32M675 234v32" stroke="#7f8a99" stroke-width="5" stroke-linecap="round"/>
+      <rect x="628" y="315" width="94" height="8" rx="4" fill="#3a4656"/>
+    </g>
+  </g>
+  <rect x="238" y="92" width="324" height="72" rx="16" fill="#111721" stroke="#28313e"/>
+  <circle cx="276" cy="128" r="14" fill="#3f7cf7"/>
+  <rect x="306" y="115" width="170" height="10" rx="5" fill="#f5f7fa"/>
+  <rect x="306" y="135" width="108" height="8" rx="4" fill="#7f8a99"/>
+</svg>

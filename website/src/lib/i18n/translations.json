@@ -1,0 +1,3332 @@
+{
+  "index.meta.001": {
+    "az": "possistem — restoran, market, kafe və digər bizneslər üçün kassa, idarəetmə, canlı portal, quraşdırma və yeniliklər bir sistemdə.",
+    "en": "possistem — POS for restaurants, retail, cafés and more: checkout, management, live portal, setup and updates in one system.",
+    "ru": "possistem — POS для ресторанов, ритейла, кафе и других бизнесов: касса, управление, портал, установка и обновления в одной системе."
+  },
+  "index.meta.002": {
+    "az": "POS, kassa sistemi, market proqramı, restoran idarəetmə, pərakəndə, possistem, Azərbaycan",
+    "en": "POS software, retail POS, restaurant management, cash register, possistem, Azerbaijan",
+    "ru": "POS, кассовая система, ритейл, управление рестораном, possistem, Азербайджан"
+  },
+  "index.meta.003": {
+    "az": "az_AZ",
+    "en": "az_AZ",
+    "ru": "az_AZ"
+  },
+  "index.meta.004": {
+    "az": "possistem — Biznes əməliyyatları bir sistemdə",
+    "en": "possistem — Business operations in one system",
+    "ru": "possistem — Операции бизнеса в одной системе"
+  },
+  "index.meta.005": {
+    "az": "Kassa, satış, canlı hesabat, quraşdırma və yeniləmələri aydın idarə edin.",
+    "en": "Clearly manage checkout, sales, live reports, setup and updates.",
+    "ru": "Чётко управляйте кассой, продажами, отчётами, установкой и обновлениями."
+  },
+  "index.text.006": {
+    "az": "possistem — Biznes əməliyyatları bir sistemdə",
+    "en": "possistem — Business operations in one system",
+    "ru": "possistem — Операции бизнеса в одной системе"
+  },
+  "index.text.007": {
+    "az": "Əsas məzmuna keç",
+    "en": "Skip to main content",
+    "ru": "Перейти к основному содержанию"
+  },
+  "index.text.008": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "index.text.009": {
+    "az": "Biznes əməliyyatları",
+    "en": "Business operations",
+    "ru": "Операции бизнеса"
+  },
+  "index.attr.010": {
+    "az": "Əsas menyu",
+    "en": "Main navigation",
+    "ru": "Главное меню"
+  },
+  "index.text.011": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "index.text.012": {
+    "az": "Quraşdırma",
+    "en": "Installation",
+    "ru": "Установка"
+  },
+  "index.text.013": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "index.text.014": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "index.text.015": {
+    "az": "Müştəri girişi",
+    "en": "Customer login",
+    "ru": "Вход для клиентов"
+  },
+  "index.text.016": {
+    "az": "Təqdimat istəyin",
+    "en": "Request a demo",
+    "ru": "Запросить демонстрацию"
+  },
+  "nav.pricing": {
+    "az": "Qiymət",
+    "en": "Pricing",
+    "ru": "Цены"
+  },
+  "account.quickLinks": {
+    "az": "Tez keçidlər",
+    "en": "Quick links",
+    "ru": "Быстрые ссылки"
+  },
+  "index.attr.017": {
+    "az": "İşıqlı rejimə keç",
+    "en": "Switch to light mode",
+    "ru": "Включить светлую тему"
+  },
+  "index.attr.018": {
+    "az": "Menyunu aç",
+    "en": "Open menu",
+    "ru": "Открыть меню"
+  },
+  "index.text.019": {
+    "az": "Restoran, market, kafe və digər bizneslər üçün",
+    "en": "For restaurants, retail, cafés and more",
+    "ru": "Для ресторанов, ритейла, кафе и других бизнесов"
+  },
+  "index.text.020": {
+    "az": "Kassanı işlədin.",
+    "en": "Run the cash register.",
+    "ru": "Запустите кассовый аппарат."
+  },
+  "index.text.021": {
+    "az": "Biznesi aydın görün.",
+    "en": "See the business clearly.",
+    "ru": "Смотрите на бизнес ясно."
+  },
+  "index.text.022": {
+    "az": "Satış, anbar, lisenziya, quraşdırma və tətbiq versiyası — texniki qarışıqlıq olmadan vahid possistem təcrübəsində.",
+    "en": "Sales, inventory, licensing, installation, and app version — all in one possistem experience without technical clutter.",
+    "ru": "Продажи, склад, лицензирование, установка и версия приложения — всё в одном possistem без технических сложностей."
+  },
+  "index.text.023": {
+    "az": "Pulsuz təqdimat istəyin",
+    "en": "Request a free demo",
+    "ru": "Запросить бесплатную демо-версию"
+  },
+  "index.text.024": {
+    "az": "Müştəri portalını açın",
+    "en": "Open the customer portal",
+    "ru": "Откройте клиентский портал"
+  },
+  "index.attr.025": {
+    "az": "Əsas üstünlüklər",
+    "en": "Main advantages",
+    "ru": "Основные преимущества"
+  },
+  "index.text.026": {
+    "az": "Offline satış",
+    "en": "Offline sales",
+    "ru": "Оффлайн продажи"
+  },
+  "index.text.027": {
+    "az": "Serverdə canlı vəziyyət",
+    "en": "Live status on the server",
+    "ru": "Текущий статус на сервере"
+  },
+  "index.text.028": {
+    "az": "Yerli quraşdırma dəstəyi",
+    "en": "Local installation support",
+    "ru": "Поддержка локальной установки"
+  },
+  "index.text.029": {
+    "az": "Kassa müqayisəsi · Köhnə və possistem",
+    "en": "Till compare · Legacy vs possistem",
+    "ru": "Сравнение кассы · Старое и possistem"
+  },
+  "index.text.030": {
+    "az": "Canlı demo",
+    "en": "Live demo",
+    "ru": "Живое демо"
+  },
+  "index.attr.031": {
+    "az": "Köhnə kassa avadanlığı ilə possistem toxunuş ekranının müqayisəsi",
+    "en": "Comparison of legacy till hardware with the possistem touch screen",
+    "ru": "Сравнение старого кассового оборудования с сенсорным экраном possistem"
+  },
+  "index.text.032": {
+    "az": "POS bağlantısı",
+    "en": "POS connection",
+    "ru": "POS-соединение"
+  },
+  "index.text.033": {
+    "az": "Canlı məlumat gəlir",
+    "en": "Live data is coming",
+    "ru": "Живые данные уже на подходе"
+  },
+  "index.attr.034": {
+    "az": "Məhsul imkanları",
+    "en": "Product capabilities",
+    "ru": "Возможности продукта"
+  },
+  "index.text.035": {
+    "az": "Vahid iş axını",
+    "en": "Unified workflow",
+    "ru": "Единый рабочий процесс"
+  },
+  "index.text.036": {
+    "az": "Kassa, anbar və satış nöqtəsi",
+    "en": "Checkout, stock and sales floor",
+    "ru": "Касса, склад и торговый зал"
+  },
+  "index.text.037": {
+    "az": "Canlı görünüş",
+    "en": "Live view",
+    "ru": "Живой просмотр"
+  },
+  "index.text.038": {
+    "az": "Bağlantı və satış vəziyyəti",
+    "en": "Connection and sales status",
+    "ru": "Статус подключения и продаж"
+  },
+  "index.text.039": {
+    "az": "Dil seçimi",
+    "en": "Language options",
+    "ru": "Выбор языка"
+  },
+  "index.text.040": {
+    "az": "AZ · RU · EN",
+    "en": "EN · AZ · RU",
+    "ru": "EN · AZ · RU"
+  },
+  "index.text.041": {
+    "az": "Yerli hesablaşma",
+    "en": "Local settlement",
+    "ru": "Местное поселение"
+  },
+  "index.text.042": {
+    "az": "AZN və lokal dəstək",
+    "en": "AZN and local support",
+    "ru": "AZN и местная поддержка"
+  },
+  "index.text.043": {
+    "az": "Nəticə əvvəl gəlir",
+    "en": "The result comes first",
+    "ru": "Результат на первом месте"
+  },
+  "index.text.044": {
+    "az": "Hər rol yalnız lazım olanı görür.",
+    "en": "Each role sees only what is necessary.",
+    "ru": "Каждая роль видит только то, что необходимо."
+  },
+  "index.text.045": {
+    "az": "Kassir sürətli satır, menecer əməliyyatı idarə edir, sahibkar isə harada olmasından asılı olmayaraq vəziyyəti anlayır.",
+    "en": "Cashiers sell quickly, managers run operations, and owners understand the business from anywhere.",
+    "ru": "Кассир продает быстро, менеджер управляет сделкой, а предприниматель понимает ситуацию, где бы он ни находился."
+  },
+  "index.text.046": {
+    "az": "Kassa komandası",
+    "en": "Cashier team",
+    "ru": "Команда кассиров"
+  },
+  "index.text.047": {
+    "az": "Toxunuşa uyğun satış ekranı, sürətli kassa axını və internetdən asılı olmayan əsas əməliyyatlar.",
+    "en": "Touch-friendly sales screen, fast checkout flow and core transactions that work offline.",
+    "ru": "Сенсорный экран продаж, быстрая касса и основные операции без зависимости от интернета."
+  },
+  "index.text.048": {
+    "az": "Növbə və hesab",
+    "en": "Queue and score",
+    "ru": "Очередь и оценка"
+  },
+  "index.text.049": {
+    "az": "Məhsul və kateqoriya seçimi",
+    "en": "Product and category selection",
+    "ru": "Выбор товаров и категорий"
+  },
+  "index.text.050": {
+    "az": "Offline davamlılıq",
+    "en": "Offline persistence",
+    "ru": "Сохранение в автономном режиме"
+  },
+  "index.text.051": {
+    "az": "Biznes meneceri",
+    "en": "Business manager",
+    "ru": "Менеджер бизнеса"
+  },
+  "index.text.052": {
+    "az": "Əməliyyat vəziyyəti, heyət səlahiyyətləri, X/Z hesabatları və gündəlik nəticələr.",
+    "en": "Operations status, staff permissions, X/Z reports and daily results.",
+    "ru": "Статус операций, права персонала, отчёты X/Z и ежедневные результаты."
+  },
+  "index.text.053": {
+    "az": "Rol əsaslı giriş",
+    "en": "Role-based access",
+    "ru": "Ролевой доступ"
+  },
+  "index.text.054": {
+    "az": "Hesabat tarixçəsi",
+    "en": "Report history",
+    "ru": "История отчета"
+  },
+  "index.text.055": {
+    "az": "Əməliyyat nəzarəti",
+    "en": "Operational control",
+    "ru": "Оперативный контроль"
+  },
+  "index.text.056": {
+    "az": "Biznes sahibi",
+    "en": "Business owner",
+    "ru": "Владелец бизнеса"
+  },
+  "index.text.057": {
+    "az": "POS bağlantısı, canlı satış, hesabatlar, yeniləmə və bildirişlər müştəri portalında.",
+    "en": "POS connectivity, live sales, reports, updates and notifications in the owner portal.",
+    "ru": "Подключение POS, продажи в реальном времени, отчёты, обновления и уведомления в портале владельца."
+  },
+  "index.text.058": {
+    "az": "Mobil görünüş",
+    "en": "Mobile view",
+    "ru": "Мобильная версия"
+  },
+  "index.text.059": {
+    "az": "WhatsApp bildirişləri",
+    "en": "WhatsApp notifications",
+    "ru": "Уведомления WhatsApp"
+  },
+  "index.text.060": {
+    "az": "Quraşdırma statusu",
+    "en": "Installation status",
+    "ru": "Статус установки"
+  },
+  "index.text.061": {
+    "az": "Sadəcə dashboard deyil",
+    "en": "Not just a dashboard",
+    "ru": "Не просто панель приборов"
+  },
+  "index.text.062": {
+    "az": "Müştəri nə etməli olduğunu dərhal anlayır.",
+    "en": "The customer immediately understands what to do.",
+    "ru": "Заказчик сразу понимает, что делать."
+  },
+  "index.text.063": {
+    "az": "Portal ilk baxışda dörd suala cavab verir: POS qoşulubmu, quraşdırma tamamlanıbmı, lisenziya aktivdirmi və yeni versiya varmı?",
+    "en": "At first glance, the portal answers four questions: Is the POS connected, is the installation complete, is the license active, and is there a new version?",
+    "ru": "На первый взгляд портал отвечает на четыре вопроса: подключена ли POS, завершена ли установка, активна ли лицензия и есть ли новая версия?"
+  },
+  "index.text.064": {
+    "az": "Prioritet xəbərdarlıq",
+    "en": "Priority alert",
+    "ru": "Приоритетное оповещение"
+  },
+  "index.text.065": {
+    "az": "Ən vacib növbəti addım səhifənin əvvəlindədir.",
+    "en": "The most important next step is at the top of the page.",
+    "ru": "Самый важный следующий шаг находится вверху страницы."
+  },
+  "index.text.066": {
+    "az": "Həqiqi server yoxlaması",
+    "en": "Real server verification",
+    "ru": "Реальная проверка сервера"
+  },
+  "index.text.067": {
+    "az": "Quraşdırma brauzer checkbox-u ilə deyil, POS bağlantısı ilə təsdiqlənir.",
+    "en": "The installation is confirmed by the POS connection, not by the browser checkbox.",
+    "ru": "Установка подтверждается POS-соединением, а не флажком браузера."
+  },
+  "index.text.068": {
+    "az": "Stabil məlumat",
+    "en": "Stable data",
+    "ru": "Стабильные данные"
+  },
+  "index.text.069": {
+    "az": "Bağlantı kəsiləndə son məlum rəqəmlər “köhnə” işarəsi ilə saxlanılır.",
+    "en": "When the connection is disconnected, the last known digits are saved as \"old\".",
+    "ru": "При разрыве соединения последние известные цифры сохраняются как «старые»."
+  },
+  "index.text.070": {
+    "az": "Məhsulu ətraflı görün",
+    "en": "See product details",
+    "ru": "Посмотреть подробную информацию о продукте"
+  },
+  "index.attr.071": {
+    "az": "possistem quraşdırma mərkəzi və addım statusları",
+    "en": "possistem installation center and step statuses",
+    "ru": "Центр установки possistem и статусы шагов"
+  },
+  "index.attr.072": {
+    "az": "Offline sifarişlərin bağlantı bərpa olunanda serverə sinxronlaşdırılması",
+    "en": "Synchronization of offline orders to the server when the connection is restored",
+    "ru": "Синхронизация офлайн-заказов с сервером при восстановлении соединения"
+  },
+  "index.text.073": {
+    "az": "Davamlı əməliyyat",
+    "en": "Continuous operation",
+    "ru": "Непрерывная работа"
+  },
+  "index.text.074": {
+    "az": "İnternet problemi kassanı dayandırmır.",
+    "en": "Internet problem does not stop the checkout.",
+    "ru": "Проблема с Интернетом не мешает оформлению заказа."
+  },
+  "index.text.075": {
+    "az": "Əsas satış axını lokal işləyir. Bağlantı bərpa olunanda məlumatlar server görünüşünə ötürülür və sahibkar yenidən canlı vəziyyəti görür.",
+    "en": "The core sales flow runs locally. When the connection returns, data syncs to the server and the owner sees live status again.",
+    "ru": "Основной поток продаж работает локально. Когда соединение восстанавливается, данные передаются на просмотр сервера и предприниматель снова видит живой статус."
+  },
+  "index.text.076": {
+    "az": "Bağlantı var",
+    "en": "There is a connection",
+    "ru": "Есть связь"
+  },
+  "index.text.077": {
+    "az": "Canlı sinxronizasiya və sahibkar görünüşü",
+    "en": "Live synchronization and the owner view",
+    "ru": "Живая синхронизация и просмотр предпринимателя"
+  },
+  "index.text.078": {
+    "az": "Bağlantı yoxdur",
+    "en": "No connection",
+    "ru": "Нет связи"
+  },
+  "index.text.079": {
+    "az": "Kassada əsas satış əməliyyatları davam edir",
+    "en": "Main sales operations continue at the cash table",
+    "ru": "На кассе продолжаются основные операции продаж"
+  },
+  "index.text.080": {
+    "az": "Bağlantı qayıdır",
+    "en": "The connection returns",
+    "ru": "Соединение возвращается"
+  },
+  "index.text.081": {
+    "az": "Məlumat axını və status yenilənir",
+    "en": "Data flow and status are updated",
+    "ru": "Поток данных и статус обновляются."
+  },
+  "index.text.082": {
+    "az": "Müştəri yolu",
+    "en": "Customer path",
+    "ru": "Путь клиента"
+  },
+  "index.text.083": {
+    "az": "Hesabdan canlı sistemə qədər aydın proses.",
+    "en": "Clear process from account to live system.",
+    "ru": "Четкий процесс перехода от учетной записи к работающей системе."
+  },
+  "index.text.084": {
+    "az": "Normal müştəri developer köməyi olmadan hesabını, yükləməni və quraşdırma statusunu idarə edə bilir.",
+    "en": "Customers can manage their account, download, and setup status without developer help.",
+    "ru": "Обычный клиент может управлять своей учетной записью, статусом загрузки и установки без помощи разработчиков."
+  },
+  "index.text.085": {
+    "az": "Hesab və biznes",
+    "en": "Account and business",
+    "ru": "Аккаунт и бизнес"
+  },
+  "index.text.086": {
+    "az": "Müştəri hesabını yaradın, əlaqə və biznes məlumatlarını tamamlayın.",
+    "en": "Create a customer account, complete contact and business information.",
+    "ru": "Создайте учетную запись клиента, заполните контактную информацию и информацию о ресторане."
+  },
+  "index.text.087": {
+    "az": "Yükləmə",
+    "en": "Loading",
+    "ru": "Загрузка"
+  },
+  "index.text.088": {
+    "az": "Son stabil Windows versiyasını, ölçünü və sistem tələblərini görün.",
+    "en": "See the latest stable Windows version, size and system requirements.",
+    "ru": "Ознакомьтесь с последней стабильной версией Windows, размером и системными требованиями."
+  },
+  "index.text.089": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "index.text.090": {
+    "az": "Aydın təlimatla tətbiqi qurun və aktivasiya məlumatını daxil edin.",
+    "en": "Install the application with clear instructions and enter the activation information.",
+    "ru": "Установите приложение с понятной инструкцией и введите данные для активации."
+  },
+  "index.text.091": {
+    "az": "Server yoxlaması",
+    "en": "Server check",
+    "ru": "Проверка сервера"
+  },
+  "index.text.092": {
+    "az": "Portal POS cihazının həqiqi bağlantısını görüb prosesi təsdiqləyir.",
+    "en": "The portal verifies the actual connection of the POS device and confirms the process.",
+    "ru": "Портал проверяет фактическое подключение POS-устройства и подтверждает процесс."
+  },
+  "index.attr.093": {
+    "az": "possistem dörd mərhələli quraşdırma yolu",
+    "en": "possistem four-step installation path",
+    "ru": "Четырехэтапный путь установки possistem"
+  },
+  "index.text.094": {
+    "az": "Müştəri hesabı yaradın",
+    "en": "Create a customer account",
+    "ru": "Создать учетную запись клиента"
+  },
+  "index.text.095": {
+    "az": "Quraşdırmanı araşdırın",
+    "en": "Explore the setup",
+    "ru": "Изучите настройку"
+  },
+  "index.text.096": {
+    "az": "Həqiqi məhsul ekranları",
+    "en": "Actual product displays",
+    "ru": "Фактические дисплеи продуктов"
+  },
+  "index.text.097": {
+    "az": "Marketinq və istifadə təcrübəsi bir-birinə uyğundur.",
+    "en": "Marketing and user experience go hand in hand.",
+    "ru": "Маркетинг и пользовательский опыт идут рука об руку."
+  },
+  "index.text.098": {
+    "az": "Portal və kassa axınını göstərən məhsul maketləri — brend və dil possistem ilə eynidir.",
+    "en": "Product mocks of the portal and till flow — brand and language match possistem.",
+    "ru": "Макеты портала и кассового потока — бренд и язык совпадают с possistem."
+  },
+  "index.layered.headline": {
+    "az": "Restoranınızın işini <em>bir-birinə</em> uyğundur.",
+    "en": "Your restaurant operations fit <em>together</em>.",
+    "ru": "Работа ресторана <em>согласована</em> в одной системе."
+  },
+  "index.layered.lede": {
+    "az": "Sifarişdən ödənişə, anbar və satışlara qədər hər şey bir sistemdə. Restoranınız üçün sadə, sürətli və etibarlı həll.",
+    "en": "From orders to payment, stock and sales — one system. Simple, fast, and reliable for your restaurant.",
+    "ru": "От заказа до оплаты, склад и продажи — одна система. Просто, быстро и надёжно для вашего ресторана."
+  },
+  "index.layered.ctaDownload": {
+    "az": "Yüklə",
+    "en": "Download",
+    "ru": "Скачать"
+  },
+  "index.layered.ctaPortal": {
+    "az": "Portala keç",
+    "en": "Open portal",
+    "ru": "В портал"
+  },
+  "index.layered.featFast": {
+    "az": "Sadə və sürətli istifadə",
+    "en": "Simple and fast to use",
+    "ru": "Просто и быстро"
+  },
+  "index.layered.featLive": {
+    "az": "Real vaxtda nəzarət",
+    "en": "Real-time oversight",
+    "ru": "Контроль в реальном времени"
+  },
+  "index.layered.featSafe": {
+    "az": "Təhlükəsiz və etibarlı",
+    "en": "Secure and reliable",
+    "ru": "Безопасно и надёжно"
+  },
+  "index.attr.099": {
+    "az": "possistem yükləmələr və sistem tələbləri ekranı",
+    "en": "possistem downloads and system requirements screen",
+    "ru": "Загрузка possistem и экран системных требований"
+  },
+  "index.text.100": {
+    "az": "Yükləmə mərkəzi",
+    "en": "Download center",
+    "ru": "Центр загрузки"
+  },
+  "index.text.101": {
+    "az": "Versiya, ölçü, checksum və tələblər",
+    "en": "Version, size, checksum and requirements",
+    "ru": "Версия, размер, контрольная сумма и требования"
+  },
+  "index.attr.102": {
+    "az": "possistem fəaliyyət və bildiriş tarixçəsi",
+    "en": "possistem activity and notification history",
+    "ru": "История активности и уведомлений possistem"
+  },
+  "index.text.103": {
+    "az": "Fəaliyyət",
+    "en": "Activity",
+    "ru": "Активность"
+  },
+  "index.text.104": {
+    "az": "Bildiriş və hesab tarixçəsi",
+    "en": "Notification and account history",
+    "ru": "Уведомления и история аккаунта"
+  },
+  "index.attr.105": {
+    "az": "possistem WhatsApp və push inteqrasiyaları",
+    "en": "possistem WhatsApp and push integrations",
+    "ru": "possistem WhatsApp и push-интеграция"
+  },
+  "index.text.106": {
+    "az": "İnteqrasiyalar",
+    "en": "Integrations",
+    "ru": "Интеграции"
+  },
+  "index.text.107": {
+    "az": "WhatsApp və brauzer bildirişləri",
+    "en": "WhatsApp and browser notifications",
+    "ru": "Уведомления WhatsApp и браузера"
+  },
+  "index.text.108": {
+    "az": "Danışaq",
+    "en": "Let's talk",
+    "ru": "Давайте поговорим"
+  },
+  "index.text.109": {
+    "az": "Biznesiniz üçün düzgün qurulumu birlikdə seçək.",
+    "en": "Let's choose the right setup for your business together.",
+    "ru": "Давайте вместе подберем подходящую обстановку для вашего ресторана."
+  },
+  "index.text.110": {
+    "az": "Kassa və filial sayını qısa qeyd edin. Satış komandamız ehtiyacınıza uyğun təqdimat və təkliflə geri dönsün.",
+    "en": "Briefly note the number of cash registers and branches. Let our sales team get back to you with a presentation and proposal tailored to your needs.",
+    "ru": "Кратко отметим количество кассовых аппаратов и отделений. Позвольте нашему отделу продаж вернуться к вам с презентацией и предложением, адаптированным к вашим потребностям."
+  },
+  "index.text.111": {
+    "az": "Məcburi öhdəlik yoxdur",
+    "en": "There is no binding commitment",
+    "ru": "Нет никаких обязательств"
+  },
+  "index.text.112": {
+    "az": "Quraşdırma və təlim daxildir",
+    "en": "Installation and training included",
+    "ru": "Установка и обучение включены в стоимость."
+  },
+  "index.text.113": {
+    "az": "Məlumat yalnız əlaqə üçün saxlanılır",
+    "en": "Information is kept for contact only",
+    "ru": "Информация хранится только для контактов"
+  },
+  "index.text.114": {
+    "az": "WhatsApp",
+    "en": "WhatsApp",
+    "ru": "WhatsApp"
+  },
+  "index.text.115": {
+    "az": "Qiymət və təqdimat sorğusu",
+    "en": "Price and presentation request",
+    "ru": "Запрос цены и презентации"
+  },
+  "index.text.116": {
+    "az": "Adətən qısa müddətdə geri dönüş edirik",
+    "en": "We usually get back to you in a short time",
+    "ru": "Обычно мы свяжемся с вами в ближайшее время"
+  },
+  "index.text.117": {
+    "az": "≈ 2 dəqiqə",
+    "en": "≈ 2 minutes",
+    "ru": "≈ 2 минуты"
+  },
+  "index.text.118": {
+    "az": "Ad və soyad",
+    "en": "Name and surname",
+    "ru": "Имя и фамилия"
+  },
+  "index.attr.119": {
+    "az": "Adınızı yazın",
+    "en": "Write your name",
+    "ru": "Напишите свое имя"
+  },
+  "index.text.120": {
+    "az": "Biznesin adı",
+    "en": "Business name",
+    "ru": "Название бизнеса"
+  },
+  "index.attr.121": {
+    "az": "Biznesin adı",
+    "en": "Business name",
+    "ru": "Название компании"
+  },
+  "index.text.122": {
+    "az": "Telefon / WhatsApp",
+    "en": "Phone / WhatsApp",
+    "ru": "Телефон/Ватсап"
+  },
+  "index.attr.123": {
+    "az": "+994 55 000 00 00",
+    "en": "+994 55 000 00 00",
+    "ru": "+994 55 000 00 00"
+  },
+  "index.text.124": {
+    "az": "Şəhər",
+    "en": "City",
+    "ru": "Город"
+  },
+  "index.attr.125": {
+    "az": "Bakı",
+    "en": "Baku",
+    "ru": "Баку"
+  },
+  "index.text.126": {
+    "az": "Biznesiniz haqqında qısa məlumat",
+    "en": "Brief information about your business",
+    "ru": "Краткая информация о вашем бизнесе"
+  },
+  "index.attr.127": {
+    "az": "Masa, kassa və filial sayı...",
+    "en": "Number of tables, registers, and branches...",
+    "ru": "Количество столов, касс и отделений..."
+  },
+  "index.text.128": {
+    "az": "İstəyə bağlıdır",
+    "en": "Optional",
+    "ru": "Это зависит от запроса"
+  },
+  "index.text.129": {
+    "az": "Website",
+    "en": "Website",
+    "ru": "Веб-сайт"
+  },
+  "index.text.130": {
+    "az": "Qiymət sorğusunu göndərin",
+    "en": "Send pricing request",
+    "ru": "Отправить запрос цены"
+  },
+  "index.text.131": {
+    "az": "Məlumatlarınız yalnız sizinlə əlaqə saxlamaq üçün istifadə olunur.",
+    "en": "Your information is only used to contact you.",
+    "ru": "Ваша информация используется только для связи с вами."
+  },
+  "index.text.132": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "index.text.133": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "index.text.134": {
+    "az": "Müxtəlif bizneslər üçün satış və əməliyyatları aydın idarə edən yerli POS platforması.",
+    "en": "A local POS platform that makes sales and operations clear for every business.",
+    "ru": "Собственная POS-платформа, которая делает работу ресторана понятной, устойчивой и управляемой."
+  },
+  "index.attr.135": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "index.text.136": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "index.text.137": {
+    "az": "İmkanlar",
+    "en": "Features",
+    "ru": "Возможности"
+  },
+  "index.text.138": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "index.text.139": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "index.attr.140": {
+    "az": "Müştəri",
+    "en": "Customer",
+    "ru": "Клиент"
+  },
+  "index.text.141": {
+    "az": "Müştəri",
+    "en": "Customer",
+    "ru": "Клиент"
+  },
+  "index.text.142": {
+    "az": "Giriş",
+    "en": "Log in",
+    "ru": "Войти"
+  },
+  "index.text.143": {
+    "az": "Hesab yaradın",
+    "en": "Create account",
+    "ru": "Создать аккаунт"
+  },
+  "index.text.144": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "index.attr.145": {
+    "az": "Əlaqə",
+    "en": "Contact",
+    "ru": "Контакты"
+  },
+  "index.text.146": {
+    "az": "Əlaqə",
+    "en": "Contact",
+    "ru": "Контакты"
+  },
+  "index.text.147": {
+    "az": "Təqdimat",
+    "en": "Demo",
+    "ru": "Демонстрация"
+  },
+  "index.text.148": {
+    "az": "possistem. Bütün hüquqlar qorunur.",
+    "en": "possistem. All rights reserved.",
+    "ru": "Миллионер ПОС. Все права защищены."
+  },
+  "index.text.149": {
+    "az": "Azərbaycan üçün hazırlanıb",
+    "en": "Made for Azerbaijan",
+    "ru": "Создано для Азербайджана"
+  },
+  "index.attr.150": {
+    "az": "WhatsApp ilə əlaqə",
+    "en": "Contact with WhatsApp",
+    "ru": "Связаться с WhatsApp"
+  },
+  "product.meta.001": {
+    "az": "possistem məhsul imkanları — kassa, masa, canlı sahibkar portalı, bildirişlər və yeniləmə idarəetməsi.",
+    "en": "possistem product capabilities — checkout, table, live merchant portal, notifications and update management.",
+    "ru": "Возможности продукта possistem — касса, рабочий стол, торговый портал, уведомления и управление обновлениями."
+  },
+  "product.meta.002": {
+    "az": "az_AZ",
+    "en": "az_AZ",
+    "ru": "az_AZ"
+  },
+  "product.meta.003": {
+    "az": "possistem məhsul imkanları",
+    "en": "possistem product capabilities",
+    "ru": "Возможности POS-продукта possistem"
+  },
+  "product.meta.004": {
+    "az": "Biznesin hər mərhələsi üçün vahid POS platforması.",
+    "en": "A single POS platform for every phase of your business.",
+    "ru": "Единая POS-платформа для каждого этапа работы ресторана."
+  },
+  "product.text.005": {
+    "az": "Məhsul imkanları · possistem",
+    "en": "Product features · possistem",
+    "ru": "Характеристики продукта · POS-терминал «Миллионер»"
+  },
+  "product.text.006": {
+    "az": "Əsas məzmuna keç",
+    "en": "Skip to main content",
+    "ru": "Перейти к основному содержанию"
+  },
+  "product.text.007": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "product.text.008": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "product.attr.009": {
+    "az": "Əsas menyu",
+    "en": "Main navigation",
+    "ru": "Главное меню"
+  },
+  "product.text.010": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "product.text.011": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "product.text.012": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "product.text.013": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "product.text.014": {
+    "az": "Müştəri girişi",
+    "en": "Customer login",
+    "ru": "Вход для клиентов"
+  },
+  "product.text.015": {
+    "az": "Təqdimat istəyin",
+    "en": "Request a demo",
+    "ru": "Запросить демонстрацию"
+  },
+  "product.attr.016": {
+    "az": "İşıqlı rejimə keç",
+    "en": "Switch to light mode",
+    "ru": "Включить светлую тему"
+  },
+  "product.attr.017": {
+    "az": "Menyunu aç",
+    "en": "Open menu",
+    "ru": "Открыть меню"
+  },
+  "product.attr.018": {
+    "az": "Səhifə yolu",
+    "en": "Breadcrumb",
+    "ru": "Навигационная цепочка"
+  },
+  "product.text.019": {
+    "az": "Ana səhifə",
+    "en": "Home",
+    "ru": "Главная"
+  },
+  "product.text.020": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "product.text.021": {
+    "az": "Məhsul imkanları",
+    "en": "Product capabilities",
+    "ru": "Возможности продукта"
+  },
+  "product.text.022": {
+    "az": "Biznesin hər mərhələsi üçün",
+    "en": "For each stage of your business",
+    "ru": "На каждый этап ресторана"
+  },
+  "product.text.023": {
+    "az": "vahid əməliyyat axını.",
+    "en": "single transaction flow.",
+    "ru": "единый поток транзакций."
+  },
+  "product.text.024": {
+    "az": "Kassadan sahibkar portalına qədər eyni məlumat modeli, aydın statuslar və internet problemi zamanı davamlı satış.",
+    "en": "One data model from the register to the owner portal, clear statuses, and continuous sales during internet outages.",
+    "ru": "Одна и та же модель данных от кассы до предпринимательского портала, четкие статусы и непрерывные продажи во время отключений Интернета."
+  },
+  "product.text.025": {
+    "az": "Təqdimat istəyin",
+    "en": "Request a demo",
+    "ru": "Запросить демонстрацию"
+  },
+  "product.text.026": {
+    "az": "Müştəri girişi",
+    "en": "Customer login",
+    "ru": "Вход для клиентов"
+  },
+  "product.attr.027": {
+    "az": "Kassa və server arasında davamlı məlumat sinxronizasiyası",
+    "en": "Continuous data synchronization between the cash register and the server",
+    "ru": "Непрерывная синхронизация данных между кассовым аппаратом и сервером"
+  },
+  "product.text.028": {
+    "az": "Bir sistem, üç görünüş",
+    "en": "One system, three views",
+    "ru": "Одна система, три взгляда"
+  },
+  "product.text.029": {
+    "az": "Komanda sürətli işləyir, rəhbərlik düzgün məlumat görür.",
+    "en": "The team works fast, management sees the right information.",
+    "ru": "Команда работает быстро, руководство видит нужную информацию."
+  },
+  "product.text.030": {
+    "az": "Hər interfeys eyni məqsədə xidmət edir: səhvi və gözləmə vaxtını azaltmaq.",
+    "en": "Each interface serves the same purpose: reducing error and waiting time.",
+    "ru": "Каждый интерфейс служит одной и той же цели: уменьшению ошибок и времени ожидания."
+  },
+  "product.text.031": {
+    "az": "01 · Kassa",
+    "en": "01 · Cashier",
+    "ru": "01 · Кассир"
+  },
+  "product.text.032": {
+    "az": "Sürətli satış və masa axını",
+    "en": "Fast sales and table flow",
+    "ru": "Быстрые продажи и поток столов"
+  },
+  "product.text.033": {
+    "az": "Toxunuş ekranına uyğun məhsul seçimi, açıq hesablar, hesab bölmə və masa vəziyyəti.",
+    "en": "Touch screen-friendly product selection, open accounts, account section and table status.",
+    "ru": "Удобный выбор продуктов на сенсорном экране, открытые счета, раздел счета и статус таблицы."
+  },
+  "product.text.034": {
+    "az": "Kateqoriya və sürətli məhsul seçimi",
+    "en": "Category and quick product selection",
+    "ru": "Категория и быстрый выбор товара"
+  },
+  "product.text.035": {
+    "az": "Açıq, dolu və hesab gözləyən masalar",
+    "en": "Open, full and waiting tables",
+    "ru": "Открытые, полные столы и столы ожидания"
+  },
+  "product.text.036": {
+    "az": "İnternet olmadan əsas satış",
+    "en": "Basic sale without internet",
+    "ru": "Базовая распродажа без интернета"
+  },
+  "product.text.037": {
+    "az": "Növbə və X/Z hesabatları",
+    "en": "Queue and X/Z reports",
+    "ru": "Отчеты об очередях и X/Z"
+  },
+  "product.attr.038": {
+    "az": "Offline işləyən kassa və sinxronizasiya",
+    "en": "Offline checkout and sync",
+    "ru": "Офлайн-оплата и синхронизация"
+  },
+  "product.text.039": {
+    "az": "02 · Müştəri portalı",
+    "en": "02 · Customer portal",
+    "ru": "02 · Портал для клиентов"
+  },
+  "product.text.040": {
+    "az": "Bağlantı, lisenziya və versiya bir baxışda",
+    "en": "Link, license and version at a glance",
+    "ru": "Ссылка, лицензия и версия: краткий обзор"
+  },
+  "product.text.041": {
+    "az": "Sahibkar yalnız satış rəqəmi deyil, sistemin özünün işlək və aktual olub-olmadığını da görür.",
+    "en": "Owners see not only sales figures, but also whether the system is online and up to date.",
+    "ru": "Предприниматель видит не только показатель продаж, но и то, функциональна и актуальна ли сама система."
+  },
+  "product.text.042": {
+    "az": "Canlı POS bağlantısı və son əlaqə",
+    "en": "Live POS connection and last contact",
+    "ru": "Live POS-соединение и максимальное соединение"
+  },
+  "product.text.043": {
+    "az": "Quraşdırma tərəqqisi",
+    "en": "Installation progress",
+    "ru": "Ход установки"
+  },
+  "product.text.044": {
+    "az": "Lisenziya vəziyyəti",
+    "en": "License status",
+    "ru": "Статус лицензии"
+  },
+  "product.text.045": {
+    "az": "Yeni versiya bildirişi",
+    "en": "New version notification",
+    "ru": "Уведомление о новой версии"
+  },
+  "product.attr.046": {
+    "az": "possistem müştəri portalı status kartları",
+    "en": "possistem customer portal status cards",
+    "ru": "Статусные карточки портала для клиентов possistem"
+  },
+  "product.text.047": {
+    "az": "03 · Bildirişlər",
+    "en": "03 · Notices",
+    "ru": "03 · Уведомления"
+  },
+  "product.text.048": {
+    "az": "Vacib hadisə istifadəçini özü tapır",
+    "en": "An important event finds the user himself",
+    "ru": "Важное событие находит пользователя самого"
+  },
+  "product.text.049": {
+    "az": "X/Z hesabatı və əlaqə problemləri portal, push və konfiqurasiya olduqda WhatsApp vasitəsilə görünür.",
+    "en": "X/Z report and connection issues are visible through portal, push and WhatsApp when configured.",
+    "ru": "Отчет X/Z и проблемы с подключением видны через портал, push-уведомления и WhatsApp, если они настроены."
+  },
+  "product.text.050": {
+    "az": "Oxunmuş və yeni bildirişlər",
+    "en": "Read and new notifications",
+    "ru": "Чтение и новые уведомления"
+  },
+  "product.text.051": {
+    "az": "Sistem hadisələri tarixçəsi",
+    "en": "System event history",
+    "ru": "История системных событий"
+  },
+  "product.text.052": {
+    "az": "WhatsApp test və QR bağlantısı",
+    "en": "WhatsApp test and QR link",
+    "ru": "Тест WhatsApp и QR-ссылка"
+  },
+  "product.text.053": {
+    "az": "Brauzer push dəstəyi",
+    "en": "Browser push support",
+    "ru": "Поддержка push-уведомлений в браузере"
+  },
+  "product.attr.054": {
+    "az": "possistem WhatsApp və push inteqrasiya ekranı",
+    "en": "possistem WhatsApp and push integration screen",
+    "ru": "possistem WhatsApp и экран push-интеграции"
+  },
+  "product.text.055": {
+    "az": "Əsas imkanlar",
+    "en": "Basic features",
+    "ru": "Основные функции"
+  },
+  "product.text.056": {
+    "az": "Gündəlik əməliyyat üçün lazım olan təməl.",
+    "en": "The foundation you need for day-to-day operation.",
+    "ru": "Основа, необходимая для повседневной работы."
+  },
+  "product.text.057": {
+    "az": "Funksiya siyahısı deyil, bir-birini tamamlayan iş axınları.",
+    "en": "Complementary workflows, not a feature list.",
+    "ru": "Дополнительные рабочие процессы, а не список функций."
+  },
+  "product.text.058": {
+    "az": "Satış ekranı",
+    "en": "Sales screen",
+    "ru": "Экран продаж"
+  },
+  "product.text.059": {
+    "az": "Pik saatlarda sürətli məhsul və ödəniş axını.",
+    "en": "Fast product and payment flow during peak hours.",
+    "ru": "Быстрый поток продуктов и платежей в часы пик."
+  },
+  "product.text.060": {
+    "az": "Masa planı",
+    "en": "Table plan",
+    "ru": "План стола"
+  },
+  "product.text.061": {
+    "az": "Zal və masa vəziyyətini bir baxışda görün.",
+    "en": "See hall and table status at a glance.",
+    "ru": "Просматривайте статус зала и стола с первого взгляда."
+  },
+  "product.text.062": {
+    "az": "Canlı göstəricilər",
+    "en": "Live indicators",
+    "ru": "Живые индикаторы"
+  },
+  "product.text.063": {
+    "az": "Satış, açıq hesab və son sinxron vaxtı.",
+    "en": "Sales, open account and last sync time.",
+    "ru": "Продажи, открытый счет и время последней синхронизации."
+  },
+  "product.text.064": {
+    "az": "Rol səlahiyyətləri",
+    "en": "Role powers",
+    "ru": "Ролевые полномочия"
+  },
+  "product.text.065": {
+    "az": "İşçiyə yalnız işinə lazım olan giriş.",
+    "en": "Access to the employee only necessary for their work.",
+    "ru": "Доступ сотруднику только необходим для его работы."
+  },
+  "product.text.066": {
+    "az": "Yeniləmələr",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "product.text.067": {
+    "az": "Versiya, ölçü, checksum və sistem tələbləri.",
+    "en": "Version, size, checksum and system requirements.",
+    "ru": "Версия, размер, контрольная сумма и системные требования."
+  },
+  "product.text.068": {
+    "az": "Offline davamlılıq",
+    "en": "Offline persistence",
+    "ru": "Сохранение в автономном режиме"
+  },
+  "product.text.069": {
+    "az": "Bağlantı problemi əsas satışı dayandırmır.",
+    "en": "A connection problem does not stop the main sale.",
+    "ru": "Проблема с подключением не останавливает основную продажу."
+  },
+  "product.text.070": {
+    "az": "Növbəti addım",
+    "en": "The next step",
+    "ru": "Следующий шаг"
+  },
+  "product.text.071": {
+    "az": "Məhsulu öz biznes axınınız üzərindən görün.",
+    "en": "View the product through your business workflow.",
+    "ru": "Посмотрите товар в ленте своего ресторана."
+  },
+  "product.text.072": {
+    "az": "Komandamız masa, kassa və filial sayınıza uyğun təqdimat hazırlasın.",
+    "en": "Let our team prepare a presentation according to the number of tables, cash registers and branches.",
+    "ru": "Пусть наша команда подготовит презентацию по количеству столов, касс и отделений."
+  },
+  "product.text.073": {
+    "az": "Təqdimat istəyin",
+    "en": "Request a demo",
+    "ru": "Запросить демонстрацию"
+  },
+  "product.text.074": {
+    "az": "Quraşdırmaya baxın",
+    "en": "See installation",
+    "ru": "См. установку"
+  },
+  "product.text.075": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "product.text.076": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "product.text.077": {
+    "az": "Müxtəlif bizneslər üçün satış və əməliyyatları aydın idarə edən yerli POS platforması.",
+    "en": "A local POS platform that makes sales and operations clear for every business.",
+    "ru": "Собственная POS-платформа, которая делает операции ресторана понятными и управляемыми."
+  },
+  "product.text.078": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "product.text.079": {
+    "az": "İmkanlar",
+    "en": "Features",
+    "ru": "Возможности"
+  },
+  "product.text.080": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "product.text.081": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "product.text.082": {
+    "az": "Müştəri",
+    "en": "Customer",
+    "ru": "Клиент"
+  },
+  "product.text.083": {
+    "az": "Giriş",
+    "en": "Log in",
+    "ru": "Войти"
+  },
+  "product.text.084": {
+    "az": "Hesab yaradın",
+    "en": "Create account",
+    "ru": "Создать аккаунт"
+  },
+  "product.text.085": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "product.text.086": {
+    "az": "Əlaqə",
+    "en": "Contact",
+    "ru": "Контакты"
+  },
+  "product.text.087": {
+    "az": "Təqdimat",
+    "en": "Demo",
+    "ru": "Демонстрация"
+  },
+  "product.text.088": {
+    "az": "possistem.",
+    "en": "possistem.",
+    "ru": "Миллионер ПОС."
+  },
+  "product.text.089": {
+    "az": "Azərbaycan üçün hazırlanıb",
+    "en": "Made for Azerbaijan",
+    "ru": "Создано для Азербайджана"
+  },
+  "setup.meta.001": {
+    "az": "possistem quraşdırma bələdçisi — hesab, sistem tələbləri, Windows yükləməsi, aktivləşdirmə və server yoxlaması.",
+    "en": "possistem installation guide — account, system requirements, Windows download, activation and server verification.",
+    "ru": "Руководство по установке possistem — учетная запись, системные требования, загрузка Windows, активация и проверка сервера."
+  },
+  "setup.meta.002": {
+    "az": "az_AZ",
+    "en": "az_AZ",
+    "ru": "az_AZ"
+  },
+  "setup.meta.003": {
+    "az": "possistem quraşdırma bələdçisi",
+    "en": "possistem installation guide",
+    "ru": "Руководство по установке possistem"
+  },
+  "setup.meta.004": {
+    "az": "Hesabdan canlı POS bağlantısına qədər aydın quraşdırma prosesi.",
+    "en": "Clear setup process from account to live POS connection.",
+    "ru": "Очистите процесс настройки от учетной записи до подключения к POS-терминалу."
+  },
+  "setup.text.005": {
+    "az": "Quraşdırma bələdçisi · possistem",
+    "en": "Installation guide · possistem",
+    "ru": "Руководство по установке · possistem"
+  },
+  "setup.text.006": {
+    "az": "Əsas məzmuna keç",
+    "en": "Skip to main content",
+    "ru": "Перейти к основному содержанию"
+  },
+  "setup.text.007": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "setup.text.008": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "setup.attr.009": {
+    "az": "Əsas menyu",
+    "en": "Main navigation",
+    "ru": "Главное меню"
+  },
+  "setup.text.010": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "setup.text.011": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "setup.text.012": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "setup.text.013": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "setup.text.014": {
+    "az": "Müştəri girişi",
+    "en": "Customer login",
+    "ru": "Вход для клиентов"
+  },
+  "setup.text.015": {
+    "az": "Təqdimat istəyin",
+    "en": "Request a demo",
+    "ru": "Запросить демонстрацию"
+  },
+  "setup.attr.016": {
+    "az": "İşıqlı rejimə keç",
+    "en": "Switch to light mode",
+    "ru": "Включить светлую тему"
+  },
+  "setup.attr.017": {
+    "az": "Menyunu aç",
+    "en": "Open menu",
+    "ru": "Открыть меню"
+  },
+  "setup.attr.018": {
+    "az": "Səhifə yolu",
+    "en": "Breadcrumb",
+    "ru": "Навигационная цепочка"
+  },
+  "setup.text.019": {
+    "az": "Ana səhifə",
+    "en": "Home",
+    "ru": "Главная"
+  },
+  "setup.text.020": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "setup.text.021": {
+    "az": "Texniki bilik tələb olunmur",
+    "en": "No technical knowledge required",
+    "ru": "Никаких технических знаний не требуется"
+  },
+  "setup.text.022": {
+    "az": "Quraşdırma zamanı",
+    "en": "During installation",
+    "ru": "Во время установки"
+  },
+  "setup.text.023": {
+    "az": "heç bir addım itmir.",
+    "en": "no step is lost.",
+    "ru": "ни один шаг не потерян."
+  },
+  "setup.text.024": {
+    "az": "Hesab yaradın, tətbiqi yükləyin, Windows-da qurun və POS bağlantısını serverdən təsdiqləyin.",
+    "en": "Create an account, download the application, install it on Windows and confirm the POS connection from the server.",
+    "ru": "Создайте учетную запись, скачайте приложение, установите его на Windows и подтвердите POS-соединение с сервера."
+  },
+  "setup.text.025": {
+    "az": "Hesab yaradın",
+    "en": "Create account",
+    "ru": "Создать аккаунт"
+  },
+  "setup.text.026": {
+    "az": "Qaldığınız yerdən davam edin",
+    "en": "Pick up where you left off",
+    "ru": "Продолжайте с того места, где вы остановились"
+  },
+  "setup.attr.027": {
+    "az": "possistem quraşdırma mərhələləri",
+    "en": "possistem setup steps",
+    "ru": "Этапы настройки POS-терминала possistem"
+  },
+  "setup.text.028": {
+    "az": "7 mərhələ",
+    "en": "7 stages",
+    "ru": "7 этапов"
+  },
+  "setup.text.029": {
+    "az": "Portal hər mərhələni yadda saxlayır.",
+    "en": "The portal remembers each stage.",
+    "ru": "Портал помнит каждый этап."
+  },
+  "setup.text.030": {
+    "az": "Prosesi yarımçıq saxlayıb sonra eyni hesabdan davam edə bilərsiniz.",
+    "en": "You can cancel the process and then continue from the same account.",
+    "ru": "Вы можете отменить процесс, а затем продолжить с той же учетной записи."
+  },
+  "setup.text.031": {
+    "az": "Xoş gəlmisiniz",
+    "en": "You are welcome",
+    "ru": "Пожалуйста"
+  },
+  "setup.text.032": {
+    "az": "Prosesin necə işlədiyini və nəyin lazım olduğunu görün.",
+    "en": "See how the process works and what you need.",
+    "ru": "Посмотрите, как работает процесс и что вам нужно."
+  },
+  "setup.text.033": {
+    "az": "Biznes məlumatları",
+    "en": "Business information",
+    "ru": "Деловая информация"
+  },
+  "setup.text.034": {
+    "az": "Biznes, əlaqə, ünvan və bildiriş məlumatlarını daxil edin.",
+    "en": "Enter business, contact, address and notification information.",
+    "ru": "Введите ресторан, контакт, адрес и информацию для уведомлений."
+  },
+  "setup.text.035": {
+    "az": "Lisenziya vəziyyəti",
+    "en": "License status",
+    "ru": "Статус лицензии"
+  },
+  "setup.text.036": {
+    "az": "Plan, kassa sayı və aktivləşdirmə ehtiyacını anlayın.",
+    "en": "Understand plan, box count and activation need.",
+    "ru": "Понимание плана, количества ящиков и необходимости активации."
+  },
+  "setup.text.037": {
+    "az": "Windows yükləməsi",
+    "en": "Windows download",
+    "ru": "загрузка Windows"
+  },
+  "setup.text.038": {
+    "az": "Son stabil versiya, ölçü, checksum və sistem tələbləri.",
+    "en": "Latest stable version, size, checksum and system requirements.",
+    "ru": "Последняя стабильная версия, размер, контрольная сумма и системные требования."
+  },
+  "setup.text.039": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "setup.text.040": {
+    "az": "Aydın Windows təlimatı ilə tətbiqi qurun və açın.",
+    "en": "Install and open the application with clear Windows instructions.",
+    "ru": "Установите и откройте приложение с четкими инструкциями Windows."
+  },
+  "setup.text.041": {
+    "az": "Server yoxlaması",
+    "en": "Server check",
+    "ru": "Проверка сервера"
+  },
+  "setup.text.042": {
+    "az": "Portal cihazın həqiqi bağlantısını və versiyasını görür.",
+    "en": "The portal sees the actual connection and version of the device.",
+    "ru": "Портал видит фактическое подключение и версию устройства."
+  },
+  "setup.text.043": {
+    "az": "Tamamlandı",
+    "en": "Completed",
+    "ru": "Завершенный"
+  },
+  "setup.text.044": {
+    "az": "Bağlantı təsdiqlənir və canlı dashboard açılır.",
+    "en": "The connection is confirmed and the live dashboard opens.",
+    "ru": "Соединение подтверждается, и открывается интерактивная панель мониторинга."
+  },
+  "setup.text.045": {
+    "az": "Resumable onboarding",
+    "en": "Resumable onboarding",
+    "ru": "Продолжаемая настройка"
+  },
+  "setup.text.046": {
+    "az": "Cari addım, tamamlananlar və xəta eyni yerdə.",
+    "en": "Current step, completed steps, and errors in one place.",
+    "ru": "Текущий шаг, завершение и ошибка в одном месте."
+  },
+  "setup.text.047": {
+    "az": "İstifadəçi “indi nə etməliyəm?” sualını vermir. Tamamlanan addımlar, bloklanan lisenziya vəziyyəti və retry düymələri kontekstdə görünür.",
+    "en": "Users always know what to do next. Completed steps, blocked license states, and retry controls appear in context.",
+    "ru": "Пользователь спрашивает: «Что мне теперь делать?» не задает вопрос. Кнопки «Завершенные шаги», «Состояние заблокированной лицензии» и «Повторить попытку» отображаются в контексте."
+  },
+  "setup.text.048": {
+    "az": "Desktop-da tam addım rail-i",
+    "en": "Full step rail on desktop",
+    "ru": "Полная шкала шагов на компьютере"
+  },
+  "setup.text.049": {
+    "az": "Mobil cihazda kompakt N / 7 progress",
+    "en": "Compact N / 7 progress on mobile",
+    "ru": "Компактный прогресс N / 7 на мобильном устройстве"
+  },
+  "setup.text.050": {
+    "az": "Hər xətada izah, retry və dəstək",
+    "en": "Explanation, retry, and support for every error",
+    "ru": "Описание, повтор и помощь при каждой ошибке"
+  },
+  "setup.text.051": {
+    "az": "Server yoxlaması olmadan saxta uğur yoxdur",
+    "en": "No false success without server verification",
+    "ru": "Никакого ложного успеха без проверки сервера"
+  },
+  "setup.attr.052": {
+    "az": "possistem quraşdırma mərkəzində addım statusları",
+    "en": "Step statuses in the possistem setup center",
+    "ru": "Статусы шагов в центре настройки possistem"
+  },
+  "setup.text.053": {
+    "az": "Windows tələbləri",
+    "en": "Windows requirements",
+    "ru": "Требования Windows"
+  },
+  "setup.text.054": {
+    "az": "Yükləmədən əvvəl uyğunluğu yoxlayın.",
+    "en": "Check compatibility before downloading.",
+    "ru": "Перед загрузкой проверьте совместимость."
+  },
+  "setup.text.055": {
+    "az": "CPU, RAM, disk və qrafika əvvəlcədən göstərilir. NVIDIA kartı məcburi deyil.",
+    "en": "CPU, RAM, disk and graphics are listed first. An NVIDIA card is not required.",
+    "ru": "CPU, RAM, диск и графика указаны заранее. Карта NVIDIA не обязательна."
+  },
+  "setup.text.056": {
+    "az": "Son versiyanı görün",
+    "en": "See the latest version",
+    "ru": "Посмотреть последнюю версию"
+  },
+  "setup.text.057": {
+    "az": "Əməliyyat sistemi",
+    "en": "Operating system",
+    "ru": "Операционная система"
+  },
+  "setup.text.058": {
+    "az": "Windows 10 64-bit (22H2+) və ya Windows 11",
+    "en": "Windows 10 64-bit (22H2+) or Windows 11",
+    "ru": "Windows 10 64-bit (22H2+) или Windows 11"
+  },
+  "setup.text.059": {
+    "az": "Arxitektura",
+    "en": "Architecture",
+    "ru": "Архитектура"
+  },
+  "setup.text.060": {
+    "az": "64-bit (x64)",
+    "en": "64-bit (x64)",
+    "ru": "64-битная (x64)"
+  },
+  "setup.text.061": {
+    "az": "Yaddaş",
+    "en": "Memory",
+    "ru": "Память"
+  },
+  "setup.text.062": {
+    "az": "Minimum 4 GB RAM; rahat iş üçün 8 GB",
+    "en": "Minimum 4 GB RAM; 8 GB recommended",
+    "ru": "Минимум 4 ГБ ОЗУ; рекомендуется 8 ГБ"
+  },
+  "setup.text.063": {
+    "az": "Disk",
+    "en": "Disc",
+    "ru": "Диск"
+  },
+  "setup.text.064": {
+    "az": "SSD tövsiyə; ən azı 2 GB boş yer",
+    "en": "SSD recommended; at least 2 GB free",
+    "ru": "Рекомендуется SSD; не менее 2 ГБ свободно"
+  },
+  "setup.text.065": {
+    "az": "İnternet",
+    "en": "Internet",
+    "ru": "Интернет"
+  },
+  "setup.text.066": {
+    "az": "Aktivləşdirmə və sinxronizasiya",
+    "en": "Activation and synchronization",
+    "ru": "Активация и синхронизация"
+  },
+  "setup.text.067": {
+    "az": "Quraşdırma faylı",
+    "en": "Setup file",
+    "ru": "Установочный файл"
+  },
+  "setup.text.068": {
+    "az": "Portalda checksum ilə göstərilir",
+    "en": "It is displayed on the portal with a checksum",
+    "ru": "Отображается на портале с контрольной суммой"
+  },
+  "setup.attr.069": {
+    "az": "Server tərəfindən təsdiqlənmiş possistem bağlantısı",
+    "en": "possistem connection verified by server",
+    "ru": "POS-соединение possistem проверено сервером"
+  },
+  "setup.text.070": {
+    "az": "Həqiqi təsdiq",
+    "en": "True confirmation",
+    "ru": "Настоящее подтверждение"
+  },
+  "setup.text.071": {
+    "az": "“Quraşdırdım” demək kifayət etmir.",
+    "en": "It is not enough to say \"I installed it\".",
+    "ru": "Недостаточно сказать «Я это установил»."
+  },
+  "setup.text.072": {
+    "az": "Portal lisenziyalı cihazı, son heartbeat-i və tətbiq versiyasını serverdə görmədən quraşdırmanı tamamlanmış hesab etmir.",
+    "en": "The portal does not consider the installation complete without seeing the licensed device, the last heartbeat, and the application version on the server.",
+    "ru": "Портал не считает установку завершенной, если не видит лицензированное устройство, последний пульс и версию приложения на сервере."
+  },
+  "setup.text.073": {
+    "az": "Gözləyir",
+    "en": "He waits",
+    "ru": "Он ждет"
+  },
+  "setup.text.074": {
+    "az": "Hələ cihaz bağlantısı yoxdur",
+    "en": "No device connection yet",
+    "ru": "Нет подключения к устройству"
+  },
+  "setup.text.075": {
+    "az": "Köhnə bağlantı",
+    "en": "Old link",
+    "ru": "Старая ссылка"
+  },
+  "setup.text.076": {
+    "az": "Cihaz daha əvvəl görülüb, indi oflayndır",
+    "en": "The device has been seen before, it is now offline",
+    "ru": "Устройство было замечено раньше, сейчас оно не в сети."
+  },
+  "setup.text.077": {
+    "az": "Təsdiqlənib",
+    "en": "Confirmed",
+    "ru": "Подтвержденный"
+  },
+  "setup.text.078": {
+    "az": "Cihaz onlayn və versiya görünür",
+    "en": "The device appears online and version",
+    "ru": "Устройство появляется онлайн и версия"
+  },
+  "setup.text.079": {
+    "az": "Başlamağa hazırsınız?",
+    "en": "Ready to get started?",
+    "ru": "Готовы начать?"
+  },
+  "setup.text.080": {
+    "az": "Müştəri hesabınızı yaradın və prosesi görün.",
+    "en": "Create your customer account and see the process.",
+    "ru": "Создайте свою учетную запись клиента и наблюдайте за процессом."
+  },
+  "setup.text.081": {
+    "az": "Hesab yaratmaq avtomatik ödənişli lisenziya vermir.",
+    "en": "Creating an account does not automatically grant a paid license.",
+    "ru": "Создание учетной записи не предоставляет автоматически платную лицензию."
+  },
+  "setup.text.082": {
+    "az": "Hesab yaradın",
+    "en": "Create account",
+    "ru": "Создать аккаунт"
+  },
+  "setup.text.083": {
+    "az": "Dəstək səhifəsi",
+    "en": "Support page",
+    "ru": "Страница поддержки"
+  },
+  "setup.text.084": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "setup.text.085": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "setup.text.086": {
+    "az": "Müxtəlif bizneslər üçün satış və əməliyyatları aydın idarə edən yerli POS platforması.",
+    "en": "A local POS platform that makes sales and operations clear for every business.",
+    "ru": "Собственная POS-платформа, которая делает операции ресторана понятными и управляемыми."
+  },
+  "setup.text.087": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "setup.text.088": {
+    "az": "İmkanlar",
+    "en": "Features",
+    "ru": "Возможности"
+  },
+  "setup.text.089": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "setup.text.090": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "setup.text.091": {
+    "az": "Müştəri",
+    "en": "Customer",
+    "ru": "Клиент"
+  },
+  "setup.text.092": {
+    "az": "Giriş",
+    "en": "Log in",
+    "ru": "Войти"
+  },
+  "setup.text.093": {
+    "az": "Hesab yaradın",
+    "en": "Create account",
+    "ru": "Создать аккаунт"
+  },
+  "setup.text.094": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "setup.text.095": {
+    "az": "Əlaqə",
+    "en": "Contact",
+    "ru": "Контакты"
+  },
+  "setup.text.096": {
+    "az": "Təqdimat",
+    "en": "Demo",
+    "ru": "Демонстрация"
+  },
+  "setup.text.097": {
+    "az": "possistem.",
+    "en": "possistem.",
+    "ru": "Миллионер ПОС."
+  },
+  "setup.text.098": {
+    "az": "Azərbaycan üçün hazırlanıb",
+    "en": "Made for Azerbaijan",
+    "ru": "Создано для Азербайджана"
+  },
+  "setup.hw.cpu": {
+    "az": "Prosessor (CPU)",
+    "en": "Processor (CPU)",
+    "ru": "Процессор (CPU)"
+  },
+  "setup.hw.cpuValue": {
+    "az": "Minimum 2 nüvə ~2 GHz; tövsiyə Core i3 / Ryzen 3",
+    "en": "Minimum 2 cores ~2 GHz; Core i3 / Ryzen 3 recommended",
+    "ru": "Минимум 2 ядра ~2 ГГц; рекомендуется Core i3 / Ryzen 3"
+  },
+  "setup.hw.gpu": {
+    "az": "Qrafika / NVIDIA",
+    "en": "Graphics / NVIDIA",
+    "ru": "Графика / NVIDIA"
+  },
+  "setup.hw.gpuValue": {
+    "az": "NVIDIA lazım deyil — inteqrasiya olunmuş Intel/AMD kifayətdir",
+    "en": "NVIDIA not required — Intel/AMD integrated graphics is enough",
+    "ru": "NVIDIA не нужна — встроенной графики Intel/AMD достаточно"
+  },
+  "updates.meta.001": {
+    "az": "possistem son versiya, buraxılış tarixi, sistem tələbləri və müştəri yükləmə məlumatları.",
+    "en": "possistem latest version, release date, system requirements and client download information.",
+    "ru": "Последняя версия possistem, дата выпуска, системные требования и информация о загрузке клиента."
+  },
+  "updates.meta.002": {
+    "az": "az_AZ",
+    "en": "az_AZ",
+    "ru": "az_AZ"
+  },
+  "updates.meta.003": {
+    "az": "possistem yenilikləri və son versiya",
+    "en": "possistem updates and latest version",
+    "ru": "Обновления и последняя версия possistem"
+  },
+  "updates.meta.004": {
+    "az": "Windows tətbiqinin son stabil buraxılışını və yeniləmə qaydasını görün.",
+    "en": "See the latest stable release of a Windows application and update order.",
+    "ru": "Ознакомьтесь с последней стабильной версией приложения Windows и порядком обновлений."
+  },
+  "updates.text.005": {
+    "az": "Yeniliklər və son versiya · possistem",
+    "en": "Updates and latest version · possistem",
+    "ru": "Обновления и последняя версия · possistem"
+  },
+  "updates.text.006": {
+    "az": "Əsas məzmuna keç",
+    "en": "Skip to main content",
+    "ru": "Перейти к основному содержанию"
+  },
+  "updates.text.007": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "updates.text.008": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "updates.attr.009": {
+    "az": "Əsas menyu",
+    "en": "Main navigation",
+    "ru": "Главное меню"
+  },
+  "updates.text.010": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "updates.text.011": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "updates.text.012": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "updates.text.013": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "updates.text.014": {
+    "az": "Müştəri girişi",
+    "en": "Customer login",
+    "ru": "Вход для клиентов"
+  },
+  "updates.text.015": {
+    "az": "Təqdimat istəyin",
+    "en": "Request a demo",
+    "ru": "Запросить демонстрацию"
+  },
+  "updates.attr.016": {
+    "az": "İşıqlı rejimə keç",
+    "en": "Switch to light mode",
+    "ru": "Включить светлую тему"
+  },
+  "updates.attr.017": {
+    "az": "Menyunu aç",
+    "en": "Open menu",
+    "ru": "Открыть меню"
+  },
+  "updates.text.018": {
+    "az": "Ana səhifə",
+    "en": "Home",
+    "ru": "Главная"
+  },
+  "updates.text.019": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "updates.text.020": {
+    "az": "Buraxılış məlumatı",
+    "en": "Release information",
+    "ru": "Информация о выпуске"
+  },
+  "updates.text.021": {
+    "az": "Son versiya və yeniləmə vəziyyəti",
+    "en": "Latest version and update status",
+    "ru": "Последняя версия и статус обновления"
+  },
+  "updates.text.022": {
+    "az": "açıq görünür.",
+    "en": "it seems obvious.",
+    "ru": "это кажется очевидным."
+  },
+  "updates.text.023": {
+    "az": "Public səhifə versiya məlumatını göstərir. Quraşdırma faylı və hesabınıza uyğun setup prosesi müştəri portalındadır.",
+    "en": "This public page shows version information. The installer and the setup process for your account are available in the customer portal.",
+    "ru": "На этой странице показана информация о версии. Установщик и процесс настройки для вашей учётной записи доступны в клиентском портале."
+  },
+  "updates.text.024": {
+    "az": "Müştəri portalını açın",
+    "en": "Open the customer portal",
+    "ru": "Откройте клиентский портал"
+  },
+  "updates.text.025": {
+    "az": "Yeniləmə qaydası",
+    "en": "Update process",
+    "ru": "Процедура продления"
+  },
+  "updates.attr.026": {
+    "az": "possistem Windows yeniləmə buraxılışı",
+    "en": "possistem Windows update release",
+    "ru": "Выпуск обновления Windows для possistem"
+  },
+  "updates.text.027": {
+    "az": "Son stabil buraxılış",
+    "en": "Latest stable release",
+    "ru": "Последняя стабильная версия"
+  },
+  "updates.text.028": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "updates.text.029": {
+    "az": "yoxlanılır…",
+    "en": "checking…",
+    "ru": "проверка…"
+  },
+  "updates.text.030": {
+    "az": "Update feed-dən son versiya məlumatı alınır.",
+    "en": "Getting the latest version information from the update feed.",
+    "ru": "Получаем сведения о последней версии из ленты обновлений."
+  },
+  "updates.text.031": {
+    "az": "Platforma",
+    "en": "Platform",
+    "ru": "Платформа"
+  },
+  "updates.text.032": {
+    "az": "Windows x64",
+    "en": "Windows x64",
+    "ru": "Windows х64"
+  },
+  "updates.text.033": {
+    "az": "Fayl ölçüsü",
+    "en": "File size",
+    "ru": "Размер файла"
+  },
+  "updates.text.034": {
+    "az": "Buraxılış tarixi",
+    "en": "Release date",
+    "ru": "Дата выпуска"
+  },
+  "updates.text.035": {
+    "az": "Yüklə",
+    "en": "Download",
+    "ru": "Скачать"
+  },
+  "updates.text.036": {
+    "az": "Versiya məlumatı hazırda alınmadı.",
+    "en": "Version information not received at this time.",
+    "ru": "Информация о версии на данный момент не получена."
+  },
+  "updates.text.037": {
+    "az": "Müştəri portalında yenidən yoxlayın və ya dəstəyə müraciət edin.",
+    "en": "Please check again in the customer portal or contact support.",
+    "ru": "Пожалуйста, проверьте еще раз на портале клиентов или обратитесь в службу поддержки."
+  },
+  "updates.text.038": {
+    "az": "Təhlükəsiz yeniləmə",
+    "en": "Safe update",
+    "ru": "Безопасное обновление"
+  },
+  "updates.text.039": {
+    "az": "Fayl deyil, tam yeniləmə prosesi.",
+    "en": "The complete update process, not the file.",
+    "ru": "Полный процесс обновления, а не файл."
+  },
+  "updates.text.040": {
+    "az": "Yükləmə qərarından sonra istifadəçinin nə etməli olduğu da məhsulun bir hissəsidir.",
+    "en": "What the user has to do after the download decision is also part of the product.",
+    "ru": "То, что пользователь должен сделать после принятия решения о загрузке, также является частью продукта."
+  },
+  "updates.text.041": {
+    "az": "Checksum görünür",
+    "en": "Checksum appears",
+    "ru": "Появляется контрольная сумма"
+  },
+  "updates.text.042": {
+    "az": "Müştəri portalı update feed-dəki SHA-512 dəyərini texniki yoxlama üçün göstərir.",
+    "en": "The customer portal displays the SHA-512 value in the update feed for technical verification.",
+    "ru": "Портал клиентов отображает значение SHA-512 в канале обновлений для технической проверки."
+  },
+  "updates.text.043": {
+    "az": "Yükləmə qeyd olunur",
+    "en": "The download is recorded",
+    "ru": "Загрузка записывается"
+  },
+  "updates.text.044": {
+    "az": "Quraşdırma tərəqqisi hansı versiyanın yükləndiyini hesab vəziyyətində saxlayır.",
+    "en": "The installation progress keeps track of which version is loaded.",
+    "ru": "В ходе установки отслеживается, какая версия загружена."
+  },
+  "updates.text.045": {
+    "az": "Versiya serverdə görünür",
+    "en": "The version is visible on the server",
+    "ru": "Версия видна на сервере"
+  },
+  "updates.text.046": {
+    "az": "POS bağlandıqda quraşdırılmış versiya dashboard-da son versiya ilə müqayisə olunur.",
+    "en": "When the POS is closed, the installed version is compared with the latest version in the dashboard.",
+    "ru": "Когда POS закрыт, установленная версия сравнивается с последней версией на информационной панели."
+  },
+  "updates.text.047": {
+    "az": "Müştəri ekranı",
+    "en": "Customer screen",
+    "ru": "Экран клиента"
+  },
+  "updates.text.048": {
+    "az": "Versiya, tələblər və təlimat eyni yerdə.",
+    "en": "Version, requirements and instructions in one place.",
+    "ru": "Версия, требования и инструкция в одном месте."
+  },
+  "updates.text.049": {
+    "az": "İstifadəçi ayrı qovluq siyahısı və ya developer update feed-i ilə qarşılaşmır. Portal yalnız məhsul üçün lazım olan məlumatı göstərir.",
+    "en": "The user is not faced with a separate folder list or developer update feed. The portal displays only the information necessary for the product.",
+    "ru": "Пользователь не сталкивается с отдельным списком папок или лентой обновлений для разработчиков. На портале отображается только необходимая для продукта информация."
+  },
+  "updates.text.050": {
+    "az": "Son versiya və fayl ölçüsü",
+    "en": "Latest version and file size",
+    "ru": "Последняя версия и размер файла"
+  },
+  "updates.text.051": {
+    "az": "Windows sistem tələbləri",
+    "en": "Windows system requirements",
+    "ru": "Системные требования Windows"
+  },
+  "updates.text.052": {
+    "az": "Checksum kopyalama",
+    "en": "Checksum copying",
+    "ru": "Копирование контрольной суммы"
+  },
+  "updates.text.053": {
+    "az": "Yeniləmədən əvvəl təhlükəsizlik addımları",
+    "en": "Security steps before updating",
+    "ru": "Меры безопасности перед обновлением"
+  },
+  "updates.attr.054": {
+    "az": "possistem müştəri yükləmə mərkəzi",
+    "en": "possistem customer download center",
+    "ru": "Центр загрузки клиентов possistem"
+  },
+  "updates.text.055": {
+    "az": "Müştərisiniz?",
+    "en": "Are you a customer?",
+    "ru": "Вы клиент?"
+  },
+  "updates.text.056": {
+    "az": "Hesabınıza daxil olub uyğun versiyanı yükləyin.",
+    "en": "Log in to your account and download the appropriate version.",
+    "ru": "Войдите в свою учетную запись и загрузите соответствующую версию."
+  },
+  "updates.text.057": {
+    "az": "Quraşdırma və server yoxlaması qaldığınız yerdən davam edir.",
+    "en": "Installation and server verification continue where you left off.",
+    "ru": "Установка и проверка сервера продолжаются с того места, на котором вы остановились."
+  },
+  "updates.text.058": {
+    "az": "Müştəri girişi",
+    "en": "Customer login",
+    "ru": "Вход для клиентов"
+  },
+  "updates.text.059": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "updates.text.060": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "updates.text.061": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "updates.text.062": {
+    "az": "Müxtəlif bizneslər üçün satış və əməliyyatları aydın idarə edən yerli POS platforması.",
+    "en": "A local POS platform that makes sales and operations clear for every business.",
+    "ru": "Собственная POS-платформа, которая делает операции ресторана понятными и управляемыми."
+  },
+  "updates.text.063": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "updates.text.064": {
+    "az": "İmkanlar",
+    "en": "Features",
+    "ru": "Возможности"
+  },
+  "updates.text.065": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "updates.text.066": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "updates.text.067": {
+    "az": "Müştəri",
+    "en": "Customer",
+    "ru": "Клиент"
+  },
+  "updates.text.068": {
+    "az": "Giriş",
+    "en": "Log in",
+    "ru": "Войти"
+  },
+  "updates.text.069": {
+    "az": "Hesab yaradın",
+    "en": "Create account",
+    "ru": "Создать аккаунт"
+  },
+  "updates.text.070": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "updates.text.071": {
+    "az": "Əlaqə",
+    "en": "Contact",
+    "ru": "Контакты"
+  },
+  "updates.text.072": {
+    "az": "Təqdimat",
+    "en": "Demo",
+    "ru": "Демонстрация"
+  },
+  "updates.text.073": {
+    "az": "possistem.",
+    "en": "possistem.",
+    "ru": "Миллионер ПОС."
+  },
+  "updates.text.074": {
+    "az": "Azərbaycan üçün hazırlanıb",
+    "en": "Made for Azerbaijan",
+    "ru": "Создано для Азербайджана"
+  },
+  "support.meta.001": {
+    "az": "possistem dəstək mərkəzi — quraşdırma, bağlantı, lisenziya, yeniləmə və müştəri hesabı üzrə kömək.",
+    "en": "possistem support center — help with installation, connection, license, update and customer account.",
+    "ru": "Центр поддержки possistem — помощь с установкой, подключением, лицензией, обновлением и учетной записью клиента."
+  },
+  "support.meta.002": {
+    "az": "az_AZ",
+    "en": "az_AZ",
+    "ru": "az_AZ"
+  },
+  "support.meta.003": {
+    "az": "possistem dəstək mərkəzi",
+    "en": "possistem support center",
+    "ru": "Центр поддержки POS-терминалов possistem"
+  },
+  "support.meta.004": {
+    "az": "Problemi anlayın, düzgün addımı edin və lazım olduqda dəstəyə müraciət edin.",
+    "en": "Understand the problem, take the right action, and get support when needed.",
+    "ru": "Поймите проблему, примите правильные меры и получите поддержку, когда это необходимо."
+  },
+  "support.text.005": {
+    "az": "Dəstək mərkəzi · possistem",
+    "en": "Support center · possistem",
+    "ru": "Центр поддержки · POS-терминал «Миллионер»"
+  },
+  "support.text.006": {
+    "az": "Əsas məzmuna keç",
+    "en": "Skip to main content",
+    "ru": "Перейти к основному содержанию"
+  },
+  "support.text.007": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "support.text.008": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "support.attr.009": {
+    "az": "Əsas menyu",
+    "en": "Main navigation",
+    "ru": "Главное меню"
+  },
+  "support.text.010": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "support.text.011": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "support.text.012": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "support.text.013": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "support.text.014": {
+    "az": "Müştəri girişi",
+    "en": "Customer login",
+    "ru": "Вход для клиентов"
+  },
+  "support.text.015": {
+    "az": "Təqdimat istəyin",
+    "en": "Request a demo",
+    "ru": "Запросить демонстрацию"
+  },
+  "support.attr.016": {
+    "az": "İşıqlı rejimə keç",
+    "en": "Switch to light mode",
+    "ru": "Включить светлую тему"
+  },
+  "support.attr.017": {
+    "az": "Menyunu aç",
+    "en": "Open menu",
+    "ru": "Открыть меню"
+  },
+  "support.text.018": {
+    "az": "Ana səhifə",
+    "en": "Home",
+    "ru": "Главная"
+  },
+  "support.text.019": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "support.text.020": {
+    "az": "Kömək mərkəzi",
+    "en": "Help center",
+    "ru": "Справочный центр"
+  },
+  "support.text.021": {
+    "az": "Problemi izah edin.",
+    "en": "Explain the problem.",
+    "ru": "Объясните проблему."
+  },
+  "support.text.022": {
+    "az": "Növbəti addımı bilin.",
+    "en": "Know the next step.",
+    "ru": "Знайте следующий шаг."
+  },
+  "support.text.023": {
+    "az": "Quraşdırma, lisenziya, yeniləmə və hesab məsələləri üçün qısa cavablar. Mövcud müştərilər portal daxilindən təhlükəsiz diaqnostika da göndərə bilər.",
+    "en": "Short answers for installation, license, update and account issues. Existing customers can also send secure diagnostics from within the portal.",
+    "ru": "Краткие ответы по вопросам установки, лицензии, обновления и учетной записи. Существующие клиенты также могут отправлять безопасную диагностику прямо с портала."
+  },
+  "support.text.024": {
+    "az": "Müştəri portalını açın",
+    "en": "Open the customer portal",
+    "ru": "Откройте клиентский портал"
+  },
+  "support.text.025": {
+    "az": "WhatsApp dəstəyi",
+    "en": "WhatsApp support",
+    "ru": "Поддержка WhatsApp"
+  },
+  "support.attr.026": {
+    "az": "Qorunan müştəri hesabından dəstəyə diaqnostika ötürülməsi",
+    "en": "Transfer diagnostics from a protected customer account to support",
+    "ru": "Передача диагностики из защищенной учетной записи клиента в службу поддержки"
+  },
+  "support.attr.027": {
+    "az": "Məsələn: POS serverdə görünmür",
+    "en": "For example: POS is not visible on the server",
+    "ru": "Например: POS не виден на сервере."
+  },
+  "support.attr.028": {
+    "az": "Dəstək mövzularında axtarış",
+    "en": "Search support topics",
+    "ru": "Поиск тем поддержки"
+  },
+  "support.text.029": {
+    "az": "Təmizlə",
+    "en": "Clean up",
+    "ru": "Очистить"
+  },
+  "support.attr.030": {
+    "az": "quraşdırma pos server bağlantı görünmür internet",
+    "en": "installation pos server connection does not appear internet",
+    "ru": "установка подключения к pos-серверу не появляется интернет"
+  },
+  "support.text.031": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "support.text.032": {
+    "az": "POS serverdə görünmür",
+    "en": "POS is not visible on the server",
+    "ru": "POS не виден на сервере"
+  },
+  "support.text.033": {
+    "az": "POS tətbiqini açıq saxlayın, kompüter internetini və aktivasiya açarını yoxlayın. Müştəri portalında Quraşdırma → Bağlantını yoxla seçin.",
+    "en": "Keep POS application open, check computer internet and activation key. In the customer portal, select Setup → Test connection.",
+    "ru": "Держите приложение POS открытым, проверьте Интернет на компьютере и ключ активации. На клиентском портале выберите Настройка → Проверить соединение."
+  },
+  "support.text.034": {
+    "az": "Quraşdırma mərkəzini açın",
+    "en": "Open the installation center",
+    "ru": "Откройте установочный центр"
+  },
+  "support.attr.035": {
+    "az": "lisenziya aktivasiya açarı plan satış",
+    "en": "sale of license activation key plan",
+    "ru": "продажа плана ключа активации лицензии"
+  },
+  "support.text.036": {
+    "az": "Lisenziya",
+    "en": "License",
+    "ru": "Лицензия"
+  },
+  "support.text.037": {
+    "az": "Aktiv lisenziya yoxdur",
+    "en": "No active license",
+    "ru": "Нет активной лицензии"
+  },
+  "support.text.038": {
+    "az": "Müştəri hesabı avtomatik ödənişli lisenziya yaratmır. Satış komandası kassa və filial sayına uyğun plan və aktivasiya açarı təqdim edir.",
+    "en": "A customer account does not automatically generate a paid license. The sales team provides the plan and activation key according to the number of counters and branches.",
+    "ru": "Учетная запись клиента не создает автоматически платную лицензию. Отдел продаж предоставляет план и ключ активации в зависимости от количества стоек и отделений."
+  },
+  "support.text.039": {
+    "az": "Satışla əlaqə saxlayın",
+    "en": "Contact sales",
+    "ru": "Контактный отдел продаж"
+  },
+  "support.attr.040": {
+    "az": "yeniləmə update windows versiya yükləmə",
+    "en": "update update windows version download",
+    "ru": "обновить обновление загрузки версии Windows"
+  },
+  "support.text.041": {
+    "az": "Yeniləmə",
+    "en": "Update",
+    "ru": "Обновлять"
+  },
+  "support.text.042": {
+    "az": "Yeni versiya necə quraşdırılır?",
+    "en": "How to install the new version?",
+    "ru": "Как установить новую версию?"
+  },
+  "support.text.043": {
+    "az": "Açıq növbəni tamamlayın, sinxronizasiyanı gözləyin və portalın Yükləmələr səhifəsindən son versiyanı başladın. Məlumat qovluğunu əl ilə silməyin.",
+    "en": "Complete the open queue, wait for synchronization and launch the latest version from the Downloads page of the portal. Do not delete the data folder manually.",
+    "ru": "Заполните открытую очередь, дождитесь синхронизации и запустите последнюю версию со страницы «Загрузки» портала. Не удаляйте папку данных вручную."
+  },
+  "support.text.044": {
+    "az": "Son versiyaya baxın",
+    "en": "See the latest version",
+    "ru": "Посмотреть последнюю версию"
+  },
+  "support.attr.045": {
+    "az": "whatsapp qr bağlı cihaz qoşulmur",
+    "en": "WhatsApp doesn't connect to the connected device",
+    "ru": "WhatsApp не подключается к подключенному устройству"
+  },
+  "support.text.046": {
+    "az": "WhatsApp",
+    "en": "WhatsApp",
+    "ru": "WhatsApp"
+  },
+  "support.text.047": {
+    "az": "QR kod qoşulmur",
+    "en": "QR code is not connected",
+    "ru": "QR-код не подключен"
+  },
+  "support.text.048": {
+    "az": "Telefonda WhatsApp → Bağlı cihazlar bölməsini açın. QR vaxtı bitibsə, portalın İnteqrasiyalar səhifəsində yenisini yaradın.",
+    "en": "On the phone, open WhatsApp → Connected devices. If the QR has expired, create a new one on the portal's Integrations page.",
+    "ru": "На телефоне откройте WhatsApp → Подключенные устройства. Если срок действия QR истек, создайте новый на странице «Интеграции» портала."
+  },
+  "support.text.049": {
+    "az": "İnteqrasiyaları açın",
+    "en": "Open the integrations",
+    "ru": "Откройте интеграции"
+  },
+  "support.attr.050": {
+    "az": "şifrə login giriş hesab email bərpa",
+    "en": "password login access account email restore",
+    "ru": "пароль вход доступ доступ к аккаунту электронная почта восстановление"
+  },
+  "support.text.051": {
+    "az": "Hesab",
+    "en": "Account",
+    "ru": "Счет"
+  },
+  "support.text.052": {
+    "az": "Hesaba daxil ola bilmirəm",
+    "en": "I can't access the account",
+    "ru": "Я не могу получить доступ к аккаунту"
+  },
+  "support.text.053": {
+    "az": "Giriş səhifəsində “Şifrəni unutmusunuz?” keçidini açın. Hesab mövcuddursa, 30 dəqiqəlik yeniləmə məktubu göndərilir.",
+    "en": "On the login page, \"Forgot your password?\" open the switch. If the account exists, a 30-minute update email is sent.",
+    "ru": "На странице входа «Забыли пароль?» откройте переключатель. Если учетная запись существует, будет отправлено 30-минутное электронное письмо с обновлением."
+  },
+  "support.text.054": {
+    "az": "Şifrəni bərpa edin",
+    "en": "Reset password",
+    "ru": "Сбросить пароль"
+  },
+  "support.attr.055": {
+    "az": "bildiriş push iphone safari gəlmir",
+    "en": "push notification iphone safari not coming",
+    "ru": "push-уведомление iphone Safari не приходит"
+  },
+  "support.text.056": {
+    "az": "Bildiriş",
+    "en": "Notification",
+    "ru": "Уведомление"
+  },
+  "support.text.057": {
+    "az": "Telefon bildirişi gəlmir",
+    "en": "No phone notification",
+    "ru": "Нет уведомлений на телефоне"
+  },
+  "support.text.058": {
+    "az": "iPhone-da portalı Safari-dən Əsas ekrana əlavə edib həmin ikonla açın. iOS 16.4+ və bildiriş icazəsi tələb olunur.",
+    "en": "On iPhone, add the portal from Safari to the Home screen and open it with the icon. Requires iOS 16.4+ and notification permission.",
+    "ru": "На iPhone добавьте портал из Safari на главный экран и откройте его с помощью значка. Требуется iOS 16.4+ и разрешение на уведомления."
+  },
+  "support.text.059": {
+    "az": "Bildiriş parametrləri",
+    "en": "Notification settings",
+    "ru": "Настройки уведомлений"
+  },
+  "support.text.060": {
+    "az": "Uyğun mövzu tapılmadı.",
+    "en": "No matching topic found.",
+    "ru": "Подходящей темы не найдено."
+  },
+  "support.text.061": {
+    "az": "Axtarışı sadələşdirin və ya WhatsApp dəstəyinə yazın.",
+    "en": "Simplify the search or write to WhatsApp support.",
+    "ru": "Упростите поиск или напишите в поддержку WhatsApp."
+  },
+  "support.text.062": {
+    "az": "Dəstək kanalları",
+    "en": "Support channels",
+    "ru": "Каналы поддержки"
+  },
+  "support.text.063": {
+    "az": "Məsələyə uyğun düzgün kanal.",
+    "en": "The right channel for the issue.",
+    "ru": "Правильный канал для решения проблемы."
+  },
+  "support.text.064": {
+    "az": "Hesab məlumatlarını və diaqnostika fayllarını açıq WhatsApp mesajına əlavə etməyin.",
+    "en": "Do not attach account information and diagnostic files to an open WhatsApp message.",
+    "ru": "Не прикрепляйте информацию об учетной записи и диагностические файлы к открытому сообщению WhatsApp."
+  },
+  "support.text.065": {
+    "az": "WhatsApp",
+    "en": "WhatsApp",
+    "ru": "WhatsApp"
+  },
+  "support.text.066": {
+    "az": "Ümumi sual, satış və sürətli istiqamətləndirmə.",
+    "en": "General questions, sales and quick reference.",
+    "ru": "Общие вопросы, продажи и краткая справка."
+  },
+  "support.text.067": {
+    "az": "Hesab bildirişləri",
+    "en": "Account notifications",
+    "ru": "Уведомления об аккаунте"
+  },
+  "support.text.068": {
+    "az": "Portal profilində qeyd olunan e-poçt X/Z və sistem hadisələri üçün istifadə olunur.",
+    "en": "The email specified in the portal profile is used for X/Z and system events.",
+    "ru": "Адрес электронной почты, указанный в профиле портала, используется для X/Z и системных событий."
+  },
+  "support.text.069": {
+    "az": "Parametrləri açın",
+    "en": "Open the settings",
+    "ru": "Откройте настройки"
+  },
+  "support.text.070": {
+    "az": "Diaqnostika",
+    "en": "Diagnostics",
+    "ru": "Диагностика"
+  },
+  "support.text.071": {
+    "az": "LOG, TXT, JSON və ZIP faylları yalnız qorunan müştəri hesabından göndərilir.",
+    "en": "LOG, TXT, JSON and ZIP files are sent only from a protected client account.",
+    "ru": "Файлы LOG, TXT, JSON и ZIP отправляются только с защищенной учетной записи клиента."
+  },
+  "support.text.072": {
+    "az": "Portal dəstəyini açın",
+    "en": "Open the portal support",
+    "ru": "Открыть поддержку портала"
+  },
+  "support.attr.073": {
+    "az": "Qorunan müştəri hesabı və təhlükəsiz sessiya",
+    "en": "Protected customer account and secure session",
+    "ru": "Защищенная учетная запись клиента и безопасный сеанс"
+  },
+  "support.text.074": {
+    "az": "Məlumat təhlükəsizliyi",
+    "en": "Data security",
+    "ru": "Безопасность данных"
+  },
+  "support.text.075": {
+    "az": "Diaqnostika açıq web qovluğuna düşmür.",
+    "en": "Diagnostics never enter a public web directory.",
+    "ru": "Диагностические данные не попадают в открытую веб-папку."
+  },
+  "support.text.076": {
+    "az": "Portal yükləmələri hesabla əlaqələndirir, format və ölçünü yoxlayır, faylı təsadüfi server adı ilə web root-dan kənarda saxlayır.",
+    "en": "The portal links uploads to the account, validates their format and size, and stores them under a randomized server name outside the web root.",
+    "ru": "Портал связывает загрузки с аккаунтом, проверяет формат и размер и хранит файл под случайным именем вне корневой веб-папки."
+  },
+  "support.text.077": {
+    "az": "Maksimum 10 MB",
+    "en": "Maximum 10 MB",
+    "ru": "Максимум 10 МБ"
+  },
+  "support.text.078": {
+    "az": "LOG, TXT, JSON və ZIP",
+    "en": "LOG, TXT, JSON and ZIP",
+    "ru": "ЖУРНАЛ, TXT, JSON и ZIP"
+  },
+  "support.text.079": {
+    "az": "Tenant üzrə giriş məhdudiyyəti",
+    "en": "Tenant-scoped access",
+    "ru": "Доступ ограничен организацией"
+  },
+  "support.text.080": {
+    "az": "Silinmə və 30 günlük retention",
+    "en": "Deletion and 30-day retention",
+    "ru": "Удаление и хранение в течение 30 дней"
+  },
+  "support.text.081": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "support.text.082": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "support.text.083": {
+    "az": "Müxtəlif bizneslər üçün satış və əməliyyatları aydın idarə edən yerli POS platforması.",
+    "en": "A local POS platform that makes sales and operations clear for every business.",
+    "ru": "Собственная POS-платформа, которая делает операции ресторана понятными и управляемыми."
+  },
+  "support.text.084": {
+    "az": "Məhsul",
+    "en": "Product",
+    "ru": "Продукт"
+  },
+  "support.text.085": {
+    "az": "İmkanlar",
+    "en": "Features",
+    "ru": "Возможности"
+  },
+  "support.text.086": {
+    "az": "Quraşdırma",
+    "en": "Setup",
+    "ru": "Установка"
+  },
+  "support.text.087": {
+    "az": "Yeniliklər",
+    "en": "Updates",
+    "ru": "Обновления"
+  },
+  "support.text.088": {
+    "az": "Müştəri",
+    "en": "Customer",
+    "ru": "Клиент"
+  },
+  "support.text.089": {
+    "az": "Giriş",
+    "en": "Log in",
+    "ru": "Войти"
+  },
+  "support.text.090": {
+    "az": "Hesab yaradın",
+    "en": "Create account",
+    "ru": "Создать аккаунт"
+  },
+  "support.text.091": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "support.text.092": {
+    "az": "Əlaqə",
+    "en": "Contact",
+    "ru": "Контакты"
+  },
+  "support.text.093": {
+    "az": "Təqdimat",
+    "en": "Demo",
+    "ru": "Демонстрация"
+  },
+  "support.text.094": {
+    "az": "possistem.",
+    "en": "possistem.",
+    "ru": "Миллионер ПОС."
+  },
+  "support.text.095": {
+    "az": "Azərbaycan üçün hazırlanıb",
+    "en": "Made for Azerbaijan",
+    "ru": "Создано для Азербайджана"
+  },
+  "404.text.001": {
+    "az": "Səhifə tapılmadı · possistem",
+    "en": "Page not found · possistem",
+    "ru": "Страница не найдена · possistem"
+  },
+  "404.text.002": {
+    "az": "possistem",
+    "en": "possistem",
+    "ru": "possistem"
+  },
+  "404.text.003": {
+    "az": "Biznes əməliyyatları",
+    "en": "Biznes əməliyyatları",
+    "ru": "Операции бизнеса"
+  },
+  "404.text.004": {
+    "az": "Səhifə tapılmadı",
+    "en": "Page not found",
+    "ru": "Страница не найдена"
+  },
+  "404.text.005": {
+    "az": "Açmağa çalışdığınız ünvan mövcud deyil və ya dəyişdirilib.",
+    "en": "The address you are trying to open does not exist or has been changed.",
+    "ru": "Адрес, который вы пытаетесь открыть, не существует или был изменен."
+  },
+  "404.text.006": {
+    "az": "Ana səhifəyə qayıdın",
+    "en": "Return to home page",
+    "ru": "Вернуться на главную страницу"
+  },
+  "common.languageLabel": {
+    "en": "Language",
+    "az": "Dil",
+    "ru": "Язык"
+  },
+  "index.hero.heading": {
+    "en": "Run the register.<br><em>See your business clearly.</em>",
+    "az": "Kassanı işlədin.<br><em>Biznesi aydın görün.</em>",
+    "ru": "Управляйте кассой.<br><em>Видьте бизнес целиком.</em>"
+  },
+  "product.hero.heading": {
+    "en": "One operating flow <em>for every stage of your business.</em>",
+    "az": "Biznesin hər mərhələsi üçün <em>vahid əməliyyat axını.</em>",
+    "ru": "Единый рабочий процесс <em>для каждого этапа вашего бизнеса.</em>"
+  },
+  "setup.hero.heading": {
+    "en": "Never lose a step <em>during setup.</em>",
+    "az": "Quraşdırma zamanı <em>heç bir addım itmir.</em>",
+    "ru": "Не упустите ни одного шага <em>при установке.</em>"
+  },
+  "updates.hero.heading": {
+    "en": "The latest version and update status are <em>clear at a glance.</em>",
+    "az": "Son versiya və yeniləmə vəziyyəti <em>açıq görünür.</em>",
+    "ru": "Последняя версия и статус обновления <em>видны сразу.</em>"
+  },
+  "support.hero.heading": {
+    "en": "Describe the issue. <em>Know the next step.</em>",
+    "az": "Problemi izah edin. <em>Növbəti addımı bilin.</em>",
+    "ru": "Опишите проблему. <em>Узнайте следующий шаг.</em>"
+  },
+  "schema.description": {
+    "en": "A point-of-sale and management system for restaurants, retail, cafés and more",
+    "az": "Restoran, market, kafe və digər bizneslər üçün kassa və idarəetmə sistemi",
+    "ru": "Кассовая система и управление для ресторанов, ритейла, кафе и других бизнесов"
+  },
+  "support.text.081": {
+    "az": "E-poçt göndərin",
+    "en": "Send an email",
+    "ru": "Отправить письмо"
+  },
+  "support.text.082": {
+    "az": "support@possistem.az ünvanına birbaşa yazın — tezliklə cavab veririk.",
+    "en": "Write directly to support@possistem.az — we reply quickly.",
+    "ru": "Напишите на support@possistem.az — ответим в ближайшее время."
+  },
+  "support.text.083": {
+    "az": "WhatsApp və ya e-poçt ilə bizimlə əlaqə saxlayın.",
+    "en": "Contact us via WhatsApp or email.",
+    "ru": "Свяжитесь с нами через WhatsApp или e-mail."
+  },
+  "support.text.084": {
+    "az": "Hesab sahibləri üçün",
+    "en": "For account holders",
+    "ru": "Для владельцев аккаунта"
+  },
+  "footer.support.center": {
+    "az": "Dəstək mərkəzi",
+    "en": "Support center",
+    "ru": "Центр поддержки"
+  },
+  "footer.support.whatsapp": {
+    "az": "WhatsApp dəstəyi",
+    "en": "WhatsApp support",
+    "ru": "Поддержка WhatsApp"
+  },
+  "footer.support.email": {
+    "az": "E-poçt göndərin",
+    "en": "Send an email",
+    "ru": "Отправить письмо"
+  },
+  "footer.support.email": {
+    "az": "E-poçt göndərin",
+    "en": "Send an email",
+    "ru": "Отправить письмо"
+  },
+  "liveChat.live": {
+    "az": "Canlı",
+    "en": "Live",
+    "ru": "Онлайн"
+  },
+  "liveChat.title": {
+    "az": "possistem dəstək",
+    "en": "possistem support",
+    "ru": "поддержка possistem"
+  },
+  "liveChat.open": {
+    "az": "Canlı dəstək chatini aç",
+    "en": "Open live support chat",
+    "ru": "Открыть чат поддержки"
+  },
+  "liveChat.close": {
+    "az": "Bağla",
+    "en": "Close",
+    "ru": "Закрыть"
+  },
+  "liveChat.send": {
+    "az": "Göndər",
+    "en": "Send",
+    "ru": "Отправить"
+  },
+  "liveChat.inputPlaceholder": {
+    "az": "Mesajınızı yazın…",
+    "en": "Type your message…",
+    "ru": "Напишите сообщение…"
+  },
+  "liveChat.inputLocked": {
+    "az": "Mesaj yazmaq üçün daxil olun",
+    "en": "Sign in to send a message",
+    "ru": "Войдите, чтобы отправить сообщение"
+  },
+  "liveChat.loginPrompt": {
+    "az": "Canlı dəstək chatində mesaj yazmaq üçün hesabınıza daxil olun.",
+    "en": "Sign in to your account to chat with live support.",
+    "ru": "Войдите в аккаунт, чтобы писать в чат поддержки."
+  },
+  "liveChat.sectionEyebrow": {
+    "az": "Canlı dəstək",
+    "en": "Live support",
+    "ru": "Живая поддержка"
+  },
+  "liveChat.sectionTitle": {
+    "az": "Dəstək komandası ilə birbaşa yazışın",
+    "en": "Chat directly with our support team",
+    "ru": "Общайтесь с командой поддержки напрямую"
+  },
+  "liveChat.sectionHint": {
+    "az": "İctimai chat — yalnız real istifadəçi mesajları. Yazmaq üçün daxil olun.",
+    "en": "Public chat — real user messages only. Sign in to write.",
+    "ru": "Публичный чат — только реальные сообщения. Войдите, чтобы писать."
+  },
+  "liveChat.stats.online": {
+    "az": "aktiv istifadəçi",
+    "en": "active users",
+    "ru": "активных пользователей"
+  },
+  "liveChat.stats.onlineShort": {
+    "az": "aktiv",
+    "en": "active",
+    "ru": "активных"
+  },
+  "liveChat.stats.onlineHint": {
+    "az": "Hal-hazırda saytda və portaldadır",
+    "en": "Currently on the site and portal",
+    "ru": "Сейчас на сайте и в портале"
+  },
+  "liveChat.stats.messages": {
+    "az": "mesaj bu gün",
+    "en": "messages today",
+    "ru": "сообщений сегодня"
+  },
+  "liveChat.stats.messagesShort": {
+    "az": "mesaj bu gün",
+    "en": "msgs today",
+    "ru": "сообщ. сегодня"
+  },
+  "liveChat.stats.messagesHint": {
+    "az": "Dəstək chatində real fəaliyyət",
+    "en": "Real activity in support chat",
+    "ru": "Реальная активность в чате поддержки"
+  },
+  "liveChat.back": {
+    "az": "Geri",
+    "en": "Back",
+    "ru": "Назад"
+  },
+  "liveChat.nav": {
+    "az": "Canlı chat",
+    "en": "Live chat",
+    "ru": "Живой чат"
+  },
+  "liveChat.pageHeading": {
+    "az": "İctimai <em>canlı chat</em>",
+    "en": "Public <em>live chat</em>",
+    "ru": "Публичный <em>живой чат</em>"
+  },
+  "liveChat.pageIntro": {
+    "az": "İstifadəçilər bir-biri ilə ictimai yazışır, POS və sayt haqqında sual verir. Mesaj yazmaq üçün daxil olun.",
+    "en": "Users chat publicly, ask about POS and the site. Sign in to send messages.",
+    "ru": "Пользователи общаются публично, задают вопросы о POS и сайте. Войдите, чтобы писать."
+  },
+  "liveChat.publicTitle": {
+    "az": "İctimai chat otağı",
+    "en": "Public chat room",
+    "ru": "Публичная комната"
+  },
+  "liveChat.publicHint": {
+    "az": "Burada mesajlar hamıya açıqdır — şəxsi deyil, ictimai yazış.",
+    "en": "Messages here are public for everyone — not private.",
+    "ru": "Сообщения здесь публичные для всех — не приватные."
+  },
+  "liveChat.roomTitle": {
+    "az": "Canlı yazış",
+    "en": "Live conversation",
+    "ru": "Живой разговор"
+  },
+  "liveChat.roomSubtitle": {
+    "az": "Müştərilər və komanda eyni otaqda",
+    "en": "Customers and team in one room",
+    "ru": "Клиенты и команда в одной комнате"
+  },
+  "liveChat.join": {
+    "az": "Yazışa qoşul",
+    "en": "Join chat",
+    "ru": "Присоединиться"
+  },
+  "liveChat.loginDetail": {
+    "az": "Giriş etdikdən sonra mesajlarınız hamıya görünəcək və icma ilə yazışa biləcəksiniz.",
+    "en": "After signing in your messages become visible and you can chat with the community.",
+    "ru": "После входа ваши сообщения будут видны всем в общем чате."
+  },
+  "liveChat.inputPublic": {
+    "az": "İctimai mesajınızı yazın…",
+    "en": "Write your public message…",
+    "ru": "Напишите публичное сообщение…"
+  },
+  "liveChat.you": {
+    "az": "Siz",
+    "en": "You",
+    "ru": "Вы"
+  },
+  "liveChat.rulesTitle": {
+    "az": "Qaydalar",
+    "en": "Rules",
+    "ru": "Правила"
+  },
+  "liveChat.rules.1": {
+    "az": "Mesajlar ictimaidir — hamı görür.",
+    "en": "Messages are public — everyone can see them.",
+    "ru": "Сообщения публичные — их видят все."
+  },
+  "liveChat.rules.2": {
+    "az": "Hesab məlumatını və parolu yazmayın.",
+    "en": "Do not share account details or passwords.",
+    "ru": "Не публикуйте данные аккаунта или пароли."
+  },
+  "liveChat.rules.3": {
+    "az": "Dəstək komandası eyni otaqda cavab verir.",
+    "en": "The support team replies in the same room.",
+    "ru": "Команда поддержки отвечает в той же комнате."
+  },
+  "liveChat.rules.4": {
+    "az": "@ ilə istifadəçini etiketləyə bilərsiniz — bildiriş sağ paneldə görünür.",
+    "en": "Tag users with @ — notifications appear in the right panel.",
+    "ru": "Отмечайте пользователей через @ — уведомления справа."
+  },
+  "liveChat.empty": {
+    "az": "Bu mövzuda hələ mesaj yoxdur",
+    "en": "No messages in this topic yet",
+    "ru": "В этой теме пока нет сообщений"
+  },
+  "liveChat.team": {
+    "az": "Dəstək:",
+    "en": "Support:",
+    "ru": "Поддержка:"
+  },
+  "liveChat.account.portal": {
+    "az": "Müştəri paneli",
+    "en": "Customer portal",
+    "ru": "Клиентский портал"
+  },
+  "liveChat.account.settings": {
+    "az": "Parametrlər",
+    "en": "Settings",
+    "ru": "Настройки"
+  },
+  "liveChat.account.logout": {
+    "az": "Çıxış",
+    "en": "Sign out",
+    "ru": "Выйти"
+  },
+  "liveChat.account.fallback": {
+    "az": "Müştəri",
+    "en": "Customer",
+    "ru": "Клиент"
+  },
+  "liveChat.account.adminFallback": {
+    "az": "Admin",
+    "en": "Admin",
+    "ru": "Админ"
+  },
+  "liveChat.account.adminBadge": {
+    "az": "Admin",
+    "en": "Admin",
+    "ru": "Админ"
+  },
+  "liveChat.account.adminPanel": {
+    "az": "Admin paneli",
+    "en": "Admin panel",
+    "ru": "Панель администратора"
+  },
+  "liveChat.inputStaffReply": {
+    "az": "Dəstək cavabı yazın…",
+    "en": "Write a support reply…",
+    "ru": "Напишите ответ поддержки…"
+  },
+  "liveChat.composerStaffHint": {
+    "az": "Admin kimi cavab yazırsınız — yaşıl etiketlə görünəcək",
+    "en": "Replying as admin — shown with a green badge",
+    "ru": "Ответ от администратора — с зелёной меткой"
+  },
+  "liveChat.stats.cooldown": {
+    "az": "dəq. mesaj limiti",
+    "en": "min message limit",
+    "ru": "мин. лимит сообщений"
+  },
+  "liveChat.stats.cooldownHint": {
+    "az": "Hər istifadəçi arasında gözləmə",
+    "en": "Wait time between your messages",
+    "ru": "Пауза между вашими сообщениями"
+  },
+  "liveChat.cooldownRule": {
+    "az": "Hər mesajdan sonra {minutes} dəqiqə gözləmə tətbiq olunur.",
+    "en": "You must wait {minutes} minutes between messages.",
+    "ru": "Между сообщениями — пауза {minutes} мин."
+  },
+  "liveChat.cooldownWait": {
+    "az": "Növbəti mesaj: {time}",
+    "en": "Next message in: {time}",
+    "ru": "Следующее сообщение через: {time}"
+  },
+  "liveChat.cooldownActive": {
+    "az": "Mesaj limiti aktivdir — bir az gözləyin.",
+    "en": "Message limit active — please wait.",
+    "ru": "Лимит сообщений — подождите."
+  },
+  "liveChat.sendError": {
+    "az": "Mesaj göndərilmədi. Yenidən cəhd edin.",
+    "en": "Could not send message. Try again.",
+    "ru": "Не удалось отправить. Попробуйте снова."
+  },
+  "liveChat.sending": {
+    "az": "Göndərilir…",
+    "en": "Sending…",
+    "ru": "Отправка…"
+  },
+  "liveChat.loading": {
+    "az": "Mesajlar yüklənir…",
+    "en": "Loading messages…",
+    "ru": "Загрузка сообщений…"
+  },
+  "liveChat.loadingOlder": {
+    "az": "Köhnə mesajlar yüklənir…",
+    "en": "Loading older messages…",
+    "ru": "Загрузка старых сообщений…"
+  },
+  "liveChat.inputPublicMention": {
+    "az": "Mesajınızı yazın… @ ilə etiketləyin",
+    "en": "Write your message… use @ to mention",
+    "ru": "Напишите сообщение… @ для упоминания"
+  },
+  "liveChat.mentionsTitle": {
+    "az": "Etiket bildirişləri",
+    "en": "Mention notifications",
+    "ru": "Уведомления об упоминаниях"
+  },
+  "liveChat.mentionsHint": {
+    "az": "Sizi @ ilə çağırdıqda burada görünür",
+    "en": "When someone @mentions you",
+    "ru": "Когда вас упомянули через @"
+  },
+  "liveChat.mentionsEmpty": {
+    "az": "Hələ etiket yoxdur",
+    "en": "No mentions yet",
+    "ru": "Упоминаний пока нет"
+  },
+  "liveChat.mentionsLogin": {
+    "az": "Etiketləri görmək üçün daxil olun",
+    "en": "Sign in to see mentions",
+    "ru": "Войдите, чтобы видеть упоминания"
+  },
+  "liveChat.mentionsRead": {
+    "az": "Oxundu",
+    "en": "Mark read",
+    "ru": "Прочитано"
+  },
+  "liveChat.mentionsClear": {
+    "az": "Hamısını sil",
+    "en": "Clear all",
+    "ru": "Очистить все"
+  },
+  "liveChat.searchTopics": {
+    "az": "Mövzu axtar…",
+    "en": "Search topics…",
+    "ru": "Поиск тем…"
+  },
+  "liveChat.teamOnline": {
+    "az": "Komanda onlayn",
+    "en": "Team online",
+    "ru": "Команда онлайн"
+  },
+  "liveChat.recentTopics": {
+    "az": "Son mövzular",
+    "en": "Recent topics",
+    "ru": "Недавние темы"
+  },
+  "liveChat.pickTopicDetail": {
+    "az": "Soldakı mövzulardan birini açın və ya yeni mövzu yaradın. Mesajlar bir mövzu altında toplandığı üçün həm siz, həm də dəstək komandası prosesi daha rahat izləyir.",
+    "en": "Open a topic from the left or create a new one. Messages are grouped by topic so you and support can follow the process more easily.",
+    "ru": "Откройте тему слева или создайте новую. Сообщения группируются по теме, чтобы вам и поддержке было проще следить за процессом."
+  },
+  "liveChat.createTopicBtn": {
+    "az": "Yeni mövzu yaradın",
+    "en": "Create a new topic",
+    "ru": "Создать новую тему"
+  },
+  "liveChat.searchTopicsBtn": {
+    "az": "Mövzularda axtar",
+    "en": "Search topics",
+    "ru": "Искать темы"
+  },
+  "liveChat.quickTopics": {
+    "az": "Tez başlayan mövzular",
+    "en": "Quick-start topics",
+    "ru": "Быстрые темы"
+  },
+  "liveChat.quick.pos": {
+    "az": "POS bağlantısı",
+    "en": "POS connection",
+    "ru": "Подключение POS"
+  },
+  "liveChat.quick.license": {
+    "az": "Lisenziya",
+    "en": "License",
+    "ru": "Лицензия"
+  },
+  "liveChat.quick.update": {
+    "az": "Yeniləmə",
+    "en": "Update",
+    "ru": "Обновление"
+  },
+  "liveChat.quick.account": {
+    "az": "Hesab girişi",
+    "en": "Account login",
+    "ru": "Вход в аккаунт"
+  },
+  "liveChat.topicPanelEyebrow": {
+    "az": "Mövzu paneli",
+    "en": "Topic panel",
+    "ru": "Панель темы"
+  },
+  "liveChat.topicPanelTitle": {
+    "az": "Məlumat",
+    "en": "Details",
+    "ru": "Сведения"
+  },
+  "liveChat.supportStatusTitle": {
+    "az": "Dəstək vəziyyəti",
+    "en": "Support status",
+    "ru": "Статус поддержки"
+  },
+  "liveChat.supportStatusBody": {
+    "az": "Canlı chat aktivdir. Təcili hallarda mövzunu konkret başlıqla başladın.",
+    "en": "Live chat is active. For urgent cases, start with a specific topic title.",
+    "ru": "Живой чат активен. В срочных случаях начните с конкретного заголовка темы."
+  },
+  "liveChat.publicTopicLabel": {
+    "az": "İctimai dəstək mövzusu",
+    "en": "Public support topic",
+    "ru": "Публичная тема поддержки"
+  },
+  "liveChat.modalTitle": {
+    "az": "Yeni dəstək mövzusu",
+    "en": "New support topic",
+    "ru": "Новая тема поддержки"
+  },
+  "liveChat.modalHint": {
+    "az": "Başlığı qısa və konkret yazın. Düzgün kateqoriya seçimi sorğunu daha tez yönləndirir.",
+    "en": "Write a short, specific title. The right category helps route your request faster.",
+    "ru": "Напишите короткий конкретный заголовок. Правильная категория ускорит обработку запроса."
+  },
+  "liveChat.topicTitleLabel": {
+    "az": "Mövzu başlığı",
+    "en": "Topic title",
+    "ru": "Заголовок темы"
+  },
+  "liveChat.topicCategoryLabel": {
+    "az": "Kateqoriya",
+    "en": "Category",
+    "ru": "Категория"
+  },
+  "liveChat.modalCancel": {
+    "az": "Ləğv et",
+    "en": "Cancel",
+    "ru": "Отмена"
+  },
+  "liveChat.modalSubmit": {
+    "az": "Mövzunu yaradın",
+    "en": "Create topic",
+    "ru": "Создать тему"
+  },
+  "liveChat.topicsTitle": {
+    "az": "Mövzular",
+    "en": "Topics",
+    "ru": "Темы"
+  },
+  "liveChat.newTopic": {
+    "az": "Yeni mövzu",
+    "en": "New topic",
+    "ru": "Новая тема"
+  },
+  "liveChat.newTopicHint": {
+    "az": "Başlıq və ilk mesajınızı yazın",
+    "en": "Write a title and your first message",
+    "ru": "Напишите заголовок и первое сообщение"
+  },
+  "liveChat.topicTitlePlaceholder": {
+    "az": "Mövzu başlığı (məs: POS ödəniş problemi)",
+    "en": "Topic title (e.g. POS payment issue)",
+    "ru": "Заголовок темы"
+  },
+  "liveChat.newTopicBodyPlaceholder": {
+    "az": "Mövzunu açıqlayın…",
+    "en": "Describe your topic…",
+    "ru": "Опишите тему…"
+  },
+  "liveChat.replies": {
+    "az": "cavab",
+    "en": "replies",
+    "ru": "ответов"
+  },
+  "liveChat.pickTopic": {
+    "az": "Söhbətə başlamaq üçün mövzu seçin",
+    "en": "Select a topic to start chatting",
+    "ru": "Выберите тему, чтобы начать"
+  },
+  "liveChat.pickTopicHint": {
+    "az": "Soldakı siyahıdan mövzu seçin — başqalarının cavablarını görəcəksiniz.",
+    "en": "Choose a topic from the left list to see replies.",
+    "ru": "Выберите тему слева, чтобы видеть ответы."
+  },
+  "liveChat.titleRequired": {
+    "az": "Mövzu başlığı ən az 3 simvol olmalıdır.",
+    "en": "Topic title must be at least 3 characters.",
+    "ru": "Заголовок — минимум 3 символа."
+  },
+  "liveChat.staffBadge": {
+    "az": "Dəstək",
+    "en": "Support",
+    "ru": "Поддержка"
+  },
+  "liveChat.composerHint": {
+    "az": "Enter göndərir · Shift+Enter yeni sətir",
+    "en": "Enter to send · Shift+Enter new line",
+    "ru": "Enter — отправить"
+  },
+  "liveChat.attach": {
+    "az": "Qoşma",
+    "en": "Attachment",
+    "ru": "Вложение"
+  },
+  "liveChat.demoMentionTopic": {
+    "az": "Ödəniş problemi",
+    "en": "Payment issue",
+    "ru": "Проблема с оплатой"
+  },
+  "liveChat.demoMentionBody": {
+    "az": "@Rəşad M. yoxlayırıq — ödəniş şlüzündə təkrar tutulma ola bilər.",
+    "en": "@Rəşad M. we’re checking — it may be a duplicate capture on the gateway.",
+    "ru": "@Rəşad M. проверяем — возможно повторное списание на шлюзе."
+  },
+  "liveChat.avatarError": {
+    "az": "Avatar yüklənmədi. JPG, PNG və s. yoxlayın.",
+    "en": "Avatar upload failed.",
+    "ru": "Не удалось загрузить аватар."
+  },
+  "liveChat.changeAvatar": {
+    "az": "Avatar seçin",
+    "en": "Choose avatar",
+    "ru": "Выбрать аватар"
+  },
+  "liveChat.changeAvatarHint": {
+    "az": "Avatar üçün şəkli toxunun",
+    "en": "Tap to set your avatar",
+    "ru": "Нажмите, чтобы поставить аватар"
+  },
+  "liveChat.avatarUploading": {
+    "az": "Yüklənir…",
+    "en": "Uploading…",
+    "ru": "Загрузка…"
+  },
+  "liveChat.imageError": {
+    "az": "Şəkil yüklənmədi. JPG, PNG və ya WebP yoxlayın.",
+    "en": "Image upload failed. Try JPG, PNG, or WebP.",
+    "ru": "Не удалось загрузить изображение."
+  },
+  "liveChat.imageUploading": {
+    "az": "Şəkil yüklənir…",
+    "en": "Uploading image…",
+    "ru": "Изображение загружается…"
+  },
+  "liveChat.topicDailyLimit": {
+    "az": "Gündə yalnız 1 mövzu aça bilərsiniz. Sabah yenidən cəhd edin.",
+    "en": "You can open only 1 topic per day. Try again tomorrow.",
+    "ru": "Можно открыть только 1 тему в день. Попробуйте завтра."
+  },
+  "liveChat.topicDailyHint": {
+    "az": "Bu gün mövzu limitiniz bitib. Mesaj yaza bilərsiniz.",
+    "en": "Today’s topic limit is used. You can still reply.",
+    "ru": "Лимит тем на сегодня исчерпан. Отвечать можно."
+  },
+  "liveChat.imageLimit": {
+    "az": "Bir mesaja ən çox 4 şəkil əlavə edə bilərsiniz.",
+    "en": "You can attach up to 4 images per message.",
+    "ru": "Можно прикрепить не больше 4 изображений."
+  },
+  "liveChat.liveSupport": {
+    "az": "Canlı dəstək",
+    "en": "Live support",
+    "ru": "Онлайн-поддержка"
+  },
+  "liveChat.conversations": {
+    "az": "Söhbətlər",
+    "en": "Conversations",
+    "ru": "Диалоги"
+  },
+  "liveChat.notice": {
+    "az": "Hesab məlumatlarınızı, kart məlumatlarını və parolunuzu chatda paylaşmayın.",
+    "en": "Do not share account details, card numbers, or passwords in chat.",
+    "ru": "Не делитесь паролями, картами и данными аккаунта в чате."
+  },
+  "liveChat.members": {
+    "az": "İştirakçılar",
+    "en": "Participants",
+    "ru": "Участники"
+  },
+  "liveChat.teamSection": {
+    "az": "possistem komandası",
+    "en": "possistem team",
+    "ru": "команда possistem"
+  },
+  "liveChat.onlineCustomers": {
+    "az": "Müştərilər",
+    "en": "Customers",
+    "ru": "Клиенты"
+  },
+  "liveChat.accountActive": {
+    "az": "● Aktiv",
+    "en": "● Active",
+    "ru": "● В сети"
+  },
+  "liveChat.noTopicsYet": {
+    "az": "Hələ mövzu yoxdur. Probleminizi yazmaq üçün yeni mövzu yaradın.",
+    "en": "No topics yet. Create one to describe your issue.",
+    "ru": "Тем пока нет. Создайте новую, чтобы описать проблему."
+  },
+  "liveChat.deleteTopic": {
+    "az": "Mövzunu sil",
+    "en": "Delete topic",
+    "ru": "Удалить тему"
+  },
+  "liveChat.deleteMessage": {
+    "az": "Sil",
+    "en": "Delete",
+    "ru": "Удалить"
+  },
+  "liveChat.banCustomer": {
+    "az": "Ban",
+    "en": "Ban",
+    "ru": "Бан"
+  },
+  "liveChat.unbanCustomer": {
+    "az": "Banı qaldır",
+    "en": "Unban",
+    "ru": "Разбанить"
+  },
+  "liveChat.bannedBadge": {
+    "az": "Banlı",
+    "en": "Banned",
+    "ru": "Забанен"
+  },
+  "liveChat.confirmDeleteTopic": {
+    "az": "Bu mövzunu və içindəki bütün mesajları silmək istəyirsiniz?",
+    "en": "Delete this topic and all of its messages?",
+    "ru": "Удалить эту тему и все сообщения в ней?"
+  },
+  "liveChat.confirmDeleteMessage": {
+    "az": "Bu mesajı silmək istəyirsiniz?",
+    "en": "Delete this message?",
+    "ru": "Удалить это сообщение?"
+  },
+  "liveChat.confirmBan": {
+    "az": "{name} istifadəçisini chatdan ban etmək istəyirsiniz? Hesabı açıq qalacaq, amma mesaj yaza bilməyəcək.",
+    "en": "Ban {name} from chat? Their account stays active, but they cannot post.",
+    "ru": "Забанить {name} в чате? Аккаунт останется активным, но писать нельзя."
+  },
+  "liveChat.confirmUnban": {
+    "az": "{name} üçün chat banını qaldırmaq istəyirsiniz?",
+    "en": "Remove the chat ban for {name}?",
+    "ru": "Снять бан в чате для {name}?"
+  },
+  "liveChat.bannedNotice": {
+    "az": "Chatda mesaj yazmağınız bağlanıb. Mövzuları oxuya bilərsiniz.",
+    "en": "You are banned from posting in chat. You can still read topics.",
+    "ru": "Вам запрещено писать в чат. Темы можно читать."
+  },
+  "liveChat.modError": {
+    "az": "Əməliyyat alınmadı. Yenidən cəhd edin.",
+    "en": "That action failed. Try again.",
+    "ru": "Не удалось выполнить действие. Попробуйте ещё раз."
+  },
+  "schema.offerDescription": {
+    "en": "Contact us for pricing",
+    "az": "Qiymət üçün əlaqə saxlayın",
+    "ru": "Свяжитесь с нами, чтобы узнать цену"
+  }
+}

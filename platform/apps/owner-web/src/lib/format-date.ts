@@ -1,0 +1,2 @@
+const months=['yanvar','fevral','mart','aprel','may','iyun','iyul','avqust','sentyabr','oktyabr','noyabr','dekabr'];
+export function azDate(value:string|number|Date=new Date(),withTime=false){const d=new Date(value);if(!Number.isFinite(d.getTime()))return '—';return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`+(withTime?` · ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`:'');}

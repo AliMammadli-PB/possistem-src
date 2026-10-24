@@ -1,5 +1,6 @@
 #include "pos/services/SunmiOutbox.hpp"
 #include <vector>
+#include "pos/services/LicenseService.hpp"
 
 #include "pos/printing/KitchenStations.hpp"
 #include "pos/Crypto.hpp"
@@ -56,6 +57,7 @@ void registerOrders(const ContextPtr& ctx) {
     // ------------------------------------------------------------------ create
     server.registerHandler(
         std::string(protocol::method::kOrdersCreate), [ctx](const ipc::Request& request) {
+            services::LicenseService(*ctx).requirePaidForSale();
             ctx->requirePermission("order.create");
 
             const auto tableId = getOr<std::string>(request.payload, "tableId", "");
@@ -207,6 +209,7 @@ void registerOrders(const ContextPtr& ctx) {
     // ---------------------------------------------------------------- add item
     server.registerHandler(
         std::string(protocol::method::kOrdersAddItem), [ctx](const ipc::Request& request) {
+            services::LicenseService(*ctx).requirePaidForSale();
             ctx->requirePermission("order.create");
 
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
@@ -733,6 +736,7 @@ void registerOrders(const ContextPtr& ctx) {
     // returns, so the UI can never show "sent" for work that was rolled back.
     server.registerHandler(
         std::string(protocol::method::kOrdersSubmit), [ctx](const ipc::Request& request) {
+            services::LicenseService(*ctx).requirePaidForSale();
             ctx->requirePermission("order.create");
 
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
@@ -906,6 +910,7 @@ void registerOrders(const ContextPtr& ctx) {
     // ------------------------------------------------------------- close/void
     server.registerHandler(
         std::string(protocol::method::kOrdersClose), [ctx](const ipc::Request& request) {
+            services::LicenseService(*ctx).requirePaidForSale();
             ctx->requireAuth();
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
 

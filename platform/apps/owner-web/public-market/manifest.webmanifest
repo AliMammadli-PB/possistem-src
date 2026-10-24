@@ -1,0 +1,28 @@
+{
+  "id": "/marketpos/",
+  "name": "Market POS — Sahibkar",
+  "short_name": "Market POS",
+  "start_url": "/marketpos/",
+  "scope": "/marketpos/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#0a4f9c",
+  "description": "Market POS sahibkar paneli — məhsul, anbar qalığı, kassalar və X/Z hesabat.",
+  "categories": ["business", "productivity"],
+  "lang": "az",
+  "icons": [
+    {
+      "src": "/marketpos/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/marketpos/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

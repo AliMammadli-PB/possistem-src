@@ -1,0 +1,5 @@
+/* V3: original raster body and independent arms; SVG face is driven by one frame clock. */
+.support-mascot{display:block;flex:none;width:96px;height:100px;overflow:visible;filter:drop-shadow(0 4px 5px #123d7826);pointer-events:none}
+.support-mascot,.support-mascot *{animation:none!important;transition:none!important}
+.support-mascot image{image-rendering:auto}
+@media(max-width:640px){.support-mascot{width:84px;height:87px}}

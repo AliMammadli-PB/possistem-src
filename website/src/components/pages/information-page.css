@@ -1,0 +1,81 @@
+/* Information follows the homepage's white canvas, navy type and blue actions. */
+.ps-info-page{background:var(--canvas);color:var(--text);font:600 16px/1.75 'Montserrat',sans-serif}
+.ps-info-page :is(h1,h2,h3){font-family:inherit;letter-spacing:-.035em;font-weight:800;line-height:1.2;white-space:pre-line;color:inherit}
+.ps-info-page h1{font-size:clamp(34px,4vw,56px);margin:0;line-height:1.12}
+.ps-info-page h2{font-size:clamp(26px,3vw,38px);margin:0 0 18px}
+.ps-info-page h3{font-size:20px;margin:0 0 10px}
+.ps-info-page p{color:var(--text-3);margin:0 0 20px}
+.ps-info-page .info-kicker{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--blue);margin:0 0 16px}
+.info-intro{padding:28px 0 48px;background:var(--canvas)}
+.info-back{display:inline-flex;align-items:center;gap:10px;min-height:44px;margin-bottom:24px;font-size:12px;color:var(--text-3);text-decoration:none}
+.info-back svg{width:15px}
+.info-intro-grid{display:grid;grid-template-columns:1.15fr .85fr;align-items:flex-end;gap:80px}
+.info-intro-grid>div>p:not(.info-kicker){font-size:15px;line-height:1.8;max-width:470px;margin-bottom:24px}
+.info-intro .ps-button{min-height:48px;font-size:13px;padding:12px 20px}
+.info-section-nav{position:sticky;top:80px;z-index:100;border-block:1px solid var(--border);background:var(--surface-2)}
+.info-section-nav>div{display:flex;align-items:center;gap:24px;overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent}
+.info-section-nav a{display:inline-flex;align-items:center;gap:8px;min-height:58px;white-space:nowrap;text-decoration:none;color:var(--text-2);font-size:12px;font-weight:700}
+.info-section-nav a>span{font-size:10px;color:var(--text-3)}
+.info-section-nav a:hover{color:var(--blue)}
+.info-section{padding:64px 0;scroll-margin-top:66px}
+.info-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:48px;margin-bottom:28px}
+.info-section-head h2{margin-bottom:0}
+.info-section-head>p{max-width:340px;font-size:14px;margin:0}
+.info-product-switch{display:flex;gap:10px;margin-bottom:28px}
+.info-product-switch button{display:flex;align-items:center;gap:12px;min-height:54px;padding:12px 20px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;color:var(--text-2);font-size:14px;font-weight:700;cursor:pointer}
+.info-product-switch button>svg:last-child{margin-left:16px;width:17px}
+.info-product-switch button[aria-pressed='true']{background:#155ac7;border-color:var(--blue);color:white}
+.info-product-switch button:hover:not([aria-pressed='true']){background:var(--blue-soft)}
+.info-product{display:grid;grid-template-columns:.8fr 1.2fr;gap:48px;align-items:center;min-height:370px}
+.ps-info-page .info-product-copy h3{font-size:clamp(27px,2.6vw,36px)}
+.info-product-copy>p:not(.info-kicker){font-size:14px}
+.info-product-copy ul{list-style:none;padding:0;display:grid;gap:9px;margin:20px 0;font-size:13px;color:var(--text-2)}
+.info-product-copy li{display:flex;gap:9px;align-items:center}
+.info-product-copy li svg{width:16px;flex:none;color:var(--blue)}
+.info-product-screen{margin:0;min-width:0;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);overflow:hidden}
+.info-product-screen>div{display:flex;align-items:center;gap:8px;min-height:48px;padding:0 16px;font-size:12px;color:var(--text-2)}
+.info-product-screen>div svg{width:16px;color:var(--blue)}
+.info-product-screen>div>span{margin-left:auto;font-size:10px;color:var(--text-3)}
+.info-product-screen>img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:contain;background:var(--canvas)}
+.info-product-screen figcaption{padding:10px 16px;border-top:1px solid var(--border);color:var(--text-3);font-size:10px}
+.info-branches{background:var(--surface-2);border-block:1px solid var(--border)}
+.info-split{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center}
+.info-split>div>p:not(.info-kicker){font-size:14px;max-width:520px}
+.info-operation-list>div{display:flex;align-items:center;gap:18px;padding:22px 0;border-bottom:1px solid var(--border)}
+.info-operation-list>div:first-child{border-top:1px solid var(--border)}
+.info-operation-list>div>span{font-size:11px;color:var(--blue);font-weight:700}
+.info-operation-list>div>svg{width:19px;color:var(--blue);margin-left:auto;flex:none}
+.info-operation-list h3{font-size:17px}
+.info-operation-list p{font-size:13px;margin:0}
+.info-offline{background:#102a4c;color:#fff}
+.info-offline .info-kicker{color:#a9cdff}
+.info-offline h2{margin-bottom:0}
+.info-offline p{color:#d7e5fa;font-size:14px}
+.info-offline .info-split>p{margin:0;max-width:480px}
+.info-offline ol{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin:36px 0 0;padding:28px 0 0;border-top:1px solid #3a5578;list-style:none}
+.info-offline li{display:flex;align-items:flex-start;gap:16px}
+.info-offline li>span{display:grid;place-items:center;flex:none;width:38px;height:38px;background:#213f66;border-radius:8px;color:#c1dbff}
+.info-offline li h3{font-size:15px;margin:0 0 8px}
+.info-offline li p{font-size:12px;margin:0}
+.info-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;padding:0;margin:32px 0 0;list-style:none}
+.info-steps li{border-top:2px solid var(--border);padding-top:18px}
+.info-steps li>span{font-size:12px;color:var(--blue);font-weight:700}
+.info-steps h3{font-size:18px;margin-top:18px}
+.info-steps p{font-size:13px;max-width:340px;margin-bottom:0}
+.ps-info-page .pricing-section{padding:56px 0;background:var(--surface-2);scroll-margin-top:66px}
+.ps-info-page .pricing-section .marketing-heading h2{font-size:clamp(26px,3vw,38px)}
+.ps-info-page .pricing-card h3{font-size:21px}
+.ps-info-page .pricing-badge{background:var(--blue-soft);color:var(--blue)}
+.ps-info-page .pricing-section .pricing-features{color:var(--text-2)}
+.info-contact{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:flex-start}
+.info-contact>div>p:not(.info-kicker){font-size:14px}
+.info-phone{display:flex;align-items:center;gap:16px;min-height:48px;margin:12px 0;color:var(--blue);text-decoration:none;font-size:28px;font-weight:800;letter-spacing:-.03em}
+.info-contact .info-signin{font-size:12px;margin:10px 0 20px}
+.info-signin a{color:var(--blue);text-underline-offset:4px}
+.info-help{margin-top:28px;padding-top:24px;border-top:1px solid var(--border)}
+.info-help>strong{font-size:16px;font-weight:800}
+.info-help>p{margin:8px 0;font-size:13px;max-width:450px}
+.info-help>button{display:inline-flex;align-items:center;gap:16px;min-height:48px;background:transparent;border:0;color:var(--blue);padding:0;font-size:13px;font-weight:700;cursor:pointer}
+@media(max-width:1100px){.info-intro-grid,.info-split,.info-contact{gap:40px}.info-product{gap:32px}.info-section-nav>div{gap:20px}.info-section-nav{top:80px}}
+@media(max-width:800px){.info-intro-grid{grid-template-columns:1fr;gap:22px}.info-intro-grid>div>p:not(.info-kicker){max-width:600px}.info-section-head{gap:24px;align-items:flex-start}.info-product{grid-template-columns:1fr;gap:24px}.info-product-copy{max-width:600px}.info-product-screen{max-width:760px}.info-split,.info-contact{grid-template-columns:1fr;gap:28px}.info-section{padding:48px 0}.info-offline ol{gap:20px}.info-section-nav{top:80px}.info-intro{padding-bottom:32px}}
+@media(max-width:640px){.info-section-nav{top:68px}.info-section,.ps-info-page .pricing-section{scroll-margin-top:46px}.ps-info-page h1{font-size:36px}.info-back{margin-bottom:16px}.info-intro{padding-top:12px}.info-section-head{display:block}.info-section-head>p{margin-top:16px;max-width:none}.info-section-nav>div{width:100%;padding-inline:20px;box-sizing:border-box;gap:24px}.info-section-nav a{min-height:52px;font-size:11px}.info-product-switch{gap:8px}.info-product-switch button{flex:1;justify-content:center;min-height:50px;padding:10px;font-size:12px;gap:8px}.info-product-switch button>svg:last-child{display:none}.info-product-switch button>svg{width:18px}.info-product{min-height:0}.info-offline ol,.info-steps{grid-template-columns:1fr;gap:22px}.info-offline ol{margin-top:26px}.info-steps h3{margin-top:10px}.info-steps p{max-width:none}.info-contact{gap:30px}.info-phone{font-size:25px}.ps-info-page .pricing-section{padding:44px 0}}

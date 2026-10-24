@@ -1,0 +1,39 @@
+{
+  "name": "milioner-pos-control",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Millioner POS central control platform",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter @milioner/api --filter @milioner/admin-web --filter @milioner/reseller-web run dev",
+    "dev:api": "pnpm --filter @milioner/api dev",
+    "dev:web": "pnpm --filter @milioner/admin-web dev",
+    "dev:bayi": "pnpm --filter @milioner/reseller-web dev",
+    "dev:portal-mock": "node scripts/mock-customer-portal.mjs",
+    "deploy:site": "node scripts/deploy-site.mjs",
+    "build": "pnpm -r run build",
+    "build:packages": "pnpm --filter @milioner/contracts --filter @milioner/database --filter @milioner/security run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm run build:packages && pnpm -r run typecheck",
+    "test": "pnpm run build:packages && pnpm -r run test",
+    "migrate": "pnpm --filter @milioner/database migrate",
+    "seed": "pnpm --filter @milioner/api seed",
+    "db:migrate": "pnpm migrate",
+    "db:seed": "pnpm seed"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.18.2",
+    "@typescript-eslint/parser": "^8.18.2",
+    "eslint": "^8.57.1",
+    "ssh2": "^1.17.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "overrides": {
+      "drizzle-orm": "0.38.4"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+/* Customer portal: one readable form system for stock and other destinations. */
+:root[data-theme="light"] {
+  --surface-canvas:#f3f7fc; --surface-sidebar:#fff; --surface-1:#fff;
+  --surface-2:#f5f9ff; --surface-3:#e7effc;
+  --text-1:#152c4e; --text-2:#36516f; --text-3:#526983;
+  --border:#d5e2f2; --border-strong:#a9c1e2;
+}
+:root { --portal-field-bg:#fff; --portal-field-text:#172f50; --portal-field-border:#bdcfe6; }
+.portal-shell .field-control,.portal-shell .select-control,
+.portal-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]),
+.portal-shell select,.portal-shell textarea,.modal input:not([type="checkbox"]):not([type="radio"]),.modal select,.modal textarea {
+  background:var(--portal-field-bg);color:var(--portal-field-text);border-color:var(--portal-field-border);
+  caret-color:#155ed3;color-scheme:light;min-height:48px;font-size:16px;
+}
+.portal-shell .field-control input {min-height:46px;background:transparent;border:0;}
+.portal-shell input::placeholder,.portal-shell textarea::placeholder {color:#62758e;opacity:1;}
+.portal-shell :is(input,textarea):not(:disabled) {cursor:text;}
+.portal-shell select:not(:disabled){cursor:pointer;}
+.portal-shell :is(input,select,textarea):focus-visible,.modal :is(input,select,textarea):focus-visible {outline:3px solid #2563eb55;outline-offset:2px;border-color:#2563eb;}
+.portal-shell .field-control:focus-within,.portal-shell .select-control:focus-within {border-color:#2563eb;box-shadow:0 0 0 3px #2563eb22;}
+.portal-shell input:read-only,.portal-shell textarea:read-only {background:#edf5ff;}
+.portal-shell :is(input,select,textarea):disabled {background:#eef2f8;color:#52667f;cursor:not-allowed;opacity:1;}
+.portal-shell input[type="checkbox"],.portal-shell input[type="radio"] {accent-color:#2163d4;min-width:22px;min-height:22px;}
+.erp-workspace .form-grid {padding:20px;background:var(--surface-1);border:1px solid var(--border);border-radius:16px;gap:18px;}
+.erp-workspace label {display:grid;align-content:start;gap:8px;font-size:14px;font-weight:650;color:var(--text-2);min-width:0;}
+.erp-workspace label :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea) {display:block;width:100%;min-width:0;border:1px solid var(--portal-field-border);border-radius:10px;padding:12px 14px;font:inherit;font-size:16px;font-weight:500;}
+.erp-workspace .inventory-heading {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;}
+.erp-workspace .inventory-heading h2 {font-size:22px;margin:0 0 8px;color:var(--text-1);}
+.erp-workspace .inventory-heading p {margin:0;font-size:14px;line-height:1.6;color:var(--text-2);}
+.erp-workspace .inventory-filters {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px;}
+.erp-workspace .button,.erp-workspace button:not(.icon-button),.modal .dialog-actions .button {min-height:48px;touch-action:manipulation;}
+.erp-workspace .data-table th {color:var(--text-2);background:var(--surface-2);}
+.erp-workspace .data-table td {vertical-align:middle;}
+.erp-workspace .button-danger {color:#b42335;background:#fff1f3;border-color:#efbdc5;}
+.erp-workspace .button-danger:not(:disabled):hover {background:#ffe3e8;border-color:#d77b8c;}
+.erp-workspace :is(td,th) {white-space:normal;overflow-wrap:normal;word-break:normal;}
+.erp-workspace .table-scroll {overflow-x:auto;overscroll-behavior-x:contain;}
+@media(max-width:640px){
+ .erp-workspace .inventory-heading {align-items:stretch;flex-direction:column;}
+ .erp-workspace .inventory-heading .button {width:100%;}
+ .erp-workspace .form-grid {padding:16px;grid-template-columns:1fr;}
+ .erp-workspace .button-row {flex-wrap:wrap;}
+ .modal .dialog-actions {display:grid;grid-template-columns:1fr;}
+}
+
+.portal-column,.portal-main {min-width:0;}
+.erp-bar {min-width:0;max-width:100%;overflow:hidden;}
+.erp-bar-main,.erp-bar-sub {max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;}
+@media(max-width:700px){
+ .mobile-nav {grid-template-columns:repeat(5,minmax(0,1fr));}
+ .topbar-start {flex:1;min-width:0;gap:8px;}
+ .topbar-start > div {min-width:0;}
+ .topbar-start > div strong {max-width:calc(100vw - 232px);}
+ .topbar-actions {flex-shrink:0;gap:4px;}
+}
+
+.erp-workspace input[type="file"] {display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;white-space:normal;padding:8px;border:1px solid var(--portal-field-border);border-radius:10px;background:#fff;color:#172f50;font-size:14px;cursor:pointer;}
+.erp-workspace input[type="file"]::file-selector-button {min-height:40px;max-width:100%;margin-right:8px;padding:8px 12px;border:1px solid #bed1ec;border-radius:7px;background:#edf5ff;color:#2057aa;font:inherit;cursor:pointer;}
+.erp-workspace .checkbox {display:flex;align-items:center;gap:10px;min-height:48px;}
+.erp-workspace .checkbox input {display:inline-block;width:22px;height:22px;min-height:22px;padding:0;flex-shrink:0;}
+
+.erp-workspace .table-wrap {max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;}
+.erp-workspace .data-table td strong {font-weight:650;line-height:1.5;}
+.erp-workspace .data-table td small {margin-top:5px;color:var(--text-3);line-height:1.5;}
+@media(min-width:701px){
+ .erp-workspace .data-table {min-width:720px;}
+ .erp-workspace .data-table td {font-size:14px;}
+ .erp-workspace .data-table th {font-size:12px;}
+ .erp-workspace .data-table :is(td,th):first-child {min-width:140px;}
+}

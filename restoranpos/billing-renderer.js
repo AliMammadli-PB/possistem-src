@@ -1,0 +1,10 @@
+(()=>{
+ if(!window.possistemBilling)return;
+ const panel=document.createElement('aside');panel.setAttribute('aria-label','POS abunəliyi');
+ panel.style.cssText='position:fixed;bottom:12px;left:100px;z-index:55;max-width:calc(100vw - 130px);padding:10px 14px;border:1px solid #bad1f4;background:#eaf2ff;color:#173c75;border-radius:8px;font:600 13px Montserrat,Arial,sans-serif;display:none;align-items:center;gap:12px;flex-wrap:wrap';
+ const text=document.createElement('span'),button=document.createElement('button'),hint=document.createElement('span');button.textContent='Abunəlik / ödəniş';button.type='button';button.style.cssText='min-height:42px;background:#185dce;color:white;border:0;border-radius:6px;padding:8px 14px;font:inherit;cursor:pointer';hint.setAttribute('role','status');
+ panel.append(text,button,hint);document.body.append(panel);
+ button.onclick=async()=>{button.disabled=true;hint.textContent='';try{const result=await window.possistemBilling.open();if(!result.success)hint.textContent=result.error?.message||'Ödəniş açılmadı';}catch{hint.textContent='Ödəniş açılmadı';}finally{button.disabled=false;}};
+ async function refresh(){try{const result=await window.possistemBilling.status();const data=result.data,sub=data?.subscriptions?.[0];if(!result.success||!sub){panel.style.display='none';return;}const licensePage=/activate|license/.test(location.hash+location.pathname);panel.style.display=sub.state!=='active'||licensePage?'flex':'none';text.textContent='Restoran POS · '+(sub.monthlyAmountMinor/100).toFixed(2)+' ₼ / ay · '+(sub.state==='active'?'Ödənilib':'Müddət bitib / ödəniş gözlənilir');if(data.billingOnly&&sub.state==='active')hint.textContent='Ödəniş təsdiqləndi. Hesabdan çıxıb yenidən daxil olun.';}catch{/* Offline: native signed expiry still applies. */}}
+ void refresh();setInterval(()=>{if(document.visibilityState==='visible')void refresh();},15000);window.addEventListener('hashchange',()=>void refresh());
+})();

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist.*/
+.*-check/
+.tmp/
+.data/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+graft/
