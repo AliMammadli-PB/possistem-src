@@ -13,6 +13,13 @@
 - Admin: Abunəliklər, Ödənişlər, Sifarişlər, Ödəniş parametrləri. Müştəri: Abunəlik və ödənişlər. Köhnə tarif/paket səhifələri məhsullara yönləndirilir; köhnə lisenziya funksiyaları saxlanılır.
 - Market 1.5.69 / Restoran 1.9.11: təhlükəsiz birdəfəlik brauzer keçidi ilə ödəniş; müddət əsas əməliyyat qatında yoxlanılır. Ödənilmiş tarix üçün yeni cihaz imzalı lisenziya heartbeat-də alınır. Yeni, yalnız ödəniş sessiyası ilə girən hesab ilk ödənişdən sonra bir dəfə çıxıb yenidən daxil olmalıdır; bu sessiya biznes API-lərinə giriş vermir.
 
+## Yeni quraşdırıcılar
+
+- [Market POS 1.5.69](https://possistem.az/marketpos/updates/MarketPos-Setup-1.5.69.exe)
+- [Restoran POS 1.9.11](https://possistem.az/pos-updates/Possistem-Setup-1.9.11.exe)
+
+Köhnə `pilot/.../1.5.63` linki bu buraxılış deyil. Mövcud məlumatlar qorunaraq yeni quraşdırıcı ilə yeniləyin. İstifadə olunan quraşdırıcı mənbələri GitHub-da `marketpos-v1.5.69` və `possistem-v1.9.11` tag-lərində saxlanılır; `main` paralel gələn əlavə demo/panel mənbələrini də qoruyur.
+
 ## Epoint kabinetində daxil ediləcək ünvanlar
 
 | Xana | Dəyər |
@@ -24,10 +31,11 @@
 
 1. Merchant müqaviləsi, VÖEN və bank məlumatlarını tamamlayın. API, Card Storage və recurring icazələrini Epoint ilə ayrıca təsdiqləyin.
 2. Public/private açarları chatda və GitHub-da paylaşmayın. Serverin `/var/lib/possistem-pos-control/.env` qorunan faylına `EPOINT_PUBLIC_KEY` və `EPOINT_PRIVATE_KEY` yazılmalıdır. Token şifrələmə açarı serverdə hazırlanıb, ayrıca qorunmalı və ehtiyatı saxlanılmalıdır.
+   Açarları serverdə `sudoedit /var/lib/possistem-pos-control/.env` ilə daxil edin; sonra `sudo systemctl restart possistem-pos-control` işlədin. `EPOINT_TOKEN_ENCRYPTION_KEY` artıq serverdə yaradılıb: onu dəyişməyin və qorunan ehtiyatda saxlayın. `EPOINT_LIVE_VERIFIED=false` real bank yoxlamasınadək qalmalıdır.
 3. Admin → Ödəniş parametrləri: satıcının hüquqi adı/VÖEN/ünvan/telefonu, abunəlik, məxfilik, çatdırılma və qaytarma mətnlərini yazın. Müqavilə mətnini dəyişəndə yeni versiya verin; əvvəlki versiyalar saxlanılır. Özünüz götürmə ünvanını doldurun; çatdırılma haqqı boşdursa çatdırılma açılmır.
 4. Admin → Abunəliklər: müştərini və proqramı seçin, ayrı aylıq haqqı yazın. Mövcud müddət qalır; müddətsiz lisenziyaya qoşulmada ilk ödəniş tarixi ayrıca seçilməlidir. Müştəri yaradılarkən proqram üzrə aylıq haqq tələb olunur; əlavə POS eyni proqramın mövcud abunəliyinə qoşulur.
 5. Admin → Məhsullar: satılacaq məhsulun qiymətini və stokunu özünüz təsdiqləyin. Köhnə idxal qiyməti istifadə edilmir.
-6. Epoint-in verdiyi sınaq imkanları, kiçik real ödəniş, status yoxlaması, tam geri qaytarma və yeni kartla təkrarlanan ödəniş yoxlanılmalıdır. Yalnız bundan sonra serverdə `EPOINT_LIVE_VERIFIED=true`, API restart və admin panelində onlayn ödəniş/recurring açılmalıdır. Bank açarları hələ verilmədiyi üçün bu mərhələ tamamlanmayıb və funksiyalar bağlıdır.
+6. Epoint-in verdiyi sınaq imkanları ilə qapalı sınaq mühitində, sonra nəzarətli kiçik real ödəniş, status yoxlaması, tam geri qaytarma və yeni kartla təkrarlanan ödəniş yoxlanılmalıdır. Yalnız bundan sonra serverdə `EPOINT_LIVE_VERIFIED=true`, API restart və admin panelində onlayn ödəniş/recurring açılmalıdır. Bank açarları hələ verilmədiyi üçün bu mərhələ tamamlanmayıb və funksiyalar bağlıdır.
 
 Ödəniş tarixçəsi olan müştəri silinəndə hesab arxivlənir: giriş, lisenziya və avtomatik yenilənmə bağlanır; sifarişlər və maliyyə auditi saxlanılır.
 
