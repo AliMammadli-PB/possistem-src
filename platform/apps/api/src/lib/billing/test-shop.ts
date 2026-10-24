@@ -34,7 +34,9 @@ export async function testShopContext(db:Db,req:FastifyRequest){
  const actor=testActor(req),p=await testCatalogProduct(db,req);
  if(!actor||!p)throw new BillingError('test_not_found','Sınaq məhsulu tapılmadı.',404);
  const rows=await query<Row>(db,sql`SELECT * FROM billing_test_orders WHERE actor_kind=${actor.kind} AND actor_id=${actor.id}::uuid ORDER BY created_at DESC LIMIT 10`);
- return {mode:'simulation',email:actor.email,csrfToken:actor.csrf,product:p,hostedPayment:p.price===1?hostedTestPayment():null,orders:rows.map(serialize),notice:'Aşağıdakı simulyasiya Epoint-i çağırmır, kart məlumatı almır və real pul tutmur.'};
+ const hosted=p.price===1?hostedTestPayment():null;
+ const receipt=hosted?(await query<{paid_at:string|Date;provider_invoice_id:string}>(db,sql`SELECT paid_at,provider_invoice_id FROM billing_private_hosted_receipts WHERE invoice_url_sha256=${createHash('sha256').update(hosted.url).digest('hex')} AND product_id=${p.id} AND amount_minor=${hosted.amountMinor} AND currency='AZN'`))[0]:null;
+ return {mode:'simulation',email:actor.email,csrfToken:actor.csrf,product:p,hostedPayment:hosted?{...hosted,url:receipt?null:hosted.url,status:receipt?'paid':'awaiting_payment',paidAt:receipt?.paid_at??null,invoiceId:receipt?.provider_invoice_id??null}:null,orders:rows.map(serialize),notice:'Aşağıdakı simulyasiya Epoint-i çağırmır, kart məlumatı almır və real pul tutmur.'};
 }
 export async function simulateCheckout(db:Db,req:FastifyRequest,input:{productId:string;qty:number;outcome:'success'|'failure';requestId:string}){
  const actor=testActor(req);

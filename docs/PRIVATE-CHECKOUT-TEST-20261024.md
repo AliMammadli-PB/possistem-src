@@ -9,18 +9,18 @@ Bu ünvan mövcud **admin** hesabıdır. Hesabın parolu dəyişdirilməyib, eyn
 1. Mövcud admin hesabınızla daxil olun.
 2. [Məhsullar → Sınaq](https://possistem.az/mehsul/avadanliq/?q=S%C4%B1naq) səhifəsini açın.
 3. **Sınaq məhsulu — şəxsi kart ödənişi** kartında **Test sifarişi yarat** seçin. Birbaşa keçid: [Kartla ödəniş sınağı](https://possistem.az/odenis/sinaq/).
-4. Real yoxlama üçün **Epoint ilə real kart ödənişi** bölməsində 1 AZN tutulacağını təsdiqləyin və **Kartla 1,00 ₼ ödə** seçin. Epoint fakturasından bankın kart səhifəsinə keçin.
+4. **Epoint ilə real kart ödənişi** bölməsində faktura #291546 üçün **Ödənildi** görünür. Bu faktura artıq real 1 AZN ilə ödənilib; təkrar ödəniş düyməsi çıxarılıb.
 5. Pulsuz sınaqlar üçün **Pulsuz simulyasiya və əvvəlki sınaqlar** bölməsini açın. Bu bölmə real pul tutmur və son 10 simulyasiyanı göstərir.
 
 ## Real kart ödənişi — sonrakı yoxlama
 
-İstifadəçinin CAPTCHA yoxlamasından sonra Epoint kabinetinə yenidən daxil olundu. API dəyişiklikləri hələ moderasiyadadır; kabinet yalnız açıq açarı göstərir, serverdə məxfi açar yoxdur. Bununla belə **Link ilə Ödəniş** işləyir. Kabinetdə yalnız 1 AZN-lik, birdəfəlik şəxsi yoxlama fakturası **291546** yaradıldı. SMS/email göndərilmədi. Girişsiz fakturada Possistem və 1.00 AZN təsdiqləndi; **Ödəniş** düyməsi `https://ecomm.pashabank.az` bank domenində kart formasını açdı. Kart daxil edilmədi və pul tutulmadı.
+İstifadəçinin CAPTCHA yoxlamasından sonra Epoint kabinetinə yenidən daxil olundu. API dəyişiklikləri hələ moderasiyadadır; kabinet yalnız açıq açarı göstərir, serverdə məxfi açar yoxdur. Bununla belə **Link ilə Ödəniş** işləyir. Kabinetdə yalnız 1 AZN-lik, birdəfəlik şəxsi yoxlama fakturası **291546** yaradıldı. SMS/email göndərilmədi. Girişsiz fakturada Possistem və 1.00 AZN təsdiqləndi; **Ödəniş** düyməsi `https://ecomm.pashabank.az` bank domenində kart formasını açdı. İlkin yoxlamada agent kart daxil etmədi. Sonrakı yoxlamada Epoint qəbzi ödənişin uğurunu göstərdi; ayrıca autentifikasiyalı merchant kabinetində də **291546 — 1.00 AZN — Ödənildi** təsdiqləndi. Faktiki ödəniş vaxtı 24.10.2026, 16:04:59 (Bakı). Kart məlumatları mənbəyə və bazaya yazılmadı.
 
 Faktura URL-i repo və açıq kataloqa yazılmır; qorunan server konfiqurasiyasındakı `EPOINT_PRIVATE_TEST_PAYMENT_URL` vasitəsilə yalnız icazəli hesabın checkout context-inə qaytarılır. Yalnız HTTPS, dəqiq `epoint.az` hostu və `/az/inv/p/<token>` yolu qəbul olunur; credentials, başqa port, query və fragment rədd edilir. Epoint fakturası özü paylaşılabilən linkdir: linki bilən şəxs bank səhifəsini aça bilər. Saytdakı görünmə məhdudiyyəti bank səhifəsində hesab yoxlaması demək deyil.
 
 Bu real faktura **sabit 1 AZN**-dir; simulyasiya miqdarı ona təsir etmir. Məhsulun nominal qiyməti dəyişərsə faktura seçimi gizlənir. Quraşdırılmış faktura öz-özünə yenisi ilə əvəz olunmur. Bir dəfə ödəmisinizsə, təkrar ödəməyin; nəticə Epoint kabinetində yoxlanılmalıdır.
 
-API imzalı callback/status yoxlaması hələ hazır açarlarla işləmədiyindən bu hosted ödəniş sayt sifarişini və abunəliyi avtomatik təsdiqləmir. Simulyasiya `paid` statusuna çevrilmir. API onlayn satış və recurring parametrləri bağlı, POS istifadəsi əvvəlki qaydada qalır. Avtomatik inteqrasiya üçün Epoint məxfi açarı və ayrıca real ödəniş/status/geri qaytarma yoxlaması lazımdır.
+API imzalı callback/status yoxlaması hələ hazır açarlarla işləmədiyindən bu hosted ödəniş abunəliyi avtomatik təsdiqləmir. Merchant kabinetindən ayrıca doğrulanmış real qəbz yeni `billing_private_hosted_receipts` cədvəlində saxlanılıb: dəqiq faktura URL-inin SHA-256 izi, faktura/əməliyyat identifikatorları, 100 qəpik, AZN, ödəniş və doğrulama vaxtı. Checkout həmin URL, məhsul və məbləğə uyğun qəbz tapdıqda **Ödənildi** göstərir və ödəniş URL-ini artıq qaytarmır. Simulyasiya `paid` statusuna çevrilmir. API onlayn satış və recurring parametrləri bağlı, POS istifadəsi əvvəlki qaydada qalır. Avtomatik inteqrasiya üçün Epoint məxfi açarı və ayrıca real ödəniş/status/geri qaytarma yoxlaması lazımdır.
 
 Kart rekvizitləri yalnız bank səhifəsində daxil edilir. **Pulsuz simulyasiya** üçün nominal qiymət 1 AZN/ədəd, real tutulma 0 AZN-dir.
 
@@ -46,8 +46,10 @@ Sınağı sonradan bağlamaq üçün yalnız `billing_test_products` daxilində 
 
 ## Hosted faktura əlavəsinin yoxlanması
 
-- API və Next production build-ləri yerli və serverdə keçdi; ayrıca PostgreSQL bazasında **28 test** keçdi. Yeni yoxlama faktura URL-inin host/yol məhdudiyyətlərini, yalnız icazəli context-dən görünməsini və yanlış URL-in gizlənməsini əhatə edir.
-- Chromium 151 ilə canlı səhifədə anonim 404, Ali hesabına real fakturanın göstərilməsi, ayrıca məbləğ təsdiqi olmadan düymənin bağlı olması, təsdiqdən sonra dəqiq Epoint fakturasına keçid, çıxışdan sonra 404 və 360/390/1366 px görünüşləri yoxlanıldı. Bank tutulması/3DS və geri qaytarma həyata keçirilməyib.
-- Şəkillər: `artifacts/epoint-real-payment-20261024/` (iş sahəsinin kökündə). Yeni DB miqrasiyası tələb olunmur.
+- API və Next production build-ləri yerli və serverdə keçdi; ayrıca PostgreSQL bazasında **29 test** keçdi. Yeni yoxlama faktura URL-inin host/yol məhdudiyyətlərini, yalnız icazəli context-dən görünməsini və yanlış URL-in gizlənməsini əhatə edir.
+- Chromium 151 ilə canlı səhifədə anonim 404, Ali hesabına real fakturanın göstərilməsi, ayrıca məbləğ təsdiqi olmadan düymənin bağlı olması, təsdiqdən sonra dəqiq Epoint fakturasına keçid, çıxışdan sonra 404 və 360/390/1366 px görünüşləri yoxlanıldı. Daha sonra Epoint qəbzi və merchant kabinetindən real 1 AZN tutulması təsdiqləndi; səhifədə **Ödənildi** və təkrar ödəniş düyməsinin olmaması yoxlanıldı. Agent kart daxil etmədi. Geri qaytarma sınağı aparılmayıb.
+- Şəkillər: `artifacts/epoint-real-payment-20261024/` (iş sahəsinin kökündə). Miqrasiya `0045_private_hosted_receipts.sql` real qəbzlər üçün ayrıca audit cədvəli yaradır; simulyasiya cədvəli və abunəlik qrantları dəyişmir.
 - API əvvəlki yığımı və qorunan env ehtiyatı `/opt/possistem-pos-control/backups/hosted-payment-20261024/`, əvvəlki Next yığımı `/var/www/possistem/.hosted-payment-20261024/.next` altındadır.
 - Bu seçimi bağlamaq üçün env-dən `EPOINT_PRIVATE_TEST_PAYMENT_URL` silinib API yenidən başladılır; faktura ayrıca Epoint kabinetindən ləğv edilə bilər. Simulyasiya isə əvvəlki kimi ayrıca qalır.
+
+Real qəbzdən sonra əvvəlki Next yığımı `/var/www/possistem/.hosted-receipt-20261024/.next` altında saxlanıldı. Miqrasiyadan əvvəl DB ehtiyatı `backups/hosted-payment-20261024/pre-receipt-migration.dump` faylıdır (serverdə, root 0600).

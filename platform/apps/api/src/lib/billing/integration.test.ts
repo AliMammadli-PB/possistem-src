@@ -1,6 +1,6 @@
 import test,{before,after,beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { mkdtempSync,writeFileSync,readFileSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -50,9 +50,10 @@ before(async()=>{
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0042_epoint_billing.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0043_security_subscription_rollout.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0044_private_checkout_test.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0045_private_hosted_receipts.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
-  await db.$client.unsafe('TRUNCATE billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
+  await db.$client.unsafe('TRUNCATE billing_private_hosted_receipts,billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
   await db.execute(sql`INSERT INTO customers(id,name,email) VALUES(${cid}::uuid,'Fixture owner','fixture@example.invalid'),(${other}::uuid,'Other owner','other@example.invalid')`);
   await db.execute(sql`UPDATE billing_settings SET enforcement_enabled=true,enabled=true,recurring_enabled=true,pickup_address='Fixture pickup',delivery_fee_minor=NULL,legal='{"version":"v1"}'::jsonb`);
   sent=[];responseMode='redirect';
@@ -266,6 +267,17 @@ test('private test product is visible only to its authenticated account, never t
   process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL='https://evil.invalid/pay';
   assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}})).json().hostedPayment,null);
  }finally{if(priorHostedUrl===undefined)delete process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL;else process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL=priorHostedUrl;await app.close();}
+});
+test('manually verified hosted receipt closes the exact invoice without changing simulation or subscription records',async()=>{
+ const app=await privateTestApp(),prior=process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL,url='https://epoint.az/az/inv/p/Fixture123';process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL=url;
+ try{
+  await db.execute(sql`INSERT INTO billing_private_hosted_receipts(invoice_url_sha256,product_id,provider_invoice_id,provider_transaction_id,amount_minor,paid_at,verification_source) VALUES(${createHash('sha256').update(url).digest('hex')},'possistem-private-checkout-test','123','fixture-transaction',100,now(),'epoint_merchant_dashboard')`);
+  const context=(await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}})).json();assert.equal(context.hostedPayment.status,'paid');assert.equal(context.hostedPayment.url,null);assert.equal(context.hostedPayment.invoiceId,'123');assert.ok(context.hostedPayment.paidAt);assert.equal(context.orders.length,0);
+  assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureOther'}})).statusCode,404);
+  process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL='https://epoint.az/az/inv/p/OtherInvoice';
+  assert.equal((await app.inject({url:'/pos/api/billing/test/context',headers:{authorization:'FixtureAli'}})).json().hostedPayment.status,'awaiting_payment','receipt cannot mark a different invoice as paid');
+  for(const table of ['billing_orders','billing_period_grants','billing_subscriptions','billing_test_orders'])assert.equal((await db.$client.unsafe('SELECT * FROM '+table)).length,0,table);
+ }finally{if(prior===undefined)delete process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL;else process.env.EPOINT_PRIVATE_TEST_PAYMENT_URL=prior;await app.close();}
 });
 test('keyless test checkout is CSRF-protected, idempotent and cannot write real payments, stock or subscriptions',async()=>{
  const {TEST_PRODUCT_ID}=await import('./test-shop.js'),app=await privateTestApp();
