@@ -66,7 +66,13 @@ for (let attempt = 1; attempt <= 5 && !uploaded; attempt += 1) {
   if (!uploaded) console.error(`[publish] upload attempt ${attempt} failed, retrying`);
 }
 if (!uploaded) throw new Error('upload failed');
-if(!run('ssh',['pos',`mkdir -p ${feed}/v/${version}`])||!run('scp',['-q',signed,`pos:${feed}/v/${version}/signed.json`]))throw Error('Signed manifest publication failed; feed unchanged.');
+if(!run('ssh',['pos',`mkdir -p ${feed}/v/${version} && chmod 755 ${feed}/v ${feed}/v/${version}`])||!run('scp',['-q',signed,`pos:${feed}/v/${version}/signed.json`]))throw Error('Signed manifest publication failed; feed unchanged.');
+// Check the same public URL the installed app uses BEFORE switching the feed.
+const publicFeed={restaurant:'pos-updates',market:'marketpos/updates',geyim:'geyimpos/updates',aptek:'aptekpos/updates',topdan:'topdanpos/updates'}[app];
+const probe=await fetch(`https://possistem.az/${publicFeed}/v/${version}/signed.json`,{headers:{'user-agent':'Mozilla/5.0 Possistem-Signed-Updater/'+app,'cache-control':'no-cache'},signal:AbortSignal.timeout(15000),redirect:'error'});
+if(!probe.ok)throw Error(`Public signed manifest is unavailable (${probe.status}); feed unchanged.`);
+const exposed=await probe.json();
+if(JSON.stringify(exposed)!==JSON.stringify({payload,signature}))throw Error('Public signed manifest mismatch; feed unchanged.');
 if (!run('scp', ['-q', path.join(release, 'latest.yml'), `pos:${feed}/latest.yml.new`])) throw new Error('latest.yml upload failed');
 
 const remote = [
