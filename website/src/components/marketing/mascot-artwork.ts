@@ -1,4 +1,4 @@
-/** Original user-provided V3 artwork; only transparent margins and file encoding are optimized. */
+/** Original V3 body and arm artwork. The resting left hand mirrors the relaxed right arm. */
 export const MASCOT_ASSET_ROOT='/assets/support-mascot/v3-20261023';
 export const MASCOT_ASSETS=['body','left','right'] as const;
 /** A trusted, code-owned SVG template shared by React and the downloadable motion studio. */
@@ -23,7 +23,7 @@ export function mascotArtwork(prefix:string){
  <ellipse cx="456" cy="432" rx="15" ry="17" fill="#0b2c5c"/>
  <image data-asset="body" data-src="${MASCOT_ASSET_ROOT}/robot-body-v3.webp" data-fallback="${MASCOT_ASSET_ROOT}/robot-body-v3.png" x="19.5" y="36.5" width="591.5" height="590.5" mask="url(#${id}-bodyMask)"/>
  <g data-part="cup" opacity="0"><path d="M-43-52h44l-3 50q-20 10-39-2Z" fill="#eff8ff" stroke="#73adf1" stroke-width="3"/><path d="M1-43q25 0 18 18q-4 10-19 8" fill="none" stroke="#9dcdff" stroke-width="6"/><path d="M-34-31h23" stroke="#2e8ee0" stroke-width="4"/><g data-part="steam" stroke="#9dd6f5" stroke-width="3" fill="none" stroke-linecap="round"><path d="M-29-61q-7-9 2-17m12 17q-7-9 2-17"/></g></g>
- <g data-part="left"><image data-asset="left" data-src="${MASCOT_ASSET_ROOT}/robot-left-v3.webp" data-fallback="${MASCOT_ASSET_ROOT}/robot-left-v3.png" x="59" y="288.5" width="138.5" height="158"/></g>
+ <g data-part="left"><g transform="translate(654 -41) scale(-1 1)"><image data-asset="left" data-src="${MASCOT_ASSET_ROOT}/robot-right-v3.webp" data-fallback="${MASCOT_ASSET_ROOT}/robot-right-v3.png" x="442" y="398.5" width="124" height="154"/></g></g>
  <g data-part="right"><image data-asset="right" data-src="${MASCOT_ASSET_ROOT}/robot-right-v3.webp" data-fallback="${MASCOT_ASSET_ROOT}/robot-right-v3.png" x="442" y="398.5" width="124" height="154"/></g>
  <g clip-path="url(#${id}-visor)" filter="url(#${id}-glow)">
  <g transform="translate(262 252) rotate(7)"><g data-part="eye-left" clip-path="url(#${id}-blinkL)"><ellipse data-part="eye-white-left" rx="28" ry="36" fill="url(#${id}-eye)"/><g clip-path="url(#${id}-eyeL)"><g data-part="pupil-left"><ellipse cx="3" cy="3" rx="12" ry="27" fill="#081c54"/><ellipse cx="7" cy="-17" rx="5" ry="7" fill="#fff"/></g></g></g><path data-part="lid-left" d="M-25 0Q0-8 25 0" fill="none" stroke="#69f5ff" stroke-width="7" stroke-linecap="round" opacity="0"/></g>
