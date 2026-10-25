@@ -37,7 +37,7 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
         )}
       </Link>
       <div className="hardware-card-body">
-        {product.isTest&&<p className="hardware-card-meta"><strong>Şəxsi sınaq · real pul tutulmur</strong></p>}
+        {product.isTest&&<p className="hardware-card-meta"><strong>Şəxsi sınaq məhsulu</strong></p>}
         {product.category ? <p className="hardware-card-meta">{product.category}</p> : null}
         <h3>
           <Link href={href}>{product.name}</Link>
@@ -57,11 +57,9 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
             >
               {available?(language==='ru'?'В корзину':language==='en'?'Add to cart':'Səbətə əlavə et'):(language==='ru'?'Нет в наличии':language==='en'?'Out of stock':'Stokda yoxdur')}
             </button>
-          ) : (
-            <button type="button" className="marketing-button secondary" disabled>Hələ satışda deyil</button>
-          )}
+          ) : null}
           <Link className="marketing-button secondary" href={href}>
-            {t('hardware.cta.details')}
+            {t('hardware.cta.details')} <span aria-hidden="true">→</span>
           </Link>
         </div>
       </div>
