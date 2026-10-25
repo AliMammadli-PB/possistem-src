@@ -75,7 +75,15 @@ html,body{overflow-x:clip}
 .ps-hero .ps-proof{border-top-color:var(--border-strong)}
 .ps-hero .ps-proof li{color:var(--text)}
 .ps-hero .ps-proof li+li{border-left-color:var(--border-strong);border-top-color:var(--border-strong)}
-.ps-hero .ps-proof svg{background:var(--blue-soft);color:var(--blue)}
+.ps-hero .ps-proof li>a{display:flex;align-items:center;gap:inherit;width:100%;min-height:36px;color:inherit;text-decoration:none;border-radius:6px;transition:color .18s}
+.ps-proof li>a:hover{color:var(--blue)}
+.ps-proof li>a:hover>svg:first-child{transform:translateY(-2px);background:var(--surface-3)}
+.ps-proof li>a>svg:first-child{transition:transform .18s,background .18s}
+.ps-proof li>a .ps-proof-arrow{width:14px;height:14px;padding:0;background:transparent;border-radius:0;margin-left:auto;opacity:0;transform:translate(-3px,3px);transition:opacity .18s,transform .18s}
+.ps-proof li>a:hover .ps-proof-arrow,.ps-proof li>a:focus-visible .ps-proof-arrow{opacity:1;transform:none}
+@media(hover:none){.ps-proof li>a .ps-proof-arrow{opacity:.7;transform:none}}
+@media(prefers-reduced-motion:reduce){.ps-proof li>a,.ps-proof li>a>svg:first-child,.ps-proof li>a .ps-proof-arrow{transition:none}.ps-proof li>a:hover>svg:first-child{transform:none}}
+.ps-proof svg{background:var(--blue-soft);color:var(--blue)}
 .ps-hero-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:64px}
 .ps-home h1{color:var(--text);font:800 clamp(36px,4.5vw,70px)/1.02 var(--display);letter-spacing:-.045em;margin:0 0 28px;overflow-wrap:anywhere;min-width:0}
 .ps-home h1 .ps-mark{color:inherit;background:linear-gradient(var(--signal),var(--signal)) 0 94%/100% .13em no-repeat;padding-inline:.04em}

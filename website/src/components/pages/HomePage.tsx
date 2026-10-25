@@ -8,6 +8,7 @@ import {useI18n} from '@/components/providers/I18nProvider';
 import {ArrowUpRight,Play,Check,Smartphone,Monitor,WifiOff,Transfer} from '@/components/marketing/DesignIcons';
 import {HOME_COPY} from './HomeContent';
 const FACT_ICONS=[WifiOff,Transfer,Smartphone,Monitor];
+const FACT_LINKS=['/melumatlar/#internetsiz','/melumatlar/#filiallar','/melumatlar/#filiallar','/melumatlar/#sistemler'];
 export function HomePage(){
  const {language}=useI18n();const c=HOME_COPY[language];
  useEffect(()=>{
@@ -31,7 +32,7 @@ export function HomePage(){
             <HeroSlider />
           </div>
         </div>
-        <div className="marketing-container"><ul className="ps-proof">{c.facts.map((x, i) => { const Icon = FACT_ICONS[i] ?? Check; return <li key={x}><Icon width={24} height={24} />{x}</li>; })}</ul></div>
+        <div className="marketing-container"><ul className="ps-proof">{c.facts.map((x, i) => { const Icon = FACT_ICONS[i] ?? Check; return <li key={x}><Link href={FACT_LINKS[i]}><Icon width={24} height={24} /><span>{x}</span><ArrowUpRight className="ps-proof-arrow" aria-hidden="true"/></Link></li>; })}</ul></div>
       </section>
     </div>
  </MarketingLayout>;

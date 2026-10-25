@@ -14,6 +14,7 @@ import {
   catalogHref,
   filterCatalogProducts,
 } from '@/lib/catalog-tree';
+import { SiteSearch } from './SiteSearch';
 import { HardwareCard } from './HardwareCard';
 import './catalog.css';
 
@@ -83,9 +84,7 @@ export function HardwareCatalog() {
   return (
     <div className="catalog-shell">
       <header className="catalog-heading"><div><p>POSSİSTEM / {language==='az'?'MAĞAZA':language==='ru'?'МАГАЗИН':'SHOP'}</p><h1>{copy.title}</h1><span>{copy.intro}</span></div><a href="/pos/app/sifarisler" className="catalog-orders">{copy.orders}<span aria-hidden="true">↗</span></a></header>
-      <form className="catalog-searchbar" role="search" onSubmit={event=>{event.preventDefault();router.replace(catalogHref({parent:parentSlug,category:categorySlug,q:searchDraft,page:1}),{scroll:false});}}>
-        <label className="catalog-search-field"><svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span className="sr-only">{t('hardware.search.label')}</span><input type="search" value={searchDraft} onChange={event=>setSearchDraft(event.target.value)} placeholder={t('hardware.search.placeholder')} autoComplete="off"/>{searchDraft&&<button type="button" className="catalog-clear" onClick={()=>setSearchDraft('')} aria-label={copy.clear}>×</button>}</label><button className="catalog-search-submit" type="submit">{copy.search}</button>
-      </form>
+      <SiteSearch variant="catalog" value={searchDraft} onChange={setSearchDraft} products={products} onSearch={q=>router.replace(catalogHref({parent:'all',q,page:1}),{scroll:false})}/>
       <div className="catalog-layout">
       <aside className="catalog-sidebar" aria-label={copy.departments}>
         <h2>{copy.departments}</h2><nav aria-label={copy.departments}><Link href={catalogHref({parent:'all',q:query})} aria-current={parentSlug==='all'?'page':undefined}>{t('hardware.cat.all')}<span>{products.length}</span></Link>{tree.map(dept=><Link key={dept.slug} href={catalogHref({parent:dept.slug,q:query})} aria-current={parentSlug===dept.slug?'page':undefined}>{dept.name}<span>{dept.count}</span></Link>)}</nav>

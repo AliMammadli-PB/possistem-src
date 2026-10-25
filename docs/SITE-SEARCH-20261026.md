@@ -1,0 +1,13 @@
+# Public navigation, site search and store footer
+
+The four homepage feature labels are links to the corresponding information sections. Hover and keyboard focus provide a color/arrow cue; reduced-motion preferences suppress movement. Windows opens the applications section, offline sales the offline section, and branches/mobile the owner-and-branches section.
+
+The oversized dark store assistance CTA is replaced by a compact, theme-aware help strip linking to support and installation. One shared footer remains.
+
+SiteSearch is shared by desktop header, mobile menu and the catalog's existing single input. Localized pages/services are available independently of the product API; products are fetched only after typing, and the catalog reuses its existing products. Suggestions cover support, store, information, demo, setup/downloads, Windows/mobile, offline/warehouse, market/restaurant, partners/contact, releases, login, orders, billing and terms. Product suggestions use real names, brands, SKUs and categories and link to details. Private test products are excluded from suggestions.
+
+Search normalizes Azerbaijani letters/diacritics and supports common English, Azerbaijani and Russian aliases. Bounded edit distance handles misspellings and adjacent-letter swaps; fuzzy results display an explicit correction prompt. This is a deterministic navigation/catalog index, not full-text access to private customer data. Unmatched queries offer all-store results. The dropdown supports arrows, Enter, Escape, pointer dismissal and keyboard focus; failed catalog requests leave service navigation working and offer retry.
+
+Preserved: existing URLs, authorization, prices, stock, checkout, add-to-cart actions, account menus, theme and the single catalog input. No dependencies or backend/database changes.
+
+Validation: Next.js 15.5.28 production build/type checks passed. Chromium 151.0.7922.34 checks passed at 390, 768 and 1480 px: support/dəstək/destek/поддержка aliases, dsetek/supprot correction, actual-format SKU suggestions, private-test exclusion, arrow/Enter and Escape, information anchors, one footer, compact help under 150 px on desktop, one catalog search, no mobile/tablet horizontal overflow and public-catalog failure fallback. Browser fixtures replaced only the public catalog response; production prices or payments were not changed. Screenshots were inspected in the workspace artifacts/site-search-20261026 directory. Other browser engines and physical phones were not tested.
