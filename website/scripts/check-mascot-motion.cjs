@@ -12,7 +12,7 @@ new Function('require', 'exports', 'module', code)((name) => {
   assert.equal(name, '@/lib/ui-diagnostics');
   return { reportUiState() {} };
 }, moduleValue.exports, moduleValue);
-const { MASCOT_SCENES, AUTO_SCENES, mascotPose, sceneDuration, sceneGap, cycleScene } = moduleValue.exports;
+const { MASCOT_SCENES, AUTO_SCENES, mascotPose, sceneDuration, sceneGap, cycleScene, mascotGaze } = moduleValue.exports;
 let samples = 0;
 for (const scene of MASCOT_SCENES) {
   const duration = sceneDuration(scene);
@@ -46,3 +46,23 @@ for (let time = 0; time < cycleLength; time += 20) {
 assert.deepEqual([...reached], [...AUTO_SCENES], 'Every automatic gesture is reachable in order');
 assert.equal(cycleScene(cycleLength).scene, AUTO_SCENES[0], 'Cycle loops cleanly');
 console.log(`Mascot checks passed: ${MASCOT_SCENES.length} scenes, ${samples} poses, ${reached.size} automatic gestures.`);
+
+const bounds = { left: 100, top: 120, width: 96, height: 100 };
+const eyeX = bounds.left + bounds.width * 328 / 627;
+const eyeY = bounds.top + bounds.height * 260 / 650;
+for (const dx of [-10000, -500, 0, 500, 10000]) {
+  for (const dy of [-10000, -500, 0, 500, 10000]) {
+    const gaze = mascotGaze(eyeX + dx, eyeY + dy, bounds);
+    assert.ok(Object.values(gaze).every(Number.isFinite), 'Finite pointer gaze');
+    assert.ok((gaze.x / 9) ** 2 + (gaze.y / 6) ** 2 <= 1.00001, 'Pupils stay inside the gaze cone');
+    assert.ok(Math.abs(gaze.leanX) <= 1 && Math.abs(gaze.leanY) <= 1, 'Bounded depth tilt');
+  }
+}
+assert.ok(mascotGaze(eyeX - 500, eyeY, bounds).x < 0, 'Looks left');
+assert.ok(mascotGaze(eyeX + 500, eyeY, bounds).x > 0, 'Looks right');
+assert.ok(mascotGaze(eyeX, eyeY - 500, bounds).y < 0, 'Looks up');
+assert.ok(mascotGaze(eyeX, eyeY + 500, bounds).y > 0, 'Looks down');
+assert.deepEqual(mascotGaze(eyeX, eyeY, bounds), { x: 0, y: 0, leanX: 0, leanY: 0 });
+assert.deepEqual(mascotGaze(NaN, 10, bounds), { x: 0, y: 0, leanX: 0, leanY: 0 });
+assert.deepEqual(mascotGaze(10, 10, { ...bounds, width: 0 }), { x: 0, y: 0, leanX: 0, leanY: 0 });
+console.log('Pointer gaze checks passed: directions, neutral return, eye bounds and invalid inputs.');

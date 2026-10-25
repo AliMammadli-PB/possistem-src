@@ -68,6 +68,14 @@ const blendPose=(from:RobotPose,to:RobotPose,progress:number)=>{const p={...to},
 export type MascotState={gesture:MascotGesture;motion:EffectiveMotion;preference:MascotMotion};
 export type MascotController=(()=>void)&{play:(scene:MascotGesture)=>void;seek:(scene:MascotGesture,elapsed:number)=>void};
 
+export type MascotGaze={x:number;y:number;leanX:number;leanY:number};
+/** A bounded gaze cone in the eyes' local seven-degree coordinate system. */
+export function mascotGaze(clientX:number,clientY:number,bounds:Pick<DOMRect,'left'|'top'|'width'|'height'>):MascotGaze{
+ if(![clientX,clientY,bounds.left,bounds.top,bounds.width,bounds.height].every(Number.isFinite)||bounds.width<=0||bounds.height<=0)return{x:0,y:0,leanX:0,leanY:0};
+ const dx=clientX-(bounds.left+bounds.width*328/627),dy=clientY-(bounds.top+bounds.height*260/650),distance=Math.hypot(dx,dy,160),angle=7*Math.PI/180;
+ return{x:9*(dx*Math.cos(angle)+dy*Math.sin(angle))/distance,y:6*(-dx*Math.sin(angle)+dy*Math.cos(angle))/distance,leanX:dx/distance,leanY:dy/distance};
+}
+
 export function startMascotAnimation(svg:SVGSVGElement,read:()=>MascotState):MascotController{
  const parts=new Map<string,SVGElement>();svg.querySelectorAll<SVGElement>('[data-part]').forEach(e=>parts.set(e.dataset.part!,e));
  const attr=(name:string,key:string,value:string|number)=>parts.get(name)?.setAttribute(key,String(value));
@@ -77,11 +85,34 @@ export function startMascotAnimation(svg:SVGSVGElement,read:()=>MascotState):Mas
  const native=typeof window.requestAnimationFrame==='function',now=()=>typeof performance!=='undefined'?performance.now():Date.now();
  const request=(cb:FrameRequestCallback)=>native?window.requestAnimationFrame(cb):window.setTimeout(()=>cb(now()),33);
  const cancel=(id:number)=>native?window.cancelAnimationFrame(id):window.clearTimeout(id);
+ const pointerEvent=typeof window.PointerEvent==='function'?'pointermove':'mousemove';
+ let pointer:{x:number;y:number}|null=null,bounds:DOMRect|null=null,boundsDirty=true;
+ let gaze: MascotGaze={x:0,y:0,leanX:0,leanY:0},gazeWeight=0;
+ let perspective=false;try{perspective=typeof CSS!=='undefined'&&CSS.supports('transform','perspective(600px) rotateY(1deg)');}catch{/* Flat browsers retain the material lighting. */}
+ const clearPointer=()=>{pointer=null;};
+ const followPointer=(event:Event)=>{const e=event as PointerEvent;if(e.pointerType&&e.pointerType!=='mouse'&&e.pointerType!=='pen'){clearPointer();return;}if(read().motion!=='full'||document.visibilityState==='hidden')return;if(Number.isFinite(e.clientX)&&Number.isFinite(e.clientY))pointer={x:e.clientX,y:e.clientY};};
+ const leavePointer=(event:Event)=>{if(!(event as MouseEvent).relatedTarget)clearPointer();};
+ const touchPointer=(event:Event)=>{if((event as PointerEvent).pointerType==='touch')clearPointer();};
+ const invalidateBounds=()=>{boundsDirty=true;};
+ const updateGaze=(delta:number,enabled:boolean)=>{
+  if(boundsDirty||!bounds){bounds=svg.getBoundingClientRect();boundsDirty=false;}
+  const target=enabled&&pointer?mascotGaze(pointer.x,pointer.y,bounds):{x:0,y:0,leanX:0,leanY:0};
+  const weight=1-Math.exp(-delta/110);for(const key of ['x','y','leanX','leanY'] as const)gaze[key]+=(target[key]-gaze[key])*weight;
+  gazeWeight+=((enabled&&pointer?1:0)-gazeWeight)*weight;
+ };
+
  const draw=(p:RobotPose,clock=total)=>{
+  const tracking=read().motion==='full'&&!manual?.freeze,weight=tracking?gazeWeight:0;
+  const eyeX=clamp(p.lookX*(1-weight)+gaze.x*weight,-9,9),eyeY=clamp(p.lookY*(1-weight)+gaze.y*weight,-6,6);
+  const lightX=tracking?gaze.leanX:0,lightY=tracking?gaze.leanY:0;
+  svg.style.transform=perspective&&tracking?`perspective(600px) rotateX(${n(-lightY*4)}deg) rotateY(${n(lightX*5)}deg)`:'none';
+  svg.dataset.gaze=tracking&&pointer?'tracking':'rest';svg.dataset.depth=perspective?'perspective':'lighting';
+  attr('visor-light','cx',n(255+lightX*60));attr('visor-light','cy',n(205+lightY*40));
+  attr('shell-light','cx',n(272+lightX*45));attr('shell-light','cy',n(428+lightY*30));
   attr('rig','transform',`translate(${n(p.x)} ${n(p.y)}) rotate(${n(p.tilt)} 313.5 390) translate(313.5 390) scale(${n(p.scale)}) translate(-313.5 -390)`);
   attr('shadow','rx',n(clamp(132+p.y*.5,112,144)));attr('shadow','opacity',n(clamp(.14+p.y*.002,.08,.18)));
   attr('left','transform',`rotate(${n(p.left)} 203 385)`);attr('right','transform',`rotate(${n(p.right)} 451 426)`);
-  for(const side of ['left','right'] as const){const opening=side==='left'?p.eyeL:p.eyeR;const radius=side==='left'?36:31;attr(`aperture-${side}`,'y',n(-radius*opening));attr(`aperture-${side}`,'height',n(2*radius*opening));attr(`eye-white-${side}`,'ry',n(radius*Math.max(1,opening)));opacity(`eye-${side}`,opening<.09?0:1);opacity(`lid-${side}`,opening<.09?1:0);attr(`pupil-${side}`,'transform',`translate(${n(p.lookX)} ${n(p.lookY)})`);}
+  for(const side of ['left','right'] as const){const opening=side==='left'?p.eyeL:p.eyeR;const radius=side==='left'?36:31;attr(`aperture-${side}`,'y',n(-radius*opening));attr(`aperture-${side}`,'height',n(2*radius*opening));attr(`eye-white-${side}`,'ry',n(radius*Math.max(1,opening)));opacity(`eye-${side}`,opening<.09?0:1);opacity(`lid-${side}`,opening<.09?1:0);attr(`pupil-${side}`,'transform',`translate(${n(eyeX)} ${n(eyeY)})`);attr(`glint-${side}`,'transform',`translate(${n(-lightX*1.8)} ${n(-lightY*1.2)})`);}
   const s=p.smile,open=p.mouth;
   const mouth=p.oh>.1?`M302 303C302 ${n(287-7*p.oh)} 329 ${n(287-7*p.oh)} 329 303C329 ${n(319+5*p.oh)} 302 ${n(319+5*p.oh)} 302 303Z`:s<0?`M293 309Q315 ${n(309+27*s)} 337 309`:s<.5?`M303 305Q315 ${n(306+9*s)} 328 304`:`M290 295Q315 ${n(301+7*s)} 340 294Q334 ${n(307+9*s+12*open)} 315 ${n(308+9*s+12*open)}Q297 ${n(309+5*s)} 290 295Z`;
   attr('mouth','d',mouth);attr('mouth','fill',s<.5&&p.oh<=.1?'none':`url(#${svg.dataset.artworkId}-eye)`);attr('mouth','stroke-width',s<.5?5:2);
@@ -96,9 +127,9 @@ export function startMascotAnimation(svg:SVGSVGElement,read:()=>MascotState):Mas
   attr('scan','transform',`translate(0 ${n(22*Math.sin(clock/600))})`);
   attr('speech','transform',`translate(${n(2*Math.sin(clock/430))} ${n(-3*Math.sin(clock/390))})`);
  };
- const publish=(state:MascotState,scene:string,index:number,stage:string)=>{let reduced=false;try{reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;}catch{/* Optional browser API. */}reportUiState('mascot',{gesture:scene,motion:state.motion,preference:state.preference,engine:native?'raster-svg-raf':'raster-svg-timer',sceneIndex:index+1,sceneCount:MASCOT_SCENES.length,cycleSceneCount:AUTO_SCENES.length,playbackRate:state.motion==='full'?MASCOT_PLAYBACK_RATE:1,targetFps:state.motion==='full'?60:20,stage,frameCount:frames,elapsedMs:Math.round(total),eyeLeft:n(pose.eyeL),eyeRight:n(pose.eyeR),loadedAssets,failedAssets,systemReduced:reduced,visible:document.visibilityState!=='hidden',running:!disposed&&state.motion!=='off'&&document.visibilityState!=='hidden'});};
+ const publish=(state:MascotState,scene:string,index:number,stage:string)=>{let reduced=false;try{reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;}catch{/* Optional browser API. */}reportUiState('mascot',{gesture:scene,motion:state.motion,preference:state.preference,engine:native?'raster-svg-raf':'raster-svg-timer',sceneIndex:index+1,sceneCount:MASCOT_SCENES.length,cycleSceneCount:AUTO_SCENES.length,gaze:pointer&&state.motion==='full'?'tracking':'rest',gazeX:n(gaze.x),gazeY:n(gaze.y),depth:perspective?'perspective':'lighting',playbackRate:state.motion==='full'?MASCOT_PLAYBACK_RATE:1,targetFps:state.motion==='full'?60:20,stage,frameCount:frames,elapsedMs:Math.round(total),eyeLeft:n(pose.eyeL),eyeRight:n(pose.eyeR),loadedAssets,failedAssets,systemReduced:reduced,visible:document.visibilityState!=='hidden',running:!disposed&&state.motion!=='off'&&document.visibilityState!=='hidden'});};
  const tick=(stamp:number)=>{
-  if(disposed)return;const state=read(),delta=(last===null?0:clamp(stamp-last,0,80))*(state.motion==='full'?MASCOT_PLAYBACK_RATE:1);last=stamp;total+=delta;activity+=delta;transition+=delta;
+  if(disposed)return;const state=read(),wallDelta=last===null?0:clamp(stamp-last,0,80),delta=wallDelta*(state.motion==='full'?MASCOT_PLAYBACK_RATE:1);last=stamp;updateGaze(wallDelta,state.motion==='full'&&!manual?.freeze);total+=delta;activity+=delta;transition+=delta;
   if(state.gesture!==previous){previous=state.gesture;activity=0;}
   if(state.gesture==='cycle'&&state.motion==='full'&&!manual)cycle+=delta;
   if(manual&&!manual.freeze)manual.elapsed+=delta;
@@ -118,11 +149,12 @@ export function startMascotAnimation(svg:SVGSVGElement,read:()=>MascotState):Mas
   }
   handle=request(tick);
  };
- const visibility=()=>{cancel(handle);last=null;if(!disposed&&document.visibilityState!=='hidden')handle=request(tick);else publish(read(),previousScene,0,'hidden');};
+ const visibility=()=>{clearPointer();cancel(handle);last=null;if(!disposed&&document.visibilityState!=='hidden')handle=request(tick);else publish(read(),previousScene,0,'hidden');};
  const load=(image:SVGImageElement,url:string,fallback?:string)=>{const probe=new Image();probe.onload=()=>{if(disposed)return;image.setAttribute('href',url);loadedAssets++;if(loadedAssets===3){opacity('art',1);opacity('placeholder',0);svg.dataset.ready='true';}};probe.onerror=()=>{if(disposed)return;if(fallback){failedAssets++;load(image,fallback);}else{failedAssets++;svg.dataset.assetError='true';}};probe.src=url;};
  svg.querySelectorAll<SVGImageElement>('image[data-src]').forEach(image=>load(image,image.dataset.src!,image.dataset.fallback));
+ window.addEventListener(pointerEvent,followPointer,{passive:true});window.addEventListener('pointerdown',touchPointer,{passive:true});window.addEventListener('blur',clearPointer);document.addEventListener('pointerout',leavePointer,{passive:true});document.addEventListener('mouseleave',leavePointer);window.addEventListener('resize',invalidateBounds,{passive:true});window.addEventListener('scroll',invalidateBounds,true);
  draw(pose);document.addEventListener('visibilitychange',visibility);if(document.visibilityState!=='hidden')handle=request(tick);
- const cleanup=(()=>{disposed=true;cancel(handle);document.removeEventListener('visibilitychange',visibility);publish(read(),previousScene,0,'detached');}) as MascotController;
+ const cleanup=(()=>{disposed=true;cancel(handle);document.removeEventListener('visibilitychange',visibility);window.removeEventListener(pointerEvent,followPointer);window.removeEventListener('pointerdown',touchPointer);window.removeEventListener('blur',clearPointer);document.removeEventListener('pointerout',leavePointer);document.removeEventListener('mouseleave',leavePointer);window.removeEventListener('resize',invalidateBounds);window.removeEventListener('scroll',invalidateBounds,true);svg.style.removeProperty('transform');publish(read(),previousScene,0,'detached');}) as MascotController;
  cleanup.play=scene=>{manual={scene,elapsed:0,freeze:false};from=pose;previousScene='';transition=0;last=null;};
  cleanup.seek=(scene,elapsed)=>{manual={scene,elapsed:clamp(elapsed,0,sceneDuration(scene)),freeze:true};from=pose;previousScene='';transition=0;};
  return cleanup;
