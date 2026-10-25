@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import './home-layout.css';
+import './commerce.css';
 import { UiDiagnostics } from './UiDiagnostics';
 import { SiteFooter } from '@/components/marketing/SiteFooter';
 import { SiteHeader } from '@/components/marketing/SiteHeader';

@@ -2,6 +2,7 @@ export const CART_STORAGE_KEY = 'possistem-cart-v1';
 
 export type CartItem = {
   id: string;
+  lineId?:string;
   name: string;
   sku: string;
   image: string;
@@ -15,7 +16,7 @@ export function cartCount(items: CartItem[]): number {
 }
 
 export function cartTotal(items: CartItem[]): number {
-  return items.reduce((sum, item) => sum + item.price * item.qty, 0);
+  return items.reduce((sum, item) => sum + Math.round(item.price * 100) * item.qty, 0) / 100;
 }
 
 export function readStoredCart(): CartItem[] {
@@ -25,15 +26,16 @@ export function readStoredCart(): CartItem[] {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .map((row) => {
+      .map<CartItem|null>((row) => {
         if (!row || typeof row !== 'object') return null;
         const item = row as Partial<CartItem>;
         const price = Number(item.price);
         const qty = Math.trunc(Number(item.qty));
-        const maxQty = Math.max(1, Math.trunc(Number(item.maxQty) || qty || 1));
-        if (!item.id || !item.name || !Number.isFinite(price) || price < 0 || qty < 1) return null;
+        const maxQty = Math.min(1000000,Math.max(1, Math.trunc(Number(item.maxQty) || qty || 1)));
+        if (!item.id || !item.name || !Number.isFinite(price) || price <= 0 || !Number.isFinite(qty) || !Number.isFinite(maxQty) || qty < 1) return null;
         return {
           id: String(item.id),
+          lineId:typeof item.lineId==='string'?item.lineId:'legacy:'+String(item.id),
           name: String(item.name),
           sku: String(item.sku ?? ''),
           image: String(item.image ?? ''),

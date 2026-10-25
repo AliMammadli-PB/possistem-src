@@ -10,6 +10,8 @@ import './styles.css';
 
 import './workspace.css';
 import './portal-ui.css';
+import './billing.css';
+import './commerce.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

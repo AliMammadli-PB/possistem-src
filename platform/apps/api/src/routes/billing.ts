@@ -52,8 +52,16 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     if(version){const [row]=await query<{content:unknown}>(app.db,sql`SELECT content FROM billing_terms WHERE version=${version}`);return {legal:row?.content??null};}
     return {legal:(await billing.settings()).legal};
   }));
+  app.get('/customer/billing/notifications',customer(async id=>({notifications:await query(app.db,sql`SELECT id,kind,title,body,payload,read_at AS "readAt",created_at AS "createdAt" FROM owner_notifications WHERE customer_id=${id}::uuid ORDER BY created_at DESC LIMIT 100`),...((await query(app.db,sql`SELECT count(*)::int AS unread FROM owner_notifications WHERE customer_id=${id}::uuid AND read_at IS NULL`))[0]??{})})));
+  app.post('/customer/billing/notifications/read',customer(async(id,req)=>{const b=z.object({id:uuid.optional()}).parse(req.body??{});await app.db.execute(sql`UPDATE owner_notifications SET read_at=now() WHERE customer_id=${id}::uuid AND read_at IS NULL AND (${b.id??null}::uuid IS NULL OR id=${b.id??null}::uuid)`);return {ok:true};}));
   app.get('/customer/billing',customer(async id=>billing.listSubscriptions(id)));
   app.get('/customer/billing/orders',customer(async id=>({orders:await billing.orders(id)})));
+  app.get('/customer/billing/shop-orders',customer(async(id,req)=>{
+    const b=z.object({before:z.string().datetime().optional(),beforeId:uuid.optional(),q:z.string().max(100).default(''),filter:z.enum(['all','paid','pending']).default('all')}).parse(req.query);
+    if(Boolean(b.before)!==Boolean(b.beforeId))throw new BillingError('invalid_cursor','Səhifəni yenidən açın.',400);
+    const rows=await query<{id:string;created_at:string|Date;cursor_created_at:string}>(app.db,sql`SELECT id,order_no,amount_minor,currency,kind,status,fulfillment_status,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created_at FROM billing_orders WHERE customer_id=${id}::uuid AND kind='shop' AND (${b.q}='' OR position(lower(${b.q}) in lower(order_no))>0) AND (${b.filter}='all' OR (${b.filter}='paid' AND status='paid') OR (${b.filter}='pending' AND status IN ('awaiting_payment','processing','unknown'))) AND (${b.before??null}::timestamptz IS NULL OR (created_at,id)<(${b.before??null}::timestamptz,${b.beforeId??null}::uuid)) ORDER BY created_at DESC,id DESC LIMIT 26`);
+    const more=rows.length>25,orders=rows.slice(0,25),last=orders.at(-1);return {orders,next:more&&last?{before:last.cursor_created_at,beforeId:last.id}:null};
+  }));
   app.get('/customer/billing/orders/:id',customer(async(id,req)=>billing.order(id,idOf(req))));
   app.post('/customer/billing/subscriptions/:id/checkout',customer(async(id,req)=>{
     const body=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean().default(false),paymentMode:z.enum(['manual','automatic']).optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);

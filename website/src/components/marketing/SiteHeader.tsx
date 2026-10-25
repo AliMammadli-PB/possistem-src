@@ -9,6 +9,7 @@ import { usePartner } from '@/components/providers/PartnerProvider';
 import { asset } from '@/lib/assets';
 import { LanguageSelector } from './LanguageSelector';
 import { CustomerAccountMenu } from './CustomerAccountMenu';
+import {AccountNotifications} from './AccountNotifications';
 import { CartToggle } from './CartDrawer';
 import { Menu, Close, Play, Sun, Moon } from './DesignIcons';
 
@@ -56,7 +57,7 @@ export function SiteHeader({currentNav}:SiteHeaderProps) {
         {links.map(([key,href,label])=><Link prefetch={false} key={key} href={href} onClick={close} aria-current={(currentNav===key||pathname===href||key==='demo'&&pathname.startsWith('/demo'))?'page':undefined} className={key==='demo'?'ps-nav-demo':undefined}>{key==='demo'&&<Play />}{label}</Link>)}
         <button className="ps-mobile-theme" type="button" disabled={!hydrated} onClick={toggleTheme}>{t(theme==='dark'?'common.theme.light':'common.theme.dark')}</button>
       </nav>
-      <div className="ps-header-controls"><Link prefetch={false} className="ps-mobile-demo" href="/demo/" onClick={close}>Demo<Play /></Link><form className="ps-header-search" role="search" onSubmit={search}><label className="sr-only" htmlFor={`${id}-q`}>{t('hardware.search.label')}</label><input id={`${id}-q`} type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder={t('hardware.search.placeholder')} autoComplete="off" /></form><CartToggle /><CustomerAccountMenu /><LanguageSelector /><button className="ps-theme-toggle" type="button" disabled={!hydrated} onClick={toggleTheme} aria-label={t(theme==='dark'?'common.theme.light':'common.theme.dark')} aria-pressed={theme==='dark'}>{theme==='dark'?<Sun />:<Moon />}</button><button ref={toggle} className="ps-menu-toggle" type="button" disabled={!hydrated} onClick={()=>setOpen(x=>!x)} aria-expanded={open} aria-controls={id} aria-label={open?c.close:c.menu}>{open?<Close />:<Menu />}</button></div>
+      <div className="ps-header-controls"><Link prefetch={false} className="ps-mobile-demo" href="/demo/" onClick={close}>Demo<Play /></Link><form className="ps-header-search" role="search" onSubmit={search}><label className="sr-only" htmlFor={`${id}-q`}>{t('hardware.search.label')}</label><input id={`${id}-q`} type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder={t('hardware.search.placeholder')} autoComplete="off" /></form><CartToggle /><AccountNotifications/><CustomerAccountMenu /><LanguageSelector /><button className="ps-theme-toggle" type="button" disabled={!hydrated} onClick={toggleTheme} aria-label={t(theme==='dark'?'common.theme.light':'common.theme.dark')} aria-pressed={theme==='dark'}>{theme==='dark'?<Sun />:<Moon />}</button><button ref={toggle} className="ps-menu-toggle" type="button" disabled={!hydrated} onClick={()=>setOpen(x=>!x)} aria-expanded={open} aria-controls={id} aria-label={open?c.close:c.menu}>{open?<Close />:<Menu />}</button></div>
     </div>
   </header>;
 }

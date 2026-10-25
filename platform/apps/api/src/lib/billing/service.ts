@@ -1,3 +1,4 @@
+import {publishBillingNotifications,renewalNotice} from './notifications.js';
 import {TEST_PRODUCT_ID} from './test-shop.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -39,7 +40,7 @@ export class Billing {
   async listSubscriptions(customerId:string){
     const rows=await query<Subscription & {has_paid_subscription:boolean;last_payment_status:string|null}>(this.db,sql`SELECT s.*,EXISTS(SELECT 1 FROM billing_period_grants g WHERE g.subscription_id=s.id) AS has_paid_subscription,(SELECT o.status FROM billing_orders o WHERE o.subscription_id=s.id ORDER BY o.created_at DESC LIMIT 1) AS last_payment_status FROM billing_subscriptions s WHERE s.customer_id=${customerId}::uuid ORDER BY product`);
     const settings=await this.settings(),gateway=this.gateway();
-    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,hasPaidSubscription:s.has_paid_subscription,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),setupAccess:!settings.enforcement_enabled,priceVersion:s.price_version,autoRenew:s.auto_renew,paymentMode:s.auto_renew?'automatic':'manual',lastPaymentStatus:s.last_payment_status,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),enforcementEnabled:settings.enforcement_enabled,recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
+    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,hasPaidSubscription:s.has_paid_subscription,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),setupAccess:!settings.enforcement_enabled,priceVersion:s.price_version,autoRenew:s.auto_renew,paymentMode:s.auto_renew?'automatic':'manual',lastPaymentStatus:s.last_payment_status,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl,renewalNotice:renewalNotice(s,this.now(),Boolean(settings.enabled&&settings.recurring_enabled&&gateway?.config.liveVerified))})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),enforcementEnabled:settings.enforcement_enabled,recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
   }
 
   async configureSubscription(actor:string,input:{customerId:string;product:string;monthlyAmountMinor:number;enabled:boolean;startsAt?:string}){
@@ -341,7 +342,7 @@ export class Billing {
   }
 
   async orders(customerId:string,limit=100){
-    return query(this.db,sql`SELECT id,order_no,kind,amount_minor,currency,status,fulfillment_status,created_at,paid_at,period_start,period_end,subscription_id FROM billing_orders WHERE customer_id=${customerId}::uuid ORDER BY created_at DESC LIMIT ${limit}`);
+    return query(this.db,sql`SELECT id,order_no,kind,payment_mode,amount_minor,currency,status,fulfillment_status,created_at,paid_at,period_start,period_end,subscription_id FROM billing_orders WHERE customer_id=${customerId}::uuid ORDER BY created_at DESC LIMIT ${limit}`);
   }
   async order(customerId:string,id:string){
     const [o]=await query(this.db,sql`SELECT id,order_no,kind,amount_minor,currency,status,fulfillment_status,delivery_kind,delivery_fee_minor,recipient_name,recipient_phone,delivery_address,note,expires_at,paid_at,created_at,period_start,period_end FROM billing_orders WHERE id=${id}::uuid AND customer_id=${customerId}::uuid`);
@@ -437,6 +438,8 @@ export class Billing {
 
   async sweep(){
     await this.expireReservations();
+    const notificationSettings=await this.settings();
+    await publishBillingNotifications(this.db,this.now(),Boolean(notificationSettings.enabled&&notificationSettings.recurring_enabled&&this.gateway()?.config.liveVerified));
     // A process can die after transmitting a debit but before storing its reply.
     await this.db.execute(sql`UPDATE billing_attempts SET status='unknown',updated_at=now() WHERE status='sending' AND created_at<now()-interval '2 minutes'`);
     const uncertain=await query<{id:string}>(this.db,sql`SELECT id FROM billing_attempts WHERE transaction_id IS NOT NULL AND status IN ('redirect','pending','unknown') AND updated_at<now()-interval '30 seconds' ORDER BY updated_at LIMIT 25`);

@@ -8,7 +8,6 @@ import { useI18n } from '@/components/providers/I18nProvider';
 import { fetchPublicProduct, hasPublicPrice, stockRemaining, type CatalogProduct } from '@/lib/catalog-products';
 import { catalogHref } from '@/lib/catalog-tree';
 import { formatManat } from '@/lib/money';
-import { whatsappProductQuoteUrl } from '@/lib/whatsapp';
 import { useCart } from '@/components/providers/CartProvider';
 import {usePartner} from '@/components/providers/PartnerProvider';
 import {partnerProductPrice,partnerPriceLabel} from '@/lib/partner-pricing';
@@ -64,7 +63,7 @@ export function HardwareDetailPageContent({ productId }: HardwareDetailPageConte
   const price=product?partnerProductPrice(product.id,product.price,prices):null;
   const special=Boolean(partner&&product&&Object.hasOwn(prices,product.id));
   const priced=typeof price==='number'&&price>0;
-  const available = Boolean(product && (qty > 0 || product.inStock !== false));
+  const available = Boolean(product && (qty > 0 && product.inStock !== false));
 
   return (
     <MarketingLayout solidHeader currentNav="product">
@@ -214,17 +213,10 @@ export function HardwareDetailPageContent({ productId }: HardwareDetailPageConte
                       disabled={!available}
                       onClick={() => add(product)}
                     >
-                      <T k="hardware.cta.order" />
+                      {available?'Səbətə əlavə et':'Stokda yoxdur'}
                     </button>
                   ) : (
-                    <a
-                      className="marketing-button primary"
-                      href={whatsappProductQuoteUrl(language, product)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <T k="hardware.cta.quote" />
-                    </a>
+                    <button type="button" className="marketing-button secondary" disabled>Hələ satışda deyil</button>
                   )}
                   <Link className="marketing-button secondary" href="/mehsul/avadanliq/">
                     <T k="hardware.detail.back" />

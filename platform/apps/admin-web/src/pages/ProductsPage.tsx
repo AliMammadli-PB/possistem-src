@@ -11,7 +11,7 @@ type AdminProduct = {
   parentCategory: string;
   shortDescription: string;
   image: string;
-  price: number;
+  price: number|null;
   partnerPrice?: number | null;
   originalPrice: number;
   inStock: boolean;
@@ -80,9 +80,9 @@ export function ProductsPage() {
   }, [data]);
 
   async function savePrice(product: AdminProduct) {
-    const raw = draftPrices[product.id];
-    const price = Number(raw);
-    if (!Number.isFinite(price) || price < 0) {
+    const raw = (draftPrices[product.id]??'').trim().replace(',','.');
+    const price = raw===''?null:Number(raw);
+    if (price!==null&&(!/^\d+(\.\d{1,2})?$/.test(raw)||!Number.isFinite(price)||price<=0||price>1000000)) {
       setError(t.products.invalidPrice);
       return;
     }
@@ -201,11 +201,11 @@ export function ProductsPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page commerce-products-admin">
       <header className="page-head">
         <div>
           <h1>{t.products.title}</h1>
-          <p className="muted">{t.products.hint}</p>
+          <p className="muted">Qiyməti və stoku təyin edin. Qiymətsiz məhsul saytda “Hələ satışda deyil” görünür.</p>
         </div>
       </header>
 
@@ -270,13 +270,14 @@ export function ProductsPage() {
                   <p className="small product-admin-desc">{product.shortDescription}</p>
                 ) : null}
 
-                <label className="field">
+                <label className="field commerce-sale-editor">
                   <span>{t.products.price}</span>
                   <div className="product-price-row">
                     <input
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Qiymət yoxdur"
+                      aria-label={product.name+' satış qiyməti'}
                       value={draftPrices[product.id] ?? ''}
                       onChange={(e) =>
                         setDraftPrices((prev) => ({ ...prev, [product.id]: e.target.value }))
@@ -293,11 +294,11 @@ export function ProductsPage() {
                     </button>
                   </div>
                   <small className={product.hasAdminPrice ? 'product-price-live' : 'muted'}>
-                    {product.hasAdminPrice ? t.products.onSite : t.products.offSite}
+                    {product.hasAdminPrice ? 'Qiymət təsdiqlənib · saytda görünür' : 'Hələ satışda deyil · qiymət təyin edin'}
                   </small>
                 </label>
 
-                <label className="field partner-price-editor">
+                <details className="commerce-partner-details"><summary>Partnyor qiymətini idarə et</summary><label className="field partner-price-editor">
                   <span>Partnyor qiyməti</span>
                   <div className="product-price-row">
                     <input type="text" inputMode="decimal" aria-label="Partnyor qiyməti" value={draftPartnerPrices[product.id]??''} placeholder="Xüsusi qiymət yoxdur" onChange={e=>setDraftPartnerPrices(prev=>({...prev,[product.id]:e.target.value}))}/>
@@ -305,9 +306,9 @@ export function ProductsPage() {
                     <button type="button" className="btn" disabled={savingId===product.id} onClick={()=>void savePartnerPrice(product)}>Saxla</button>
                   </div>
                   <small className="muted">Yalnız daxil olmuş partnyorlar görür. Boş saxlayıb saxlasanız, adi qiymət tətbiq olunur.</small>
-                </label>
+                </label></details>
 
-                <label className="field">
+                <label className="field commerce-stock-editor">
                   <span>{t.products.stock}</span>
                   <div className="product-stock-row">
                     <button

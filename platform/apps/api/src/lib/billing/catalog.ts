@@ -23,7 +23,7 @@ export async function overlayCommerce<T extends {id:string; price?:unknown; inSt
   return products.map(p=>{
     const row=byId.get(p.id); const available=row?row.stock_qty-row.reserved_qty:0;
     const priced=Boolean(row?.sale_enabled&&row.price_minor&&Number(row.price_minor)>0);
-    return {...p,price:priced?Number(row!.price_minor)/100:null,hasAdminPrice:priced,purchasable:priced&&available>0,inStock:available>0,...(admin?{stockQuantity:row?.stock_qty??0,reservedQuantity:row?.reserved_qty??0,saleEnabled:priced}: {})};
+    return {...p,price:priced?Number(row!.price_minor)/100:null,hasAdminPrice:priced,purchasable:priced&&available>0,inStock:available>0,stockQuantity:available,...(admin?{stockQuantity:row?.stock_qty??0,reservedQuantity:row?.reserved_qty??0,saleEnabled:priced}: {})};
   });
 }
 

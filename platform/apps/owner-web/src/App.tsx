@@ -18,6 +18,7 @@ import {
   ResetPasswordPage,
 } from './pages/AuthPages';
 
+const OrdersPage = lazy(() => import('./pages/OrdersPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const SetupPage = lazy(() => import('./pages/SetupPage'));
@@ -134,6 +135,7 @@ export default function App() {
           <Route path="/" element={<ProtectedShell><DashboardPage /></ProtectedShell>} />
           <Route path="/setup" element={<ProtectedShell><SetupPage /></ProtectedShell>} />
           <Route path="/downloads" element={<ProtectedShell><DownloadsPage /></ProtectedShell>} />
+          <Route path="/sifarisler" element={<ProtectedShell><OrdersPage /></ProtectedShell>} />
           <Route path="/abunelik" element={<ProtectedShell><BillingPage /></ProtectedShell>} />
           <Route path="/activity" element={<ProtectedShell><ActivityPage /></ProtectedShell>} />
           <Route path="/masalar" element={<ProtectedShell><TablesPage /></ProtectedShell>} />

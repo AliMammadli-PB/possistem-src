@@ -16,6 +16,7 @@ process.env.PRODUCT_CATALOG_PATH=path.join(temporary,'products.json');
 process.env.PRODUCT_OVERRIDES_PATH=path.join(temporary,'overrides.json');
 writeFileSync(process.env.PRODUCT_CATALOG_PATH,JSON.stringify({products:[]}));writeFileSync(process.env.PRODUCT_OVERRIDES_PATH,'{}');
 const {Billing}=await import('./service.js');
+const {publishBillingNotifications,renewalNotice}=await import('./notifications.js');
 const db=createDb(url),config={publicKey:'fixture-public',privateKey:'fixture-secret',tokenKey:Buffer.alloc(32,9),baseUrl:'https://fixture.invalid/',origin:'https://possistem.az',liveVerified:true};
 let sent:{endpoint:string;payload:Record<string,unknown>}[]=[],responseMode='redirect';
 const gateway=new Epoint(config,async(u,init)=>{
@@ -52,6 +53,8 @@ before(async()=>{
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0044_private_checkout_test.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0045_private_hosted_receipts.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0046_subscription_payment_mode.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe("CREATE TABLE owner_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),customer_id uuid REFERENCES customers(id),kind text,title text,body text,payload jsonb DEFAULT '{}',read_at timestamptz,created_at timestamptz DEFAULT now());");
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0047_commerce_notifications.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
   await db.$client.unsafe('TRUNCATE billing_private_hosted_receipts,billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
@@ -336,4 +339,51 @@ test('private test SKU cannot enter the real quote or checkout path even with a 
  const payload={items:[{id:TEST_PRODUCT_ID,qty:1,name:'Test',unitPriceMinor:100}],shipping:{kind:'pickup',name:'Fixture',phone:'0500000000',address:''},deliveryFeeMinor:0,termsVersion:'v1'};
  const [q]=await query<{id:string}>(db,sql`INSERT INTO billing_quotes(customer_id,payload,amount_minor) VALUES(${cid}::uuid,${JSON.stringify(payload)}::jsonb,100) RETURNING id`);
  await assert.rejects(()=>billing.shopCheckout(cid,q!.id,randomUUID(),'v1'),e=>(e as BillingError).code==='test_product');assert.equal(sent.length,0);assert.equal((await query(db,sql`SELECT id FROM billing_orders`)).length,0);
+});
+
+test('renewal reminders cover the exact three-day boundary, survive parallel workers, and reset for a new paid period',async()=>{
+ const now=new Date('2026-10-25T10:00:00Z'),due=new Date(now.getTime()+3*86400000),{sid}=await seed('market',due.toISOString());
+ await db.execute(sql`UPDATE billing_subscriptions SET auto_renew=true WHERE id=${sid}::uuid`);
+ await Promise.all(Array.from({length:8},()=>publishBillingNotifications(db,now,true)));
+ let notices=await query<{body:string;payload:{dueAt:string}}>(db,sql`SELECT * FROM owner_notifications WHERE customer_id=${cid}::uuid AND kind='billing_renewal'`);
+ assert.equal(notices.length,1);assert.match(notices[0]!.body,/kartınızdan tutulacaq/);assert.equal(notices[0]!.payload.dueAt,due.toISOString());
+ assert.equal((await query(db,sql`SELECT * FROM owner_notifications WHERE customer_id=${other}::uuid`)).length,0);
+ await db.execute(sql`UPDATE billing_subscriptions SET paid_until=${new Date(due.getTime()+86400000).toISOString()}::timestamptz WHERE id=${sid}::uuid`);
+ await publishBillingNotifications(db,new Date(now.getTime()+86400000),false);
+ notices=await query(db,sql`SELECT * FROM owner_notifications WHERE kind='billing_renewal'`);assert.equal(notices.length,2);
+ const sub={enabled:true,product:'market',monthly_amount_minor:3000,auto_renew:true,paid_until:due.toISOString()};
+ assert.equal(renewalNotice(sub,new Date(now.getTime()-1)),null);assert.equal(renewalNotice(sub,due),null);assert.equal(renewalNotice({...sub,enabled:false},now),null);
+ assert.match(renewalNotice(sub,now,false)!.body,/ödəyin/);
+});
+test('shop delivery notifications follow material order states once and stay attached to their customer',async()=>{
+ await db.execute(sql`INSERT INTO billing_catalog(product_id,name,stock_qty,price_minor,sale_enabled) VALUES('fixture-notice','Fixture',3,2000,true)`);
+ const q=await billing.quote(cid,[{id:'fixture-notice',qty:1}],{kind:'pickup',name:'Fixture',phone:'0500000000',address:''});
+ const o=await billing.shopCheckout(cid,q.quoteId,randomUUID(),'v1');await complete(o.id);
+ await publishBillingNotifications(db,new Date(),true);await publishBillingNotifications(db,new Date(),true);
+ assert.equal((await query(db,sql`SELECT id FROM owner_notifications WHERE kind='billing_order'`)).length,1);
+ await db.execute(sql`UPDATE billing_orders SET fulfillment_status='ready',updated_at=now() WHERE id=${o.id}::uuid`);await publishBillingNotifications(db,new Date(),true);
+ assert.equal((await query(db,sql`SELECT id FROM owner_notifications WHERE kind='billing_order'`)).length,2);
+});
+
+test('customer notification reads and paginated order history enforce ownership and preserve microsecond cursor precision',async()=>{
+ const {default:Fastify}=await import('fastify'),{billingRoutes}=await import('../../routes/billing.js');
+ const app=Fastify();app.decorate('db',db);app.decorateRequest('customer',null);
+ app.addHook('preHandler',async req=>{if(req.headers['x-fixture-owner']==='owner')req.customer={id:cid,email:'fixture@example.invalid',name:'Fixture',active:true};else if(req.headers['x-fixture-owner']==='other')req.customer={id:other,email:'other@example.invalid',name:'Other',active:true};});
+ await app.register(billingRoutes,{prefix:'/pos/api',billing,worker:false});
+ try{
+ const [mine]=await query<{id:string}>(db,sql`INSERT INTO owner_notifications(customer_id,kind,title,body) VALUES(${cid}::uuid,'test','Mine','Fixture') RETURNING id`);
+ const [theirs]=await query<{id:string}>(db,sql`INSERT INTO owner_notifications(customer_id,kind,title,body) VALUES(${other}::uuid,'test','Other','Fixture') RETURNING id`);
+ assert.equal((await app.inject('/pos/api/customer/billing/notifications')).statusCode,401);
+ const ownHeaders={'x-fixture-owner':'owner'};
+ const list=await app.inject({url:'/pos/api/customer/billing/notifications',headers:ownHeaders});assert.equal(list.json().unread,1);assert.equal(list.json().notifications[0].id,mine!.id);
+ await app.inject({method:'POST',url:'/pos/api/customer/billing/notifications/read',headers:ownHeaders,payload:{id:theirs!.id}});
+ assert.equal((await query<{read_at:unknown}>(db,sql`SELECT read_at FROM owner_notifications WHERE id=${theirs!.id}::uuid`))[0]!.read_at,null);
+ await app.inject({method:'POST',url:'/pos/api/customer/billing/notifications/read',headers:ownHeaders,payload:{id:mine!.id}});
+ assert.equal((await app.inject({url:'/pos/api/customer/billing/notifications',headers:ownHeaders})).json().unread,0);
+ await db.execute(sql`INSERT INTO billing_orders(order_no,customer_id,kind,amount_minor,request_key,request_hash,created_at) SELECT 'FIXTURE-'||i,${cid}::uuid,'shop',100,gen_random_uuid(),'fixture','2026-10-25T10:00:00.123456Z'::timestamptz FROM generate_series(1,27) i`);
+ const first=(await app.inject({url:'/pos/api/customer/billing/shop-orders',headers:ownHeaders})).json();assert.equal(first.orders.length,25);assert.match(first.next.before,/123456Z$/);
+ const second=(await app.inject({url:'/pos/api/customer/billing/shop-orders?'+new URLSearchParams(first.next),headers:ownHeaders})).json();assert.equal(second.orders.length,2);assert.equal(second.next,null);assert.equal(new Set([...first.orders,...second.orders].map(x=>x.id)).size,27);
+ const otherList=(await app.inject({url:'/pos/api/customer/billing/shop-orders',headers:{'x-fixture-owner':'other'}})).json();assert.equal(otherList.orders.length,0);
+ assert.equal((await app.inject({url:'/pos/api/customer/billing/orders/'+first.orders[0].id,headers:{'x-fixture-owner':'other'}})).statusCode,404);
+ }finally{await app.close();}
 });

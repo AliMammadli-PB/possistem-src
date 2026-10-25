@@ -11,7 +11,7 @@ type State={subscriptions:Subscription[];orders:Order[];payments:Payment[];event
 type Legal={version:string;sellerName:string;voen:string;address:string;phone:string;subscriptionTerms:string;refundTerms:string;deliveryTerms:string;privacyPolicy:string};
 type Settings={enforcement_enabled:boolean;enabled:boolean;recurring_enabled:boolean;pickup_address:string;delivery_fee_minor:string|null;legal:Partial<Legal>};
 type Customer={id:string;name:string;email:string};
-const money=(v:string|number)=>new Intl.NumberFormat('az-AZ',{style:'currency',currency:'AZN'}).format(Number(v)/100);
+const money=(v:string|number)=>new Intl.NumberFormat('az-AZ',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)/100)+' ₼';
 const date=(v:string|null)=>v?new Date(v).toLocaleString('az-AZ'):'İlk ödəniş gözlənilir';
 const productName:Record<string,string>={market:'Market POS',restaurant:'Restoran POS',geyim:'Geyim POS',aptek:'Aptek POS',topdan:'Topdan POS'};
 const statusName:Record<string,string>={awaiting_payment:'Ödəniş gözlənilir',processing:'Emal olunur',unknown:'Nəticə qeyri-müəyyəndir',paid:'Ödənilib',paid_review:'Admin həlli lazımdır',failed:'Uğursuz',expired:'Vaxtı bitib',refunded:'Geri qaytarılıb',refund_pending:'Geri qaytarma gözlənilir',sending:'Göndərilir',redirect:'Bank səhifəsi açılıb',pending:'Gözlənilir',succeeded:'Təsdiqlənib'};

@@ -675,7 +675,7 @@ export function activity() {
 }
 
 export function markNotificationRead(id?: string) {
-  return request<{ ok: boolean }>('/owner/notifications/read', {
+  return request<{ ok: boolean }>('/customer/billing/notifications/read', {
     method: 'POST',
     body: JSON.stringify(id ? { id } : {}),
   });

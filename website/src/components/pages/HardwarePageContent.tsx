@@ -33,8 +33,8 @@ export function HardwarePageContent() {
             </p>
           </div>
           <div>
-            <Link className="marketing-button primary" href="/melumatlar/#elaqe">
-              <T k="hardware.cta.quote" />
+            <Link className="marketing-button primary" href="/pos/app/sifarisler">
+              Sifarişlərim
             </Link>
             <Link className="marketing-button secondary" href="/qurasdirma/">
               <T k="product.text.074" />

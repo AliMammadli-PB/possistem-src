@@ -8,7 +8,6 @@ import { productDetailPath, stockRemaining } from '@/lib/catalog-products';
 import { formatManat } from '@/lib/money';
 import {usePartner} from '@/components/providers/PartnerProvider';
 import {partnerProductPrice,partnerPriceLabel} from '@/lib/partner-pricing';
-import { whatsappProductQuoteUrl } from '@/lib/whatsapp';
 
 export function HardwareCard({ product }: { product: CatalogProduct }) {
   const { t, language } = useI18n();
@@ -19,7 +18,7 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
   const price=partnerProductPrice(product.id,product.price,prices);
   const special=Boolean(partner&&Object.hasOwn(prices,product.id));
   const priced=typeof price==='number'&&price>0;
-  const available = qty > 0 || product.inStock !== false;
+  const available = qty > 0 && product.inStock !== false;
 
   return (
     <article className="hardware-card">
@@ -46,7 +45,7 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
         {priced ? (
           <p className="hardware-card-price">{special?<span className="partner-price-badge">{partnerPriceLabel(language)}</span>:null}{formatManat(price!, language)}</p>
         ) : (
-          <p className="hardware-card-price hardware-card-price--soon">{t('hardware.cta.quote')}</p>
+          <p className="hardware-card-price hardware-card-price--soon">{language==='ru'?'Пока не продаётся':language==='en'?'Not on sale yet':'Hələ satışda deyil'}</p>
         )}
         <div className="hardware-card-actions">
           {product.isTest?<Link href="/odenis/sinaq/" className="marketing-button primary">Test sifarişi yarat</Link>:priced ? (
@@ -56,17 +55,10 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
               disabled={!available}
               onClick={() => add(product)}
             >
-              {t('hardware.cta.order')}
+              {available?(language==='ru'?'В корзину':language==='en'?'Add to cart':'Səbətə əlavə et'):(language==='ru'?'Нет в наличии':language==='en'?'Out of stock':'Stokda yoxdur')}
             </button>
           ) : (
-            <a
-              className="marketing-button primary"
-              href={whatsappProductQuoteUrl(language, product)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t('hardware.cta.quote')}
-            </a>
+            <button type="button" className="marketing-button secondary" disabled>Hələ satışda deyil</button>
           )}
           <Link className="marketing-button secondary" href={href}>
             {t('hardware.cta.details')}

@@ -22,7 +22,7 @@ async function api<T>(path:string,body?:unknown,csrf?:string|null):Promise<T>{
  const data=await res.json().catch(()=>null);if(!res.ok)throw new Error(data?.error||'Sorğu tamamlanmadı. Yenidən yoxlayın.');return data as T;
 }
 function TermsLink({version}:{version?:string|null}){return <Link href={'/odenis/sertler/'+(version?'?version='+encodeURIComponent(version):'')} target="_blank">Ödəniş və abunə şərtləri</Link>;}
-function SignIn(){return <section className="pay-panel"><h2>Hesabınıza daxil olun</h2><p>Alış və sifariş tarixçəsi mövcud müştəri hesabınızla əlaqələndiriləcək.</p><a className="pay-primary" href="/pos/app/login?next=%2Fodenis%2F">Giriş / qeydiyyat</a><p>Girişdən sonra bu səhifəyə qayıdın. Səbətiniz saxlanılır.</p></section>;}
+function SignIn(){return <section className="pay-panel"><h2>Hesabınıza daxil olun</h2><p>Alış və sifariş tarixçəsi mövcud müştəri hesabınızla əlaqələndiriləcək.</p><a className="pay-primary" href="/pos/app/login?next=%2Fodenis%2F">Hesabıma daxil ol</a><p>Girişdən sonra bu səhifəyə qayıdın. Səbətiniz saxlanılır.</p></section>;}
 
 type PaymentMode='manual'|'automatic';
 function SubscriptionChoice({sub,site,busy,onPay}:{sub:Sub;site:Site;busy:boolean;onPay:(mode:PaymentMode)=>void}){
@@ -80,8 +80,8 @@ export function PaymentPage({mode}:{mode:'shop'|'handoff'|'result'|'terms'}){
   const timer=setInterval(()=>{if(document.visibilityState==='visible')void loadResult().catch(e=>setError(e.message));},5000);
   return()=>clearInterval(timer);
  },[mode,loadResult]);
- useEffect(()=>{if(mode==='result'&&detail?.order.kind==='shop'&&detail.order.status==='paid')cart.clear();},[mode,detail?.order.status,detail?.order.kind,cart.clear]);
- useEffect(()=>{setQuote(null);setAccepted(false);},[JSON.stringify(form),JSON.stringify(cart.items.map(i=>[i.id,i.qty]))]);
+ useEffect(()=>{if(mode==='result'&&detail?.order.kind==='shop'&&detail.order.status==='paid'&&session.customerId)cart.completeOrder(detail.order.id,session.customerId);},[mode,detail?.order.status,detail?.order.kind,detail?.order.id,session.customerId,cart.completeOrder]);
+ useEffect(()=>{setQuote(null);setAccepted(false);},[JSON.stringify(form),JSON.stringify(cart.items.map(i=>[i.id,i.qty,i.price]))]);
  async function getQuote(){
   setBusy(true);setError('');setMessage('');try{
    const partnerProof=await partner.checkoutProof();
@@ -92,6 +92,7 @@ export function PaymentPage({mode}:{mode:'shop'|'handoff'|'result'|'terms'}){
  async function redirect(path:string,body:unknown,csrf?:string|null){
   setBusy(true);setError('');try{
    const r=await api<{id:string;redirectUrl:string|null;paymentState:string}>(path,body,csrf);
+   if(path==='customer/billing/checkout'&&session.customerId)cart.rememberOrder(r.id,session.customerId);
    if(r.redirectUrl){const url=new URL(r.redirectUrl);if(url.protocol!=='https:')throw new Error('Bank ünvanı etibarlı deyil.');window.location.assign(url.toString());return;}
    window.location.assign('/odenis/ugurlu/?order='+encodeURIComponent(r.id));
   }catch(e){setError(e instanceof Error?e.message:'Ödəniş başlamadı.');}finally{setBusy(false);}
@@ -107,8 +108,9 @@ export function PaymentPage({mode}:{mode:'shop'|'handoff'|'result'|'terms'}){
    {form.kind==='pickup'?<p>{options?.pickupAddress||'Götürmə ünvanı hələ təyin edilməyib.'}</p>:<label>Ünvan<textarea required minLength={5} maxLength={1000} autoComplete="street-address" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></label>}
    <button className="pay-primary" disabled={busy||!cart.items.length} type="submit">{busy?'Hesablanır…':'Məbləği yoxla'}</button>
   </form><section className="pay-panel"><h2>Sifarişiniz</h2>{!cart.items.length?<p>Səbət boşdur. <Link href="/mehsul/avadanliq/">Məhsullara baxın</Link></p>:<ul className="pay-items">{(quote?.items??cart.items.map(i=>({id:i.id,name:i.name,qty:i.qty,unitPriceMinor:Math.round(i.price*100)}))).map(i=><li key={i.id}><span>{i.name}<small>{i.qty} ədəd</small></span><strong>{money(i.qty*i.unitPriceMinor)}</strong></li>)}</ul>}
+   {!quote&&cart.items.length>0&&<p className="pay-total">Məhsulların cəmi <strong>{money(Math.round(cart.total*100))}</strong></p>}
    {quote&&<><p>Çatdırılma: {money(quote.deliveryFeeMinor)}</p><p className="pay-total">Yekun <strong>{money(quote.totalMinor)}</strong></p><p>Qiymət təklifi {date(quote.expiresAt)} tarixinədək qüvvədədir. Stok ödəniş yaradıldıqda 15 dəqiqə rezerv edilir.</p><label className="pay-check"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/><span><TermsLink version={quote.termsVersion}/> ilə tanış oldum və qəbul edirəm.</span></label><button className="pay-primary" disabled={!accepted||busy||!options?.paymentsAvailable||!quote.termsVersion} onClick={()=>void redirect('customer/billing/checkout',{quoteId:quote.quoteId,requestId:key(quote.quoteId),termsVersion:quote.termsVersion},session.csrfToken)}>Epoint ilə {money(quote.totalMinor)} ödə</button></>}
-   {options&&!options.paymentsAvailable&&<p className="pay-alert">Onlayn ödəniş hələ açılmayıb. Qiymət və stok təsdiqləndikdən sonra alış aktiv olacaq.</p>}
+   {options&&!options.paymentsAvailable&&<p className="pay-alert">Epoint API qoşulması gözlənilir. Məhsulların qiyməti yuxarıdadır; kartla sifariş bank inteqrasiyası aktivləşəndə açılacaq. Səbətiniz saxlanılır.</p>}
   </section></div>)}
   {mode==='handoff'&&site&&<>{!site.paymentsAvailable&&<p className="pay-alert">Epoint API ödənişləri hələ aktivləşdirilməyib. Bu seçimlər hazırdır; hazırda ödəniş təsdiqlənmiş kimi göstərilmir.</p>}{site.subscriptions.map(sub=><SubscriptionChoice key={sub.id} sub={sub} site={site} busy={busy} onPay={paymentMode=>void redirect('billing/site/checkout',{requestId:key(sub.id+':'+sub.priceVersion+':'+paymentMode),priceVersion:sub.priceVersion,saveCard:paymentMode==='automatic',paymentMode,termsVersion:site.termsVersion},site.csrfToken)}/>)}</>}
   {mode==='result'&&detail&&<section className="pay-panel"><span className={'pay-state '+detail.order.status}>{labels[detail.order.status]??detail.order.status}</span><h2>{detail.order.order_no}</h2><p className="pay-amount">{money(Number(detail.order.amount_minor))}</p>{detail.order.status==='paid'?<p>{detail.order.kind==='subscription'?'Yeni istifadə müddəti: '+date(detail.order.period_end):'Sifariş: '+(labels[detail.order.fulfillment_status]??detail.order.fulfillment_status)}</p>:<p>Bu səhifəyə keçid ödənişi təsdiqləmir. Bank nəticəsi serverdə yoxlanılır. Nəticə qeyri-müəyyəndirsə, ikinci dəfə ödəməyin.</p>}{detail.items?.map((i,n)=><p key={n}>{i.name} · {i.qty} ədəd · {money(Number(i.unit_price_minor)*i.qty)}</p>)}<div className="pay-actions"><button onClick={()=>void loadResult().catch(e=>setError(e.message))}>Nəticəni yenilə</button><a className="pay-primary" href="/pos/app/abunelik">Ödəniş tarixçəsi</a></div></section>}
