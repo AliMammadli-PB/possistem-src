@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useId } from 'react';
 import { useCart } from '@/components/providers/CartProvider';
 import { useI18n } from '@/components/providers/I18nProvider';
 import type { CatalogProduct } from '@/lib/catalog-products';
@@ -19,6 +20,12 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
   const special=Boolean(partner&&Object.hasOwn(prices,product.id));
   const priced=typeof price==='number'&&price>0;
   const available = qty > 0 && product.inStock !== false;
+  const availabilityId = useId();
+  const unavailableReason = !priced
+    ? (language==='ru'?'Пока не продаётся':language==='en'?'Not on sale yet':'Hələ satışda deyil')
+    : !available
+      ? (language==='ru'?'Нет в наличии':language==='en'?'Out of stock':'Stokda yoxdur')
+      : undefined;
 
   return (
     <article className="hardware-card">
@@ -45,19 +52,22 @@ export function HardwareCard({ product }: { product: CatalogProduct }) {
         {priced ? (
           <p className="hardware-card-price">{special?<span className="partner-price-badge">{partnerPriceLabel(language)}</span>:null}{formatManat(price!, language)}</p>
         ) : (
-          <p className="hardware-card-price hardware-card-price--soon">{language==='ru'?'Пока не продаётся':language==='en'?'Not on sale yet':'Hələ satışda deyil'}</p>
+          <p id={availabilityId} className="hardware-card-price hardware-card-price--soon">{unavailableReason}</p>
         )}
+        {priced && !available && <p id={availabilityId} className="hardware-card-meta">{unavailableReason}</p>}
         <div className="hardware-card-actions">
-          {product.isTest?<Link href="/odenis/sinaq/" className="marketing-button primary">Test sifarişi yarat</Link>:priced ? (
+          {product.isTest?<Link href="/odenis/sinaq/" className="marketing-button primary">Test sifarişi yarat</Link>:(
             <button
               type="button"
               className="marketing-button primary"
-              disabled={!available}
+              disabled={!priced || !available}
+              aria-describedby={unavailableReason ? availabilityId : undefined}
+              title={unavailableReason}
               onClick={() => add(product)}
             >
-              {available?(language==='ru'?'В корзину':language==='en'?'Add to cart':'Səbətə əlavə et'):(language==='ru'?'Нет в наличии':language==='en'?'Out of stock':'Stokda yoxdur')}
+              {language==='ru'?'В корзину':language==='en'?'Add to cart':'Səbətə əlavə et'}
             </button>
-          ) : null}
+          )}
           <Link className="marketing-button secondary" href={href}>
             {t('hardware.cta.details')} <span aria-hidden="true">→</span>
           </Link>

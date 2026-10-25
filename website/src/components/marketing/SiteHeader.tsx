@@ -16,9 +16,9 @@ import { Menu, Close, Play, Sun, Moon } from './DesignIcons';
 type SiteHeaderProps = { solid?: boolean; currentNav?: 'information' | 'product' | 'pricing' | 'setup' | 'updates' | 'support' | 'chat' };
 export const HEADER_COMPACT_MAX = 1279;
 const COPY = {
-  az: { information:'Məlumatlar',product:'Məhsullar',pricing:'Qiymətlər',demo:'Canlı demo',setup:'Quraşdırma',updates:'Yeniliklər',support:'Dəstək',partner:'Partnyor',account:'Partnyor kabineti',menu:'Menyunu aç',close:'Menyunu bağla',nav:'Əsas menyu',chat:'Canlı chat' },
-  en: { information:'Information',product:'Products',pricing:'Pricing',demo:'Live demo',setup:'Setup',updates:'Updates',support:'Support',partner:'Partners',account:'Partner account',menu:'Open menu',close:'Close menu',nav:'Main navigation',chat:'Live chat' },
-  ru: { information:'Информация',product:'Продукты',pricing:'Тарифы',demo:'Демо',setup:'Установка',updates:'Обновления',support:'Поддержка',partner:'Партнёры',account:'Кабинет партнёра',menu:'Открыть меню',close:'Закрыть меню',nav:'Главное меню',chat:'Онлайн-чат' },
+  az: { information:'Məlumatlar',product:'Mağaza',pricing:'Qiymətlər',demo:'Canlı demo',setup:'Quraşdırma',updates:'Yeniliklər',support:'Dəstək',partner:'Partnyor',account:'Partnyor kabineti',menu:'Menyunu aç',close:'Menyunu bağla',nav:'Əsas menyu',chat:'Canlı chat' },
+  en: { information:'Information',product:'Store',pricing:'Pricing',demo:'Live demo',setup:'Setup',updates:'Updates',support:'Support',partner:'Partners',account:'Partner account',menu:'Open menu',close:'Close menu',nav:'Main navigation',chat:'Live chat' },
+  ru: { information:'Информация',product:'Магазин',pricing:'Тарифы',demo:'Демо',setup:'Установка',updates:'Обновления',support:'Поддержка',partner:'Партнёры',account:'Кабинет партнёра',menu:'Открыть меню',close:'Закрыть меню',nav:'Главное меню',chat:'Онлайн-чат' },
 };
 export function SiteHeader({currentNav}:SiteHeaderProps) {
   const pathname=usePathname();const router=useRouter();const {language,t}=useI18n();const c=COPY[language];const {theme,toggleTheme}=useTheme();const {partner}=usePartner();
