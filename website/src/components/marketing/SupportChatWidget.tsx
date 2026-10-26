@@ -6,7 +6,7 @@ import { getConversationReply, type ConversationReply } from '@/lib/support-conv
 import { SupportReport } from './SupportReport';
 import { Close, ArrowRight } from './DesignIcons';
 import './support-chat.css';
-import { SupportMascot, useMascotMotion, useMascotGesture } from './SupportMascot';
+import { SupportMascot, MascotMotionMenu, useMascotMotion, useMascotGesture } from './SupportMascot';
 type Message = { id: string; authorKind: string; body: string; createdAt: string; meta?: { attachment?: { id?: string; fileName?: string; mimeType?: string } } };
 type Ticket = { id: string; status: string };
 type LocalMessage = { id: number; author: 'me' | 'helper'; body: string; reply?: ConversationReply; createdAt?:string; file?: { url: string; name: string } };
@@ -215,7 +215,7 @@ export function SupportChatWidget() {
   {!open&&<button ref={fab} type="button" className="support-fab" onPointerEnter={()=>mascot.hover(true)} onPointerLeave={()=>mascot.hover(false)} onFocus={()=>mascot.hover(true)} onBlur={()=>mascot.hover(false)} onClick={()=>{previousFocus.current=document.activeElement as HTMLElement;setOpen(true);}} aria-label={h.open} aria-haspopup="dialog" aria-controls="possistem-support-panel"><SupportMascot gesture={mascot.gesture} motion={motion.effective} preference={motion.mode}/>{unread&&<i className="support-fab-dot" aria-hidden="true"/>}</button>}
   {open&&<section ref={panel} id="possistem-support-panel" className="support-panel" tabIndex={-1} role="dialog" aria-modal="false" aria-labelledby="possistem-support-title">
    <header className="support-panel-head"><a href="/" id="possistem-support-title">Possistem</a><div className="support-head-actions"><button type="button" aria-label={language==='az'?'Söhbət seçimləri':language==='ru'?'Настройки беседы':'Conversation options'} aria-expanded={tools} aria-controls="support-tools" onClick={()=>setTools(v=>!v)}>•••</button><button type="button" onClick={()=>setOpen(false)} aria-label={c.close}><Close/></button></div></header>
-   {tools&&<div className="support-tools" id="support-tools"><button type="button" onClick={()=>{clearConversation();setMode('assistant');setTools(false);}}>{h.clear}</button>{local.length>0&&<SupportReport key={reportEnd} messages={[{author:'helper',body:h.intro,createdAt:startedAt.current},...local,...messages.map(m=>({author:m.authorKind==='customer'?'me' as const:'helper' as const,body:m.body,createdAt:m.createdAt}))]} language={language} requestKey={reportKeys.current[reportEnd]} send={body=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(body)})}/>}</div>}
+   {tools&&<div className="support-tools" id="support-tools"><MascotMotionMenu mode={motion.mode} onChange={motion.change}/><button type="button" onClick={()=>{clearConversation();setMode('assistant');setTools(false);}}>{h.clear}</button>{local.length>0&&<SupportReport key={reportEnd} messages={[{author:'helper',body:h.intro,createdAt:startedAt.current},...local,...messages.map(m=>({author:m.authorKind==='customer'?'me' as const:'helper' as const,body:m.body,createdAt:m.createdAt}))]} language={language} requestKey={reportKeys.current[reportEnd]} send={body=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(body)})}/>}</div>}
    <div className="support-list" ref={list} role="log" aria-label={c.title} aria-live="polite" aria-relevant="additions">
     <div className="support-msg is-helper"><p>{h.intro}</p></div>
     {localBubbles}

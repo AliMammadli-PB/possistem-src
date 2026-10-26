@@ -24,8 +24,20 @@ export function MascotMotionMenu({mode,onChange}:{mode:MascotMotion;onChange:(mo
 }
 export function SupportMascot({gesture='idle',motion='full',preference='full'}:{gesture?:MascotGesture;motion?:EffectiveMotion;preference?:MascotMotion}) {
  const id=useId().replace(/[^a-zA-Z0-9_-]/g,''),artworkId=`mascot-v3-${id}`,artwork=useMemo(()=>({__html:mascotArtwork(artworkId)}),[artworkId]);
- const svg=useRef<SVGSVGElement>(null),state=useRef({gesture,motion,preference});
+ const svg=useRef<SVGSVGElement>(null),canvas=useRef<HTMLCanvasElement>(null),state=useRef({gesture,motion,preference}),[threeReady,setThreeReady]=useState(false);
  useEffect(()=>{state.current={gesture,motion,preference};},[gesture,motion,preference]);
- useEffect(()=>{if(!svg.current)return;return startMascotAnimation(svg.current,()=>state.current);},[motion]);
- return <svg ref={svg} className="support-mascot" data-artwork-id={artworkId} data-gesture={gesture} data-motion={motion} data-preference={preference} data-ready="false" viewBox="0 0 627 650" width="96" height="100" fill="none" aria-hidden="true" focusable="false" dangerouslySetInnerHTML={artwork}/>;
+ useEffect(()=>{if(!svg.current)return;return startMascotAnimation(svg.current,()=>state.current);},[motion,threeReady]);
+ useEffect(()=>{
+  const controller=new AbortController();let cleanup:(()=>void)|undefined;let mounted=true;
+  const fail=()=>{if(mounted)setThreeReady(false);};
+  const timer=window.setTimeout(()=>controller.abort(),15000);
+  // Keep the existing artwork visible until both the model and first 3D frame are ready.
+  void import('./mascot-three').then(async({mountMascot3D})=>{
+   if(!canvas.current||controller.signal.aborted)return;
+   const engine=await mountMascot3D(canvas.current,()=>state.current,controller.signal,fail);cleanup=engine.dispose;
+   window.clearTimeout(timer);if(mounted)setThreeReady(true);else engine.dispose();
+  }).catch(fail);
+  return()=>{mounted=false;window.clearTimeout(timer);controller.abort();cleanup?.();};
+ },[]);
+ return <span className="support-mascot-frame" data-renderer={threeReady?'three':'svg'} aria-hidden="true"><canvas ref={canvas} className="support-mascot-canvas" style={{opacity:threeReady?1:0}}/>{!threeReady&&<svg ref={svg} className="support-mascot" data-artwork-id={artworkId} data-gesture={gesture} data-motion={motion} data-preference={preference} data-ready="false" viewBox="0 0 627 650" width="96" height="100" fill="none" aria-hidden="true" focusable="false" dangerouslySetInnerHTML={artwork}/>}</span>;
 }
