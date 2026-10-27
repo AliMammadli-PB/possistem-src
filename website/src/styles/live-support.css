@@ -727,6 +727,7 @@ html[data-theme='dark'] .live-chat-lock {
   transform: translateY(4px);
   animation: header-account-item-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+.header-account-menu .header-account-menu-item{font:600 13px/1.4 var(--display)}
 
 .header-account-menu-item:nth-child(1) { animation-delay: 30ms; }
 .header-account-menu-item:nth-child(2) { animation-delay: 55ms; }
