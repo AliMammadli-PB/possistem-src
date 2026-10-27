@@ -3,13 +3,13 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useCustomerSession } from '@/components/providers/CustomerSessionProvider';
 import { useI18n } from '@/components/providers/I18nProvider';
 import { getConversationReply, type ConversationReply } from '@/lib/support-conversation';
-import { SupportReport } from './SupportReport';
+import { SupportMessageFeedback, SupportReport } from './SupportReport';
 import { Close, ArrowRight } from './DesignIcons';
 import './support-chat.css';
 import { SupportMascot, MascotMotionMenu, useMascotMotion, useMascotGesture } from './SupportMascot';
 type Message = { id: string; authorKind: string; body: string; createdAt: string; meta?: { attachment?: { id?: string; fileName?: string; mimeType?: string } } };
 type Ticket = { id: string; status: string };
-type LocalMessage = { id: number; author: 'me' | 'helper'; body: string; reply?: ConversationReply; createdAt?:string; file?: { url: string; name: string } };
+type LocalMessage = { id: number; author: 'me' | 'helper'; body: string; reply?: ConversationReply; createdAt?:string; file?: { url: string; name: string }; feedback?:'up'|'down' };
 const CHAT_KEY = (id?: string | null) => `possistem.support.chat.${id || 'guest'}`;
 const readChat = (key: string) => {
   try {
@@ -188,7 +188,8 @@ export function SupportChatWidget() {
  };
  useEffect(()=>{if(mode==='agent'&&session.authenticated&&pendingHandoff&&agentDraft.trim()&&!sending.current){setPendingHandoff(false);void send();}},[mode,session.authenticated,pendingHandoff,agentDraft]);
  const reportEnd=`${local.at(-1)?.id??0}:${messages.at(-1)?.id??''}`;
- if(reportEnd&&!reportKeys.current[reportEnd])reportKeys.current[reportEnd]=globalThis.crypto?.randomUUID?.()??'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3)|8).toString(16);});
+ const reportKey=(scope:string)=>{if(!reportKeys.current[scope])reportKeys.current[scope]=globalThis.crypto?.randomUUID?.()??'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3)|8).toString(16);});return reportKeys.current[scope];};
+ reportKey(reportEnd);
  const status=!ticket?c.empty:ticket.status==='claimed'?c.claimed:ticket.status==='resolved'?c.resolved:c.waiting;
  const time=(iso:string)=>new Date(iso).toLocaleTimeString(language==='ru'?'ru-RU':language==='en'?'en-GB':'az-AZ',{hour:'2-digit',minute:'2-digit'});
  const sendFile=async(file:File)=>{
@@ -210,12 +211,12 @@ export function SupportChatWidget() {
    onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(assistant)ask(draft);else void send();}}}/>
   <button type="submit" disabled={assistant?thinking||!draft.trim()||local.length>=100:busy||!agentDraft.trim()} aria-label={c.send}>{busy&&!assistant?'…':<ArrowRight/>}</button>
  </form>;
- const localBubbles=<>{local.map(m=>{const choices=m.reply?.suggestions?.length?m.reply.suggestions:m.reply?.suggestion?[m.reply.suggestion]:[];return <div key={m.id} className={`support-msg is-${m.author==='me'?'me':'helper'}`}><p>{m.body}</p>{m.file&&<a className="support-file" href={m.file.url} download={m.file.name}>{m.file.name}</a>}{m.reply?.href&&<a href={m.reply.href}>{h.more}<ArrowRight/></a>}{choices.map(choice=><button key={choice} type="button" className="support-choice" disabled={thinking} onClick={()=>ask(choice)}>{choice}</button>)}</div>;})}</>;
+ const localBubbles=<>{local.map((m,index)=>{const choices=m.reply?.suggestions?.length?m.reply.suggestions:m.reply?.suggestion?[m.reply.suggestion]:[];const transcript=[{author:'helper' as const,body:h.intro,createdAt:startedAt.current},...local.slice(0,index+1)];return <div key={m.id} className={`support-msg is-${m.author==='me'?'me':'helper'}`}><p>{m.body}</p>{m.file&&<a className="support-file" href={m.file.url} download={m.file.name}>{m.file.name}</a>}{m.reply?.href&&<a href={m.reply.href}>{h.more}<ArrowRight/></a>}{choices.map(choice=><button key={choice} type="button" className="support-choice" disabled={thinking} onClick={()=>ask(choice)}>{choice}</button>)}{m.author==='helper'&&<SupportMessageFeedback vote={m.feedback} onVote={feedback=>setLocal(old=>old.map(item=>item.id===m.id?{...item,feedback}:item))} messages={transcript} language={language} requestKey={reportKey(`reply:${m.id}`)} send={payload=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(payload)})}/>}</div>;})}</>;
  return <>
   {!open&&<button ref={fab} type="button" className="support-fab" onPointerEnter={()=>mascot.hover(true)} onPointerLeave={()=>mascot.hover(false)} onFocus={()=>mascot.hover(true)} onBlur={()=>mascot.hover(false)} onClick={()=>{previousFocus.current=document.activeElement as HTMLElement;setOpen(true);}} aria-label={h.open} aria-haspopup="dialog" aria-controls="possistem-support-panel"><SupportMascot gesture={mascot.gesture} motion={motion.effective} preference={motion.mode}/>{unread&&<i className="support-fab-dot" aria-hidden="true"/>}</button>}
   {open&&<section ref={panel} id="possistem-support-panel" className="support-panel" tabIndex={-1} role="dialog" aria-modal="false" aria-labelledby="possistem-support-title">
    <header className="support-panel-head"><a href="/" id="possistem-support-title">Possistem</a><div className="support-head-actions"><button type="button" aria-label={language==='az'?'Söhbət seçimləri':language==='ru'?'Настройки беседы':'Conversation options'} aria-expanded={tools} aria-controls="support-tools" onClick={()=>setTools(v=>!v)}>•••</button><button type="button" onClick={()=>setOpen(false)} aria-label={c.close}><Close/></button></div></header>
-   {tools&&<div className="support-tools" id="support-tools"><MascotMotionMenu mode={motion.mode} onChange={motion.change}/><button type="button" onClick={()=>{clearConversation();setMode('assistant');setTools(false);}}>{h.clear}</button>{local.length>0&&<SupportReport key={reportEnd} messages={[{author:'helper',body:h.intro,createdAt:startedAt.current},...local,...messages.map(m=>({author:m.authorKind==='customer'?'me' as const:'helper' as const,body:m.body,createdAt:m.createdAt}))]} language={language} requestKey={reportKeys.current[reportEnd]} send={body=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(body)})}/>}</div>}
+   {tools&&<div className="support-tools" id="support-tools"><MascotMotionMenu mode={motion.mode} onChange={motion.change}/><button type="button" onClick={()=>{clearConversation();setMode('assistant');setTools(false);}}>{h.clear}</button>{local.length>0&&<SupportReport key={reportEnd} messages={[{author:'helper',body:h.intro,createdAt:startedAt.current},...local,...messages.map(m=>({author:m.authorKind==='customer'?'me' as const:'helper' as const,body:m.body,createdAt:m.createdAt}))]} language={language} requestKey={reportKey(reportEnd)} send={body=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(body)})}/>}</div>}
    <div className="support-list" ref={list} role="log" aria-label={c.title} aria-live="polite" aria-relevant="additions">
     <div className="support-msg is-helper"><p>{h.intro}</p></div>
     {localBubbles}
