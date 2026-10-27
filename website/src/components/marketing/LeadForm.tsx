@@ -8,7 +8,7 @@ type FieldErrors = Record<string, string>;
 type FieldName = 'name' | 'businessName' | 'phone';
 
 export function LeadForm() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastPayloadRef = useRef<Record<string, string> | null>(null);
@@ -284,7 +284,8 @@ export function LeadForm() {
         <span className="inline-glyph" aria-hidden="true" />
       </button>
       <p className="form-privacy">
-        <T k="index.text.131" />
+        <T k="index.text.131" />{' '}
+        <a href="/mexfilik/">{{ az: 'Məxfilik siyasəti', en: 'Privacy policy', ru: 'Политика конфиденциальности' }[language]}</a>
       </p>
       <div className={`form-status ${status.type}`.trim()} id="formStatus" role="status" aria-live="polite">
         {status.message}
