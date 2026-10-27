@@ -1,4 +1,4 @@
-import {publishBillingNotifications,renewalNotice} from './notifications.js';
+import {emailBillingNotices,publishBillingNotifications,renewalNotice} from './notifications.js';
 import {TEST_PRODUCT_ID} from './test-shop.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -439,7 +439,8 @@ export class Billing {
   async sweep(){
     await this.expireReservations();
     const notificationSettings=await this.settings();
-    await publishBillingNotifications(this.db,this.now(),Boolean(notificationSettings.enabled&&notificationSettings.recurring_enabled&&this.gateway()?.config.liveVerified));
+    const notices=await publishBillingNotifications(this.db,this.now(),Boolean(notificationSettings.enabled&&notificationSettings.recurring_enabled&&this.gateway()?.config.liveVerified));
+    await emailBillingNotices(this.db,notices);
     // A process can die after transmitting a debit but before storing its reply.
     await this.db.execute(sql`UPDATE billing_attempts SET status='unknown',updated_at=now() WHERE status='sending' AND created_at<now()-interval '2 minutes'`);
     const uncertain=await query<{id:string}>(this.db,sql`SELECT id FROM billing_attempts WHERE transaction_id IS NOT NULL AND status IN ('redirect','pending','unknown') AND updated_at<now()-interval '30 seconds' ORDER BY updated_at LIMIT 25`);
