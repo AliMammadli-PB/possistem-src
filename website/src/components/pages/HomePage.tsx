@@ -25,7 +25,7 @@ export function HomePage(){
             <p className="ps-kicker">{c.eyebrow}</p>
             <h1>{c.title}<br /><span className="ps-mark">{c.accent}</span></h1>
             <p className="ps-lead">{c.intro}</p>
-            <div className="ps-actions"><Link prefetch={false} href="/demo/" className="ps-button ps-button-primary"><Play />{c.demo}</Link><Link prefetch={false} href="/melumatlar/#elaqe" className="ps-text-link">{c.contact}<ArrowUpRight /></Link></div>
+            <div className="ps-actions"><Link prefetch={false} href="/demo/" className="ps-text-link"><Play />{c.demo}</Link><Link prefetch={false} href="/melumatlar/#elaqe" className="ps-button ps-button-primary">{c.contact}<ArrowUpRight /></Link></div>
           </div>
           <div className="ps-hero-comparison">
             {/* Before/after comparison remains in HeroCompare.tsx for a future return. */}

@@ -2,7 +2,7 @@
 .ps-home-layout{display:flex;flex-direction:column;min-height:100svh}
 .ps-home-layout>.ps-header,.ps-home-layout>.marketing-footer{flex-shrink:0}
 .ps-home-layout>main{flex:1;min-width:0}
-.ps-home-layout .marketing-footer.is-compact{padding-top:0;-webkit-mask:none;mask:none;background:var(--footer-fill)}
+.ps-home-layout .marketing-footer.is-compact{padding-top:0;-webkit-mask:none;mask:none;background:var(--brand-pattern)}
 .ps-home-layout .is-compact .ps-footer-top{grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;padding-top:12px}
 .ps-home-layout .is-compact .ps-footer-contact>span{display:none}
 .ps-home-layout .is-compact .ps-footer-address{font-size:14px}

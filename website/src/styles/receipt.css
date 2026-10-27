@@ -12,6 +12,7 @@
 
 /* ── Tokens ─────────────────────────────────────────────── */
 .brand-site{
+ --brand-pattern:#3b58ac url("/assets/brand-ribbon/possistem-pattern-20261023.webp") center/800px auto repeat;
  --canvas:#fff;--surface:#fff;--surface-2:#f2f6fc;--surface-3:#e8eff9;
  --text:#102a4c;--text-2:#344965;--text-3:#536984;--border:#dce5f0;--border-strong:#b3c8e1;
  --blue:#155ac7;--blue-hover:#104ba8;--blue-deep:#103e89;--blue-soft:#edf4ff;--on-blue:#fff;
@@ -33,7 +34,7 @@ html,body{overflow-x:clip}
  -webkit-mask:conic-gradient(from 135deg at top,#0000,#000 1deg 89deg,#0000 90deg) top/var(--tooth) 51% repeat-x,conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) bottom/var(--tooth) 51% repeat-x;
  mask:conic-gradient(from 135deg at top,#0000,#000 1deg 89deg,#0000 90deg) top/var(--tooth) 51% repeat-x,conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) bottom/var(--tooth) 51% repeat-x}
 .brand-site .marketing-footer{-webkit-mask:none;mask:none;background:var(--band)}
-.ps-home-layout .marketing-footer{--footer-fill:var(--band);background:var(--footer-fill);padding-top:0}
+.ps-home-layout .marketing-footer{--footer-fill:#3b58ac;background:var(--brand-pattern);padding-top:0}
 
 .ps-kicker,.ps-product-description .ps-kicker{font:600 13px/1.5 var(--mono);letter-spacing:.04em;color:var(--text-3);margin:0 0 22px}
 .brand-site .marketing-eyebrow{font-family:var(--mono)}
@@ -177,7 +178,7 @@ html,body{overflow-x:clip}
 .brand-site .marketing-form label{font-size:13px;font-weight:600}
 
 /* ── Footer: the end of the receipt ──────────────────────── */
-.brand-site .marketing-footer{--footer-fill:var(--band);background:var(--footer-fill);color:var(--band-text);border:0;padding:0;margin-top:0}
+.brand-site .marketing-footer{--footer-fill:#3b58ac;--band-text:#fff;--band-muted:#edf3ff;--band-rule:#8199d5;--signal:#fff;background:var(--brand-pattern);color:var(--band-text);border:0;padding:0;margin-top:0}
 .ps-footer-transition{height:32px;background:var(--canvas);line-height:0;overflow:hidden;pointer-events:none}
 .ps-footer-transition svg{display:block;width:100%;height:100%}
 .ps-footer-wave-tint{fill:#155ac7;opacity:.22}
@@ -324,7 +325,7 @@ html,body{overflow-x:clip}
 
 /* Closing call: the dark band with tear edges, as on the home page. */
 .brand-site .marketing-cta{background:linear-gradient(180deg,var(--canvas) 0,var(--band) 72px);color:var(--band-text);border:0;padding:112px 0;-webkit-mask:none;mask:none}
-.brand-site .marketing-cta+.marketing-footer{background:var(--band);padding-top:48px}
+.brand-site .marketing-cta+.marketing-footer{background:var(--brand-pattern);padding-top:48px}
 .brand-site .marketing-cta .cta-inner{background:none;border:0;box-shadow:none;padding:0}
 .brand-site .marketing-cta h2{font:800 clamp(32px,3.8vw,56px)/1.06 var(--display);letter-spacing:-.04em;color:var(--band-text)}
 .brand-site .marketing-cta p{color:var(--band-muted);font-size:17px}
