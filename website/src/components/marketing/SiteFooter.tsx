@@ -1,10 +1,11 @@
 'use client';
+import Link from 'next/link';
 import {useI18n} from '@/components/providers/I18nProvider';
 
 const COPY={
-  az:{nav:'Sayt keçidləri',tag:'Satış və biznes idarəetməsi',partner:'Partnyor',contact:'Əlaqə',rights:'Bütün hüquqlar qorunur.',made:'Azərbaycan üçün hazırlanıb',phone:'Telefon',address:'Ünvan',support:'Dəstək'},
-  en:{nav:'Website links',tag:'Sales and business management',partner:'Partners',contact:'Contact',rights:'All rights reserved.',made:'Built for Azerbaijan',phone:'Phone',address:'Address',support:'Support'},
-  ru:{nav:'Разделы сайта',tag:'Продажи и управление бизнесом',partner:'Партнёры',contact:'Контакты',rights:'Все права защищены.',made:'Создано для Азербайджана',phone:'Телефон',address:'Адрес',support:'Поддержка'},
+  az:{nav:'Sayt keçidləri',tag:'Satış və biznes idarəetməsi',partner:'Partnyor',contact:'Əlaqə',privacy:'Məxfilik siyasəti',terms:'Ödəniş şərtləri',rights:'Bütün hüquqlar qorunur.',made:'Azərbaycan üçün hazırlanıb',phone:'Telefon',address:'Ünvan',support:'Dəstək'},
+  en:{nav:'Website links',tag:'Sales and business management',partner:'Partners',contact:'Contact',privacy:'Privacy policy',terms:'Payment terms',rights:'All rights reserved.',made:'Built for Azerbaijan',phone:'Phone',address:'Address',support:'Support'},
+  ru:{nav:'Разделы сайта',tag:'Продажи и управление бизнесом',partner:'Партнёры',contact:'Контакты',privacy:'Политика конфиденциальности',terms:'Условия оплаты',rights:'Все права защищены.',made:'Создано для Азербайджана',phone:'Телефон',address:'Адрес',support:'Поддержка'},
 };
 
 function Icon({name}:{name:'phone'|'map'|'mail'}){
@@ -27,6 +28,14 @@ export function SiteFooter({compact=false}:{compact?:boolean}){
         <a className="ps-footer-line" href="mailto:support@possistem.az"><Icon name="mail"/><span>support@possistem.az</span></a>
       </div>
     </div>
-    <div className="marketing-container ps-footer-bottom"><span>© {new Date().getFullYear()} possistem. {c.rights}</span><a href="/odenis/sertler/">Ödəniş şərtləri</a><span>{c.made}</span></div>
+    <div className="marketing-container ps-footer-bottom">
+      <span>© {new Date().getFullYear()} possistem. {c.rights}</span>
+      <nav className="ps-footer-legal" aria-label={c.nav}>
+        <Link href="/elaqe/">{c.contact}</Link>
+        <Link href="/mexfilik/">{c.privacy}</Link>
+        <Link href="/odenis/sertler/">{c.terms}</Link>
+      </nav>
+      <span>{c.made}</span>
+    </div>
   </footer>;
 }

@@ -202,6 +202,7 @@ html,body{overflow-x:clip}
 .ps-phone-cc,.ps-phone-op,.ps-phone-a,.ps-phone-b{letter-spacing:0;word-spacing:0}
 .ps-footer-contact>a:first-of-type{font:600 16px/1.2 var(--mono);letter-spacing:0}
 .ps-footer-bottom{margin-top:56px;padding-block:22px;border-top:1px dashed var(--band-rule);font:600 12px/1.6 var(--mono);color:var(--band-muted)}
+.ps-footer-legal{display:flex;justify-content:center;flex-wrap:wrap;gap:8px 18px}.ps-footer-legal a{font:inherit;text-decoration:none}
 
 /* ── Responsive ───────────────────────────────────────── */
 @media(max-width:1279px){.ps-home h1{font-size:clamp(44px,5.4vw,64px)}.ps-hero-grid{gap:40px}.ps-proof li{font-size:16px}}
@@ -218,6 +219,7 @@ html,body{overflow-x:clip}
  .ps-start-steps{grid-template-columns:minmax(0,1fr);gap:28px}
  .pricing-grid{grid-template-columns:minmax(0,1fr)}
  .ps-footer-top{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ .ps-footer-bottom{align-items:flex-start}.ps-footer-legal{justify-content:flex-start}
 }
 @media(max-width:600px){
  .ps-kicker,.ps-product-description .ps-kicker{font-size:11px;margin-bottom:16px}
@@ -236,6 +238,7 @@ html,body{overflow-x:clip}
  .ps-footer-top{grid-template-columns:minmax(0,1fr);gap:32px}
  .brand-site .marketing-footer{padding-top:64px}
  .ps-footer-bottom{flex-direction:column;gap:4px}
+ .ps-footer-legal{display:grid;gap:3px}.ps-footer-legal a{min-height:28px}
  .ps-header-controls :is(.cart-toggle,.ps-theme-toggle,.ps-menu-toggle),.ps-header-controls :is(.header-account-login,.header-account-trigger){width:36px;min-width:36px;height:36px;min-height:36px}
 }
 @media(max-width:400px){.ps-mobile-demo{display:none!important}}
