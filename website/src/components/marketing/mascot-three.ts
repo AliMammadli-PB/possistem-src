@@ -5,6 +5,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { cycleScene, mascotPose, sceneDuration, MASCOT_PLAYBACK_RATE, type MascotState, type RobotPose } from './mascot-animation';
 import { reportUiState } from '@/lib/ui-diagnostics';
+import { createEyeGaze } from './mascot-gaze';
 
 export type Mascot3DController={dispose:()=>void};
 const MODEL='/assets/mascot-3d/possistem-assistant-v1.glb';
@@ -34,6 +35,7 @@ export async function mountMascot3D(canvas:HTMLCanvasElement,read:()=>MascotStat
  let rig:THREE.Object3D|undefined,head:THREE.Object3D|undefined,left:THREE.Object3D|undefined,right:THREE.Object3D|undefined,mouth:THREE.Object3D|undefined;
  let eyes:(THREE.Object3D|undefined)[]=[],pupils:(THREE.Object3D|undefined)[]=[],laptop:THREE.Object3D|undefined,book:THREE.Object3D|undefined;
  let pose=mascotPose('idle',0,3800,0);
+ const eyeDepths:number[]=[],gazeProjectors:(((x:number,y:number)=>void)|null)[]=[];
  const tick=(stamp:number)=>{
   if(disposed||document.hidden||!renderer||!rig||!head)return;
   const state=read(),dt=last?Math.min(80,stamp-last):0;last=stamp;
@@ -58,8 +60,8 @@ export async function mountMascot3D(canvas:HTMLCanvasElement,read:()=>MascotStat
    head.rotation.y=gazeX*.12+(action==='lookRight'?.16:action==='lookLeft'?-.16:0);head.rotation.x=gazeY*.075;
    if(left)left.rotation.z=-bound(pose.left,-65,110)*Math.PI/180;
    if(right)right.rotation.z=-bound(pose.right,-65,110)*Math.PI/180;
-   eyes.forEach((eye,i)=>{if(eye)eye.scale.y=Math.max(.035,i?pose.eyeR:pose.eyeL);});
-   pupils.forEach(p=>{if(p){p.position.x=(pointer&&running?gazeX:pose.lookX/9)*.055;p.position.y=-(pointer&&running?gazeY:pose.lookY/6)*.065;}});
+   eyes.forEach((eye,i)=>{if(eye){eye.scale.y=Math.max(.035,i?pose.eyeR:pose.eyeL);eye.position.z=eyeDepths[i]+(1-eye.scale.y)*.08;}});
+   gazeProjectors.forEach(project=>project?.((pointer&&running?gazeX:pose.lookX/9)*.055,-(pointer&&running?gazeY:pose.lookY/6)*.065));
    if(mouth){mouth.scale.y=Math.max(.4,pose.smile)+pose.mouth*1.6;mouth.scale.x=1+pose.mouth*.2;}
    if(laptop)laptop.visible=pose.laptop>.4;if(book)book.visible=pose.book>.4;
    renderer.render(scene,camera);frames++;canvas.dataset.frame=String(frames);canvas.dataset.scene=action;canvas.dataset.gaze=pointer&&running?'tracking':'rest';canvas.dataset.turn=turn.toFixed(3);
@@ -83,6 +85,8 @@ export async function mountMascot3D(canvas:HTMLCanvasElement,read:()=>MascotStat
   model.traverse(o=>{if(o instanceof THREE.Mesh){const materials=Array.isArray(o.material)?o.material:[o.material];for(const m of materials){if(m instanceof THREE.MeshBasicMaterial)m.toneMapped=false;if(m instanceof THREE.MeshStandardMaterial&&/Ice cyan light/.test(m.name)){m.toneMapped=false;m.emissiveIntensity=.65;}}}});
   rig=model.getObjectByName('MascotRoot');head=model.getObjectByName('Head');left=model.getObjectByName('ArmL');right=model.getObjectByName('ArmR');mouth=model.getObjectByName('Mouth');eyes=['EyeL','EyeR'].map(n=>model!.getObjectByName(n));pupils=['EyeLPupil','EyeRPupil'].map(n=>model!.getObjectByName(n));laptop=model.getObjectByName('Laptop');book=model.getObjectByName('Book');
   if(!rig||!head||eyes.some(e=>!e))throw new Error('Mascot rig incomplete');
+  eyes.forEach((eye,i)=>{eyeDepths.push(eye!.position.z);gazeProjectors.push(pupils[i]?createEyeGaze(eye!,pupils[i]!):null);});
+  gazeProjectors.forEach(project=>project?.(0,0));
   if(laptop)laptop.visible=false;if(book)book.visible=false;
   resize();if(typeof ResizeObserver==='function'){observer=new ResizeObserver(resize);observer.observe(canvas);}
   window.addEventListener('resize',resize,{passive:true});window.addEventListener(pointerType,move,{passive:true});window.addEventListener('pointerdown',touch,{passive:true});window.addEventListener('blur',clearPointer);document.addEventListener('pointerout',leave,{passive:true});document.addEventListener('mouseleave',leave);document.addEventListener('visibilitychange',visibility);canvas.addEventListener('webglcontextlost',contextLost);
