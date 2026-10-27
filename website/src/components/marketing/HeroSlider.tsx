@@ -18,6 +18,11 @@ const SLIDES = [
     "image": "/assets/hero-real-screens-20261022/02-market.webp"
   },
   {
+    "id": "16-manufacturing",
+    "system": "İstehsalat",
+    "image": "/assets/hero-sectors-20261027/16-manufacturing.webp"
+  },
+  {
     "id": "03-fashion",
     "system": "Geyim",
     "image": "/assets/hero-sectors-20261022/03-fashion.webp"
@@ -91,6 +96,7 @@ const COPY = {
     "scenes": [
       "Masa, sifariş və hesab",
       "Məhsullar, satış və qalıq",
+      "Xammal, istehsal və hazır məhsullar",
       "Ölçü, rəng və geyim satışı",
       "Dərman və məhsul uçotu",
       "Ehtiyat hissələri və model seçimi",
@@ -113,6 +119,7 @@ const COPY = {
     "scenes": [
       "Tables, orders and bills",
       "Products, sales and stock",
+      "Materials, production and finished goods",
       "Sizes, colours and clothing",
       "Pharmacy product management",
       "Spare parts and vehicle models",
@@ -135,6 +142,7 @@ const COPY = {
     "scenes": [
       "Столы, заказы и счета",
       "Товары, продажи и остатки",
+      "Сырьё, производство и готовая продукция",
       "Размеры, цвета и одежда",
       "Учёт товаров в аптеке",
       "Запчасти и модели автомобилей",
