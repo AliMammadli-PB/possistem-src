@@ -21,7 +21,7 @@ export function SiteFooter({compact=false}:{compact?:boolean}){
   return <footer className={`marketing-footer${compact?' is-compact':''}`}>
     <div className="ps-footer-transition" aria-hidden="true"><svg viewBox="0 0 1440 40" preserveAspectRatio="none"><path className="ps-footer-wave-tint" d="M0 18C240 42 390-8 680 12S1180 38 1440 8V40H0Z"/><path className="ps-footer-wave" d="M0 27C240 48 420 0 720 22S1190 43 1440 18V40H0Z"/></svg></div>
     <div className="marketing-container ps-footer-top">
-      <div className="ps-footer-address"><Icon name="map"/><span>Ziya Bünyadov prospekti 5/7</span></div>
+      <div className="ps-footer-address"><Icon name="map"/><span>Ziya Bünyadov Pr. 5/7</span></div>
       <div className="ps-footer-contact">
         <span>{c.contact}</span>
         <a className="ps-footer-line ps-footer-phone" href="tel:+994513333555"><Icon name="phone"/><span className="ps-phone"><span className="ps-phone-cc">+994</span><span className="ps-phone-op">51</span><span className="ps-phone-a">3333</span><span className="ps-phone-b">555</span></span></a>

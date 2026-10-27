@@ -48,7 +48,7 @@ export function ContactPage() {
           </a>
           <div className="contact-method">
             <span className="contact-method-icon"><ContactIcon name="map" /></span>
-            <span><small>Ünvan</small><strong>Ziya Bünyadov prospekti 5/7</strong><em>Bakı, Azərbaycan</em></span>
+            <span><small>Ünvan</small><strong>Ziya Bünyadov Pr. 5/7</strong><em>Bakı, Azərbaycan</em></span>
           </div>
         </section>
 
