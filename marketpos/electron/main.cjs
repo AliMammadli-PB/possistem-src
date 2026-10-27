@@ -237,7 +237,7 @@ function publicTenant(tenant) {
 }
 
 function licenseAllowsStaffLogin(activation) {
-  return activation?.mode === 'active' && Number(activation.validUntil) > Date.now();
+  return activation?.mode === 'active' && Number(activation.validUntil) > billingPolicy.now();
 }
 
 function normalizeActivation(state) {
@@ -261,7 +261,7 @@ function normalizeActivation(state) {
     state.activation.validUntil = 0;
     dirty = true;
   }
-  if (state.activation.validUntil > 0 && state.activation.validUntil <= Date.now() && state.activation.mode !== 'revoked' && state.activation.mode !== 'expired') {
+  if (state.activation.validUntil > 0 && state.activation.validUntil <= billingPolicy.now() && state.activation.mode !== 'revoked' && state.activation.mode !== 'expired') {
     state.activation.mode = 'expired';
     dirty = true;
   }
@@ -338,6 +338,7 @@ function loadSecureState() {
 
 function saveSecureState(state) {
   ensureUserData();
+  state.clockSeen = Math.max(Number(state.clockSeen) || 0, billingPolicy.lastSeen());
   const file = userDataFile('market-secure-state.json');
   const temp = `${file}.tmp`;
   const json = JSON.stringify(state);
@@ -974,13 +975,13 @@ function verifyOnlineLicense(body, state, allowEnded=false) {
   const expiresAt = Number(envelope.payload.expiresAt);
   const isoExpiry = Date.parse(String(envelope.payload.validUntil || ''));
   const validUntil = expiresAt > 0 ? expiresAt : Number.isFinite(isoExpiry) ? isoExpiry : Date.UTC(2099, 11, 31);
-  if (validUntil <= Date.now() && !allowEnded) throw new Error('Lisenziyanın vaxtı bitib');
+  if (validUntil <= billingPolicy.now() && !allowEnded) throw new Error('Lisenziyanın vaxtı bitib');
   const features = envelope.payload.features && typeof envelope.payload.features === 'object' ? envelope.payload.features : {};
   const branding = features.branding && typeof features.branding === 'object' ? features.branding : null;
   const customerName = String(branding?.productName || body.restaurant?.name || 'Market').slice(0, 120);
   state.pinnedLicenseKey = { keyId, publicKeyHex: key.publicKeyHex };
   state.activation = {
-    mode: validUntil<=Date.now()?'expired':'active',
+    mode: validUntil<=billingPolicy.now()?'expired':'active',
     billingManaged:features.billingManaged===true,
     customerName,
     deviceId: state.activation.deviceId,
@@ -1493,12 +1494,13 @@ function registerIpc() {
   });
   ipcMain.handle('market:activation:status', (event) => {
     assertTrusted(event);
-    return loadSecureState().activation;
+    // `now` is the rollback-safe clock, so the till's own expiry warning uses it too.
+    return { ...loadSecureState().activation, now: billingPolicy.now() };
   });
   ipcMain.handle('market:activation:refresh', async (event) => {
     assertTrusted(event);
     const state = loadSecureState();
-    if (state.activation.validUntil > 0 && state.activation.validUntil <= Date.now() && state.activation.mode !== 'revoked') {
+    if (state.activation.validUntil > 0 && state.activation.validUntil <= billingPolicy.now() && state.activation.mode !== 'revoked') {
       state.activation.mode = 'expired';
       saveSecureState(state);
     }
@@ -1526,6 +1528,7 @@ function registerIpc() {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(8000),
       });
+      billingPolicy.observeServerTime(response.headers.get('date'));
       if (response.status === 401 || response.status === 404) {
         state.activation.mode = 'revoked';
         saveSecureState(state);
@@ -1557,7 +1560,7 @@ function registerIpc() {
     assertTrusted(event);
     const state = loadSecureState();
     if (!state.tenant?.token) throw new Error('Əvvəlcə müştəri hesabına daxil olun');
-    const localMode = state.activation.validUntil > 0 && state.activation.validUntil <= Date.now()
+    const localMode = state.activation.validUntil > 0 && state.activation.validUntil <= billingPolicy.now()
       ? 'expired'
       : state.activation.mode;
     // Bootstrap redeem allowed without staff session when not already active; Settings re-activate needs manager.
@@ -1633,6 +1636,7 @@ function registerIpc() {
       const body = signedMarketHeartbeat(state, snapshot);
       if (input.books && typeof input.books === 'object') body.books = input.books;
       const response = await fetch(controlApi('/market-pos/heartbeat'), { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
+      billingPolicy.observeServerTime(response.headers.get('date'));
       // The heartbeat is the till's regular word with the server, so the role
       // policy rides along with it rather than needing a timer of its own.
       const payload = response.ok ? await response.json().catch(() => ({})) : {};
@@ -2053,6 +2057,7 @@ app.on('browser-window-created', (_event, win) => {
 });
 
 app.whenReady().then(async () => {
+  billingPolicy.bindClock({ read: () => loadSecureState().clockSeen, write: (seen) => { const state = loadSecureState(); state.clockSeen = seen; saveSecureState(state); } });
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   const distRoot = path.resolve(__dirname, '..', 'dist');
   const mediaRoot = path.resolve(app.getPath('userData'), 'catalog-media');

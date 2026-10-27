@@ -5,15 +5,24 @@ import './market-billing.css';
 
 export type PaymentMode='manual'|'automatic';
 type BillingStatus={subscriptions:{monthlyAmountMinor:number;paidUntil:string|null;state:string;hasPaidSubscription?:boolean;autoRenew?:boolean;renewalNotice?:{title:string;body:string}|null;lastPaymentStatus?:string|null}[];billingOnly:boolean;paymentsAvailable:boolean;recurringAvailable?:boolean;enforcementEnabled?:boolean};
+/** The till's own warning from its signed licence date (1.5.74): shown when the server is out of reach. */
+export function offlineNotice(a:{validUntil?:number;now?:number;billingManaged?:boolean}|null|undefined){
+ if(!a?.billingManaged||!(Number(a.validUntil)>0))return null;
+ const left=Number(a.validUntil)-Number(a.now||Date.now());
+ return left<=0?{expired:true,left:0}:left<=3*86400000?{expired:false,left}:null;
+}
 export function MarketBilling({compact=false,lang='az',onManage}:{compact?:boolean;lang?:Lang;onManage?:()=>void}){
- const [data,setData]=useState<BillingStatus|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[mode]=useState<PaymentMode>('automatic');
+ const [data,setData]=useState<BillingStatus|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[mode]=useState<PaymentMode>('automatic'),[local,setLocal]=useState<{validUntil?:number;now?:number;billingManaged?:boolean}|null>(null);
  const t=(az:string,ru:string,en:string)=>lang==='ru'?ru:lang==='en'?en:az;
  useEffect(()=>{if(!window.marketSystem?.billing)return;let alive=true;
-  const load=()=>{void window.marketSystem!.billing.status().then(d=>{if(alive){setData(d);setError('');}}).catch(()=>{if(alive)setError(t('Ödəniş məlumatı alınmadı. Bağlantını yoxlayın.','Не удалось загрузить подписку. Проверьте соединение.','Could not load billing. Check your connection.'));});};
+  const load=()=>{void window.marketSystem!.activation?.status().then(a=>{if(alive)setLocal(a);}).catch(()=>undefined);void window.marketSystem!.billing.status().then(d=>{if(alive){setData(d);setError('');}}).catch(()=>{if(alive)setError(t('Ödəniş məlumatı alınmadı. Bağlantını yoxlayın.','Не удалось загрузить подписку. Проверьте соединение.','Could not load billing. Check your connection.'));});};
   load();const timer=setInterval(()=>{if(document.visibilityState==='visible')load();},15000);window.addEventListener('focus',load);return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',load);};
  },[lang]);
  const sub=data?.subscriptions[0];
  async function open(){if(busy)return;if(onManage){onManage();return;}setBusy(true);setError('');try{await window.marketSystem?.billing.open(mode);}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
+ const warn=offlineNotice(local);
+ if(!sub&&compact&&warn){const until=new Date(Number(local!.validUntil)).toLocaleString(lang==='ru'?'ru-RU':lang==='en'?'en-GB':'az-AZ',{timeZone:'Asia/Baku'}),days=Math.max(1,Math.ceil(warn.left/86400000));
+  return <aside className="mp-billing-banner" role="status"><CreditCard size={20}/><strong>Market POS</strong><span>{warn.expired?t('Abunəlik müddəti bitib. Yeni satış üçün internetə qoşulub ödəniş edin.','Подписка истекла. Подключитесь к интернету и оплатите для новых продаж.','The subscription has ended. Connect to the internet and pay to sell again.'):t(`Abunəlik ${until} tarixində bitir (${days} gün qalıb). İnternet olanda ödəniş edin.`,`Подписка заканчивается ${until} (осталось дней: ${days}). Оплатите, когда будет интернет.`,`The subscription ends on ${until} (${days} day(s) left). Pay when you are online.`)}</span><button type="button" disabled={busy} onClick={()=>void open()}>{t('Ödənişə keç','Перейти к оплате','Continue to payment')}</button></aside>;}
  if(!sub)return compact?null:<section className="mp-billing"><p role={error?'alert':'status'}>{error||(!data?t('Abunəlik yoxlanılır…','Проверка подписки…','Checking subscription…'):t('Bu hesaba Market POS abunəliyi təyin edilməyib. İdarəçi ilə əlaqə saxlayın.','Подписка Market POS не назначена. Обратитесь к администратору.','No Market POS subscription assigned. Contact your administrator.'))}</p></section>;
  if(compact&&sub.state==='active'&&sub.hasPaidSubscription&&!sub.renewalNotice)return null;
  const amount=(sub.monthlyAmountMinor/100).toFixed(2)+' ₼';

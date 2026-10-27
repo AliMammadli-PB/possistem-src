@@ -14,7 +14,7 @@
     "test:sync": "node scripts/test-market-sync-resilience.mjs",
     "test": "npm run typecheck && npm run test:core && npm run test:sync && npm run test:security",
     "package:win": "npm --prefix ../restoranpos run market:package:win",
-    "test:security": "node scripts/test-billing1569.cjs && node scripts/test-signed-updates.cjs && node scripts/test-billing-modes.cjs"
+    "test:security": "node scripts/test-billing1569.cjs && node scripts/test-signed-updates.cjs && node scripts/test-billing-modes.cjs && node scripts/test-billing1574.cjs"
   },
   "dependencies": {
     "bwip-js": "4.11.4",
