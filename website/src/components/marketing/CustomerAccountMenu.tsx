@@ -38,11 +38,17 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+function AccountIcon({name}:{name:string}){
+ const paths:Record<string,string>={portal:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',card:'M3 5h18v14H3z M3 9h18 M7 15h3',bag:'M5 7h14l1 14H4L5 7 M8 7V5a4 4 0 0 1 8 0v2',bell:'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4',store:'M3 10h18l-2-6H5l-2 6 M5 10v10h14V10 M9 20v-6h6v6',chat:'M4 4h16v12H9l-5 4V4 M8 8h8 M8 12h5',download:'M12 3v12 M7 10l5 5 5-5 M4 16v5h16v-5',avatar:'M4 4h16v16H4z M8 10a4 4 0 0 1 8 0 M7 17c2-4 8-4 10 0',settings:'M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2',logout:'M10 4H4v16h6 M8 12h13 M17 8l4 4-4 4'};
+ return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]||paths.portal}/></svg>;
+}
+
 export function CustomerAccountMenu() {
   const { t, language } = useI18n();
   const adminSession = useAdminSession();
   const customerSession = useCustomerSession();
   const [open, setOpen] = useState(false);
+  const [menuOffset, setMenuOffset] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [entered, setEntered] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -56,6 +62,12 @@ export function CustomerAccountMenu() {
 
   useEffect(() => {
     if (!open) return;
+    const positionMenu = () => {
+      const anchor = rootRef.current?.getBoundingClientRect();
+      if (anchor) setMenuOffset(Math.max(0, 12 - (anchor.right - Math.min(320, window.innerWidth - 24))));
+    };
+    positionMenu();
+    window.addEventListener('resize', positionMenu);
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -67,6 +79,7 @@ export function CustomerAccountMenu() {
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', positionMenu);
     };
   }, [open]);
 
@@ -104,7 +117,7 @@ export function CustomerAccountMenu() {
         </button>
 
         {open ? (
-          <div className="header-account-menu" id={menuId} role="menu">
+          <div className="header-account-menu" style={{right:-menuOffset}} id={menuId} role="menu">
             <div className="header-account-menu-head">
               <div className="header-account-menu-head-row">
                 <span className="header-account-avatar header-account-avatar-admin" aria-hidden="true">
@@ -137,7 +150,7 @@ export function CustomerAccountMenu() {
                 role="menuitem"
                 onClick={() => setOpen(false)}
               >
-                <T k="nav.products" />
+                {{az:'Mağaza',en:'Store',ru:'Магазин'}[language]}
               </Link>
               <Link
                 className="header-account-menu-item"
@@ -241,90 +254,29 @@ export function CustomerAccountMenu() {
       />
 
       {open ? (
-        <div className="header-account-menu" id={menuId} role="menu">
-          <div className="header-account-menu-head">
-            <div className="header-account-menu-head-row">
-              {renderAvatar()}
-              <div className="header-account-menu-head-copy">
-                <strong>{displayName}</strong>
-                {email ? <span>{email}</span> : null}
-              </div>
-            </div>
-          </div>
+        <div className="header-account-menu customer-menu" style={{right:-menuOffset}} id={menuId} role="menu" onKeyDown={event=>{
+          const items=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'));
+          const index=items.indexOf(document.activeElement as HTMLElement);
+          if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();items[(index+(event.key==='ArrowDown'?1:-1)+items.length)%items.length]?.focus();}
+          if(event.key==='Home'||event.key==='End'){event.preventDefault();items[event.key==='Home'?0:items.length-1]?.focus();}
+          if(event.key==='Escape'){setOpen(false);rootRef.current?.querySelector<HTMLButtonElement>('.header-account-trigger')?.focus();}
+        }}>
+          <div className="header-account-menu-head"><div className="header-account-menu-head-row">{renderAvatar()}<div className="header-account-menu-head-copy"><strong>{displayName}</strong>{email&&<span>{email}</span>}<small>{{az:'Müştəri hesabı',en:'Customer account',ru:'Аккаунт клиента'}[language]}</small></div></div></div>
           <div className="header-account-menu-list">
-            <Link
-              className="header-account-menu-item primary"
-              href="/pos/app/"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              <T k="liveChat.account.portal" />
-            </Link>
-            <p className="header-account-menu-label">
-              <T k="account.quickLinks" />
-            </p>
-            <Link
-              className="header-account-menu-item"
-              href="/mehsul/avadanliq/"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              <T k="nav.products" />
-            </Link>
-            <Link
-              className="header-account-menu-item"
-              href="/qurasdirma/"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              <T k="index.text.012" />
-            </Link>
-            <Link
-              className="header-account-menu-item"
-              href="/yenilikler/"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              <T k="index.text.013" />
-            </Link>
-            <button
-              type="button"
-              className="header-account-menu-item"
-              role="menuitem"
-              onClick={() => { setOpen(false); openSupportChat(); }}
-            >
-              {({ az: 'Canlı dəstək', en: 'Live support', ru: 'Онлайн-поддержка' } as Record<string, string>)[language] ?? 'Canlı dəstək'}
-            </button>
-            <button
-              type="button"
-              className="header-account-menu-item"
-              role="menuitem"
-              disabled={uploading}
-              onClick={() => {
-                avatarInputRef.current?.click();
-              }}
-            >
-              <T k="liveChat.changeAvatar" />
-            </button>
-            <Link
-              className="header-account-menu-item"
-              href="/pos/app/settings/profile"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              <T k="liveChat.account.settings" />
-            </Link>
-            <button
-              type="button"
-              className="header-account-menu-item danger"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                void customerSession.logout();
-              }}
-            >
-              <T k="liveChat.account.logout" />
-            </button>
+            <Link className="header-account-menu-item primary" href="/pos/app/" role="menuitem" onClick={()=>setOpen(false)}><AccountIcon name="portal"/><span><strong>{{az:'Müştəri paneli',en:'Customer portal',ru:'Личный кабинет'}[language]}</strong><small>{{az:'Biznesinizə ümumi baxış',en:'Your business overview',ru:'Обзор вашего бизнеса'}[language]}</small></span><span className="account-menu-arrow" aria-hidden="true">↗</span></Link>
+            <p className="header-account-menu-label">{{az:'Hesab və alışlar',en:'Account and purchases',ru:'Аккаунт и покупки'}[language]}</p>
+            {[
+              {href:'/pos/app/abunelik',icon:'card',az:'POS abunəliklərim',en:'POS subscriptions',ru:'Подписки POS'},
+              {href:'/pos/app/sifarisler',icon:'bag',az:'Sifarişlərim',en:'My orders',ru:'Мои заказы'},
+              {href:'/pos/app/activity',icon:'bell',az:'Bildirişlər və fakturalar',en:'Notifications and invoices',ru:'Уведомления и счета'},
+              {href:'/mehsul/avadanliq/',icon:'store',az:'Mağaza',en:'Store',ru:'Магазин'},
+            ].map(item=><Link key={item.href} className="header-account-menu-item" href={item.href} role="menuitem" onClick={()=>setOpen(false)}><AccountIcon name={item.icon}/>{item[language]}</Link>)}
+            <p className="header-account-menu-label">{{az:'Kömək və parametrlər',en:'Help and settings',ru:'Помощь и настройки'}[language]}</p>
+            <button type="button" className="header-account-menu-item" role="menuitem" onClick={()=>{setOpen(false);openSupportChat();}}><AccountIcon name="chat"/>{{az:'Canlı dəstək',en:'Live support',ru:'Онлайн-поддержка'}[language]}</button>
+            <Link className="header-account-menu-item" href="/qurasdirma/" role="menuitem" onClick={()=>setOpen(false)}><AccountIcon name="download"/>{{az:'Quraşdırma və yükləmələr',en:'Installation and downloads',ru:'Установка и загрузки'}[language]}</Link>
+            <button type="button" className="header-account-menu-item" role="menuitem" disabled={uploading} onClick={()=>avatarInputRef.current?.click()}><AccountIcon name="avatar"/><T k="liveChat.changeAvatar"/></button>
+            <Link className="header-account-menu-item" href="/pos/app/settings/profile" role="menuitem" onClick={()=>setOpen(false)}><AccountIcon name="settings"/><T k="liveChat.account.settings"/></Link>
+            <button type="button" className="header-account-menu-item danger" role="menuitem" onClick={()=>{setOpen(false);void customerSession.logout();}}><AccountIcon name="logout"/><T k="liveChat.account.logout"/></button>
           </div>
         </div>
       ) : null}

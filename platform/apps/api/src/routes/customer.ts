@@ -495,6 +495,7 @@ export async function customerRoutes(app: FastifyInstance) {
         kind: row.kind,
         title: row.title,
         body: row.body,
+        payload: row.payload,
         readAt: row.readAt?.toISOString() ?? null,
         createdAt: row.createdAt.toISOString(),
       })),

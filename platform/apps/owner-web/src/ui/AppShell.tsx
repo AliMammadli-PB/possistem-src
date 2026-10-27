@@ -35,7 +35,7 @@ export function AppShell({children}:{children:ReactNode}){
  const targetTo=(item:Entry)=>{const device=new URLSearchParams(location.search).get('device');return device&&item.to.startsWith('/anbar?')?item.to+'&device='+encodeURIComponent(device):item.to;};
  const current=(item:Entry)=>item.to==='/'?location.pathname==='/':item.tabs?isWarehouse&&item.tabs.includes(tab):location.pathname.startsWith(item.to.split('?')[0]);
  const groups=sections.map((s,i)=>({...s,items:[...s.items,...(i===0&&selectedProduct==='restaurant'?[{to:'/masalar',label:'Masalar',icon:'table' as IconName}]:[])].filter(item=>allowed(grants,item.to))}));
- const active=groups.flatMap(g=>g.items).find(current),title=active?.label||erpItem(location.pathname.split('/').pop()||'')?.label||'İş sahəsi';
+ const active=groups.flatMap(g=>g.items).find(current),title=(location.pathname.startsWith('/faturalar/')?'Faktura':active?.label)||erpItem(location.pathname.split('/').pop()||'')?.label||'İş sahəsi';
  const blocked=!allowed(grants,location.pathname)||(location.pathname==='/masalar'&&selectedProduct!=='restaurant');
  const initials=(customer?.name||'PS').trim().split(/\s+/).slice(0,2).map(n=>n[0]).join('').toUpperCase();
  return <div className={'workbench'+(compact&&!mobile?' is-compact':'')+(drawer?' drawer-open':'')} data-product={selectedProduct||'restaurant'}>

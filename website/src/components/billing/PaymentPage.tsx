@@ -12,7 +12,8 @@ type Options={pickupAddress:string;deliveryAvailable:boolean;deliveryFeeMinor:nu
 type Quote={quoteId:string;totalMinor:number;deliveryFeeMinor:number;termsVersion:string;expiresAt:string;items:{id:string;name:string;qty:number;unitPriceMinor:number}[]};
 type Sub={id:string;product:string;monthlyAmountMinor:number;paidUntil:string|null;state:string;priceVersion:number;autoRenew:boolean;lastPaymentStatus?:string|null};
 type Site={subscriptions:Sub[];paymentsAvailable:boolean;recurringAvailable:boolean;termsVersion:string|null;csrfToken:string};
-type Order={id:string;order_no:string;kind:string;status:string;amount_minor:number;period_end:string|null;fulfillment_status:string;delivery_kind:string;delivery_address:string;recipient_name:string;recipient_phone:string};
+type Order={id:string;order_no:string;kind:string;status:string;amount_minor:number;period_end:string|null;fulfillment_status:string;delivery_kind:string;delivery_address:string;recipient_name:string;recipient_phone:string;estimated_at?:string|null;note?:string|null};
+const CITIES=['Bakı','Sumqayıt','Xırdalan','Gəncə','Mingəçevir','Şirvan','Lənkəran','Şəki','Naxçıvan','Quba','Qəbələ','Şamaxı'];
 type Detail={order:Order;items?:{name:string;qty:number;unit_price_minor:number}[]};
 const money=(n:number)=>new Intl.NumberFormat('az-AZ',{style:'currency',currency:'AZN'}).format(n/100);
 const date=(s:string|null)=>s?new Date(s).toLocaleString('az-AZ'):'—';
@@ -24,25 +25,26 @@ async function api<T>(path:string,body?:unknown,csrf?:string|null):Promise<T>{
 function TermsLink({version}:{version?:string|null}){return <Link href={'/odenis/sertler/'+(version?'?version='+encodeURIComponent(version):'')} target="_blank">Ödəniş və abunə şərtləri</Link>;}
 function SignIn(){return <section className="pay-panel"><h2>Hesabınıza daxil olun</h2><p>Alış və sifariş tarixçəsi mövcud müştəri hesabınızla əlaqələndiriləcək.</p><a className="pay-primary" href="/pos/app/login?next=%2Fodenis%2F">Hesabıma daxil ol</a><p>Girişdən sonra bu səhifəyə qayıdın. Səbətiniz saxlanılır.</p></section>;}
 
-type PaymentMode='manual'|'automatic';
+type PaymentMode='automatic';
 function SubscriptionChoice({sub,site,busy,onPay}:{sub:Sub;site:Site;busy:boolean;onPay:(mode:PaymentMode)=>void}){
- const [mode,setMode]=useState<PaymentMode>(()=>typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('mode')==='automatic'?'automatic':'manual'),[agreed,setAgreed]=useState(false);
+ const [agreed,setAgreed]=useState(false);
  useEffect(()=>{setAgreed(false);},[sub.priceVersion,site.termsVersion]);
- return <section className="pay-panel pay-sub"><h2>{sub.product==='market'?'Market POS':'Restoran POS'}</h2><p className="pay-amount">{money(sub.monthlyAmountMinor)} <small>/ təqvim ayı</small></p><p>{sub.state==='active'?'Abunəliyiniz aktivdir.':sub.state==='expired'?'Abunəliyin müddəti bitib. Yeni satışlar üçün ödəniş edin.':'Aktiv ödənilmiş abunəliyiniz yoxdur. Ödəniş üsulunu seçin.'}</p><p>Ödənilmiş son tarix: <strong>{date(sub.paidUntil)}</strong></p>
- <fieldset className="pay-modes" disabled={busy}><legend>Ödəniş üsulu</legend>{(['automatic','manual'] as const).map(value=><label className={mode===value?'selected':''} key={value}><input type="radio" name={'payment-mode-'+sub.id} value={value} checked={mode===value} onChange={()=>{setMode(value);setAgreed(false);}}/><span><strong>{value==='automatic'?'Aylıq avtomatik abunə':'Linklə bir aylıq ödəniş'}</strong><small>{value==='automatic'?'İlk ödənişdən sonra hər ay kartınızdan yenilənir.':'Yalnız bir ay ödənilir. Növbəti ay özünüz ödəyirsiniz.'}</small></span></label>)}</fieldset>
- {mode==='automatic'?<p>Kart bankda saxlanılır. Hər ay {money(sub.monthlyAmountMinor)} tutulmasına ayrıca razılıq verirsiniz. Ödəniş alınmasa, ödənilmiş müddət bitəndə yeni satışlar dayanır və ödəniş ekranından davam edirsiniz.</p>:<p>Avtomatik pul tutulmur. {sub.autoRenew?'Bu üsulla ödənişi başladanda əvvəlki avtomatik yenilənmə dayandırılacaq. ':''}Bir ayın sonunda yenidən əl ilə ödəyənədək yeni satışlar dayanır.</p>}
- {sub.lastPaymentStatus==='failed'&&sub.state!=='active'&&<p className="pay-alert error">Son ödəniş alınmayıb. Kartı yenidən yoxlayıb uyğun üsulla ödəniş edin.</p>}
- {['processing','unknown'].includes(sub.lastPaymentStatus??'')&&<p className="pay-alert">Əvvəlki bank əməliyyatının nəticəsi gözlənilir. Yeni tutulma yaratmadan mövcud sifarişin vəziyyəti yoxlanılacaq.</p>}
- <label className="pay-check"><input type="checkbox" disabled={busy} checked={agreed} onChange={e=>setAgreed(e.target.checked)}/><span><TermsLink version={site.termsVersion}/> ilə tanış oldum. {mode==='automatic'?`Hər ay ${money(sub.monthlyAmountMinor)} avtomatik tutulmasına razıyam; istənilən vaxt dayandıra bilərəm.`:'Yalnız bir aylıq ödəniş edirəm; sonrakı ödənişi özüm edəcəyəm.'}</span></label>
- {mode==='automatic'&&!site.recurringAvailable&&<p className="pay-alert">Avtomatik yenilənmə Epoint Card Storage və API aktivləşəndən sonra açılacaq.</p>}
- <button className="pay-primary" disabled={busy||!agreed||!site.paymentsAvailable||!site.termsVersion||sub.state==='disabled'||mode==='automatic'&&!site.recurringAvailable} onClick={()=>onPay(mode)}>{busy?'Ödəniş hazırlanır…':mode==='automatic'?'Avtomatik abunəni başlat':'Bir aylıq ödəniş linkini aç'}</button><p>Erkən ödəniş cari müddətə bir ay əlavə edir. Gecikmiş ödəniş bank təsdiqindən yeni ay başladır. Məlumatlara baxış və ixrac açıq qalır.</p></section>;
+ return <section className="pay-panel pay-sub"><h2>{sub.product==='market'?'Market POS':'Restoran POS'}</h2><p className="pay-amount">{money(sub.monthlyAmountMinor)} <small>/ təqvim ayı</small></p><p>Ödənilmiş son tarix: <strong>{date(sub.paidUntil)}</strong></p>
+ {sub.state==='active'?<><p className="pay-alert">Cari müddətiniz ödənilib. Yenidən ödəniş tələb olunmur. {sub.autoRenew?'Növbəti ödəniş müddət bitdikdə kartınızdan avtomatik tutulacaq.':''}</p><a className="pay-primary" href="/pos/app/abunelik">Abunəliyi idarə et</a></>:<><p>Kartınızı bank səhifəsində bir dəfə bağlayın. Hər ay {money(sub.monthlyAmountMinor)} razılığınızla avtomatik tutulur. Yenilənmədən 3 gün əvvəl bildiriş alacaqsınız.</p>
+ {sub.lastPaymentStatus==='failed'&&<p className="pay-alert error">Son ödəniş alınmayıb. Kartınızı yenidən yoxlayın.</p>}
+ {['processing','unknown'].includes(sub.lastPaymentStatus??'')&&<p className="pay-alert">Əvvəlki bank əməliyyatının nəticəsi gözlənilir. Mövcud əməliyyat yoxlanılacaq.</p>}
+ <label className="pay-check"><input type="checkbox" disabled={busy} checked={agreed} onChange={e=>setAgreed(e.target.checked)}/><span><TermsLink version={site.termsVersion}/> ilə tanış oldum. Hər ay {money(sub.monthlyAmountMinor)} avtomatik tutulmasına razıyam; istənilən vaxt dayandıra bilərəm.</span></label>
+ {!site.recurringAvailable&&<p className="pay-alert">Avtomatik abunə xidməti hazırda əlçatan deyil.</p>}
+ <button className="pay-primary" disabled={busy||!agreed||!site.paymentsAvailable||!site.termsVersion||sub.state==='disabled'||!site.recurringAvailable} onClick={()=>onPay('automatic')}>{busy?'Ödəniş hazırlanır…':'Kartı bağla və abunə ol'}</button><p>Ödəniş alınmasa, ödənilmiş müddət bitdikdə yeni satışlar dayanır. Baxış və ixrac açıq qalır.</p></>}
+ </section>;
 }
 
 export function PaymentPage({mode}:{mode:'shop'|'handoff'|'result'|'terms'}){
  const session=useCustomerSession(),cart=useCart(),partner=usePartner();
  const [options,setOptions]=useState<Options|null>(null),[quote,setQuote]=useState<Quote|null>(null),[site,setSite]=useState<Site|null>(null),[detail,setDetail]=useState<Detail|null>(null),[legal,setLegal]=useState<Legal|null>(null);
  const [error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false),[accepted,setAccepted]=useState(false);
- const [form,setForm]=useState({kind:'pickup',name:'',phone:'',address:''});
+ const [form,setForm]=useState({kind:'pickup',name:'',phone:'',city:'Bakı',district:'',street:'',building:'',apartment:'',entrance:'',floor:'',landmark:'',courierNote:''});
+ const field=(key:keyof typeof form)=>({value:form[key],onChange:(e:{target:{value:string}})=>setForm({...form,[key]:e.target.value})});
  const keys=useRef<Record<string,string>>({}),handoffOnce=useRef<Promise<Site>|null>(null),orderRef=useRef('');
  function key(id:string){return keys.current[id]??(keys.current[id]=crypto.randomUUID());}
  const loadResult=useCallback(async()=>{
@@ -85,7 +87,10 @@ export function PaymentPage({mode}:{mode:'shop'|'handoff'|'result'|'terms'}){
  async function getQuote(){
   setBusy(true);setError('');setMessage('');try{
    const partnerProof=await partner.checkoutProof();
-   const q=await api<Quote>('customer/billing/quote',{items:cart.items.map(i=>({id:i.id,qty:i.qty})),shipping:form,partnerProof},session.csrfToken);
+   // Delivery sends the address as separate fields; the server also builds the one-line address from them.
+   const {kind,name,phone,...address}=form,clean=Object.fromEntries(Object.entries(address).map(([k,v])=>[k,v.trim()]).filter(([,v])=>v));
+   const shipping=kind==='delivery'?{kind,name,phone,details:clean}:{kind,name,phone,address:''};
+   const q=await api<Quote>('customer/billing/quote',{items:cart.items.map(i=>({id:i.id,qty:i.qty})),shipping,partnerProof},session.csrfToken);
    setQuote(q);setAccepted(false);
   }catch(e){setError(e instanceof Error?e.message:'Qiymət alınmadı.');}finally{setBusy(false);}
  }
@@ -103,9 +108,19 @@ export function PaymentPage({mode}:{mode:'shop'|'handoff'|'result'|'terms'}){
   {message&&<p className="pay-alert" role="status">{message}</p>}{!loaded&&<p role="status">Yüklənir…</p>}
   {mode==='shop'&&(session.loading?<p>Hesab yoxlanılır…</p>:!session.authenticated?<SignIn/>:<div className="pay-grid"><form className="pay-panel" onSubmit={e=>{e.preventDefault();void getQuote();}}><h2>Təhvil məlumatları</h2><p>{session.name} · {session.email}</p>
    <label>Ad və soyad<input required minLength={2} maxLength={150} autoComplete="name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>
-   <label>Əlaqə telefonu<input required minLength={7} maxLength={40} type="tel" autoComplete="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label>
+   <label>Əlaqə telefonu<input required minLength={7} maxLength={40} type="tel" autoComplete="tel" placeholder="+994 50 123 45 67" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label>
    <label>Təhvil üsulu<select value={form.kind} onChange={e=>setForm({...form,kind:e.target.value})}><option value="pickup">Özüm götürəcəyəm</option>{options?.deliveryAvailable&&<option value="delivery">Çatdırılma · {money(options.deliveryFeeMinor??0)}</option>}</select></label>
-   {form.kind==='pickup'?<p>{options?.pickupAddress||'Götürmə ünvanı hələ təyin edilməyib.'}</p>:<label>Ünvan<textarea required minLength={5} maxLength={1000} autoComplete="street-address" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></label>}
+   {form.kind==='pickup'?<p>{options?.pickupAddress||'Götürmə ünvanı hələ təyin edilməyib.'}</p>:<fieldset className="pay-address"><legend>Çatdırılma ünvanı</legend>
+    <label>Şəhər<input required minLength={2} maxLength={80} list="pay-cities" autoComplete="address-level2" {...field('city')}/><datalist id="pay-cities">{CITIES.map(c=><option key={c} value={c}/>)}</datalist></label>
+    <label>Rayon / qəsəbə<input maxLength={120} autoComplete="address-level3" placeholder="Məs. Nəsimi" {...field('district')}/></label>
+    <label className="wide">Küçə / prospekt<input required minLength={2} maxLength={200} autoComplete="address-line1" placeholder="Məs. Ziya Bünyadov prospekti" {...field('street')}/></label>
+    <label>Bina / ev<input required maxLength={40} {...field('building')}/></label>
+    <label>Mənzil<input maxLength={40} autoComplete="address-line2" {...field('apartment')}/></label>
+    <label>Giriş<input maxLength={40} {...field('entrance')}/></label>
+    <label>Mərtəbə<input maxLength={40} inputMode="numeric" {...field('floor')}/></label>
+    <label className="wide">Orientir<input maxLength={300} placeholder="Məs. metro yaxınlığı, mağazanın yanı" {...field('landmark')}/></label>
+    <label className="wide">Kuryer üçün qeyd<textarea maxLength={500} rows={2} placeholder="Məs. zəng edin, domofon işləmir" {...field('courierNote')}/></label>
+   </fieldset>}
    <button className="pay-primary" disabled={busy||!cart.items.length} type="submit">{busy?'Hesablanır…':'Məbləği yoxla'}</button>
   </form><section className="pay-panel"><h2>Sifarişiniz</h2>{!cart.items.length?<p>Səbət boşdur. <Link href="/mehsul/avadanliq/">Məhsullara baxın</Link></p>:<ul className="pay-items">{(quote?.items??cart.items.map(i=>({id:i.id,name:i.name,qty:i.qty,unitPriceMinor:Math.round(i.price*100)}))).map(i=><li key={i.id}><span>{i.name}<small>{i.qty} ədəd</small></span><strong>{money(i.qty*i.unitPriceMinor)}</strong></li>)}</ul>}
    {!quote&&cart.items.length>0&&<p className="pay-total">Məhsulların cəmi <strong>{money(Math.round(cart.total*100))}</strong></p>}
@@ -113,7 +128,7 @@ export function PaymentPage({mode}:{mode:'shop'|'handoff'|'result'|'terms'}){
    {options&&!options.paymentsAvailable&&<p className="pay-alert">Epoint API qoşulması gözlənilir. Məhsulların qiyməti yuxarıdadır; kartla sifariş bank inteqrasiyası aktivləşəndə açılacaq. Səbətiniz saxlanılır.</p>}
   </section></div>)}
   {mode==='handoff'&&site&&<>{!site.paymentsAvailable&&<p className="pay-alert">Epoint API ödənişləri hələ aktivləşdirilməyib. Bu seçimlər hazırdır; hazırda ödəniş təsdiqlənmiş kimi göstərilmir.</p>}{site.subscriptions.map(sub=><SubscriptionChoice key={sub.id} sub={sub} site={site} busy={busy} onPay={paymentMode=>void redirect('billing/site/checkout',{requestId:key(sub.id+':'+sub.priceVersion+':'+paymentMode),priceVersion:sub.priceVersion,saveCard:paymentMode==='automatic',paymentMode,termsVersion:site.termsVersion},site.csrfToken)}/>)}</>}
-  {mode==='result'&&detail&&<section className="pay-panel"><span className={'pay-state '+detail.order.status}>{labels[detail.order.status]??detail.order.status}</span><h2>{detail.order.order_no}</h2><p className="pay-amount">{money(Number(detail.order.amount_minor))}</p>{detail.order.status==='paid'?<p>{detail.order.kind==='subscription'?'Yeni istifadə müddəti: '+date(detail.order.period_end):'Sifariş: '+(labels[detail.order.fulfillment_status]??detail.order.fulfillment_status)}</p>:<p>Bu səhifəyə keçid ödənişi təsdiqləmir. Bank nəticəsi serverdə yoxlanılır. Nəticə qeyri-müəyyəndirsə, ikinci dəfə ödəməyin.</p>}{detail.items?.map((i,n)=><p key={n}>{i.name} · {i.qty} ədəd · {money(Number(i.unit_price_minor)*i.qty)}</p>)}<div className="pay-actions"><button onClick={()=>void loadResult().catch(e=>setError(e.message))}>Nəticəni yenilə</button><a className="pay-primary" href="/pos/app/abunelik">Ödəniş tarixçəsi</a></div></section>}
+  {mode==='result'&&detail&&<section className="pay-panel"><span className={'pay-state '+detail.order.status}>{labels[detail.order.status]??detail.order.status}</span><h2>{detail.order.order_no}</h2><p className="pay-amount">{money(Number(detail.order.amount_minor))}</p>{detail.order.status==='paid'?<p>{detail.order.kind==='subscription'?'Yeni istifadə müddəti: '+date(detail.order.period_end):'Sifariş: '+(labels[detail.order.fulfillment_status]??detail.order.fulfillment_status)}</p>:<p>Bu səhifəyə keçid ödənişi təsdiqləmir. Bank nəticəsi serverdə yoxlanılır. Nəticə qeyri-müəyyəndirsə, ikinci dəfə ödəməyin.</p>}{detail.order.kind==='shop'&&detail.order.estimated_at&&<p><strong>{detail.order.delivery_kind==='pickup'?'Təxmini hazır olma vaxtı':'Təxmini çatdırılma vaxtı'}:</strong> {new Date(detail.order.estimated_at).toLocaleString('az-AZ',{timeZone:'Asia/Baku',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</p>}{detail.order.kind==='shop'&&detail.order.note&&<p className="pay-alert"><strong>Satıcıdan qeyd:</strong> {detail.order.note}</p>}{detail.items?.map((i,n)=><p key={n}>{i.name} · {i.qty} ədəd · {money(Number(i.unit_price_minor)*i.qty)}</p>)}<div className="pay-actions"><button onClick={()=>void loadResult().catch(e=>setError(e.message))}>Nəticəni yenilə</button><a className="pay-primary" href={'/pos/app/faturalar/'+detail.order.id}>Fakturanı aç</a><a href={detail.order.kind==='shop'?'/pos/app/sifarisler':'/pos/app/abunelik'}>Tarixçəyə qayıt</a></div></section>}
   {mode==='terms'&&loaded&&<section className="pay-panel pay-legal">{legal?.version?<><h2>{legal.sellerName}</h2><p>VÖEN: {legal.voen} · {legal.address}</p><p>{legal.phone} · Şərtlərin versiyası: {legal.version}</p>{[['subscriptionTerms','Aylıq abunə'],['deliveryTerms','Təhvil və çatdırılma'],['refundTerms','Geri qaytarma'],['privacyPolicy','Məxfilik']].map(([k,title])=><section key={k}><h3>{title}</h3><p>{legal[k]}</p></section>)}</>:<p>Satıcı məlumatları və ödəniş şərtləri hələ dərc edilməyib. Onlayn ödəniş bağlıdır.</p>}</section>}
  </div></MarketingLayout>;
 }

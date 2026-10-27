@@ -659,6 +659,7 @@ export type NotificationItem = {
   body: string;
   readAt: string | null;
   createdAt: string;
+  payload?: {orderId?:unknown;url?:unknown};
 };
 
 export function activity() {

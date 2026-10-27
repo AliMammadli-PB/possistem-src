@@ -20,6 +20,7 @@ import {
 
 const OrdersPage = lazy(() => import('./pages/OrdersPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
+const InvoicePage = lazy(() => import('./pages/InvoicePage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const SetupPage = lazy(() => import('./pages/SetupPage'));
 const DownloadsPage = lazy(() => import('./pages/DownloadsPage'));
@@ -64,7 +65,7 @@ function RouteEffects() {
       ? erp.label
       : location.pathname.startsWith('/onboarding')
         ? 'Quraşdırma'
-        : titles[location.pathname] || 'Müştəri portalı';
+        : location.pathname.startsWith('/faturalar/') ? 'Faktura' : titles[location.pathname] || 'Müştəri portalı';
     document.title = `${base} · possistem`;
     window.requestAnimationFrame(() => {
       document.querySelector<HTMLElement>('main h1[tabindex="-1"], main h1')?.focus({
@@ -137,6 +138,7 @@ export default function App() {
           <Route path="/downloads" element={<ProtectedShell><DownloadsPage /></ProtectedShell>} />
           <Route path="/sifarisler" element={<ProtectedShell><OrdersPage /></ProtectedShell>} />
           <Route path="/abunelik" element={<ProtectedShell><BillingPage /></ProtectedShell>} />
+          <Route path="/faturalar/:id" element={<ProtectedShell><InvoicePage /></ProtectedShell>} />
           <Route path="/activity" element={<ProtectedShell><ActivityPage /></ProtectedShell>} />
           <Route path="/masalar" element={<ProtectedShell><TablesPage /></ProtectedShell>} />
           <Route path="/chat" element={<ProtectedShell><ChatPage /></ProtectedShell>} />

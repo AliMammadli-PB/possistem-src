@@ -1,4 +1,6 @@
 import { useCallback,useEffect, useMemo, useState } from 'react';
+import {useNavigate} from 'react-router-dom';
+import {billingNoticePath} from '../billing-links';
 import {usePolling} from '../hooks/usePolling';
 import {useAuth} from '../auth/AuthContext';
 import {ownerProductLabels} from '../api';
@@ -11,6 +13,7 @@ import { useToast } from '../ui/overlays';
 const PAGE_SIZE = 10;
 
 export default function ActivityPage() {
+  const navigate=useNavigate();
   const {selectedProduct}=useAuth();
   const fetchActivity=useCallback(()=>activity(),[selectedProduct]);
   const state=usePolling(fetchActivity,15000);
@@ -94,7 +97,7 @@ export default function ActivityPage() {
                 key={item.id}
                 type="button"
                 className={`notification-row ${item.readAt ? '' : 'unread'}`}
-                onClick={() => void markRead(item)}
+                onClick={() => {void markRead(item);const path=billingNoticePath(item);if(path)navigate(path);}}
               >
                 <span className={`activity-icon ${toneForKind(item.kind)}`}><Icon name={iconForKind(item.kind)} size={19} /></span>
                 <span className="notification-copy"><strong>{item.title}</strong><small>{item.body || 'Əlavə məlumat yoxdur'}</small></span>

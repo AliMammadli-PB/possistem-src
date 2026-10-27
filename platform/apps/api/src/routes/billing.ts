@@ -33,6 +33,15 @@ function fail(reply:FastifyReply,error:unknown){
   return reply.code(500).send({error:'Ödəniş əməliyyatı tamamlanmadı. Nəticəni yoxlayın.',code:'billing_error'});
 }
 
+const part=z.string().trim().max(120);
+const DeliveryDetails=z.object({city:z.string().trim().min(2).max(80),district:part.optional(),street:z.string().trim().min(2).max(200),building:z.string().trim().min(1).max(40),apartment:z.string().trim().max(40).optional(),entrance:z.string().trim().max(40).optional(),floor:z.string().trim().max(40).optional(),landmark:z.string().trim().max(300).optional(),courierNote:z.string().trim().max(500).optional()});
+/** Structured delivery fields also produce the one-line address the admin and notifications already show. */
+function withAddress<T extends {kind:'pickup'|'delivery';address:string;details?:z.infer<typeof DeliveryDetails>}>(s:T):T{
+  if(s.kind!=='delivery'||!s.details)return {...s,details:undefined};
+  const d=s.details,line=[d.city,d.district,d.street,'bina '+d.building,d.apartment&&'mənzil '+d.apartment,d.entrance&&'giriş '+d.entrance,d.floor&&'mərtəbə '+d.floor].filter(Boolean).join(', ');
+  return {...s,address:[line,d.landmark&&'Orientir: '+d.landmark,d.courierNote&&'Kuryer üçün: '+d.courierNote].filter(Boolean).join(' · ').slice(0,1000)};
+}
+
 export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;worker?:boolean}={}){
   const billing=opts.billing??new Billing(app.db);
   app.addContentTypeParser('application/x-www-form-urlencoded',{parseAs:'string',bodyLimit:65536},(_req,body,done)=>{done(null,Object.fromEntries(new URLSearchParams(String(body))));});
@@ -50,7 +59,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   app.get('/billing/terms',guarded(async(req)=>{
     const version=String((req.query as {version?:string}).version??'').slice(0,100);
     if(version){const [row]=await query<{content:unknown}>(app.db,sql`SELECT content FROM billing_terms WHERE version=${version}`);return {legal:row?.content??null};}
-    return {legal:(await billing.settings()).legal};
+    const legal=(await billing.settings()).legal;return {legal:Object.values(legal??{}).some(v=>typeof v!=='string'||!v.trim())||!legal?.version?null:legal};
   }));
   app.get('/customer/billing/notifications',customer(async id=>({notifications:await query(app.db,sql`SELECT id,kind,title,body,payload,read_at AS "readAt",created_at AS "createdAt" FROM owner_notifications WHERE customer_id=${id}::uuid ORDER BY created_at DESC LIMIT 100`),...((await query(app.db,sql`SELECT count(*)::int AS unread FROM owner_notifications WHERE customer_id=${id}::uuid AND read_at IS NULL`))[0]??{})})));
   app.post('/customer/billing/notifications/read',customer(async(id,req)=>{const b=z.object({id:uuid.optional()}).parse(req.body??{});await app.db.execute(sql`UPDATE owner_notifications SET read_at=now() WHERE customer_id=${id}::uuid AND read_at IS NULL AND (${b.id??null}::uuid IS NULL OR id=${b.id??null}::uuid)`);return {ok:true};}));
@@ -59,7 +68,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   app.get('/customer/billing/shop-orders',customer(async(id,req)=>{
     const b=z.object({before:z.string().datetime().optional(),beforeId:uuid.optional(),q:z.string().max(100).default(''),filter:z.enum(['all','paid','pending']).default('all')}).parse(req.query);
     if(Boolean(b.before)!==Boolean(b.beforeId))throw new BillingError('invalid_cursor','Səhifəni yenidən açın.',400);
-    const rows=await query<{id:string;created_at:string|Date;cursor_created_at:string}>(app.db,sql`SELECT id,order_no,amount_minor,currency,kind,status,fulfillment_status,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created_at FROM billing_orders WHERE customer_id=${id}::uuid AND kind='shop' AND (${b.q}='' OR position(lower(${b.q}) in lower(order_no))>0) AND (${b.filter}='all' OR (${b.filter}='paid' AND status='paid') OR (${b.filter}='pending' AND status IN ('awaiting_payment','processing','unknown'))) AND (${b.before??null}::timestamptz IS NULL OR (created_at,id)<(${b.before??null}::timestamptz,${b.beforeId??null}::uuid)) ORDER BY created_at DESC,id DESC LIMIT 26`);
+    const rows=await query<{id:string;created_at:string|Date;cursor_created_at:string}>(app.db,sql`SELECT id,order_no,amount_minor,currency,kind,status,fulfillment_status,estimated_at,delivery_kind,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created_at FROM billing_orders WHERE customer_id=${id}::uuid AND kind='shop' AND (${b.q}='' OR position(lower(${b.q}) in lower(order_no))>0) AND (${b.filter}='all' OR (${b.filter}='paid' AND status='paid') OR (${b.filter}='pending' AND status IN ('awaiting_payment','processing','unknown'))) AND (${b.before??null}::timestamptz IS NULL OR (created_at,id)<(${b.before??null}::timestamptz,${b.beforeId??null}::uuid)) ORDER BY created_at DESC,id DESC LIMIT 26`);
     const more=rows.length>25,orders=rows.slice(0,25),last=orders.at(-1);return {orders,next:more&&last?{before:last.cursor_created_at,beforeId:last.id}:null};
   }));
   app.get('/customer/billing/orders/:id',customer(async(id,req)=>billing.order(id,idOf(req))));
@@ -69,8 +78,8 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   }));
   app.post('/customer/billing/subscriptions/:id/consent',customer(async(id,req)=>billing.consent(id,idOf(req),z.object({enabled:z.boolean(),priceVersion:z.number().int().positive().optional(),termsVersion:z.string().max(100).optional()}).parse(req.body),req.ip)));
   app.post('/customer/billing/quote',customer(async(id,req)=>{
-    const b=z.object({partnerProof:z.string().max(2000).optional(),items:z.array(z.object({id:z.string().min(1).max(150),qty:z.number().int().min(1).max(1000000)})).min(1).max(50).refine(xs=>new Set(xs.map(x=>x.id)).size===xs.length),shipping:z.object({kind:z.enum(['pickup','delivery']),name:z.string().trim().min(2).max(150),phone:z.string().trim().min(7).max(40),address:z.string().trim().max(1000)}).refine(s=>s.kind==='pickup'||s.address.length>=5)}).parse(req.body);
-    return billing.quote(id,b.items,b.shipping,b.partnerProof);
+    const b=z.object({partnerProof:z.string().max(2000).optional(),items:z.array(z.object({id:z.string().min(1).max(150),qty:z.number().int().min(1).max(1000000)})).min(1).max(50).refine(xs=>new Set(xs.map(x=>x.id)).size===xs.length),shipping:z.object({kind:z.enum(['pickup','delivery']),name:z.string().trim().min(2).max(150),phone:z.string().trim().min(7).max(40),address:z.string().trim().max(1000).default(''),details:DeliveryDetails.optional()}).refine(s=>s.kind==='pickup'||Boolean(s.details)||s.address.length>=5)}).parse(req.body);
+    return billing.quote(id,b.items,withAddress(b.shipping),b.partnerProof);
   }));
   app.post('/customer/billing/checkout',customer(async(id,req)=>{const b=z.object({quoteId:uuid,requestId:uuid,termsVersion:z.string().min(1).max(100)}).parse(req.body);return billing.shopCheckout(id,b.quoteId,b.requestId,b.termsVersion);}));
 
@@ -110,18 +119,29 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     await billing.reconcile(id);return {ok:true};
   }));
   app.patch('/admin/billing/orders/:id',admin(async(actor,req)=>{
-    const b=z.object({fulfillmentStatus:z.enum(['preparing','ready','dispatched','completed','cancelled']),note:z.string().max(2000).default('')}).parse(req.body);
+    // Partial: status, the customer-visible note and the estimated time change only when sent.
+    const b=z.object({fulfillmentStatus:z.enum(['preparing','ready','dispatched','completed','cancelled']).optional(),note:z.string().trim().max(2000).optional(),estimatedAt:z.string().datetime({offset:true}).nullable().optional()}).refine(x=>x.fulfillmentStatus!==undefined||x.note!==undefined||x.estimatedAt!==undefined).parse(req.body);
     const id=idOf(req);
     await app.db.transaction(async tx=>{
       const [o]=await query<{status:string;fulfillment_status:string}>(tx,sql`SELECT status,fulfillment_status FROM billing_orders WHERE id=${id}::uuid AND kind='shop' FOR UPDATE`);
       if(!o||o.status!=='paid')throw new BillingError('not_paid','Yalnız stoku təsdiqlənmiş ödənilmiş sifariş təhvil verilə bilər.');
-      if(o.fulfillment_status==='completed'&&b.fulfillmentStatus!=='completed')throw new BillingError('already_delivered','Təhvil verilmiş sifarişi geriyə keçirmək olmaz.');
-      await tx.execute(sql`UPDATE billing_orders SET fulfillment_status=${b.fulfillmentStatus},note=${b.note},updated_at=now() WHERE id=${id}::uuid`);
+      if(b.fulfillmentStatus&&o.fulfillment_status==='completed'&&b.fulfillmentStatus!=='completed')throw new BillingError('already_delivered','Təhvil verilmiş sifarişi geriyə keçirmək olmaz.');
+      await tx.execute(sql`UPDATE billing_orders SET fulfillment_status=COALESCE(${b.fulfillmentStatus??null},fulfillment_status),note=COALESCE(${b.note??null},note),
+        estimated_at=CASE WHEN ${b.estimatedAt!==undefined} THEN ${b.estimatedAt??null}::timestamptz ELSE estimated_at END,updated_at=now() WHERE id=${id}::uuid`);
       await event(tx,actor,'order.fulfillment',id,b);
     });return {ok:true};
   }));
   app.get('/admin/billing/settings',admin(async()=>{
     const config=epointConfig();return {settings:await billing.settings(),configured:Boolean(config),liveVerified:Boolean(config?.liveVerified),callbackUrl:'https://possistem.az/pos/api/billing/epoint/callback'};
+  }));
+  // Read-only key check: asks the status of an order that does not exist, so no money moves.
+  app.post('/admin/billing/epoint/check',admin(async()=>{
+    const gateway=billing.gateway();if(!gateway)return {ok:false,message:'Epoint açarları serverdə qurulmayıb.'};
+    const r=await gateway.call('get-status',{order_id:'PS-KEYCHECK-'+randomBytes(8).toString('hex')});
+    const text=String(r.message??'');
+    if(/signature/i.test(text))return {ok:false,message:'Epoint imzanı qəbul etmədi: şəxsi açar səhvdir.'};
+    if(/not found/i.test(text))return {ok:true,message:'Açarlar düzgündür, Epoint imzalı sorğunu qəbul etdi.'};
+    return {ok:false,message:'Epoint cavabı: '+(text||String(r.status??'naməlum')).slice(0,200)};
   }));
   app.patch('/admin/billing/settings',admin(async(actor,req)=>{
     const b=z.object({enabled:z.boolean(),recurringEnabled:z.boolean(),enforcementEnabled:z.boolean().default(false),pickupAddress:z.string().trim().max(1000),deliveryFeeMinor:z.number().int().min(0).max(MAX_MINOR).nullable(),legal:z.object({version:z.string().trim().max(100),sellerName:z.string().trim().max(300),voen:z.string().trim().max(30),address:z.string().trim().max(1000),phone:z.string().trim().max(50),subscriptionTerms:z.string().max(20000),refundTerms:z.string().max(20000),deliveryTerms:z.string().max(20000),privacyPolicy:z.string().max(20000)})}).parse(req.body);
@@ -132,11 +152,13 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     }
     await app.db.transaction(async tx=>{
       const [previous]=await query<Settings>(tx,sql`SELECT * FROM billing_settings WHERE id=true FOR UPDATE`);
-      if(b.legal.version){
+      // Incomplete terms are a draft: they are saved for editing but not published under a version.
+      const complete=(v:Record<string,unknown>|undefined)=>Boolean(v)&&Object.keys(b.legal).every(k=>typeof v![k]==='string'&&String(v![k]).trim()!=='');
+      if(b.legal.version&&complete(b.legal)){
         const [existing]=await query<{content:Record<string,unknown>}>(tx,sql`SELECT content FROM billing_terms WHERE version=${b.legal.version}`);
         const same=(v:Record<string,unknown>)=>Object.keys(b.legal).every(k=>v[k]===b.legal[k as keyof typeof b.legal]);
         if(existing&&!same(existing.content))throw new BillingError('terms_version_used','Mətn dəyişib. Şərtlərə yeni versiya nömrəsi verin.');
-        if(previous?.legal.version===b.legal.version&&!same(previous.legal))throw new BillingError('terms_version_used','Şərtlərin yeni versiyasını yazın.');
+        if(previous?.legal.version===b.legal.version&&complete(previous.legal)&&!same(previous.legal))throw new BillingError('terms_version_used','Şərtlərin yeni versiyasını yazın.');
         await tx.execute(sql`INSERT INTO billing_terms(version,content) VALUES(${b.legal.version},${JSON.stringify(b.legal)}::jsonb) ON CONFLICT DO NOTHING`);
       }
       await tx.execute(sql`UPDATE billing_settings SET enforcement_enabled=${b.enforcementEnabled},enabled=${b.enabled},recurring_enabled=${b.recurringEnabled},pickup_address=${b.pickupAddress},delivery_fee_minor=${b.deliveryFeeMinor},legal=${JSON.stringify(b.legal)}::jsonb,updated_at=now() WHERE id=true`);

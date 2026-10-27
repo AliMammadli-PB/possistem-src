@@ -33,11 +33,21 @@ export async function publishBillingNotifications(db:Executor,now:Date,automatic
  CASE o.fulfillment_status WHEN 'ready' THEN ' Sifariş hazırdır.' WHEN 'dispatched' THEN ' Çatdırılmaya verildi.' WHEN 'completed' THEN ' Təhvil verildi.' ELSE '' END,
  jsonb_build_object('billingKey','order:'||o.id::text||':'||o.status||':'||o.fulfillment_status,'orderId',o.id,'url','/pos/app/sifarisler')
  FROM billing_orders o JOIN customers c ON c.id=o.customer_id WHERE c.active AND o.kind='shop' AND o.status IN ('paid','failed','refunded','paid_review') AND o.updated_at>${new Date(now.getTime()-30*86400000).toISOString()}::timestamptz ON CONFLICT DO NOTHING RETURNING customer_id::text,kind,title,body,payload`));
+ // A new estimated time or a new note from the shop is news for the customer too.
+ fresh.push(...await query<BillingNotice>(db,sql`INSERT INTO owner_notifications(customer_id,kind,title,body,payload)
+ SELECT o.customer_id,'billing_order',o.order_no||CASE o.delivery_kind WHEN 'pickup' THEN ' — hazır olma vaxtı' ELSE ' — təxmini çatdırılma vaxtı' END,
+ 'Təxmini vaxt: '||to_char(o.estimated_at AT TIME ZONE 'Asia/Baku','DD.MM.YYYY HH24:MI'),
+ jsonb_build_object('billingKey','order-eta:'||o.id::text||':'||extract(epoch from o.estimated_at)::bigint,'orderId',o.id,'url','/pos/app/sifarisler')
+ FROM billing_orders o JOIN customers c ON c.id=o.customer_id WHERE c.active AND o.kind='shop' AND o.status='paid' AND o.estimated_at IS NOT NULL AND o.updated_at>${new Date(now.getTime()-30*86400000).toISOString()}::timestamptz ON CONFLICT DO NOTHING RETURNING customer_id::text,kind,title,body,payload`));
+ fresh.push(...await query<BillingNotice>(db,sql`INSERT INTO owner_notifications(customer_id,kind,title,body,payload)
+ SELECT o.customer_id,'billing_order',o.order_no||' — satıcıdan qeyd',left(o.note,300),
+ jsonb_build_object('billingKey','order-note:'||o.id::text||':'||md5(o.note),'orderId',o.id,'url','/pos/app/sifarisler')
+ FROM billing_orders o JOIN customers c ON c.id=o.customer_id WHERE c.active AND o.kind='shop' AND o.status='paid' AND o.note<>'' AND o.updated_at>${new Date(now.getTime()-30*86400000).toISOString()}::timestamptz ON CONFLICT DO NOTHING RETURNING customer_id::text,kind,title,body,payload`));
  // Every paid order - subscription month or shop order - gets one invoice, kept in the portal and e-mailed.
  fresh.push(...await query<BillingNotice>(db,sql`INSERT INTO owner_notifications(customer_id,kind,title,body,payload)
  SELECT o.customer_id,'billing_invoice','Invoice '||o.order_no||' — ödəniş qəbul edildi',
  CASE WHEN o.kind='shop' THEN 'Sifariş ödənişi qəbul edildi.' ELSE 'Aylıq abunə ödənişi qəbul edildi.' END,
- jsonb_build_object('billingKey','invoice:'||o.id::text,'orderId',o.id,'url',CASE WHEN o.kind='shop' THEN '/pos/app/sifarisler' ELSE '/pos/app/abunelik' END)
+ jsonb_build_object('billingKey','invoice:'||o.id::text,'orderId',o.id,'url','/pos/app/faturalar/'||o.id::text)
  FROM billing_orders o JOIN customers c ON c.id=o.customer_id WHERE c.active AND o.status='paid' AND o.paid_at>=${INVOICES_SINCE}::timestamptz AND o.paid_at>${new Date(now.getTime()-30*86400000).toISOString()}::timestamptz ON CONFLICT DO NOTHING RETURNING customer_id::text,kind,title,body,payload`));
  return fresh;
 }
@@ -80,7 +90,7 @@ export async function emailBillingNotices(db:Executor,notices:BillingNotice[],se
    const items=await query<InvoiceItem>(db,sql`SELECT name,qty,unit_price_minor FROM billing_order_items WHERE order_id=${id}::uuid`);
    bodyHtml+=invoiceHtml(o,items,c!.name,settings?.legal??{});
   }
-  const {html,text}=renderEmailTemplate({preheader:n.title,eyebrow:n.kind==='billing_invoice'?'Invoice':'Ödəniş',title:n.title,bodyHtml,cta:{label:'Portalı aç',href:env.customerPortalUrl}});
+  const {html,text}=renderEmailTemplate({preheader:n.title,eyebrow:n.kind==='billing_invoice'?'Invoice':'Ödəniş',title:n.title,bodyHtml,cta:{label:n.kind==='billing_invoice'?'Fakturanı aç':'Portalı aç',href:n.kind==='billing_invoice'?new URL('/pos/app/faturalar/'+String(n.payload.orderId),env.customerPortalUrl).href:env.customerPortalUrl}});
   try{if(await send({from:emailFrom.admin(),replyTo:emailFrom.support(),to,subject:'[possistem] '+n.title,text,html}))sent++;}catch{/* kept in the portal */}
  }
  return sent;

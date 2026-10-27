@@ -38,7 +38,7 @@ async function seed(product='market',paidUntil:string|null=null){
   if(paidUntil)await db.execute(sql`UPDATE billing_subscriptions SET paid_until=${paidUntil}::timestamptz WHERE id=${s!.id}::uuid`);
   return {sid:s!.id,lid};
 }
-async function checkout(sid:string,saveCard=false){return billing.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard,termsVersion:'v1'},'127.0.0.1');}
+async function checkout(sid:string,saveCard=true){return billing.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard,termsVersion:'v1'},'127.0.0.1');}
 async function complete(orderId:string,overrides:Record<string,unknown>={}){
   const [a]=await query<{provider_order_id:string;transaction_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${orderId}::uuid ORDER BY created_at DESC LIMIT 1`);
   const [o]=await query<{amount_minor:string}>(db,sql`SELECT amount_minor FROM billing_orders WHERE id=${orderId}::uuid`);
@@ -55,6 +55,7 @@ before(async()=>{
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0046_subscription_payment_mode.sql',import.meta.url),'utf8'));
   await db.$client.unsafe("CREATE TABLE owner_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),customer_id uuid REFERENCES customers(id),kind text,title text,body text,payload jsonb DEFAULT '{}',read_at timestamptz,created_at timestamptz DEFAULT now());");
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0047_commerce_notifications.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0049_shop_order_tracking.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
   await db.$client.unsafe('TRUNCATE billing_private_hosted_receipts,billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
@@ -75,27 +76,38 @@ test('first payment is required; concurrent callbacks grant exactly one month an
 });
 test('same request and parallel clicks create one bank request; another customer cannot pay or read it',async()=>{
   const {sid}=await seed(),requestId=randomUUID();
-  const calls=await Promise.all(Array.from({length:8},()=>billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,saveCard:false},'127.0.0.1')));
+  const calls=await Promise.all(Array.from({length:8},()=>billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,saveCard:true,termsVersion:'v1'},'127.0.0.1')));
   assert.equal(new Set(calls.map(x=>x.id)).size,1);assert.equal(sent.length,1);
   await assert.rejects(()=>billing.order(other,calls[0]!.id));
-  await assert.rejects(()=>billing.subscriptionCheckout(other,sid,{requestId:randomUUID(),priceVersion:1,saveCard:false},'127.0.0.1'));
+  await assert.rejects(()=>billing.subscriptionCheckout(other,sid,{requestId:randomUUID(),priceVersion:1,saveCard:true,termsVersion:'v1'},'127.0.0.1'));
 });
-test('explicit one-month payment withdraws auto-renew consent and preserves already paid time until confirmation',async()=>{
- const {sid}=await seed('market',new Date(Date.now()+5*86400000).toISOString());
- const initial=await billing.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard:true,paymentMode:'automatic',termsVersion:'v1'},'127.0.0.1');
- await complete(initial.id,{card_id:'fixture-saved-card',card_mask:'****1111'});
- const [before]=await query<{paid_until:string;auto_renew:boolean}>(db,sql`SELECT paid_until,auto_renew FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(before!.auto_renew,true);
- const manual=await billing.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard:false,paymentMode:'manual',termsVersion:'v1'},'127.0.0.1');
- const [chosen]=await query<{paid_until:string;auto_renew:boolean}>(db,sql`SELECT paid_until,auto_renew FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(String(chosen!.paid_until),String(before!.paid_until));assert.equal(chosen!.auto_renew,false);assert.equal(sent.at(-1)?.endpoint,'request');
- assert.equal((await query(db,sql`SELECT id FROM billing_consents WHERE subscription_id=${sid}::uuid AND withdrawn_at IS NULL`)).length,0);
- await complete(manual.id);const [paid]=await query<{paid_until:string;auto_renew:boolean}>(db,sql`SELECT paid_until,auto_renew FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.ok(new Date(paid!.paid_until)>new Date(before!.paid_until));assert.equal(paid!.auto_renew,false);
+test('paid subscription rejects new charges and manual bypasses; same paid request has no bank redirect',async()=>{
+ const {sid}=await seed(),requestId=randomUUID();
+ const input={requestId,priceVersion:1,saveCard:true,paymentMode:'automatic' as const,termsVersion:'v1'};
+ const initial=await billing.subscriptionCheckout(cid,sid,input,'fixture');await complete(initial.id,{card_id:'fixture-token',card_mask:'411111******1111'});
+ const before=(await query<{paid_until:Date}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`))[0]!.paid_until;
+ for(const saveCard of [false,true])await assert.rejects(()=>billing.subscriptionCheckout(cid,sid,{...input,requestId:randomUUID(),saveCard},'fixture'));
+ const same=await billing.subscriptionCheckout(cid,sid,input,'fixture');assert.equal(same.redirectUrl,null);
+ const receipt=await billing.order(cid,initial.id);assert.equal(receipt.invoice.buyer!.email,'fixture@example.invalid');assert.equal(receipt.invoice.payment!.transaction_id,'tx-'+sent[0]!.payload.order_id);assert.ok(!JSON.stringify(receipt).includes('fixture-token'));
+ assert.equal(sent.length,1);assert.equal((await query(db,sql`SELECT id FROM billing_orders`)).length,1);assert.equal(iso((await query<{paid_until:Date}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`))[0]!.paid_until),iso(before));
+ await billing.renew(sid);assert.equal(sent.length,1,'active auto renewal cannot charge early');
+});
+test('active migrated access also blocks early subscription checkout',async()=>{
+ const {sid}=await seed('market',new Date(Date.now()+86400000).toISOString());await assert.rejects(()=>checkout(sid),e=>(e as BillingError).code==='subscription_paid');assert.equal(sent.length,0);
+});
+test('an earlier failed checkout cannot be replayed after a later successful subscription payment',async()=>{
+ const {sid}=await seed(),oldInput={requestId:randomUUID(),priceVersion:1,saveCard:true,termsVersion:'v1'};
+ const old=await billing.subscriptionCheckout(cid,sid,oldInput,'fixture');await complete(old.id,{status:'failed'});
+ const current=await checkout(sid);await complete(current.id,{card_id:'fixture-token'});
+ await assert.rejects(()=>billing.subscriptionCheckout(cid,sid,oldInput,'fixture'),e=>(e as BillingError).code==='subscription_paid');
+ await assert.rejects(()=>billing.sendCheckout(old.id,cid),e=>(e as BillingError).code==='subscription_paid');assert.equal(sent.length,2);
 });
 test('explicit modes require matching consent and terms; changing mode cannot reuse another payment request',async()=>{
  const {sid}=await seed(),requestId=randomUUID();
  for(const input of [{saveCard:false,paymentMode:'automatic' as const,termsVersion:'v1'},{saveCard:true,paymentMode:'manual' as const,termsVersion:'v1'},{saveCard:false,paymentMode:'manual' as const,termsVersion:'old'}])await assert.rejects(()=>billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,...input},'127.0.0.1'));
  assert.equal(sent.length,0);
  await billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,saveCard:true,paymentMode:'automatic',termsVersion:'v1'},'127.0.0.1');assert.equal(sent.at(-1)?.endpoint,'card-registration-with-pay');
- await assert.rejects(()=>billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,saveCard:false,paymentMode:'manual',termsVersion:'v1'},'127.0.0.1'),e=>(e as BillingError).code==='request_conflict');
+ await assert.rejects(()=>billing.subscriptionCheckout(cid,sid,{requestId,priceVersion:1,saveCard:false,paymentMode:'manual',termsVersion:'v1'},'127.0.0.1'),e=>(e as BillingError).code==='subscription_automatic_required');
  assert.equal((await query(db,sql`SELECT id FROM billing_orders`)).length,1);assert.equal(sent.length,1);
 });
 test('failed automatic renewal leaves the expired subscription blocked and visible for payment recovery',async()=>{
@@ -168,12 +180,12 @@ test('returned callback is terminal, even if a late success is delivered afterwa
   const [order]=await query<{status:string}>(db,sql`SELECT status FROM billing_orders WHERE id=${o.id}::uuid`);assert.equal(order!.status,'refunded');
 });
 
-test('calendar periods extend early payments and restart late payments on the confirmation date',async()=>{
+test('calendar periods reject early payments, renew at expiry and restart late on confirmation',async()=>{
  const {sid}=await seed();let time=new Date('2028-01-31T08:20:00Z');
  const clock=new Billing(db,{gateway,allowLive:true,now:()=>time});
- async function pay(){const o=await clock.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard:false},'fixture');const [a]=await query<{id:string;transaction_id:string;provider_order_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${o.id}::uuid`);await clock.recordResult(a!.id,{status:'success',operation_code:'100',transaction:a!.transaction_id,order_id:a!.provider_order_id,amount:'30.00'},'status');return (await query<{paid_until:Date}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`))[0]!.paid_until;}
+ async function pay(){const o=await clock.subscriptionCheckout(cid,sid,{requestId:randomUUID(),priceVersion:1,saveCard:true,termsVersion:'v1'},'fixture');const [a]=await query<{id:string;transaction_id:string;provider_order_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${o.id}::uuid`);await clock.recordResult(a!.id,{status:'success',operation_code:'100',transaction:a!.transaction_id,order_id:a!.provider_order_id,amount:'30.00'},'status');return (await query<{paid_until:Date}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`))[0]!.paid_until;}
  assert.equal(iso(await pay()),'2028-02-29T08:20:00.000Z');time=new Date('2028-02-01T08:20:00Z');
- assert.equal(iso(await pay()),'2028-03-31T08:20:00.000Z');time=new Date('2028-05-10T09:15:00Z');
+ await assert.rejects(()=>pay(),e=>(e as BillingError).code==='subscription_paid');time=new Date('2028-02-29T08:20:00Z');assert.equal(iso(await pay()),'2028-03-31T08:20:00.000Z');time=new Date('2028-05-10T09:15:00Z');
  assert.equal(iso(await pay()),'2028-06-10T09:15:00.000Z');
 });
 test('delivery disabled after quote and a changed product price require a new confirmation',async()=>{
