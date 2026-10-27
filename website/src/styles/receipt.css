@@ -13,6 +13,7 @@
 /* ── Tokens ─────────────────────────────────────────────── */
 .brand-site{
  --brand-pattern:#3b58ac url("/assets/brand-ribbon/possistem-pattern-20261023.webp") center/800px auto repeat;
+ --brand-pattern-wash:#fffffff0;
  --canvas:#fff;--surface:#fff;--surface-2:#f2f6fc;--surface-3:#e8eff9;
  --text:#102a4c;--text-2:#344965;--text-3:#536984;--border:#dce5f0;--border-strong:#b3c8e1;
  --blue:#155ac7;--blue-hover:#104ba8;--blue-deep:#103e89;--blue-soft:#edf4ff;--on-blue:#fff;
@@ -21,6 +22,7 @@
  --mono:"JetBrains Mono",ui-monospace,monospace;--tooth:16px;--ease-out:cubic-bezier(.16,1,.3,1);
 }
 html[data-theme='dark'] .brand-site{
+ --brand-pattern-wash:#0c1628f2;
  --canvas:#0c1628;--surface:#111f35;--surface-2:#152740;--surface-3:#1e3654;
  --text:#f2f6ff;--text-2:#cfdaeb;--text-3:#adbed5;--border:#2c405e;--border-strong:#54759c;
  --blue:#8ab9ff;--blue-hover:#b1d1ff;--blue-deep:#10438e;--blue-soft:#182f50;--on-blue:#102a4c;
@@ -54,8 +56,8 @@ html,body{overflow-x:clip}
 /* ── Buttons: POS keys — a hard 4px base, pressed on :active ── */
 .ps-button,.brand-site .marketing-button{border-radius:6px;font-weight:600;letter-spacing:0;transition:transform .12s var(--ease-out),box-shadow .12s var(--ease-out),background-color .12s}
 .ps-button{min-height:54px;padding:14px 26px;font-size:15px}
-.ps-button-primary,.brand-site .marketing-button.primary,.pricing-card.is-featured .marketing-button{background:var(--blue);border-color:var(--blue);color:var(--on-blue);box-shadow:0 4px 0 var(--blue-deep)}
-.ps-button-primary:hover,.brand-site .marketing-button.primary:hover,.pricing-card.is-featured .marketing-button:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:var(--on-blue);box-shadow:0 4px 0 var(--blue-deep)}
+.ps-button-primary,.brand-site .marketing-button.primary,.pricing-card.is-featured .marketing-button{background:var(--brand-pattern);border-color:#2c4b72;color:#fff;box-shadow:0 4px 0 #203d83}
+.ps-button-primary:hover,.brand-site .marketing-button.primary:hover,.pricing-card.is-featured .marketing-button:hover{background:var(--brand-pattern);border-color:#2c4b72;color:#fff;box-shadow:0 4px 0 #203d83;filter:brightness(1.08)}
 .ps-button-primary:active,.brand-site .marketing-button.primary:active,.pricing-card.is-featured .marketing-button:active{transform:translateY(3px);box-shadow:0 1px 0 var(--blue-deep)}
 .brand-site .marketing-button.secondary{background:var(--surface);border:1px solid var(--text);color:var(--text);box-shadow:0 4px 0 var(--text)}
 .brand-site .marketing-button.secondary:hover{background:var(--surface-2);box-shadow:0 4px 0 var(--text)}
@@ -416,3 +418,9 @@ html,body{overflow-x:clip}
 /* Reserve a mobile contact column beside the fixed support control. */
 .brand-site .marketing-footer .ps-footer-top{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:24px}
 @media(max-width:640px){.brand-site .marketing-footer .ps-footer-top{grid-template-columns:1fr;gap:8px}.ps-footer-address{grid-column:1/-1}.brand-site .marketing-footer .ps-footer-contact{display:grid;grid-template-columns:minmax(0,1fr);justify-self:stretch;width:100%;padding-inline-end:100px;gap:4px 12px}}
+
+/* A restrained trace of the brand on reading and transactional pages. */
+.brand-site :is(.page-hero,.info-intro,.policy-hero,.pay-heading){background-image:linear-gradient(var(--brand-pattern-wash),var(--brand-pattern-wash)),url("/assets/brand-ribbon/possistem-pattern-20261023.webp");background-size:auto,800px auto;background-position:center}
+.brand-site :is(.marketing-form,.pay-page .pay-panel){background-image:linear-gradient(135deg,var(--surface) 55%,var(--brand-pattern-wash)),url("/assets/brand-ribbon/possistem-pattern-20261023.webp");background-size:auto,560px auto;background-position:right top}
+.brand-site :is(.policy-action.primary,.pay-primary,.cart-checkout){background:var(--brand-pattern);border-color:#2c4b72;color:#fff!important}
+.brand-site :is(.policy-action.primary,.pay-primary,.cart-checkout):hover{filter:brightness(1.08)}

@@ -1,11 +1,14 @@
 .ps-brand-ribbon{position:relative;min-width:0;width:100%;margin:0 0 16px;padding:6px 0;background:var(--brand-pattern);border:1px solid #2c4b72;border-radius:12px;overflow:hidden;color:var(--text)}
-.ps-brand-ribbon-window{min-width:0;overflow:hidden;scrollbar-width:none;mask-image:linear-gradient(90deg,transparent,#000 20px,#000 calc(100% - 20px),transparent)}
+.ps-brand-ribbon-window{min-width:0;overflow:hidden;scrollbar-width:none;cursor:grab;touch-action:pan-y;user-select:none;mask-image:linear-gradient(90deg,transparent,#000 20px,#000 calc(100% - 20px),transparent)}
+.ps-brand-ribbon-window[data-dragging='true']{cursor:grabbing}
+.ps-brand-ribbon-window:is([data-dragging='true'],:focus-visible) .ps-brand-ribbon-track{animation-play-state:paused}
+.ps-brand-ribbon-window:focus-visible{outline:3px solid #fff;outline-offset:-4px}
 .ps-brand-ribbon-window::-webkit-scrollbar{display:none}
 .ps-brand-ribbon-track{display:flex;width:max-content;animation:ps-brand-ribbon-scroll 120s linear infinite;will-change:transform}
 .ps-brand-ribbon-set{display:flex;flex:none;align-items:center;list-style:none;gap:0;margin:0!important;padding:0!important}
 .ps-brand-ribbon-set li{display:flex;align-items:center;justify-content:center;flex:0 0 140px;width:140px;height:68px;padding:8px 14px;box-sizing:border-box}
 .ps-brand-ribbon-set img{display:block;width:112px;height:52px;padding:9px 10px;box-sizing:border-box;border-radius:6px;background:#fff;max-width:100%;object-fit:contain;user-select:none;filter:none;opacity:1;transition:transform .2s ease;transform-origin:center}
-@keyframes ps-brand-ribbon-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes ps-brand-ribbon-scroll{from{transform:translateX(0)}to{transform:translateX(-33.3333333333%)}}
 @media(max-width:640px){.ps-brand-ribbon{margin-bottom:16px;padding-block:6px}.ps-brand-ribbon-set li{flex-basis:124px;width:124px;padding-inline:14px;height:62px}.ps-brand-ribbon-set img{width:96px;height:46px}}
 @media(hover:hover) and (pointer:fine){.ps-brand-ribbon:hover .ps-brand-ribbon-track{animation-play-state:paused}.ps-brand-ribbon-set li:hover img{transform:scale(1.12)}}
 /* Keep the explicitly requested continuous ticker enabled independently of site-wide animation defaults. */
