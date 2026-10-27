@@ -59,15 +59,10 @@
  .ps-home-layout .is-compact .ps-footer-contact>a:first-of-type{font-size:15px}
  .ps-home-layout .is-compact .ps-footer-bottom{margin-top:8px;padding-block:6px;font-size:9px}
 }
-@media(max-width:999px) and (min-height:740px){
- .ps-home-layout{height:100svh}
- .ps-home-layout>main{display:flex;flex:1 1 0;min-height:0;min-width:0}
- .ps-home-layout .ps-home{display:flex;flex:1;min-height:0;min-width:0;width:100%}
- .ps-home-layout .ps-hero{border-bottom:0;display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;width:100%;padding-bottom:12px}
- .ps-home-layout .ps-hero>.marketing-container{flex-shrink:0}
- .ps-home-layout .ps-hero>.ps-hero-grid{flex:1;min-height:0;grid-template-rows:auto minmax(0,1fr);gap:14px}
- .ps-home-layout .ps-hero-comparison{display:flex;align-items:center;justify-content:center;min-height:0;height:100%}
- .ps-home-layout .ps-hero-slider{height:100%;max-height:340px;width:auto;max-width:100%;aspect-ratio:16/10}
+/* Mobile slides follow the available width, rather than leftover viewport height. */
+@media(max-width:999px){
+ .ps-home-layout .ps-hero-comparison{display:block;width:100%;height:auto;min-height:0}
+ .ps-home-layout .ps-hero-slider{width:100%;height:auto;max-height:none;aspect-ratio:3/2}
 }
 @media(max-width:600px){
  .ps-home-layout .ps-header{height:56px}
@@ -99,3 +94,7 @@
 .ps-home-layout .marketing-footer .ps-footer-transition{height:36px;background:var(--canvas)}
 .ps-home-layout .marketing-footer.is-compact .ps-footer-top{padding-top:14px;padding-bottom:6px;grid-template-columns:minmax(0,1fr) auto}
 @media(max-width:640px){.ps-home-layout .marketing-footer.is-compact .ps-footer-top{padding-top:10px;grid-template-columns:1fr;gap:6px 12px}.ps-home-layout .is-compact .ps-footer-bottom{font-size:10px}}
+
+/* The two home actions share the ribbon/footer artwork in both themes. */
+.ps-home-layout .ps-hero-copy .ps-actions .ps-button-primary{background:var(--brand-pattern);border-color:#2c4b72;color:#fff;box-shadow:0 4px 0 #203d83}
+.ps-home-layout .ps-hero-copy .ps-actions .ps-button-primary:hover{filter:brightness(1.08)}

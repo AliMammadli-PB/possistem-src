@@ -19,5 +19,3 @@
 @media(hover:none),(pointer:coarse){.ps-slider-arrow{opacity:1;transform:translateY(-50%);width:48px;height:48px}}
 @media(max-width:600px){.ps-slider-caption{padding:44px 16px 24px}.ps-slider-caption strong{font-size:17px}.ps-slider-caption>div>span{font-size:11px}.ps-slider-progress{left:16px;right:16px;gap:4px}.ps-slider-arrow-previous{left:10px}.ps-slider-arrow-next{right:10px}}
 @media(prefers-reduced-motion:reduce){.ps-hero-slide,.ps-slider-arrow{transition:none}}
-
-.ps-slider-play{position:absolute;z-index:4;top:12px;left:12px;display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid #ffffff70;border-radius:50%;background:#0c223bd9;color:white;cursor:pointer;opacity:0;transition:opacity .16s ease}.ps-hero-slider:is(:hover,:focus-within) .ps-slider-play{opacity:1}.ps-slider-play:focus-visible{outline:3px solid white;outline-offset:3px}@media(hover:none),(pointer:coarse){.ps-slider-play{opacity:1}}

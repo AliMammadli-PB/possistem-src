@@ -158,7 +158,7 @@ const INTERVAL = 4500;
 export function HeroSlider(){
  const {language}=useI18n(),c=COPY[language],reduced=useReducedMotion();
  const [active,setActive]=useState(0),[outgoing,setOutgoing]=useState<number|null>(null),[direction,setDirection]=useState(1),[phase,setPhase]=useState<'still'|'prepared'|'moving'>('still');
- const [images,setImages]=useState<ImageState[]>(EMPTY_IMAGES),[attempt,setAttempt]=useState(0),[paused,setPaused]=useState(false),[focused,setFocused]=useState(false),[visible,setVisible]=useState(true),[inView,setInView]=useState(true),[due,setDue]=useState(false);
+ const [images,setImages]=useState<ImageState[]>(EMPTY_IMAGES),[attempt,setAttempt]=useState(0),[focused,setFocused]=useState(false),[visible,setVisible]=useState(true),[inView,setInView]=useState(true),[due,setDue]=useState(false);
  const keyboard=useRef(false);
  const region=useRef<HTMLDivElement>(null),touch=useRef<{x:number;y:number}|null>(null),lock=useRef(false);
  const pending=useRef(new Map<number,{image:HTMLImageElement;timer:number}>());
@@ -205,7 +205,7 @@ export function HeroSlider(){
   const replacement=images.findIndex(state=>state==='ready');if(replacement>=0)move(replacement,1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
  },[images,active]);
- const canTime=!paused&&!focused&&visible&&inView&&currentReady&&next!==null;
+ const canTime=!focused&&visible&&inView&&currentReady&&next!==null;
  useEffect(()=>{
   if(!canTime||due)return;
   const timer=window.setTimeout(()=>setDue(true),INTERVAL);return()=>clearTimeout(timer);
@@ -213,7 +213,7 @@ export function HeroSlider(){
  useEffect(()=>{if(due&&canTime&&next!==null&&images[next]==='ready'&&!lock.current)move(next,1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
  },[due,canTime,next,images,phase]);
- const pauseReason=allFailed?'all-images-failed':paused?'user-paused':focused?'keyboard-focus':!visible?'tab-hidden':!inView?'outside-viewport':!currentReady?'current-image-loading':next===null?'no-other-images':due&&images[next]!=='ready'?'next-image-loading':'running';
+ const pauseReason=allFailed?'all-images-failed':focused?'keyboard-focus':!visible?'tab-hidden':!inView?'outside-viewport':!currentReady?'current-image-loading':next===null?'no-other-images':due&&images[next]!=='ready'?'next-image-loading':'running';
  useEffect(()=>reportUiState('slider',{active:SLIDES[active].id,status:pauseReason,intervalMs:INTERVAL,failedImages:failed.map(i=>SLIDES[i].id),direction,transition:phase}),[active,pauseReason,failed.join(','),direction,phase]);
  const navigate=(step:number)=>{const target=step===1?next:previous;if(target!==null)move(target,step);};
  const err=({az:'Şəkillər yüklənmədi.',en:'Images could not be loaded.',ru:'Не удалось загрузить изображения.'})[language];
@@ -228,7 +228,6 @@ export function HeroSlider(){
   {!currentReady&&<div className="ps-slider-load" role="status">{allFailed?<><span>{err}</span><button type="button" onClick={()=>{setImages(EMPTY_IMAGES());setActive(0);setDue(false);setAttempt(v=>v+1);}}>{retry}</button></>:<span>{({az:'Şəkillər hazırlanır…',en:'Loading images…',ru:'Загрузка изображений…'})[language]}</span>}</div>}
   <button className="ps-slider-arrow ps-slider-arrow-previous" type="button" aria-label={c.previous} disabled={phase!=='still'||previous===null||images[previous]!=='ready'} onClick={()=>navigate(-1)}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg></button>
   <button className="ps-slider-arrow ps-slider-arrow-next" type="button" aria-label={c.next} disabled={phase!=='still'||next===null||images[next]!=='ready'} onClick={()=>navigate(1)}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m10 5 7 7-7 7"/></svg></button>
-  <button className="ps-slider-play" type="button" aria-label={paused?({az:'Avtomatik keçidi başlat',en:'Play slideshow',ru:'Запустить слайд-шоу'})[language]:({az:'Avtomatik keçidi dayandır',en:'Pause slideshow',ru:'Остановить слайд-шоу'})[language]} aria-pressed={paused} onClick={()=>{setDue(false);setPaused(v=>!v);}}>{paused?<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8 5 11 7-11 7Z"/></svg>:<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>}</button>
   {currentReady&&<div className="ps-slider-caption"><div><strong>{SLIDES[active].system}</strong><span>{c.scenes[active]}</span></div><span className="ps-slider-count" aria-label={`${active+1} / ${SLIDES.length}`}>{String(active+1).padStart(2,'0')}<i>/ {SLIDES.length}</i></span></div>}
   <div className="ps-slider-progress" aria-hidden="true">{SLIDES.map((slide,index)=><span key={slide.id} data-active={index===active}/>)}</div>
  </div>;
