@@ -6,6 +6,7 @@ import { WorkflowVisual } from '@/components/marketing/WorkflowVisual';
 import { MarketingLayout } from '@/components/marketing/MarketingLayout';
 import { ReleaseCard } from '@/components/marketing/ReleaseCard';
 import { T } from '@/components/marketing/T';
+import { useI18n } from '@/components/providers/I18nProvider';
 
 const steps = [
   ['setup.text.031', 'setup.text.032'],
@@ -44,6 +45,8 @@ function CustomerAndroidCard() {
 }
 
 export function SetupPage() {
+  const { language } = useI18n();
+  const downloadLabel={az:'POS proqramlarını yüklə',en:'Download POS applications',ru:'Скачать POS-программы'}[language];
   return (
     <MarketingLayout solidHeader currentNav="setup">
       <section className="page-hero">
@@ -71,8 +74,8 @@ export function SetupPage() {
               <Link className="marketing-button primary" href="/pos/app/login">
                 <T k="setup.text.025" />
               </Link>
-              <Link className="marketing-button secondary" href="/pos/app/login">
-                <T k="setup.text.026" />
+              <Link className="marketing-button secondary" href="/download/pos/">
+                {downloadLabel}
               </Link>
             </div>
           </div>
