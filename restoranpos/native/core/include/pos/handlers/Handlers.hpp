@@ -32,6 +32,7 @@ void registerAuth(const ContextPtr& ctx);
 void registerCatalog(const ContextPtr& ctx);
 void registerTables(const ContextPtr& ctx);
 void registerOrders(const ContextPtr& ctx);
+void registerQrOrders(const ContextPtr& ctx);
 void registerKitchen(const ContextPtr& ctx);
 void registerPayments(const ContextPtr& ctx);
 void registerSunmi(const ContextPtr& ctx);

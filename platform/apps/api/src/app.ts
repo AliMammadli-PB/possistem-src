@@ -1,3 +1,4 @@
+import {qrOrderRoutes} from './routes/qr-orders.js';
 import {withinBudget} from './lib/request-budget.js';
 import Fastify from 'fastify';
 import { billingRoutes } from './routes/billing.js';
@@ -132,6 +133,7 @@ export async function buildApp() {
 
       // POS / owner istemcileri
       await api.register(billingRoutes);
+      await api.register(qrOrderRoutes);
       await api.register(tenantRoutes);
       await api.register(ownerRoutes);
       await api.register(customerAuthRoutes);

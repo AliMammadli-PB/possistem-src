@@ -62,6 +62,7 @@ void registerAll(ipc::StdioServer& server, db::Database& database) {
     registerCatalog(ctx);
     registerTables(ctx);
     registerOrders(ctx);
+    registerQrOrders(ctx);
     registerKitchen(ctx);
     registerPayments(ctx);
     registerSunmi(ctx);

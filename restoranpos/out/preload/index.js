@@ -555,3 +555,6 @@ async function _sunmiPrepareRefund(payload,market=false){
 
 /* POSSISTEM_BILLING_1911 */
 electron.contextBridge.exposeInMainWorld("possistemBilling",{status:()=>electron.ipcRenderer.invoke(IPC.invoke,{method:"billing.status",payload:{},options:{timeoutMs:15000}}),open:()=>electron.ipcRenderer.invoke(IPC.invoke,{method:"billing.open",payload:{},options:{timeoutMs:15000}})});
+
+/* POSSISTEM_QR_ORDERS_1 */
+electron.contextBridge.exposeInMainWorld("possistemQr",{call:(method,payload)=>["qr.config","qr.inbox","qr.decision"].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:60000}}):Promise.resolve({success:false,error:{message:"Not allowed"}})});

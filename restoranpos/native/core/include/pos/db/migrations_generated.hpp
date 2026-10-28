@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 62;
+inline constexpr int kSchemaVersion = 63;
 
 namespace detail {
 
@@ -4255,6 +4255,22 @@ ALTER TABLE payments ADD COLUMN bank_rrn TEXT;
     return sql;
 }
 
+inline const std::string& migrationSql62() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(325);
+        s += R"MIGSQL(-- Permanent import keys survive crashes, cloud acknowledgement loss and bill closure.
+CREATE TABLE qr_order_imports (
+ external_id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, order_id TEXT NOT NULL REFERENCES orders(id),
+ table_id TEXT NOT NULL, response_json TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4809,7 +4825,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 62> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 63> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4872,6 +4888,7 @@ inline constexpr std::array<EmbeddedScript, 62> kMigrations{{
     {60, "060_transfer_rejected.sql", "ec68909a", &detail::migrationSql59},
     {61, "061_transfer_revoke_waste.sql", "0af3300f", &detail::migrationSql60},
     {62, "062_sunmi_outbox.sql", "1fbbadd8", &detail::migrationSql61},
+    {63, "063_qr_orders.sql", "d2afab71", &detail::migrationSql62},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

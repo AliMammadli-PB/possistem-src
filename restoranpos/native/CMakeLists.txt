@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(restaurant_pos_core LANGUAGES C CXX VERSION 1.9.15)
+project(restaurant_pos_core LANGUAGES C CXX VERSION 1.9.16)
 
 # The WebAssembly demo build: the core throws PosError for every refusal, and
 # Emscripten turns exception catching off unless asked.

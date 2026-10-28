@@ -121,6 +121,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-buildstamp.mjs',
   'apply-restaurant-sunmi.mjs',
   'apply-restaurant-billing.mjs',
+  'apply-restaurant-qr-orders.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
