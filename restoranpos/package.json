@@ -1,7 +1,7 @@
 {
   "name": "possistem",
   "productName": "possistem",
-  "version": "1.9.16",
+  "version": "1.9.17",
   "description": "possistem restaurant POS (Electron + React + C++20 sidecar)",
   "author": "possistem",
   "license": "UNLICENSED",
@@ -62,7 +62,8 @@
     "test:admin-real-pages": "node scripts/qa-admin-real-pages.mjs",
     "test:touch-receipt": "node scripts/qa-touch-receipt.mjs",
     "check:versions": "node scripts/check-versions.mjs",
-    "test:qr": "node --test qr-orders/runtime.test.cjs"
+    "test:qr": "node --test qr-orders/runtime.test.cjs",
+    "test:subscription-access": "node --test subscription/access.test.cjs"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",

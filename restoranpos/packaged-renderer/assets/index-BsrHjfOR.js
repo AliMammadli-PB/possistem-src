@@ -14914,7 +14914,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.16 · 7d29d4b";
+const _PS_BUILD = "1.9.17 · 3cfbb58";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -20687,9 +20687,9 @@ function LoginPage() {
                         ] }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-staff-pin-label brand-kicker text-gold-dim", children: t.login.enterPin }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "ps-staff-pin-title mt-2 font-display text-[2rem] leading-none text-cream", children: t.login.pinTitle }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs leading-5 text-muted", children: pinMode==="platform"?psAdminText("POSSISTEM Super Admin — saytda təyin etdiyiniz 10 rəqəmli PIN","POSSISTEM Super Admin — sitede belirlediğiniz 10 haneli PIN","POSSISTEM Super Admin — your 10-digit website PIN"):t.login.pinHint }),
-                        jsxRuntimeExports.jsx("p",{className:"ps-first-login-hint",role:"note",style:{display:pinMode==="platform"?"none":undefined},children:psAdminText("Yerli administrator PIN-i 4 rəqəmdir (ilk quraşdırmada 1234). Saytdakı POSSISTEM Super Admin girişi 10 rəqəmdir.","Yerel yönetici PIN’i 4 hanelidir (ilk kurulumda 1234). Sitedeki POSSISTEM Super Admin PIN’i 10 hanelidir.","The local administrator uses 4 digits (1234 for first setup). The website POSSISTEM Super Admin uses 10 digits.")}),
-                        !pinChange?jsxRuntimeExports.jsx("div",{className:"ps-pin-mode-switch",children:jsxRuntimeExports.jsx("button",{type:"button",disabled:busy,"aria-label":pinMode==="platform"?"4 rəqəmli yerli PIN":"10 rəqəmli POSSISTEM PIN",onClick:()=>{setPin("");setError(null);setPinPhase("idle");setPinMode(pinMode==="platform"?"staff":"platform");},children:pinMode==="platform"?psAdminText("Yerli PIN ilə giriş (4 rəqəm)","Yerel PIN ile giriş (4 hane)","Local PIN sign-in (4 digits)"):psAdminText("POSSISTEM girişi (10 rəqəm)","POSSISTEM girişi (10 hane)","POSSISTEM sign-in (10 digits)")})}):null,
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs leading-5 text-muted", children: psAdminText("PIN kodunuzu yazın","PIN kodunuzu girin","Enter your PIN") }),
+                        null,
+                        null,
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `ps-staff-pin-dots my-5 flex items-center${pinLength===10?" is-platform":""}${pinPhase === "busy" ? " is-busy" : pinPhase === "ok" ? " is-ok" : pinPhase === "err" ? " is-err" : ""}`, "aria-label": `${pin.length} / ${pinLength}`, children: [
                           Array.from({ length: pinLength }).map((_, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "span",
@@ -29235,6 +29235,7 @@ function PsKitchenStations() {
 
   return h("section", { className: "ps-printer-section space-y-4" },
     h("h2", { className: "font-display text-lg text-cream" }, L("Printerlər", "Yazıcılar", "Printers")),
+    h(PsXprinterNetwork),
     h("p", { className: "text-sm text-muted" }, L("Printerin adını yazın və Axtar basın.", "Yazıcının adını yazıp Ara'ya basın.", "Type the printer's name and press Search.")),
     h("div", { className: "ps-printer-setup space-y-2" }, saved, wizard,
       !draft ? h("button", { type: "button", className: primary, onClick: () => startNew() }, L("+ Printer əlavə et", "+ Yazıcı ekle", "+ Add printer")) : null),
@@ -30205,6 +30206,36 @@ const GATE_MAX_ATTEMPTS = 12;
 function gateRetryDelayMs(attempt) {
   return Math.min(400 * 2 ** attempt, 5e3);
 }
+/* POSSISTEM_ACCESS_1917 */
+function PsSubscriptionBoundary({children}){
+ const h=psH,{pathname}=useLocation(),[state,setState]=reactExports.useState(null),[busy,setBusy]=reactExports.useState(false),[error,setError]=reactExports.useState('');
+ const exempt=pathname==='/tenant-login'||pathname==='/safe-mode'||pathname==='/diagnostics';
+ const refresh=reactExports.useCallback(async()=>{try{const r=await window.possistemAccess?.check(true);if(r?.success)setState(r.data);else setState({authenticated:true,allowed:false,reason:'connection'});}catch{setState({authenticated:true,allowed:false,reason:'connection'});}},[]);
+ reactExports.useEffect(()=>{if(exempt){setState(null);return;}void refresh();const timer=setInterval(()=>{if(!document.hidden)void refresh()},15000);return()=>clearInterval(timer)},[exempt,refresh]);
+ const open=async()=>{setBusy(true);setError('');try{const r=await window.possistemBilling.open();if(!r.success)setError(r.error?.message||'Ödəniş açılmadı');}catch(e){setError(String(e.message||e))}finally{setBusy(false)}};
+ const logout=async()=>{await window.pos.tenant.logout();location.hash='/tenant-login';location.reload()};
+ if(exempt)return children;
+ if(!state)return h('main',{className:'ps-payment-gate'},h('p',{role:'status'},psAdminText('Abunəlik yoxlanılır…','Abonelik kontrol ediliyor…','Checking subscription…')));
+ if(!state.authenticated)return h(Navigate,{to:'/tenant-login',replace:true});
+ if(state.allowed)return children;
+ const sub=state.subscription;
+ return h('main',{className:'ps-payment-gate'},h('section',{className:'ps-payment-card'},h('img',{src:'./assets/brands/logo.png',alt:'Possistem',width:56,height:56}),h('p',{className:'ps-payment-product'},'Restoran POS'),h('h1',null,state.paymentConfirmed?psAdminText('Ödəniş təsdiqləndi','Ödeme onaylandı','Payment confirmed'):psAdminText('Davam etmək üçün ödəniş edin','Devam etmek için ödeme yapın','Pay to continue')),
+ h('p',null,state.paymentConfirmed?psAdminText('Yeni istifadə müddətini almaq üçün hesabınıza yenidən daxil olun.','Yeni kullanım süresini almak için tekrar giriş yapın.','Sign in again to retrieve your new paid period.'):state.reason==='connection'?psAdminText('Abunəlik təsdiqi alınmadı. İnterneti yoxlayıb yenidən cəhd edin.','Abonelik doğrulanamadı. İnterneti kontrol edip tekrar deneyin.','The subscription could not be verified. Check the connection and try again.'):psAdminText('Abunəlik aktivləşənədək PIN ilə giriş bağlıdır. Ödəniş Possistem saytında aparılır.','Abonelik etkinleşene kadar PIN girişi kapalıdır. Ödeme Possistem sitesinde yapılır.','PIN access is unavailable until your subscription is active. Pay on the Possistem website.')),
+ sub&&h('strong',{className:'ps-payment-amount'},(sub.monthlyAmountMinor/100).toFixed(2)+' ₼ / '+psAdminText('ay','ay','month')),
+ error&&h('p',{role:'alert',className:'ps-qr-error'},error),h('div',{className:'ps-payment-actions'},state.paymentConfirmed?h('button',{className:'primary',onClick:logout},psAdminText('Yenidən daxil ol','Tekrar giriş yap','Sign in again')):h('button',{className:'primary',disabled:busy,onClick:open},busy?psAdminText('Açılır…','Açılıyor…','Opening…'):psAdminText('Saytda ödəniş et','Sitede ödeme yap','Pay on the website')),h('button',{disabled:busy,onClick:refresh},psAdminText('Ödənişi yoxla','Ödemeyi kontrol et','Check payment')),h('button',{disabled:busy,onClick:logout},psAdminText('Hesabdan çıx','Çıkış yap','Sign out')))));
+}
+function PsXprinterNetwork(){
+ const h=psH,L=psAdminText,[devices,setDevices]=reactExports.useState([]),[selected,setSelected]=reactExports.useState(null),[draft,setDraft]=reactExports.useState({ip:'',mask:'',gateway:''}),[busy,setBusy]=reactExports.useState(false),[error,setError]=reactExports.useState(''),[result,setResult]=reactExports.useState(null),[confirm,setConfirm]=reactExports.useState(false);
+ const call=async(method,payload)=>{const r=await window.posPrinterNetwork.call(method,payload);if(!r.success)throw Error(r.error?.message||'Printer əməliyyatı alınmadı');return r.data};
+ const scan=async()=>{setBusy(true);setError('');setResult(null);setSelected(null);setConfirm(false);try{const r=await call('print.xprinterDiscover',{});setDevices(r.devices||[]);if(!r.devices?.length)setError(L('Xprinter tapılmadı. Printeri Ethernet ilə eyni şəbəkəyə qoşun.','Xprinter bulunamadı. Ethernet ile aynı ağa bağlayın.','No Xprinter found. Connect it to the same Ethernet network.'));}catch(e){setError(e.message)}finally{setBusy(false)}};
+ const apply=async()=>{setBusy(true);setError('');try{const r=await call('print.xprinterConfigure',{...draft,mac:selected.mac,oldIp:selected.ip,confirmed:true});setResult(r);setConfirm(false);if(r.verified){const next={...selected,...draft,dhcp:false};setSelected(next);setDevices(devices.map(d=>d.mac===next.mac?next:d));}}catch(e){setError(e.message)}finally{setBusy(false)}};
+ return h('section',{className:'ps-xprinter-network'},h('h3',null,L('Xprinter — IP və gateway','Xprinter — IP ve ağ geçidi','Xprinter — IP and gateway')),h('p',null,L('Ethernet şəbəkəsində Xprinter-i MAC ünvanı ilə seçin. Kompüterin şəbəkə ayarları dəyişmir.','Ethernet ağında Xprinter’i MAC adresiyle seçin. Bilgisayarın ağ ayarları değişmez.','Select an Ethernet Xprinter by MAC address. The computer’s network settings stay unchanged.')),
+ h('button',{type:'button',disabled:busy,onClick:scan},busy?L('Gözləyin…','Bekleyin…','Please wait…'):L('Şəbəkədə Xprinter axtar','Ağda Xprinter ara','Find Xprinter on network')),error&&h('p',{role:'alert',className:'ps-qr-error'},error),
+ devices.length>0&&h('label',{className:'ps-qr-field'},L('Printer — MAC / cari IP','Yazıcı — MAC / geçerli IP','Printer — MAC / current IP'),h('select',{'aria-label':'Xprinter',disabled:busy,value:selected?.mac||'',onChange:e=>{const d=devices.find(x=>x.mac===e.target.value);setSelected(d||null);setDraft(d?{ip:d.ip,mask:d.mask,gateway:d.gateway}:{ip:'',mask:'',gateway:''});setResult(null);setConfirm(false)}},h('option',{value:''},L('Printer seçin','Yazıcı seçin','Select printer')),...devices.map(d=>h('option',{key:d.mac,value:d.mac},d.mac+' · '+d.ip+(d.dhcp?' · DHCP':''))))),
+ selected&&h('div',{className:'ps-xprinter-fields'},...[["ip",L('Yeni IP ünvanı','Yeni IP adresi','New IP address')],["mask",L('Alt şəbəkə maskası','Alt ağ maskesi','Subnet mask')],["gateway",L('Default gateway / şlüz','Varsayılan ağ geçidi','Default gateway')]].map(([key,label])=>h('label',{key,className:'ps-qr-field'},label,h('input',{inputMode:'decimal',maxLength:15,disabled:busy,value:draft[key],onChange:e=>{setDraft({...draft,[key]:e.target.value});setConfirm(false)}}))),h('p',null,L('Yeni IP təsdiqləndikdən sonra printerin POS-dakı ünvanını da dəyişib test çeki çap edin.','Yeni IP doğrulandıktan sonra POS yazıcı adresini de değiştirip test fişi basın.','After the new IP is verified, update the POS printer address and print a test receipt.')),h('button',{type:'button',disabled:busy,onClick:()=>confirm?void apply():setConfirm(true)},confirm?L('Təsdiq et: printer bağlantısı yenilənəcək','Onayla: yazıcı bağlantısı yenilenecek','Confirm: printer connection will change'):L('Statik IP və gateway tətbiq et','Statik IP ve ağ geçidini uygula','Apply static IP and gateway'))),
+ result&&h('p',{role:'status',className:result.verified?'ps-payment-verified':'ps-qr-error'},result.verified?L('Yeni IP, maska və gateway printerdən oxunub təsdiqləndi.','Yeni IP, maske ve ağ geçidi yazıcıdan okunup doğrulandı.','The printer reported and confirmed the new IP, mask and gateway.'):L('Əmr göndərildi, amma yeni ayarlar printerdən təsdiqlənmədi. Printeri və şəbəkəni yoxlayıb yenidən axtarın.','Komut gönderildi, ancak yeni ayarlar doğrulanamadı. Yazıcıyı ve ağı kontrol edip tekrar arayın.','The command was sent, but the new settings were not confirmed. Check the printer and network, then search again.')));
+}
+
 function App() {
   const status = useCoreStore((s) => s.status);
   const session = useAuthStore((s) => s.session);
@@ -30325,7 +30356,7 @@ function App() {
     tenantReady,
     tenantOk
   ]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(PsSubscriptionBoundary,{children:(jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     coreBusy ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-sm text-warning", children: t.common.coreBusy }) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Routes, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/safe-mode", element: /* @__PURE__ */ jsxRuntimeExports.jsx(SafeModePage, {}) }),
@@ -30375,7 +30406,7 @@ function App() {
       /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "*", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Navigate, { to: "/tenant-login", replace: true }) })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(ToastHost, {})
-  ] });
+  ] }))});
 }
 try {
   if (localStorage.getItem("pos.reduceMotion") === "1") {

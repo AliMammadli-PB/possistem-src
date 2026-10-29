@@ -1,5 +1,6 @@
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
+#include "pos/services/LicenseService.hpp"
 #include "pos/Logging.hpp"
 #include "pos/db/Database.hpp"
 #include "pos/db/Migrator.hpp"
@@ -166,6 +167,14 @@ void registerAuth(const ContextPtr& ctx) {
 
     server.registerHandler(
         std::string(protocol::method::kAuthLogin), [ctx](const ipc::Request& request) {
+            const auto license = services::LicenseService(*ctx).status();
+            const auto features = license.value("features", Json::object());
+            if (features.value("billingManaged", false) &&
+                (features.value("billingStatus", std::string()) != "active" ||
+                 license.value("status", std::string()) != "active" ||
+                 license.value("expiresAt", std::int64_t{0}) <= nowMs()))
+                throw PosError(std::string(protocol::err::kLicenseExpired),
+                               "Abunəlik aktiv deyil. Davam etmək üçün ödəniş edin.");
             const auto requestedUserId = getOr<std::string>(request.payload, "userId", "");
             const auto pin = getOr<std::string>(request.payload, "pin", "");
             require(!pin.empty(), "PIN is required");

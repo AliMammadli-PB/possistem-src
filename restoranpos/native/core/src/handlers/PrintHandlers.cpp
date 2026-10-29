@@ -12,6 +12,7 @@
 #include "pos/handlers/Handlers.hpp"
 #include "pos/printing/DeviceDiscovery.hpp"
 #include "pos/printing/EscPos.hpp"
+#include "pos/printing/XprinterNetwork.hpp"
 #include "pos/printing/RasterRenderer.hpp"
 #include "pos/printing/ReceiptBuilder.hpp"
 #include "pos/protocol_generated.hpp"
@@ -866,6 +867,20 @@ std::vector<std::uint8_t> buildProbePage(Context& ctx, const std::string& label)
 
 void registerPrinting(const ContextPtr& ctx) {
     auto& server = ctx->server();
+    server.registerHandler("print.xprinterDiscover", [ctx](const ipc::Request&) {
+        ctx->requirePermission("settings.manage");
+        return printing::scanXprinterNetwork();
+    });
+    server.registerHandler("print.xprinterConfigure", [ctx](const ipc::Request& req) {
+        ctx->requirePermission("settings.manage");
+        const auto valid=printing::validateXprinterNetwork(req.payload);
+        require(getOr<bool>(req.payload,"confirmed",false),"Şəbəkə dəyişikliyini təsdiqləyin");
+        ctx->auditRequired("printer.network.requested","printer",valid["mac"].get<std::string>(),valid);
+        auto result=printing::configureXprinterNetwork(req.payload);
+        ctx->auditRequired("printer.network.result","printer",valid["mac"].get<std::string>(),result);
+        return result;
+    });
+
 
     server.registerHandler(
         std::string(protocol::method::kReceiptsPreview), [ctx](const ipc::Request& request) {

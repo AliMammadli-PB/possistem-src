@@ -45,7 +45,7 @@ if(!source.includes(mark)){
  s=once(s,' : busy ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-staff-pin-busy", children: t.login.verifying })', ' : busy||prefixChecking ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-staff-pin-busy", children: t.login.verifying })');
  source=source.slice(0,a)+s+source.slice(b);fs.writeFileSync(file,source);
 }
-if(!source.includes('style:{display:pinMode==="platform"?"none":undefined}')){
+if(!source.includes('/* POSSISTEM_ACCESS_1917 */')&&!source.includes('style:{display:pinMode==="platform"?"none":undefined}')){
  source=once(source,'className:"ps-first-login-hint",role:"note",children:psAdminText("Yerli',
  'className:"ps-first-login-hint",role:"note",style:{display:pinMode==="platform"?"none":undefined},children:psAdminText("Yerli');fs.writeFileSync(file,source);
 }

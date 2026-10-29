@@ -46,3 +46,12 @@ TEST_CASE("wrong platform PINs share the native terminal lockout", "[auth][platf
     REQUIRE(x.error("auth.login",{{"pin","7777777777"}})=="E_PIN_LOCKED");
     REQUIRE(x.error("auth.provisionPlatformSession",{{"secret",std::string(64,'c')}},true)=="E_PIN_LOCKED");
 }
+TEST_CASE("unpaid and expired subscriptions cannot enter the PIN session", "[auth][billing]"){
+ PlatformFixture x;
+ x.f.db().exec("UPDATE license_state SET status='active',features_json='{\"billingManaged\":true,\"billingStatus\":\"awaiting_payment\"}',expires_at=9999999999999 WHERE id='local'");
+ REQUIRE(x.error("auth.login",{{"pin","0000"}})=="E_LICENSE_EXPIRED");
+ x.f.db().exec("UPDATE license_state SET features_json='{\"billingManaged\":true,\"billingStatus\":\"active\"}',expires_at=1 WHERE id='local'");
+ REQUIRE(x.error("auth.login",{{"pin","0000"}})=="E_LICENSE_EXPIRED");
+ x.f.db().exec("UPDATE license_state SET expires_at=9999999999999 WHERE id='local'");
+ REQUIRE(x.error("auth.login",{{"pin","0000"}})=="E_INVALID_PIN");
+}

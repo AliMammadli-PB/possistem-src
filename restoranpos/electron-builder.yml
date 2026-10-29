@@ -1,6 +1,6 @@
 appId: com.cyberplus.maisonaurelia.pos
 productName: possistem
-buildVersion: 1.9.16
+buildVersion: 1.9.17
 executableName: possistem
 copyright: Copyright © 2026 Ali Mammadli / possistem
 electronVersion: 43.8.3
@@ -30,6 +30,8 @@ files:
   - { from: node_modules/ms, to: node_modules/ms }
   - { from: node_modules/sax, to: node_modules/sax }
 extraResources:
+  - from: integrations/xprinter/win32-x64/printer.sdk.dll
+    to: native/win32-x64/printer.sdk.dll
   - from: native/build/restaurant-pos-core.exe
     to: native/win32-x64/restaurant-pos-core.exe
   - from: database/migrations

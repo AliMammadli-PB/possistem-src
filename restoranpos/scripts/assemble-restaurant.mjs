@@ -16,6 +16,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import {createRequire} from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -122,6 +123,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-sunmi.mjs',
   'apply-restaurant-billing.mjs',
   'apply-restaurant-qr-orders.mjs',
+  'apply-restaurant-1917.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -170,7 +172,16 @@ function buildOut() {
 
   copy('cloud-branches/object-selection.cjs', path.join(OUT,'main','object-selection.cjs'));
   copy('cloud-branches/client.cjs', path.join(OUT, 'main', 'cloud-branches.cjs'));
+  fs.copyFileSync(path.join(ROOT,'../marketpos/electron/branch-presence.cjs'),path.join(OUT,'main/branch-presence.cjs'));
   copy('cloud-branches/methods.json', path.join(OUT, 'main', 'cloud-branches-methods.json'));
+  // Fail the build before an installer can contain an unresolved local module.
+  for(const name of ['cloud-branches.cjs','branch-presence.cjs']){
+    const source=fs.readFileSync(path.join(OUT,'main',name),'utf8');
+    for(const match of source.matchAll(/require\(['"](\.\/[^'"]+)['"]\)/g)){
+      if(!fs.existsSync(path.resolve(OUT,'main',match[1])))throw Error('Missing packaged module: '+name+' -> '+match[1]);
+    }
+  }
+
   copy('index.js', path.join(OUT, 'main', 'index.js'));
   const renderer = path.join(OUT, 'renderer');
   fs.rmSync(renderer, { recursive: true, force: true });
@@ -192,3 +203,19 @@ applyPatches();
 stageRenderer();
 buildOut();
 {const cloud=spawnSync(process.execPath,[path.join(ROOT,"cloud-branches/build.mjs"),path.join(OUT,"renderer/cloud-branches")],{cwd:ROOT,stdio:"inherit"});if(cloud.status!==0)process.exit(1);}
+
+// Static local requires must resolve within the assembled tree. This catches
+// missing transitive helpers before a cashier ever installs the application.
+function verifyMainModules(dir){
+ for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
+  const file=path.join(dir,entry.name);
+  if(entry.isDirectory())verifyMainModules(file);
+  else if(/\.(c?js)$/.test(file)){
+   const require=createRequire(file),source=fs.readFileSync(file,'utf8');
+   for(const match of source.matchAll(/require\(["'](\.{1,2}\/[^"']+)["']\)/g)){
+    try{require.resolve(match[1]);}catch{throw Error('Missing packaged module: '+path.relative(OUT,file)+' -> '+match[1]);}
+   }
+  }
+ }
+}
+verifyMainModules(path.join(OUT,'main'));
