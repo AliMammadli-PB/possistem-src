@@ -274,3 +274,5 @@ html.js.site-ready .brand-site .page-hero-grid > *{animation:none;opacity:1;tran
  .ps-nav-search input{flex:1;min-width:0;min-height:48px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);font-size:16px}
  .ps-nav-search button{min-height:48px;padding:10px 12px;border:0;border-radius:6px;background:var(--blue);color:var(--on-blue);font-weight:700}
 }
+
+.ps-footer-bottom{flex-wrap:wrap}

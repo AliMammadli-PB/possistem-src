@@ -164,7 +164,7 @@ export async function tenantRoutes(app: FastifyInstance) {
           )
           .limit(1);
         if (!productLicense) {
-          const [managed] = await billingQuery(app.db,sql`SELECT l.id FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id JOIN licenses l ON l.id=b.license_id WHERE s.customer_id=${customer.id}::uuid AND s.product=${requestedProduct} AND s.enabled=true AND l.status NOT IN ('revoked','suspended') LIMIT 1`);
+          const [managed] = await billingQuery(app.db,sql`SELECT l.id FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id JOIN licenses l ON l.id=b.license_id WHERE s.customer_id=${customer.id}::uuid AND s.product=${requestedProduct} AND l.status NOT IN ('revoked','suspended') LIMIT 1`);
           if (managed) { const details=await licenseBilling(app.db,String((managed as {id:unknown}).id)); billingOnly=details?.billingEnforced!==false; }
           else return reply.code(403).send({
             /* geyim-product: login */

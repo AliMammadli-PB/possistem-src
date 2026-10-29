@@ -340,7 +340,7 @@ export async function redeemWithKey(
     typeof license.features === 'object' && license.features !== null
       ? { ...(license.features as Record<string, unknown>) }
       : {};
-  if(managed){Object.assign(features,{billingManaged:true,offlineGraceDays:0});}
+  if(managed){Object.assign(features,{billingManaged:true,billingStatus:managed.billingStatus,billingAccessMode:managed.accessMode,trialUntil:managed.trialUntil,offlineGraceDays:0});}
   const signed = signLicensePayload(
     keys.privateKey,
     {

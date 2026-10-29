@@ -1,6 +1,6 @@
 appId: com.cyberplus.market.pos
 productName: MarketPos
-buildVersion: 1.5.75
+buildVersion: 1.5.76
 executableName: MarketPos
 copyright: Copyright © 2026 Ali Mammadli / possistem
 electronVersion: 43.8.3

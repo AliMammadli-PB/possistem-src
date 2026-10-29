@@ -19,6 +19,7 @@ import {
 } from './pages/AuthPages';
 
 const OrdersPage = lazy(() => import('./pages/OrdersPage'));
+const CardsPage = lazy(() => import('./pages/CardsPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
 const InvoicePage = lazy(() => import('./pages/InvoicePage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -137,6 +138,7 @@ export default function App() {
           <Route path="/setup" element={<ProtectedShell><SetupPage /></ProtectedShell>} />
           <Route path="/downloads" element={<ProtectedShell><DownloadsPage /></ProtectedShell>} />
           <Route path="/sifarisler" element={<ProtectedShell><OrdersPage /></ProtectedShell>} />
+          <Route path="/kartlarim" element={<ProtectedShell><CardsPage /></ProtectedShell>} />
           <Route path="/abunelik" element={<ProtectedShell><BillingPage /></ProtectedShell>} />
           <Route path="/faturalar/:id" element={<ProtectedShell><InvoicePage /></ProtectedShell>} />
           <Route path="/activity" element={<ProtectedShell><ActivityPage /></ProtectedShell>} />

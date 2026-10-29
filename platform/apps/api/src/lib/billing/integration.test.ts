@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import { createDb } from '@milioner/database';
-import { Epoint,sign } from './epoint.js';
+import { Epoint,sign,encryptCard } from './epoint.js';
 import { query,attachManagedLicense,archiveBillingCustomer } from './store.js';
 
 const url=process.env.BILLING_TEST_DATABASE_URL;
@@ -16,14 +16,18 @@ process.env.PRODUCT_CATALOG_PATH=path.join(temporary,'products.json');
 process.env.PRODUCT_OVERRIDES_PATH=path.join(temporary,'overrides.json');
 writeFileSync(process.env.PRODUCT_CATALOG_PATH,JSON.stringify({products:[]}));writeFileSync(process.env.PRODUCT_OVERRIDES_PATH,'{}');
 const {Billing}=await import('./service.js');
+const {requestCancel,decideCancel,ledger}=await import('./cancellation.js');
+const {chargeSavedCard}=await import('./charges.js');
 const {publishBillingNotifications,renewalNotice}=await import('./notifications.js');
 const db=createDb(url),config={publicKey:'fixture-public',privateKey:'fixture-secret',tokenKey:Buffer.alloc(32,9),baseUrl:'https://fixture.invalid/',origin:'https://possistem.az',liveVerified:true};
-let sent:{endpoint:string;payload:Record<string,unknown>}[]=[],responseMode='redirect';
+let sent:{endpoint:string;payload:Record<string,unknown>}[]=[],responseMode='redirect',statusReply:Record<string,unknown>|((p:Record<string,unknown>)=>Record<string,unknown>)|null=null;
 const gateway=new Epoint(config,async(u,init)=>{
   const endpoint=String(u).split('/').at(-1)!;
   const p=JSON.parse(Buffer.from((init!.body as URLSearchParams).get('data')!,'base64').toString());
   sent.push({endpoint,payload:p});
   if(responseMode==='timeout')throw new Error('lost after send');
+  if(endpoint==='get-status'&&responseMode==='confirmed-status'){const [a]=await query<{provider_order_id:string;amount_minor:string}>(db,sql`SELECT a.provider_order_id,o.amount_minor FROM billing_attempts a JOIN billing_orders o ON o.id=a.order_id WHERE a.transaction_id=${p.transaction} LIMIT 1`);return new Response(JSON.stringify({status:'success',operation_code:'100',transaction:p.transaction,order_id:a!.provider_order_id,amount:(Number(a!.amount_minor)/100).toFixed(2)}));}
+  if(endpoint==='get-status'&&statusReply)return new Response(JSON.stringify(typeof statusReply==='function'?statusReply(p):statusReply));
   if(endpoint==='execute-pay')return new Response(JSON.stringify(responseMode==='decline'?{status:'failed',message:'Declined'}:{status:'success',amount:p.amount,transaction:'tx-'+p.order_id,order_id:p.order_id}));
   return new Response(JSON.stringify({status:'success',redirect_url:'https://epoint.az/fixture',transaction:'tx-'+p.order_id}));
 });
@@ -56,12 +60,17 @@ before(async()=>{
   await db.$client.unsafe("CREATE TABLE owner_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),customer_id uuid REFERENCES customers(id),kind text,title text,body text,payload jsonb DEFAULT '{}',read_at timestamptz,created_at timestamptz DEFAULT now());");
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0047_commerce_notifications.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0049_shop_order_tracking.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0050_subscription_cancellation.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0051_partial_refunds_card_charges.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0052_customer_saved_cards.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0053_billing_access_controls.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0054_cancelled_access_scope.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
   await db.$client.unsafe('TRUNCATE billing_private_hosted_receipts,billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
   await db.execute(sql`INSERT INTO customers(id,name,email) VALUES(${cid}::uuid,'Fixture owner','fixture@example.invalid'),(${other}::uuid,'Other owner','other@example.invalid')`);
   await db.execute(sql`UPDATE billing_settings SET enforcement_enabled=true,enabled=true,recurring_enabled=true,pickup_address='Fixture pickup',delivery_fee_minor=NULL,legal='{"version":"v1"}'::jsonb`);
-  sent=[];responseMode='redirect';
+  sent=[];responseMode='redirect';statusReply=null;
 });
 after(async()=>{await db.$client.end();rmSync(temporary,{recursive:true,force:true});});
 
@@ -398,4 +407,171 @@ test('customer notification reads and paginated order history enforce ownership 
  const otherList=(await app.inject({url:'/pos/api/customer/billing/shop-orders',headers:{'x-fixture-owner':'other'}})).json();assert.equal(otherList.orders.length,0);
  assert.equal((await app.inject({url:'/pos/api/customer/billing/orders/'+first.orders[0].id,headers:{'x-fixture-owner':'other'}})).statusCode,404);
  }finally{await app.close();}
+});
+
+
+test('admin trial is idempotent, expires exactly and never fabricates a payment',async()=>{
+ const {sid,lid}=await seed('restaurant');const input={customerId:cid,product:'restaurant',action:'trial' as const,days:3,reason:'Fixture admin grant',requestId:randomUUID()};
+ const [a,b]=await Promise.all([billing.accessControl('fixture-admin',input),billing.accessControl('fixture-admin',input)]);assert.equal(a.trialUntil,b.trialUntil);
+ const data=await billing.listSubscriptions(cid),s=data.subscriptions[0]!;assert.equal(s.hasAccess,true);assert.equal(s.accessStatus,'trial');assert.equal(s.hasPaidSubscription,false);
+ assert.equal((await query(db,sql`SELECT * FROM billing_orders`)).length,0);assert.equal((await query(db,sql`SELECT * FROM billing_period_grants`)).length,0);
+ await assert.rejects(checkout(sid),/sınaq müddəti/);
+ const {subscriptionAccess}=await import('./access.js');const [raw]=await query<import('./store.js').Subscription>(db,sql`SELECT * FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(subscriptionAccess(raw!,Date.parse(a.trialUntil!)-1).hasAccess,true);assert.equal(subscriptionAccess(raw!,Date.parse(a.trialUntil!)).hasAccess,false);
+ const {licenseBilling}=await import('./service.js');const proof=await licenseBilling(db,lid);assert.equal(proof?.billingStatus,'active');assert.equal(proof?.accessMode,'trial');assert.equal(proof?.accessUntil,a.trialUntil);assert.equal(proof?.accessUntil,a.trialUntil);
+});
+test('free and deleted subscriptions retain history, stop billing and allow product-scoped use',async()=>{
+ const {sid,lid}=await seed(),restaurant=await seed('restaurant');const order=await checkout(sid);await complete(order.id);
+ await billing.accessControl('fixture-admin',{customerId:cid,product:'market',action:'free',reason:'No recurring fees',requestId:randomUUID()});
+ let data=await billing.listSubscriptions(cid);assert.equal(data.subscriptions.find(s=>s.product==='market')?.accessStatus,'free');assert.equal(data.subscriptions.find(s=>s.product==='restaurant')?.hasAccess,false);
+ const {licenseBilling}=await import('./service.js');const proof=await licenseBilling(db,lid);assert.equal(proof?.billingStatus,'active');assert.equal(proof?.billingEnforced,false);assert.ok(Date.parse(proof!.accessUntil!)>Date.now());
+ const n=sent.length;await billing.renew(sid);assert.equal(sent.length,n);
+ await billing.accessControl('fixture-admin',{customerId:cid,product:'market',action:'delete',reason:'Remove subscription',requestId:randomUUID()});data=await billing.listSubscriptions(cid);assert.equal(data.subscriptions.find(s=>s.product==='market')?.hasAccess,true);assert.ok(data.subscriptions.find(s=>s.product==='market')?.deletedAt);
+ assert.equal((await query(db,sql`SELECT * FROM billing_period_grants WHERE subscription_id=${sid}::uuid`)).length,1);assert.equal((await query(db,sql`SELECT * FROM billing_orders WHERE id=${order.id}::uuid`)).length,1);
+ assert.equal((await licenseBilling(db,restaurant.lid))?.accessMode,'subscription');
+ await assert.rejects(billing.accessControl('fixture-admin',{customerId:cid,product:'topdan',action:'free',reason:'Unowned product'}),/lisenziyası/);
+});
+test('desktop payment handoff works without a subscription and ignores a different browser account',async()=>{
+ const {default:Fastify}=await import('fastify'),{default:cookie}=await import('@fastify/cookie'),{billingRoutes}=await import('../../routes/billing.js'),{env}=await import('../../env.js'),{createHmac}=await import('node:crypto');
+ const body=Buffer.from(JSON.stringify({customerId:cid,email:'fixture@example.invalid',client:'pos',iat:Date.now(),exp:Date.now()+3600000,jti:randomUUID()})).toString('base64url'),token='t1.'+body+'.'+createHmac('sha256',env.sessionSecret).update(body).digest('base64url');
+ const app=Fastify();app.decorate('db',db);app.decorateRequest('customer',null);app.decorateRequest('user',null);await app.register(cookie);app.addHook('preHandler',async req=>{req.customer={id:other,name:'Other browser owner',email:'other@example.invalid',active:true};});await app.register(billingRoutes,{prefix:'/pos/api',billing,worker:false});
+ try{
+ const start=await app.inject({method:'POST',url:'/pos/api/billing/desktop/handoff',headers:{authorization:'Bearer '+token},payload:{product:'restaurant'}});assert.equal(start.statusCode,200,start.body);
+ const handoff=new URL(start.json().url).searchParams.get('handoff');const login=await app.inject({method:'POST',url:'/pos/api/billing/handoff',payload:{token:handoff}});assert.equal(login.statusCode,200,login.body);
+ const cookieValue=String(login.headers['set-cookie']).split(';')[0]!;const page=await app.inject({url:'/pos/api/billing/site',headers:{cookie:cookieValue}});assert.equal(page.statusCode,200,page.body);assert.equal(page.json().customer.id,cid);assert.equal(page.json().subscriptions.length,0);
+ assert.equal((await app.inject({method:'POST',url:'/pos/api/billing/handoff',payload:{token:handoff}})).statusCode,401);
+ const {sid}=await seed('restaurant');const site=await app.inject({url:'/pos/api/billing/site',headers:{cookie:cookieValue}});const csrf=site.json().csrfToken;
+ const bad=await app.inject({method:'POST',url:'/pos/api/billing/site/checkout',headers:{cookie:cookieValue,'x-csrf-token':csrf},payload:{customerId:other,requestId:randomUUID(),priceVersion:1,saveCard:true,paymentMode:'automatic',termsVersion:'v1'}});assert.equal(bad.statusCode,403,bad.body);assert.equal(sent.length,0);
+ const good=await app.inject({method:'POST',url:'/pos/api/billing/site/checkout',headers:{cookie:cookieValue,'x-csrf-token':csrf},payload:{customerId:cid,requestId:randomUUID(),priceVersion:1,saveCard:true,paymentMode:'automatic',termsVersion:'v1'}});assert.equal(good.statusCode,200,good.body);const [o]=await query<{customer_id:string;subscription_id:string}>(db,sql`SELECT customer_id,subscription_id FROM billing_orders WHERE id=${good.json().id}::uuid`);assert.equal(o!.customer_id,cid);assert.equal(o!.subscription_id,sid);
+ }finally{await app.close();}
+});
+
+
+test('check payment reconciles an existing bank result without starting a charge or crossing POS products',async()=>{
+ const {sid}=await seed('restaurant');const order=await checkout(sid);const previous=sent.length;responseMode='confirmed-status';
+ await billing.checkPayments(cid,'market');assert.equal(sent.length,previous);
+ const result=await billing.checkPayments(cid,'restaurant');assert.equal(result.checked,1);assert.equal(sent.length,previous+1);assert.equal(sent.at(-1)?.endpoint,'get-status');
+ assert.equal((await billing.listSubscriptions(cid)).subscriptions.find(s=>s.product==='restaurant')?.hasAccess,true);
+ await billing.checkPayments(cid,'restaurant');assert.equal(sent.length,previous+1);assert.equal((await query(db,sql`SELECT * FROM billing_period_grants WHERE subscription_id=${sid}::uuid`)).length,1);
+ assert.equal((await query<{status:string}>(db,sql`SELECT status FROM billing_orders WHERE id=${order.id}::uuid`))[0]?.status,'paid');
+});
+
+test('admin refund completes when Epoint reports the reversal under the original payment order id',async()=>{
+  const {sid}=await seed(),o=await checkout(sid,true);await complete(o.id);
+  const [paid]=await query<{provider_order_id:string;transaction_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${o.id}::uuid AND kind<>'refund'`);
+  statusReply={status:'returned',code:'000',transaction:paid!.transaction_id,order_id:paid!.provider_order_id,amount:30};
+  await billing.refund('admin',o.id,'test refund');
+  const [order]=await query<{status:string}>(db,sql`SELECT status FROM billing_orders WHERE id=${o.id}::uuid`);assert.equal(order!.status,'refunded');
+  const [r]=await query<{status:string}>(db,sql`SELECT status FROM billing_attempts WHERE order_id=${o.id}::uuid AND kind='refund'`);assert.equal(r!.status,'refunded');
+  // A status from some other order is still refused.
+  const o2=await checkout((await seed('restaurant')).sid,true);await complete(o2.id);
+  const [p2]=await query<{transaction_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${o2.id}::uuid AND kind<>'refund'`);
+  statusReply={status:'returned',transaction:p2!.transaction_id,order_id:'PAY-someone-else',amount:30};
+  await billing.refund('admin',o2.id,'test refund');
+  const [r2]=await query<{status:string}>(db,sql`SELECT status FROM billing_attempts WHERE order_id=${o2.id}::uuid AND kind='refund'`);assert.equal(r2!.status,'unknown');
+});
+
+
+test('customers only request cancellation; admin declines, cancels at period end or refunds and cancels now',async()=>{
+  const {sid,lid}=await seed(),o=await checkout(sid,true);await complete(o.id,{card_id:'card-1'});
+  await db.execute(sql`UPDATE billing_subscriptions SET card_ciphertext='x',auto_renew=true WHERE id=${sid}::uuid`);
+  const r1=await requestCancel(db,cid,sid,{reason:'Qiymət bahadır',details:''});
+  await assert.rejects(requestCancel(db,cid,sid,{reason:'yenə',details:''}),/artıq göndərilib/);
+  await assert.rejects(requestCancel(db,other,sid,{reason:'başqası',details:''}),/tapılmadı/);
+  await assert.rejects(decideCancel(db,billing,'admin',sid,{requestId:r1.id,action:'reject',refundOrderIds:[],note:''}),/imtina səbəbini/);
+  await decideCancel(db,billing,'admin',sid,{requestId:r1.id,action:'reject',refundOrderIds:[],note:'Müqavilə 12 aylıqdır'});
+  let [sub]=await query<{auto_renew:boolean;card_ciphertext:string|null}>(db,sql`SELECT * FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(sub!.auto_renew,true);
+  // Cancelling without a refund needs the reason the money stays.
+  const r2=await requestCancel(db,cid,sid,{reason:'İstifadə etmirəm',details:'bağlayırıq'});
+  await assert.rejects(decideCancel(db,billing,'admin',sid,{requestId:r2.id,action:'cancel',mode:'period_end',refundOrderIds:[],note:''}),/Pul qaytarılmırsa/);
+  const [before]=await query<{paid_until:Date}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`);
+  await decideCancel(db,billing,'admin',sid,{requestId:r2.id,action:'cancel',mode:'period_end',refundOrderIds:[],note:'Ay yarımdan çox istifadə olunub'});
+  [sub]=await query<{auto_renew:boolean;card_ciphertext:string|null;paid_until:Date}>(db,sql`SELECT * FROM billing_subscriptions WHERE id=${sid}::uuid`);
+  assert.equal(sub!.auto_renew,false);assert.equal(sub!.card_ciphertext,null);assert.equal(String(sub!.paid_until),String(before!.paid_until));
+  await assert.rejects(requestCancel(db,cid,sid,{reason:'yenə',details:''}),/artıq ləğv/);
+  const notes=await query<{title:string;body:string}>(db,sql`SELECT title,body FROM owner_notifications WHERE customer_id=${cid}::uuid AND kind='billing_cancel' ORDER BY created_at`);
+  assert.equal(notes.length,2);assert.match(notes[1]!.body,/geri qaytarılmır: Ay yarımdan/);
+  // Admin cancels another subscription at once and refunds its payment.
+  const m2=await seed('restaurant'),o2=await checkout(m2.sid,true);await complete(o2.id);
+  const [p2]=await query<{provider_order_id:string;transaction_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${o2.id}::uuid AND kind<>'refund'`);
+  statusReply={status:'returned',transaction:p2!.transaction_id,order_id:p2!.provider_order_id,amount:30};
+  await assert.rejects(decideCancel(db,billing,'admin',m2.sid,{action:'cancel',mode:'immediate',refundOrderIds:[randomUUID()],note:''}),/aid deyil/);
+  await decideCancel(db,billing,'admin',m2.sid,{action:'cancel',mode:'immediate',refundOrderIds:[o2.id],note:''});
+  const [ord]=await query<{status:string}>(db,sql`SELECT status FROM billing_orders WHERE id=${o2.id}::uuid`);assert.equal(ord!.status,'refunded');
+  const [lic]=await query<{status:string}>(db,sql`SELECT l.status FROM licenses l JOIN billing_license_links b ON b.license_id=l.id WHERE b.subscription_id=${m2.sid}::uuid`);assert.equal(lic!.status,'expired');
+  const [still]=await query<{status:string}>(db,sql`SELECT status FROM licenses WHERE id=${lid}::uuid`);assert.equal(still!.status,'active');
+  const l=await ledger(db,cid);
+  assert.equal(l.totals.paidMinor,6000);assert.equal(l.totals.refundedMinor,3000);assert.equal(l.totals.netMinor,3000);
+  assert.deepEqual(l.entries.map(e=>e.type).sort(),['payment','payment','refund']);
+  assert.equal((await ledger(db,other)).entries.length,0);
+});
+
+
+test('cancel with a 40% refund reverses only that part and keeps the paid period',async()=>{
+  const {sid}=await seed(),o=await checkout(sid,true);await complete(o.id);
+  const [paid]=await query<{provider_order_id:string;transaction_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${o.id}::uuid AND kind<>'refund'`);
+  const [before]=await query<{paid_until:Date}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`);
+  // Epoint keeps the payment "success" and lists the reversal as a negative transaction under the order id.
+  statusReply=p=>p.transaction?{status:'success',transaction:p.transaction,order_id:paid!.provider_order_id,amount:30}:{status:'success',transaction:'tx-reverse',order_id:paid!.provider_order_id,amount:-12};
+  await assert.rejects(decideCancel(db,billing,'admin',sid,{action:'cancel',mode:'period_end',refundOrderIds:[o.id],refundPercent:40,note:''}),/hamısı qaytarılmırsa/);
+  await decideCancel(db,billing,'admin',sid,{action:'cancel',mode:'period_end',refundOrderIds:[o.id],refundPercent:40,note:'Ayın yarısı istifadə olunub'});
+  assert.equal(sent.find(x=>x.endpoint==='reverse')!.payload.amount,12);
+  const [ord]=await query<{status:string;refunded_minor:string}>(db,sql`SELECT * FROM billing_orders WHERE id=${o.id}::uuid`);assert.equal(ord!.status,'refunded');assert.equal(Number(ord!.refunded_minor),1200);
+  const [after]=await query<{paid_until:Date}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(String(after!.paid_until),String(before!.paid_until));
+  const l=await ledger(db,cid);assert.equal(l.totals.refundedMinor,1200);assert.equal(l.totals.netMinor,1800);
+  const [note]=await query<{body:string}>(db,sql`SELECT body FROM owner_notifications WHERE kind='billing_cancel' ORDER BY created_at DESC LIMIT 1`);assert.match(note!.body,/12\.00 ₼ \(30\.00 ₼ ödənişin 40%-i\)/);
+});
+
+
+test('admin charges a saved card once per click, records it as its own order and can refund part of it',async()=>{
+  const {sid}=await seed();
+  await assert.rejects(chargeSavedCard(db,billing,'admin',sid,{requestId:randomUUID(),amountMinor:5000,description:'Quraşdırma',consent:true}),/saxlanmış kartı yoxdur/);
+  await db.execute(sql`UPDATE billing_subscriptions SET card_ciphertext=${encryptCard('card-x',config.tokenKey)},card_mask='409858******1379' WHERE id=${sid}::uuid`);
+  responseMode='charge';const requestId=randomUUID();
+  const r=await chargeSavedCard(db,billing,'admin',sid,{requestId,amountMinor:5000,description:'Quraşdırma xidməti',consent:true});
+  assert.equal(r.status,'paid');const pay=sent.filter(x=>x.endpoint==='execute-pay');assert.equal(pay.length,1);assert.equal(pay[0]!.payload.card_id,'card-x');assert.equal(pay[0]!.payload.amount,50);
+  const again=await chargeSavedCard(db,billing,'admin',sid,{requestId,amountMinor:5000,description:'Quraşdırma xidməti',consent:true});
+  assert.equal(again.orderId,r.orderId);assert.equal(sent.filter(x=>x.endpoint==='execute-pay').length,1);
+  const [n]=await query<{title:string}>(db,sql`SELECT title FROM owner_notifications WHERE kind='billing_invoice' AND customer_id=${cid}::uuid`);assert.match(n!.title,/50\.00 ₼ tutuldu/);
+  const [sub]=await query<{paid_until:Date|null}>(db,sql`SELECT paid_until FROM billing_subscriptions WHERE id=${sid}::uuid`);assert.equal(sub!.paid_until,null);
+  const [att]=await query<{provider_order_id:string;transaction_id:string}>(db,sql`SELECT * FROM billing_attempts WHERE order_id=${r.orderId}::uuid`);
+  statusReply={status:'returned',transaction:att!.transaction_id,order_id:att!.provider_order_id,amount:50};
+  await assert.rejects(billing.refund('admin',r.orderId,'çox',6000),/arasında olmalıdır/);
+  await billing.refund('admin',r.orderId,'Qismən qaytarma',2000);
+  const [o]=await query<{status:string;refunded_minor:string}>(db,sql`SELECT * FROM billing_orders WHERE id=${r.orderId}::uuid`);assert.equal(o!.status,'refunded');assert.equal(Number(o!.refunded_minor),2000);
+  responseMode='decline';const failed=await chargeSavedCard(db,billing,'admin',sid,{requestId:randomUUID(),amountMinor:1000,description:'Rədd ediləcək',consent:true});
+  assert.equal(failed.status,'failed');assert.equal(failed.bankMessage,'Declined');
+});
+
+
+test('shop card saved on a purchase pays the next order at once, only for its owner and never twice',async()=>{
+  await db.execute(sql`INSERT INTO billing_catalog(product_id,name,stock_qty,price_minor,sale_enabled) VALUES('printer','Fixture printer',10,25000,true)`);
+  const shipping={kind:'pickup' as const,name:'Fixture',phone:'+994500000000',address:''};
+  const q1=await billing.quote(cid,[{id:'printer',qty:1}],shipping);
+  const first=await billing.shopCheckout(cid,q1.quoteId,randomUUID(),'v1',{saveCard:true});
+  assert.equal(sent.at(-1)!.endpoint,'card-registration-with-pay');assert.ok(first.redirectUrl);
+  await complete(first.id,{card_id:'card-shop',card_mask:'409858******1379',operation_code:'200'});
+  const [card]=await query<{id:string;card_mask:string;card_ciphertext:string}>(db,sql`SELECT * FROM billing_cards WHERE customer_id=${cid}::uuid`);
+  assert.equal(card!.card_mask,'409858******1379');assert.notEqual(card!.card_ciphertext,'card-shop');
+  // Second purchase: no bank page, the saved card is charged directly.
+  responseMode='charge';const q2=await billing.quote(cid,[{id:'printer',qty:2}],shipping),requestId=randomUUID();
+  await assert.rejects(billing.shopCheckout(other,(await billing.quote(other,[{id:'printer',qty:1}],shipping)).quoteId,randomUUID(),'v1',{cardId:card!.id}),/Saxlanmış kart tapılmadı/);
+  const second=await billing.shopCheckout(cid,q2.quoteId,requestId,'v1',{cardId:card!.id});
+  assert.equal(second.redirectUrl,null);assert.equal(second.status,'paid');
+  const pays=sent.filter(x=>x.endpoint==='execute-pay');assert.equal(pays.length,1);assert.equal(pays[0]!.payload.card_id,'card-shop');assert.equal(pays[0]!.payload.amount,500);
+  const again=await billing.shopCheckout(cid,q2.quoteId,requestId,'v1',{cardId:card!.id});
+  assert.equal(again.id,second.id);assert.equal(sent.filter(x=>x.endpoint==='execute-pay').length,1);
+  // A plain order without saving does not add a card; a removed card cannot pay.
+  responseMode='redirect';const q3=await billing.quote(cid,[{id:'printer',qty:1}],shipping),third=await billing.shopCheckout(cid,q3.quoteId,randomUUID(),'v1');
+  await complete(third.id,{card_id:'card-other',card_mask:'411111******1111'});
+  assert.equal((await query(db,sql`SELECT id FROM billing_cards WHERE customer_id=${cid}::uuid`)).length,1);
+  await db.execute(sql`UPDATE billing_cards SET removed_at=now(),card_ciphertext=NULL WHERE id=${card!.id}::uuid`);
+  const [reserved]=await query<{reserved_qty:number}>(db,sql`SELECT reserved_qty FROM billing_catalog WHERE product_id='printer'`);assert.equal(reserved!.reserved_qty,0);
+  const q4=await billing.quote(cid,[{id:'printer',qty:1}],shipping);
+  await assert.rejects(billing.shopCheckout(cid,q4.quoteId,randomUUID(),'v1',{cardId:card!.id}),/Saxlanmış kart tapılmadı/);
+});
+
+
+test('a first trial grant preserves an existing legacy license period',async()=>{
+ const lid=randomUUID(),end=new Date(Date.now()+30*86400000).toISOString();await db.execute(sql`INSERT INTO licenses(id,customer_id,plan,features,status,valid_until) VALUES(${lid}::uuid,${cid}::uuid,'geyim','{"product":"geyim"}'::jsonb,'active',${end}::timestamptz)`);
+ const result=await billing.accessControl('fixture-admin',{customerId:cid,product:'geyim',action:'trial',days:7,requestId:randomUUID(),reason:'Preserve existing access'});assert.equal(Date.parse(result.trialUntil!),Date.parse(end)+7*86400000);assert.equal((await query(db,sql`SELECT * FROM billing_period_grants`)).length,0);
 });

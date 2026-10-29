@@ -817,7 +817,7 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
   const [activation, setActivation] = useState<ActivationStatus | null>(null);
   const [ready, setReady] = useState(!window.marketSystem);
   const [allowReadOnly,setAllowReadOnly]=useState(false);
-  const [billingInfo,setBillingInfo]=useState<{subscriptions:{state:string;hasPaidSubscription?:boolean}[];enforcementEnabled?:boolean}|null>(null);
+  const [billingInfo,setBillingInfo]=useState<{subscriptions:{state:string;hasAccess?:boolean;hasPaidSubscription?:boolean}[];enforcementEnabled?:boolean}|null>(null);
   useEffect(()=>{if(!tenant?.authenticated){setBillingInfo(null);return;}let alive=true;const load=()=>{void window.marketSystem?.billing.status().then(value=>{if(alive)setBillingInfo(value);}).catch(()=>{});};load();const timer=setInterval(load,15000);return()=>{alive=false;clearInterval(timer);};},[tenant?.authenticated,tenant?.authenticated?tenant.email:'']);
 
 
@@ -863,7 +863,7 @@ function AuthGate({ lang, setLang, onLogin }: { lang: Lang; setLang: (lang: Lang
       />
     );
   }
-  if(tenant.billingOnly||!allowReadOnly&&billingInfo?.subscriptions[0]&&!billingInfo.subscriptions[0].hasPaidSubscription||!allowReadOnly&&activation?.mode==='expired'&&Boolean((activation as ActivationStatus&{licenseProof?:unknown}).licenseProof))return <SubscriptionPaymentScreen lang={lang} closeLabel={activation?.mode==='active'?(lang==='ru'?'Продолжить':lang==='en'?'Continue':'Davam et'):undefined} onClose={!tenant.billingOnly&&licenseAllowsPin(activation)?()=>setAllowReadOnly(true):undefined} onCheck={()=>{void window.marketSystem!.billing.status().then(async info=>{if(info.billingOnly&&info.subscriptions[0]?.state==='active'){await window.marketSystem!.tenant.logout();setTenant({authenticated:false});setActivation(null);}else setActivation(await window.marketSystem!.activation.refresh());}).catch(()=>{});}} onSwitch={()=>{void window.marketSystem?.tenant.logout().then(()=>{setTenant({authenticated:false});setActivation(null);});}}/>;
+  if(tenant.billingOnly||!allowReadOnly&&billingInfo?.subscriptions[0]&&!(billingInfo.subscriptions[0].hasAccess??billingInfo.subscriptions[0].hasPaidSubscription)||!allowReadOnly&&activation?.mode==='expired'&&Boolean((activation as ActivationStatus&{licenseProof?:unknown}).licenseProof))return <SubscriptionPaymentScreen lang={lang} closeLabel={activation?.mode==='active'?(lang==='ru'?'Продолжить':lang==='en'?'Continue':'Davam et'):undefined} onClose={!tenant.billingOnly&&licenseAllowsPin(activation)?()=>setAllowReadOnly(true):undefined} onCheck={()=>{void window.marketSystem!.billing.status().then(async info=>{if(info.billingOnly&&info.subscriptions[0]?.state==='active'){await window.marketSystem!.tenant.logout();setTenant({authenticated:false});setActivation(null);}else setActivation(await window.marketSystem!.activation.refresh());}).catch(()=>{});}} onSwitch={()=>{void window.marketSystem?.tenant.logout().then(()=>{setTenant({authenticated:false});setActivation(null);});}}/>;
   if (!licenseAllowsPin(activation)) {
     return (
       <ActivationGateScreen

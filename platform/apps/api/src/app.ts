@@ -3,6 +3,7 @@ import {withinBudget} from './lib/request-budget.js';
 import Fastify from 'fastify';
 import { billingRoutes } from './routes/billing.js';
 import { supportServiceRoutes } from './routes/support-service.js';
+import { assistantRoutes } from './routes/assistant.js';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
@@ -124,6 +125,7 @@ export async function buildApp() {
       await api.register(contactAdminRoutes);
       await api.register(supportAdminRoutes);
       await api.register(supportServiceRoutes);
+      await api.register(assistantRoutes);
       await api.register(mailAdminRoutes);
       await api.register(adminProductRoutes);
       await api.register(posRoleAdminRoutes);

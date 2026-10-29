@@ -1,4 +1,5 @@
 import {emailBillingNotices,publishBillingNotifications,renewalNotice} from './notifications.js';
+import {subscriptionAccess} from './access.js';
 import {TEST_PRODUCT_ID} from './test-shop.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -14,7 +15,7 @@ type Order = {
   amount_minor:number|string; price_version:number|null; status:string; paid_at:string|Date|null;
   consent_id:string|null; save_card_consent:boolean; expires_at:string|Date|null; payment_mode?:'manual'|'automatic'|null;
 };
-type Attempt = {id:string;order_id:string;provider_order_id:string;kind:string;status:string;transaction_id:string|null;redirect_url:string|null;created_at:string|Date};
+type Attempt = {id:string;order_id:string;provider_order_id:string;kind:string;status:string;transaction_id:string|null;redirect_url:string|null;created_at:string|Date;amount_minor?:string|number|null};
 export type Settings = {enforcement_enabled:boolean;enabled:boolean;recurring_enabled:boolean;pickup_address:string;delivery_fee_minor:number|string|null;legal:Record<string,unknown>};
 export type DeliveryDetails = {city:string;district?:string;street:string;building:string;apartment?:string;entrance?:string;floor?:string;landmark?:string;courierNote?:string};
 export type Shipping = {kind:'pickup'|'delivery';name:string;phone:string;address:string;details?:DeliveryDetails};
@@ -41,7 +42,7 @@ export class Billing {
   async listSubscriptions(customerId:string){
     const rows=await query<Subscription & {has_paid_subscription:boolean;last_payment_status:string|null}>(this.db,sql`SELECT s.*,EXISTS(SELECT 1 FROM billing_period_grants g WHERE g.subscription_id=s.id) AS has_paid_subscription,(SELECT o.status FROM billing_orders o WHERE o.subscription_id=s.id ORDER BY o.created_at DESC LIMIT 1) AS last_payment_status FROM billing_subscriptions s WHERE s.customer_id=${customerId}::uuid ORDER BY product`);
     const settings=await this.settings(),gateway=this.gateway();
-    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,hasPaidSubscription:s.has_paid_subscription,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),setupAccess:!settings.enforcement_enabled,priceVersion:s.price_version,autoRenew:s.auto_renew,paymentMode:s.auto_renew?'automatic':'manual',lastPaymentStatus:s.last_payment_status,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl,renewalNotice:renewalNotice(s,this.now(),Boolean(settings.enabled&&settings.recurring_enabled&&gateway?.config.liveVerified))})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),enforcementEnabled:settings.enforcement_enabled,recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
+    return {subscriptions:rows.map(s=>({id:s.id,product:s.product,hasPaidSubscription:s.has_paid_subscription,monthlyAmountMinor:Number(s.monthly_amount_minor),currency:'AZN',paidUntil:s.paid_until,state:subscriptionState(s.enabled,s.paid_until,this.now().getTime()),...subscriptionAccess(s,this.now().getTime()),deletedAt:s.deleted_at??null,setupAccess:!settings.enforcement_enabled,priceVersion:s.price_version,autoRenew:s.auto_renew,paymentMode:s.auto_renew?'automatic':'manual',lastPaymentStatus:s.last_payment_status,cardMask:s.card_mask,hasSavedCard:Boolean(s.card_ciphertext),paymentUrl:billUrl,renewalNotice:renewalNotice(s,this.now(),Boolean(settings.enabled&&settings.recurring_enabled&&gateway?.config.liveVerified))})),paymentsAvailable:settings.enabled&&Boolean(gateway?.config.liveVerified||this.options.allowLive),enforcementEnabled:settings.enforcement_enabled,recurringAvailable:settings.recurring_enabled,termsVersion:settings.legal?.version??null};
   }
 
   async configureSubscription(actor:string,input:{customerId:string;product:string;monthlyAmountMinor:number;enabled:boolean;startsAt?:string}){
@@ -58,7 +59,7 @@ export class Billing {
       const until=input.startsAt??eligible.reduce<string|null>((best,l)=>l.valid_until&&(!best||new Date(l.valid_until)>new Date(best))?iso(l.valid_until):best,null);
       const [sub]=await query<Subscription>(tx,sql`INSERT INTO billing_subscriptions(customer_id,product,monthly_amount_minor,enabled,paid_until)
         VALUES(${customerId}::uuid,${product},${monthlyAmountMinor},${enabled},${until}::timestamptz)
-        ON CONFLICT(customer_id,product) DO UPDATE SET monthly_amount_minor=EXCLUDED.monthly_amount_minor,enabled=EXCLUDED.enabled,
+        ON CONFLICT(customer_id,product) DO UPDATE SET monthly_amount_minor=EXCLUDED.monthly_amount_minor,enabled=EXCLUDED.enabled,access_mode=CASE WHEN NOT EXCLUDED.enabled THEN 'free' WHEN billing_subscriptions.access_mode='free' THEN 'subscription' ELSE billing_subscriptions.access_mode END,deleted_at=NULL,
           price_version=billing_subscriptions.price_version+CASE WHEN billing_subscriptions.monthly_amount_minor<>EXCLUDED.monthly_amount_minor THEN 1 ELSE 0 END,
           auto_renew=CASE WHEN billing_subscriptions.monthly_amount_minor<>EXCLUDED.monthly_amount_minor OR NOT EXCLUDED.enabled THEN false ELSE billing_subscriptions.auto_renew END,updated_at=now()
         RETURNING *`);
@@ -68,6 +69,42 @@ export class Billing {
       await event(tx,actor,'subscription.configure',sub!.id,{customerId,product,monthlyAmountMinor,enabled});
       return {id:sub!.id};
     });
+  }
+
+  async accessControl(actor:string,input:{customerId:string;product:string;action:'trial'|'free'|'subscription'|'delete';requestId?:string;days?:number;monthlyAmountMinor?:number;reason:string}){
+    return this.db.transaction(async tx=>{
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'billing:'+input.customerId+':'+input.product}))`);
+      const [customer]=await query(tx,sql`SELECT id FROM customers WHERE id=${input.customerId}::uuid AND active FOR SHARE`);
+      if(!customer)reject('customer_missing','Aktiv müştəri tapılmadı.',404);
+      const owned=await query<{id:string;valid_until:string|null;billing_managed:boolean}>(tx,sql`SELECT id,valid_until,COALESCE((features->>'billingManaged')::boolean,false) AS billing_managed FROM licenses WHERE customer_id=${input.customerId}::uuid AND COALESCE(features->>'vertical',features->>'product',CASE WHEN plan IN ('market','geyim','aptek','topdan') THEN plan ELSE 'restaurant' END)=${input.product} AND status NOT IN ('revoked','suspended') ORDER BY id`);
+      if(!owned.length)reject('license_missing','Əvvəl bu hesaba uyğun POS lisenziyası əlavə edin.');
+      let [sub]=await query<Subscription>(tx,sql`SELECT * FROM billing_subscriptions WHERE customer_id=${input.customerId}::uuid AND product=${input.product}`);
+      if(sub)await lockSubscription(tx,sub.id);
+      else {const legacyUntil=owned.filter(l=>!l.billing_managed&&l.valid_until).reduce<string|null>((best,l)=>!best||Date.parse(l.valid_until!)>Date.parse(best)?l.valid_until:best,null);[sub]=await query<Subscription>(tx,sql`INSERT INTO billing_subscriptions(customer_id,product,monthly_amount_minor,paid_until) VALUES(${input.customerId}::uuid,${input.product},${input.monthlyAmountMinor??5000},${legacyUntil}::timestamptz) RETURNING *`);}
+      const eventKey=input.requestId?'access:'+actor+':'+input.requestId:null;
+      if(eventKey){const [done]=await query<{detail:{result:{id:string;accessMode:string;trialUntil:string|null}}}>(tx,sql`SELECT detail FROM billing_events WHERE event_key=${eventKey}`);if(done)return done.detail.result;}
+      const previous={mode:sub!.access_mode,trialUntil:sub!.trial_until,enabled:sub!.enabled,deletedAt:sub!.deleted_at};
+      const mode=input.action==='delete'?'free':input.action;
+      const end=input.action==='trial'?new Date(Math.max(this.now().getTime(),sub!.trial_until?new Date(sub!.trial_until).getTime():0,sub!.paid_until?new Date(sub!.paid_until).getTime():0)+(input.days??7)*86400000).toISOString():null;
+      await tx.execute(sql`UPDATE billing_subscriptions SET access_mode=${mode},trial_until=${end}::timestamptz,enabled=${mode!=='free'},auto_renew=false,deleted_at=CASE WHEN ${input.action==='delete'} THEN now() ELSE NULL END,updated_at=now() WHERE id=${sub!.id}::uuid`);
+      await tx.execute(sql`UPDATE billing_consents SET withdrawn_at=now() WHERE subscription_id=${sub!.id}::uuid AND withdrawn_at IS NULL`);
+      const accessEnd=mode==='free'?null:end??(sub!.paid_until?iso(sub!.paid_until):this.now().toISOString());
+      for(const l of owned){
+        const [stillOwned]=await query(tx,sql`SELECT id FROM licenses WHERE id=${l.id}::uuid AND status NOT IN ('revoked','suspended') FOR UPDATE`);
+        if(!stillOwned)reject('license_revoked','POS lisenziyası dəyişib. Siyahını yeniləyin.');
+        await tx.execute(sql`INSERT INTO billing_license_links(subscription_id,license_id) VALUES(${sub!.id}::uuid,${l.id}::uuid) ON CONFLICT DO NOTHING`);
+        await tx.execute(sql`UPDATE licenses SET features=COALESCE(features,'{}'::jsonb)||jsonb_build_object('billingManaged',true,'offlineGraceDays',0),status=${mode==='free'||accessEnd&&Date.parse(accessEnd)>this.now().getTime()?'active':'billing_pending'},valid_until=${accessEnd}::timestamptz,updated_at=now() WHERE id=${l.id}::uuid`);
+        await tx.execute(sql`UPDATE activation_keys SET expires_at=${accessEnd}::timestamptz WHERE license_id=${l.id}::uuid AND revoked_at IS NULL`);
+      }
+      await event(tx,actor,'subscription.access.'+input.action,sub!.id,{customerId:input.customerId,product:input.product,days:input.days,trialUntil:end,reason:input.reason,previous,result:{id:sub!.id,accessMode:mode,trialUntil:end}},eventKey);
+      return {id:sub!.id,accessMode:mode,trialUntil:end};
+    });
+  }
+
+  async checkPayments(customerId:string,product:string){
+    const rows=await query<{id:string}>(this.db,sql`SELECT a.id FROM billing_attempts a JOIN billing_orders o ON o.id=a.order_id JOIN billing_subscriptions s ON s.id=o.subscription_id WHERE o.customer_id=${customerId}::uuid AND s.product=${product} AND a.status IN ('redirect','pending','unknown') AND a.transaction_id IS NOT NULL ORDER BY a.updated_at LIMIT 3`);
+    let checked=0;for(const row of rows){try{await this.reconcile(row.id);checked++;}catch{/* Unknown results remain pending; never start a second charge. */}}
+    return {checked,checkedAt:this.now().toISOString()};
   }
 
   async consent(customerId:string,id:string,input:{enabled:boolean;priceVersion?:number;termsVersion?:string},ip:string){
@@ -108,13 +145,16 @@ export class Billing {
     return {quoteId:row!.id,expiresAt:row!.expires_at,items:payload.items,shipping,deliveryFeeMinor:payload.deliveryFeeMinor,totalMinor:total,currency:'AZN',pickupAddress:settings.pickup_address,termsVersion:payload.termsVersion};
   }
 
-  async shopCheckout(customerId:string,quoteId:string,requestId:string,termsVersion:string){
+  async shopCheckout(customerId:string,quoteId:string,requestId:string,termsVersion:string,opts:{saveCard?:boolean;cardId?:string}={}){
     await this.available();
+    if(opts.saveCard&&opts.cardId)reject('card_choice','Ya saxlanmış kartı seçin, ya da yeni kartı yadda saxlayın.',400);
     const order=await this.db.transaction(async tx=>{
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${customerId+requestId}))`);
-      const requestHash=hash({quoteId});
+      const requestHash=hash(opts.saveCard||opts.cardId?{quoteId,saveCard:Boolean(opts.saveCard),cardId:opts.cardId??null}:{quoteId});
       const [prior]=await query<Order & {request_hash:string}>(tx,sql`SELECT * FROM billing_orders WHERE customer_id=${customerId}::uuid AND request_key=${requestId}::uuid FOR UPDATE`);
       if(prior){if(prior.request_hash!==requestHash)reject('request_conflict','Əməliyyat açarı başqa sifariş üçündür.');return prior;}
+      // Check the saved card before reserving stock for an order it cannot pay.
+      if(opts.cardId){const [card]=await query(tx,sql`SELECT id FROM billing_cards WHERE id=${opts.cardId}::uuid AND customer_id=${customerId}::uuid AND removed_at IS NULL AND card_ciphertext IS NOT NULL`);if(!card)reject('card_missing','Saxlanmış kart tapılmadı. Yeni kartla ödəyin.');}
       const [quote]=await query<{payload:QuotePayload;amount_minor:string}>(tx,sql`SELECT * FROM billing_quotes WHERE id=${quoteId}::uuid AND customer_id=${customerId}::uuid AND expires_at>now()`);
       if(!quote)reject('quote_expired','Qiymət təklifini yeniləyin.');
       const p=quote!.payload;
@@ -128,8 +168,8 @@ export class Billing {
         if(!row?.sale_enabled||(special[item.id]?minor(special[item.id]):Number(row.price_minor))!==item.unitPriceMinor)reject('quote_changed','Məhsul qiyməti dəyişib. Sifarişi yeniləyib təsdiqləyin.');
         if(row!.stock_qty-row!.reserved_qty<item.qty)reject('stock_short','Sifariş üçün kifayət qədər stok yoxdur.');
       }
-      const [made]=await query<Order>(tx,sql`INSERT INTO billing_orders(order_no,customer_id,kind,amount_minor,request_key,request_hash,delivery_kind,delivery_fee_minor,recipient_name,recipient_phone,delivery_address,delivery_details,expires_at,terms_version)
-        VALUES(${'PS-'+randomUUID()},${customerId}::uuid,'shop',${quote!.amount_minor},${requestId}::uuid,${requestHash},${p.shipping.kind},${p.deliveryFeeMinor},${p.shipping.name},${p.shipping.phone},${p.shipping.address},${JSON.stringify(p.shipping.kind==='delivery'?p.shipping.details??{}:{})}::jsonb,now()+interval '15 minutes',${termsVersion}) RETURNING *`);
+      const [made]=await query<Order>(tx,sql`INSERT INTO billing_orders(order_no,customer_id,kind,amount_minor,request_key,request_hash,delivery_kind,delivery_fee_minor,recipient_name,recipient_phone,delivery_address,delivery_details,expires_at,terms_version,save_card_consent)
+        VALUES(${'PS-'+randomUUID()},${customerId}::uuid,'shop',${quote!.amount_minor},${requestId}::uuid,${requestHash},${p.shipping.kind},${p.deliveryFeeMinor},${p.shipping.name},${p.shipping.phone},${p.shipping.address},${JSON.stringify(p.shipping.kind==='delivery'?p.shipping.details??{}:{})}::jsonb,now()+interval '15 minutes',${termsVersion},${Boolean(opts.saveCard)}) RETURNING *`);
       for(const item of p.items){
         await tx.execute(sql`UPDATE billing_catalog SET reserved_qty=reserved_qty+${item.qty},updated_at=now() WHERE product_id=${item.id}`);
         await tx.execute(sql`INSERT INTO billing_order_items(order_id,product_id,name,qty,unit_price_minor) VALUES(${made!.id}::uuid,${item.id},${item.name},${item.qty},${item.unitPriceMinor})`);
@@ -137,7 +177,34 @@ export class Billing {
       await event(tx,customerId,'order.create',made!.id,{amountMinor:Number(quote!.amount_minor)});
       return made!;
     });
-    return this.sendCheckout(order.id,customerId);
+    return opts.cardId?this.payWithSavedCard(order.id,customerId,opts.cardId):this.sendCheckout(order.id,customerId);
+  }
+
+  /** A shop order paid with a card saved on an earlier purchase: no bank page, charged at once. */
+  async payWithSavedCard(orderId:string,customerId:string,cardId:string){
+    const {gateway}=await this.available();
+    const claim=await this.db.transaction(async tx=>{
+      const [order]=await query<Order>(tx,sql`SELECT * FROM billing_orders WHERE id=${orderId}::uuid AND customer_id=${customerId}::uuid AND kind='shop' FOR UPDATE`);
+      if(!order)reject('order_missing','Sifariş tapılmadı.',404);
+      // The same click never debits twice: an existing attempt is reported, not repeated.
+      const [prior]=await query<Attempt>(tx,sql`SELECT * FROM billing_attempts WHERE order_id=${orderId}::uuid AND kind<>'refund' ORDER BY created_at DESC LIMIT 1`);
+      if(prior||order!.paid_at)return {order:order!,attempt:prior??null,card:null};
+      if(order!.expires_at&&new Date(order!.expires_at)<=this.now())reject('order_expired','Sifarişin rezerv müddəti bitib.');
+      const [card]=await query<{card_ciphertext:string|null}>(tx,sql`SELECT card_ciphertext FROM billing_cards WHERE id=${cardId}::uuid AND customer_id=${customerId}::uuid AND removed_at IS NULL FOR UPDATE`);
+      if(!card?.card_ciphertext)reject('card_missing','Saxlanmış kart tapılmadı. Yeni kartla ödəyin.');
+      const [created]=await query<Attempt>(tx,sql`INSERT INTO billing_attempts(order_id,provider_order_id,kind,status) VALUES(${orderId}::uuid,${'PAY-'+randomUUID()},'checkout','sending') RETURNING *`);
+      await tx.execute(sql`UPDATE billing_orders SET status='processing',updated_at=now() WHERE id=${orderId}::uuid`);
+      await tx.execute(sql`UPDATE billing_cards SET last_used_at=now() WHERE id=${cardId}::uuid`);
+      return {order:order!,attempt:created!,card:card!.card_ciphertext!};
+    });
+    if(!claim.card)return {...publicOrder(claim.order),redirectUrl:null,paymentState:claim.attempt?.status??claim.order.status};
+    try{
+      // Ciphertext is decrypted only for this outgoing server-to-bank call.
+      const response=await gateway.call('execute-pay',{card_id:decryptCard(claim.card,gateway.config.tokenKey),order_id:claim.attempt!.provider_order_id,amount:Number(amount(Number(claim.order.amount_minor))),currency:'AZN',language:'az',description:claim.order.order_no});
+      await this.recordResult(claim.attempt!.id,response,'execute');
+    }catch{await this.markUnknown(claim.attempt!.id);}
+    const [after]=await query<Order>(this.db,sql`SELECT * FROM billing_orders WHERE id=${orderId}::uuid`);
+    return {...publicOrder(after!),redirectUrl:null,paymentState:after!.status};
   }
 
   async subscriptionCheckout(customerId:string,id:string,input:{requestId:string;priceVersion:number;saveCard:boolean;paymentMode?:'manual'|'automatic';termsVersion?:string},ip:string){
@@ -149,6 +216,8 @@ export class Billing {
       await lockSubscription(tx,id);
       const [sub]=await query<Subscription>(tx,sql`SELECT * FROM billing_subscriptions WHERE id=${id}::uuid AND customer_id=${customerId}::uuid AND enabled=true FOR UPDATE`);
       if(!sub)reject('subscription_missing','Abunəlik tapılmadı.',404);
+      if(subscriptionAccess(sub!,this.now().getTime()).accessMode==='free'||sub!.deleted_at)reject('subscription_free','Bu POS üçün ödəniş tələb olunmur.');
+      if(sub!.access_mode==='trial'&&subscriptionAccess(sub!,this.now().getTime()).hasAccess)reject('subscription_trial','Pulsuz sınaq müddəti hələ davam edir.');
       if(input.priceVersion!==sub!.price_version)reject('price_changed','Aylıq haqq dəyişib. Yeniləyib təsdiqləyin.');
       const fingerprint=hash({id,priceVersion:input.priceVersion,saveCard:input.saveCard,termsVersion:input.termsVersion??null,...(input.paymentMode?{paymentMode:input.paymentMode}:{})});
       const [prior]=await query<Order & {request_hash:string}>(tx,sql`SELECT * FROM billing_orders WHERE customer_id=${customerId}::uuid AND request_key=${input.requestId}::uuid`);
@@ -234,9 +303,15 @@ export class Billing {
       const [attempt]=await query<Attempt>(tx,sql`SELECT * FROM billing_attempts WHERE id=${attemptId}::uuid FOR UPDATE`);
       if(eventKey){const old=await query(tx,sql`SELECT id FROM billing_events WHERE event_key=${eventKey}`);if(old.length)return {duplicate:true};}
       if(result.transaction&&attempt!.transaction_id&&result.transaction!==attempt!.transaction_id)reject('transaction_mismatch','Epoint əməliyyatı uyğun deyil.',400);
-      if(result.amount!==undefined&&minor(result.amount)!==Number(order!.amount_minor))reject('amount_mismatch','Epoint məbləği uyğun deyil.',400);
+      // A partial reversal may report the refunded part instead of the payment amount.
+      const [refundAttempt]=await query<Attempt>(tx,sql`SELECT * FROM billing_attempts WHERE order_id=${order!.id}::uuid AND kind='refund' AND status<>'failed' ORDER BY created_at DESC LIMIT 1`);
+      const refundMinor=refundAttempt?.amount_minor!=null?Number(refundAttempt.amount_minor):null;
+      if(result.amount!==undefined&&minor(result.amount)!==Number(order!.amount_minor)&&!(result.status==='returned'&&refundMinor!==null&&minor(result.amount)===refundMinor))reject('amount_mismatch','Epoint məbləği uyğun deyil.',400);
       if(result.currency!==undefined&&result.currency!=='AZN')reject('currency_mismatch','Valyuta uyğun deyil.',400);
-      if(result.order_id!==undefined&&result.order_id!==attempt!.provider_order_id)reject('order_mismatch','Sifariş uyğun deyil.',400);
+      // Epoint reports a reversal under the original payment's order_id, not under the refund's own id.
+      let expectedOrderId=attempt!.provider_order_id;
+      if(attempt!.kind==='refund'){const [paid]=await query<Attempt>(tx,sql`SELECT provider_order_id FROM billing_attempts WHERE order_id=${order!.id}::uuid AND kind<>'refund' AND transaction_id=${attempt!.transaction_id} LIMIT 1`);if(paid)expectedOrderId=paid.provider_order_id;}
+      if(result.order_id!==undefined&&result.order_id!==expectedOrderId)reject('order_mismatch','Sifariş uyğun deyil.',400);
       if(order!.status==='refunded')return {alreadyRefunded:true};
       const confirmed=result.status==='success'&&source!=='create'&&result.amount!==undefined&&Boolean(result.transaction||attempt!.transaction_id);
       const returned=result.status==='returned';
@@ -252,9 +327,20 @@ export class Billing {
         if(applied&&order!.kind==='subscription')applied=await this.applyPeriod(tx,order!,result);
         if(applied&&order!.kind==='shop')applied=await this.consumeStock(tx,order!);
         await tx.execute(sql`UPDATE billing_orders SET status=${applied?'paid':'paid_review'},paid_at=${this.now().toISOString()}::timestamptz,updated_at=now() WHERE id=${order!.id}::uuid`);
+        // The customer asked to keep this card for later shop purchases.
+        const mask=String(safeGatewayResponse(result).card_mask||''),gateway=this.gateway();
+        if(order!.kind==='shop'&&order!.save_card_consent&&typeof result.card_id==='string'&&result.card_id&&mask&&gateway)await tx.execute(sql`INSERT INTO billing_cards(customer_id,card_ciphertext,card_mask,source_order_id) VALUES(${order!.customer_id}::uuid,${encryptCard(result.card_id,gateway.config.tokenKey)},${mask},${order!.id}::uuid)
+          ON CONFLICT (customer_id,card_mask) WHERE removed_at IS NULL DO UPDATE SET card_ciphertext=EXCLUDED.card_ciphertext,source_order_id=EXCLUDED.source_order_id`);
       }
       if(returned){
-        if(order!.paid_at)await this.applyRefund(tx,order!);
+        // A partial refund closes the payment but keeps the paid period; only a full refund takes it back.
+        const partial=refundMinor!==null&&refundMinor<Number(order!.amount_minor);
+        if(order!.paid_at&&partial)await tx.execute(sql`UPDATE billing_orders SET status='refunded',updated_at=now() WHERE id=${order!.id}::uuid`);
+        else if(order!.paid_at)await this.applyRefund(tx,order!);
+        if(order!.paid_at){
+          await tx.execute(sql`UPDATE billing_orders SET refunded_minor=${refundMinor??Number(order!.amount_minor)} WHERE id=${order!.id}::uuid`);
+          await tx.execute(sql`UPDATE billing_attempts SET status='refunded',updated_at=now() WHERE order_id=${order!.id}::uuid AND kind='refund' AND status IN ('sending','pending','unknown')`);
+        }
         else{
           await this.releaseStock(tx,order!);
           await tx.execute(sql`UPDATE billing_orders SET status='refunded',updated_at=now() WHERE id=${order!.id}::uuid`);
@@ -346,7 +432,13 @@ export class Billing {
     const gateway=this.gateway();if(!gateway)return;
     const [a]=await query<Attempt>(this.db,sql`SELECT * FROM billing_attempts WHERE id=${attemptId}::uuid`);
     if(!a?.transaction_id)return;
-    const response=await gateway.call('get-status',{transaction:a.transaction_id});
+    let response=await gateway.call('get-status',{transaction:a.transaction_id});
+    if(a.kind==='refund'&&response.status!=='returned'){
+      // A reversal is also listed under the payment's order id as its own negative transaction.
+      const [paid]=await query<Attempt>(this.db,sql`SELECT * FROM billing_attempts WHERE order_id=${a.order_id}::uuid AND kind<>'refund' AND transaction_id=${a.transaction_id} LIMIT 1`);
+      const byOrder=paid?await gateway.call('get-status',{order_id:paid.provider_order_id}):null;
+      if(byOrder?.status==='success'&&Number(byOrder.amount)<0&&byOrder.transaction!==a.transaction_id)response={status:'returned',amount:Math.abs(Number(byOrder.amount)).toFixed(2),order_id:byOrder.order_id,trace_id:byOrder.trace_id};
+    }
     await this.recordResult(a.id,response,'status');
   }
 
@@ -354,7 +446,7 @@ export class Billing {
     return query(this.db,sql`SELECT id,order_no,kind,payment_mode,amount_minor,currency,status,fulfillment_status,created_at,paid_at,period_start,period_end,subscription_id FROM billing_orders WHERE customer_id=${customerId}::uuid ORDER BY created_at DESC LIMIT ${limit}`);
   }
   async order(customerId:string,id:string){
-    const [o]=await query(this.db,sql`SELECT o.id,o.order_no,o.kind,o.amount_minor,o.currency,o.status,o.fulfillment_status,o.delivery_kind,o.delivery_fee_minor,o.recipient_name,o.recipient_phone,o.delivery_address,o.delivery_details,o.estimated_at,o.updated_at,o.note,o.expires_at,o.paid_at,o.created_at,o.period_start,o.period_end,o.payment_mode,s.product FROM billing_orders o LEFT JOIN billing_subscriptions s ON s.id=o.subscription_id WHERE o.id=${id}::uuid AND o.customer_id=${customerId}::uuid`);
+    const [o]=await query(this.db,sql`SELECT o.id,o.order_no,o.kind,o.amount_minor,o.refunded_minor,o.admin_charge,o.currency,o.status,o.fulfillment_status,o.delivery_kind,o.delivery_fee_minor,o.recipient_name,o.recipient_phone,o.delivery_address,o.delivery_details,o.estimated_at,o.updated_at,o.note,o.expires_at,o.paid_at,o.created_at,o.period_start,o.period_end,o.payment_mode,s.product FROM billing_orders o LEFT JOIN billing_subscriptions s ON s.id=o.subscription_id WHERE o.id=${id}::uuid AND o.customer_id=${customerId}::uuid`);
     if(!o)reject('order_missing','Sifariş tapılmadı.',404);
     const items=await query(this.db,sql`SELECT product_id,name,qty,unit_price_minor FROM billing_order_items WHERE order_id=${id}::uuid ORDER BY product_id`);
     const [buyer]=await query(this.db,sql`SELECT name,email FROM customers WHERE id=${customerId}::uuid`);
@@ -364,7 +456,7 @@ export class Billing {
     return {order:o,items,invoice:{buyer:buyer??null,seller:{name:legal.sellerName??'',voen:legal.voen??'',address:legal.address??'',phone:legal.phone??''},payment:payment??null}};
   }
 
-  async refund(actor:string,id:string,reason:string){
+  async refund(actor:string,id:string,reason:string,amountMinor?:number){
     const {gateway}=await this.available();
     const [lookup]=await query<Order>(this.db,sql`SELECT * FROM billing_orders WHERE id=${id}::uuid`);
     if(!lookup)reject('order_missing','Sifariş tapılmadı.',404);
@@ -375,13 +467,15 @@ export class Billing {
       if(!o!.paid_at||!['paid','paid_review'].includes(o!.status))reject('refund_not_allowed','Yalnız təsdiqlənmiş ödənişi geri qaytarmaq olar.');
       const [original]=await query<Attempt>(tx,sql`SELECT * FROM billing_attempts WHERE order_id=${id}::uuid AND kind<>'refund' AND status='succeeded' AND transaction_id IS NOT NULL ORDER BY created_at LIMIT 1`);
       if(!original)reject('transaction_missing','Epoint əməliyyat nömrəsi yoxdur.');
-      const [attempt]=await query<Attempt>(tx,sql`INSERT INTO billing_attempts(order_id,provider_order_id,kind,status,transaction_id) VALUES(${id}::uuid,${'REF-'+randomUUID()},'refund','sending',${original!.transaction_id}) RETURNING *`);
+      if(amountMinor!==undefined&&(!Number.isSafeInteger(amountMinor)||amountMinor<1||amountMinor>Number(o!.amount_minor)))reject('refund_amount','Qaytarma məbləği 0,01 ₼ ilə ödəniş məbləği arasında olmalıdır.',400);
+      const refundMinor=amountMinor??Number(o!.amount_minor);
+      const [attempt]=await query<Attempt>(tx,sql`INSERT INTO billing_attempts(order_id,provider_order_id,kind,status,transaction_id,amount_minor) VALUES(${id}::uuid,${'REF-'+randomUUID()},'refund','sending',${original!.transaction_id},${refundMinor}) RETURNING *`);
       await tx.execute(sql`UPDATE billing_orders SET status='refund_pending',updated_at=now() WHERE id=${id}::uuid`);
-      await event(tx,actor,'refund.request',id,{reason,attemptId:attempt!.id});return {attempt:attempt!,order:o!};
+      await event(tx,actor,'refund.request',id,{reason,attemptId:attempt!.id,amountMinor:refundMinor});return {attempt:attempt!,order:o!};
     });
     if(!claim)return {ok:true,pending:true};
     try{
-      const response=await gateway.call('reverse',{transaction:claim.attempt.transaction_id,amount:Number(amount(Number(claim.order.amount_minor))),currency:'AZN',language:'az'});
+      const response=await gateway.call('reverse',{transaction:claim.attempt.transaction_id,amount:Number(amount(Number(claim.attempt.amount_minor??claim.order.amount_minor))),currency:'AZN',language:'az'});
       if(['failed','error'].includes(String(response.status))){
         await this.db.transaction(async tx=>{
           await tx.execute(sql`UPDATE billing_attempts SET status='failed',response=${JSON.stringify(safeGatewayResponse(response))}::jsonb,updated_at=now() WHERE id=${claim.attempt.id}::uuid`);
@@ -417,7 +511,7 @@ export class Billing {
     const {gateway}=await this.available(true);
     const claim=await this.db.transaction(async tx=>{
       await lockSubscription(tx,id);
-      const [sub]=await query<Subscription>(tx,sql`SELECT s.* FROM billing_subscriptions s JOIN customers c ON c.id=s.customer_id WHERE s.id=${id}::uuid AND s.enabled AND s.auto_renew AND c.active AND s.consent_version=s.price_version AND s.card_ciphertext IS NOT NULL AND s.paid_until<=now() FOR UPDATE OF s`);
+      const [sub]=await query<Subscription>(tx,sql`SELECT s.* FROM billing_subscriptions s JOIN customers c ON c.id=s.customer_id WHERE s.id=${id}::uuid AND s.enabled AND s.auto_renew AND s.access_mode='subscription' AND s.deleted_at IS NULL AND c.active AND s.consent_version=s.price_version AND s.card_ciphertext IS NOT NULL AND s.paid_until<=now() FOR UPDATE OF s`);
       if(!sub)return null;
       if(sub.retry_stage>=3)return null;
       const delay=sub.retry_stage===1?24*3600_000:sub.retry_stage===2?48*3600_000:0;
@@ -468,8 +562,10 @@ export class Billing {
 export async function licenseBilling(db:Executor,licenseId:string){
   const [settings]=await query<Settings>(db,sql`SELECT * FROM billing_settings WHERE id=true`);
   const enforced=Boolean(settings?.enforcement_enabled&&settings.enabled&&epointConfig()?.liveVerified);
-  const [sub]=await query<Subscription>(db,sql`SELECT s.* FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id WHERE b.license_id=${licenseId}::uuid AND s.enabled=true`);
-  return sub?{billingEnforced:enforced,accessUntil:!enforced?new Date(Date.now()+7*86400000).toISOString():null,billingStatus:subscriptionState(sub.enabled,sub.paid_until),paidUntil:sub.paid_until?iso(sub.paid_until):null,monthlyAmountMinor:Number(sub.monthly_amount_minor),subscriptionId:sub.id,paymentUrl:billUrl}:null;
+  const [sub]=await query<Subscription>(db,sql`SELECT s.* FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id WHERE b.license_id=${licenseId}::uuid`);
+  if(!sub)return null;
+  const rights=subscriptionAccess(sub),free=rights.accessMode==='free';
+  return {...rights,billingEnforced:free?false:enforced||rights.accessMode==='trial',accessUntil:free?new Date(Date.now()+7*86400000).toISOString():rights.accessUntil??(!enforced?new Date(Date.now()+7*86400000).toISOString():null),billingStatus:rights.hasAccess?'active':subscriptionState(sub.enabled,sub.paid_until),paidUntil:sub.paid_until?iso(sub.paid_until):null,monthlyAmountMinor:Number(sub.monthly_amount_minor),subscriptionId:sub.id,paymentUrl:billUrl};
 }
 
 export function startBillingWorker(billing:Billing,log:{warn:(data:unknown,message:string)=>void}){

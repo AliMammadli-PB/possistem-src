@@ -8,8 +8,10 @@ import { requireCustomer } from '../plugins/customer-auth.js';
 import { requireSuperadmin, currentUser } from '../plugins/auth.js';
 import { resolveTenantToken } from './tenant.js';
 import { Billing, startBillingWorker, type Settings } from '../lib/billing/service.js';
+import { billingCancelRoutes } from './billing-cancel.js';
 import { query, event } from '../lib/billing/store.js';
 import { BillingError, MAX_MINOR } from '../lib/billing/domain.js';
+import {billingLicenseRefresh} from '../lib/billing/license-refresh.js';
 import { epointConfig } from '../lib/billing/epoint.js';
 
 const uuid=z.string().uuid(), product=z.enum(['market','restaurant','geyim','aptek','topdan']);
@@ -61,6 +63,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     if(version){const [row]=await query<{content:unknown}>(app.db,sql`SELECT content FROM billing_terms WHERE version=${version}`);return {legal:row?.content??null};}
     const legal=(await billing.settings()).legal;return {legal:Object.values(legal??{}).some(v=>typeof v!=='string'||!v.trim())||!legal?.version?null:legal};
   }));
+  billingCancelRoutes(app,billing,customer,admin);
   app.get('/customer/billing/notifications',customer(async id=>({notifications:await query(app.db,sql`SELECT id,kind,title,body,payload,read_at AS "readAt",created_at AS "createdAt" FROM owner_notifications WHERE customer_id=${id}::uuid ORDER BY created_at DESC LIMIT 100`),...((await query(app.db,sql`SELECT count(*)::int AS unread FROM owner_notifications WHERE customer_id=${id}::uuid AND read_at IS NULL`))[0]??{})})));
   app.post('/customer/billing/notifications/read',customer(async(id,req)=>{const b=z.object({id:uuid.optional()}).parse(req.body??{});await app.db.execute(sql`UPDATE owner_notifications SET read_at=now() WHERE customer_id=${id}::uuid AND read_at IS NULL AND (${b.id??null}::uuid IS NULL OR id=${b.id??null}::uuid)`);return {ok:true};}));
   app.get('/customer/billing',customer(async id=>billing.listSubscriptions(id)));
@@ -68,7 +71,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   app.get('/customer/billing/shop-orders',customer(async(id,req)=>{
     const b=z.object({before:z.string().datetime().optional(),beforeId:uuid.optional(),q:z.string().max(100).default(''),filter:z.enum(['all','paid','pending']).default('all')}).parse(req.query);
     if(Boolean(b.before)!==Boolean(b.beforeId))throw new BillingError('invalid_cursor','Səhifəni yenidən açın.',400);
-    const rows=await query<{id:string;created_at:string|Date;cursor_created_at:string}>(app.db,sql`SELECT id,order_no,amount_minor,currency,kind,status,fulfillment_status,estimated_at,delivery_kind,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created_at FROM billing_orders WHERE customer_id=${id}::uuid AND kind='shop' AND (${b.q}='' OR position(lower(${b.q}) in lower(order_no))>0) AND (${b.filter}='all' OR (${b.filter}='paid' AND status='paid') OR (${b.filter}='pending' AND status IN ('awaiting_payment','processing','unknown'))) AND (${b.before??null}::timestamptz IS NULL OR (created_at,id)<(${b.before??null}::timestamptz,${b.beforeId??null}::uuid)) ORDER BY created_at DESC,id DESC LIMIT 26`);
+    const rows=await query<{id:string;created_at:string|Date;cursor_created_at:string}>(app.db,sql`SELECT id,order_no,amount_minor,currency,kind,status,fulfillment_status,estimated_at,delivery_kind,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created_at FROM billing_orders WHERE customer_id=${id}::uuid AND kind='shop' AND NOT admin_charge AND (${b.q}='' OR position(lower(${b.q}) in lower(order_no))>0) AND (${b.filter}='all' OR (${b.filter}='paid' AND status='paid') OR (${b.filter}='pending' AND status IN ('awaiting_payment','processing','unknown'))) AND (${b.before??null}::timestamptz IS NULL OR (created_at,id)<(${b.before??null}::timestamptz,${b.beforeId??null}::uuid)) ORDER BY created_at DESC,id DESC LIMIT 26`);
     const more=rows.length>25,orders=rows.slice(0,25),last=orders.at(-1);return {orders,next:more&&last?{before:last.cursor_created_at,beforeId:last.id}:null};
   }));
   app.get('/customer/billing/orders/:id',customer(async(id,req)=>billing.order(id,idOf(req))));
@@ -76,12 +79,25 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     const body=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean().default(false),paymentMode:z.enum(['manual','automatic']).optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);
     return billing.subscriptionCheckout(id,idOf(req),body,req.ip);
   }));
-  app.post('/customer/billing/subscriptions/:id/consent',customer(async(id,req)=>billing.consent(id,idOf(req),z.object({enabled:z.boolean(),priceVersion:z.number().int().positive().optional(),termsVersion:z.string().max(100).optional()}).parse(req.body),req.ip)));
+  app.post('/customer/billing/subscriptions/:id/consent',customer(async(id,req)=>{
+    const b=z.object({enabled:z.boolean(),priceVersion:z.number().int().positive().optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);
+    // Stopping is decided by an admin: the customer sends a cancellation request instead.
+    if(!b.enabled)throw new BillingError('cancel_by_request','Abunəliyi ləğv etmək üçün səbəbini yazıb ləğv sorğusu göndərin.',400);
+    return billing.consent(id,idOf(req),b,req.ip);
+  }));
   app.post('/customer/billing/quote',customer(async(id,req)=>{
     const b=z.object({partnerProof:z.string().max(2000).optional(),items:z.array(z.object({id:z.string().min(1).max(150),qty:z.number().int().min(1).max(1000000)})).min(1).max(50).refine(xs=>new Set(xs.map(x=>x.id)).size===xs.length),shipping:z.object({kind:z.enum(['pickup','delivery']),name:z.string().trim().min(2).max(150),phone:z.string().trim().min(7).max(40),address:z.string().trim().max(1000).default(''),details:DeliveryDetails.optional()}).refine(s=>s.kind==='pickup'||Boolean(s.details)||s.address.length>=5)}).parse(req.body);
     return billing.quote(id,b.items,withAddress(b.shipping),b.partnerProof);
   }));
-  app.post('/customer/billing/checkout',customer(async(id,req)=>{const b=z.object({quoteId:uuid,requestId:uuid,termsVersion:z.string().min(1).max(100)}).parse(req.body);return billing.shopCheckout(id,b.quoteId,b.requestId,b.termsVersion);}));
+  app.post('/customer/billing/checkout',customer(async(id,req)=>{const b=z.object({quoteId:uuid,requestId:uuid,termsVersion:z.string().min(1).max(100),saveCard:z.boolean().optional(),cardId:uuid.optional()}).parse(req.body);return billing.shopCheckout(id,b.quoteId,b.requestId,b.termsVersion,{saveCard:b.saveCard,cardId:b.cardId});}));
+  // Saved cards: shop cards the customer can remove, plus subscription cards (cancelled only by request).
+  app.get('/customer/billing/cards',customer(async id=>({cards:await query(app.db,sql`SELECT id,card_mask,created_at,last_used_at,'shop' AS source,NULL AS product FROM billing_cards WHERE customer_id=${id}::uuid AND removed_at IS NULL AND card_ciphertext IS NOT NULL
+    UNION ALL SELECT id,card_mask,updated_at,last_attempt_at,'subscription',product FROM billing_subscriptions WHERE customer_id=${id}::uuid AND card_ciphertext IS NOT NULL ORDER BY 3 DESC`)})));
+  app.delete('/customer/billing/cards/:id',customer(async(id,req)=>{
+    const rows=await query(app.db,sql`UPDATE billing_cards SET removed_at=now(),card_ciphertext=NULL WHERE id=${idOf(req)}::uuid AND customer_id=${id}::uuid AND removed_at IS NULL RETURNING id`);
+    if(!rows.length)throw new BillingError('card_missing','Kart tapılmadı.',404);
+    await event(app.db,id,'card.remove',idOf(req));return {ok:true};
+  }));
 
   app.get('/admin/billing/customers',admin(async(_actor,req)=>{
     const term=String((req.query as {q?:string}).q??'').trim().slice(0,100);
@@ -90,7 +106,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   }));
   app.get('/admin/billing',admin(async()=>{
     const [subscriptions,orders,payments,events]=await Promise.all([
-      query(app.db,sql`SELECT s.id,s.customer_id,c.name,c.email,s.product,s.monthly_amount_minor,s.enabled,s.paid_until,s.price_version,s.auto_renew,s.card_mask FROM billing_subscriptions s JOIN customers c ON c.id=s.customer_id ORDER BY s.updated_at DESC LIMIT 300`),
+      query(app.db,sql`SELECT s.id,s.customer_id,c.name,c.email,s.product,s.monthly_amount_minor,s.enabled,s.paid_until,s.price_version,s.auto_renew,s.card_mask,s.cancelled_at,s.cancel_effective_at,(SELECT count(*)::int FROM billing_cancel_requests r WHERE r.subscription_id=s.id AND r.status='pending') AS pending_cancel,s.access_mode,s.trial_until,s.deleted_at FROM billing_subscriptions s JOIN customers c ON c.id=s.customer_id WHERE s.deleted_at IS NULL ORDER BY s.updated_at DESC LIMIT 300`),
       query(app.db,sql`SELECT o.*,c.name AS customer_name,c.email FROM billing_orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.created_at DESC LIMIT 300`),
       query(app.db,sql`SELECT a.id,a.order_id,a.provider_order_id,a.kind,a.status,a.transaction_id,a.response,a.created_at,a.updated_at,o.order_no,o.amount_minor,c.name AS customer_name FROM billing_attempts a JOIN billing_orders o ON o.id=a.order_id JOIN customers c ON c.id=o.customer_id ORDER BY a.created_at DESC LIMIT 300`),
       query(app.db,sql`SELECT * FROM billing_events ORDER BY id DESC LIMIT 200`),
@@ -100,8 +116,12 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     const b=z.object({customerId:uuid,product,monthlyAmountMinor:z.number().int().min(1).max(MAX_MINOR),enabled:z.boolean().default(true),startsAt:z.string().datetime().optional()}).parse(req.body);
     return billing.configureSubscription(actor,b);
   }));
+  app.post('/admin/billing/access',admin(async(actor,req)=>{
+    const b=z.object({customerId:uuid,product,action:z.enum(['trial','free','subscription','delete']),requestId:uuid,days:z.number().int().min(1).max(365).optional(),monthlyAmountMinor:z.number().int().min(1).max(MAX_MINOR).optional(),reason:z.string().trim().min(3).max(1000)}).refine(x=>x.action!=='trial'||x.days!==undefined).parse(req.body);
+    return billing.accessControl(actor,b);
+  }));
   app.get('/admin/billing/orders/:id',admin(async(_actor,req)=>{const [o]=await query<{customer_id:string}>(app.db,sql`SELECT customer_id FROM billing_orders WHERE id=${idOf(req)}::uuid`);if(!o)throw new BillingError('order_missing','Sifariş tapılmadı.',404);return billing.order(o.customer_id,idOf(req));}));
-  app.post('/admin/billing/orders/:id/refund',admin(async(actor,req)=>billing.refund(actor,idOf(req),z.object({reason:z.string().trim().min(3).max(1000)}).parse(req.body).reason)));
+  app.post('/admin/billing/orders/:id/refund',admin(async(actor,req)=>{const b=z.object({reason:z.string().trim().min(3).max(1000),amountMinor:z.number().int().min(1).max(MAX_MINOR).optional()}).parse(req.body);return billing.refund(actor,idOf(req),b.reason,b.amountMinor);}));
   app.post('/admin/billing/payments/:id/reconcile',admin(async(actor,req)=>{
     const id=idOf(req),b=z.object({transactionId:z.string().trim().regex(/^[a-zA-Z0-9_-]{3,150}$/).optional()}).parse(req.body??{});
     if(b.transactionId)await app.db.transaction(async tx=>{
@@ -170,16 +190,24 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   app.post('/billing/desktop/status',guarded(async(req,reply)=>{
     const raw=req.headers.authorization,who=resolveTenantToken(typeof raw==='string'?raw.replace(/^Bearer\s+/i,''):undefined,true);
     if(!who)return reply.code(401).send({error:'Yenidən daxil olun.'});
-    const b=z.object({product}).parse(req.body);
+    const b=z.object({product,refresh:z.boolean().optional(),deviceId:uuid.optional()}).parse(req.body);
     const [active]=await query(app.db,sql`SELECT id FROM customers WHERE id=${who.customerId}::uuid AND active=true`);if(!active)return reply.code(401).send({error:'Hesab deaktivdir.'});
-    const data=await billing.listSubscriptions(who.customerId);return {...data,subscriptions:data.subscriptions.filter(s=>s.product===b.product),billingOnly:who.client==='billing'};
+    const check=b.refresh?await billing.checkPayments(who.customerId,b.product):{checked:0,checkedAt:new Date().toISOString()};
+    const data=await billing.listSubscriptions(who.customerId);
+    const products=await query<{product:string}>(app.db,sql`SELECT DISTINCT COALESCE(features->>'vertical',features->>'product',CASE WHEN plan IN ('market','geyim','aptek','topdan') THEN plan ELSE 'restaurant' END) AS product FROM licenses WHERE customer_id=${who.customerId}::uuid AND status NOT IN ('revoked','suspended')`);
+    let licenseRefresh=null;
+    if(b.deviceId){
+      const [owned]=await query(app.db,sql`SELECT d.id FROM devices d JOIN licenses l ON l.id=d.license_id WHERE d.id=${b.deviceId}::uuid AND l.customer_id=${who.customerId}::uuid AND COALESCE(l.features->>'vertical',l.features->>'product',CASE WHEN l.plan IN ('market','geyim','aptek','topdan') THEN l.plan ELSE 'restaurant' END)=${b.product}`);
+      if(owned)licenseRefresh=await billingLicenseRefresh(app.db,b.deviceId);
+    }
+    return {...data,subscriptions:data.subscriptions.filter(s=>s.product===b.product),availableProducts:products.map(p=>p.product),productAssigned:products.some(p=>p.product===b.product),billingOnly:who.client==='billing',...check,licenseRefresh};
   }));
   app.post('/billing/desktop/handoff',guarded(async(req,reply)=>{
     const raw=req.headers.authorization,identity=resolveTenantToken(typeof raw==='string'?raw.replace(/^Bearer\s+/i,''):undefined,true);
     if(!identity)return reply.code(401).send({error:'Yenidən daxil olun.'});
     const b=z.object({product}).parse(req.body);
-    const [exists]=await query(app.db,sql`SELECT s.id FROM billing_subscriptions s JOIN customers c ON c.id=s.customer_id WHERE s.customer_id=${identity.customerId}::uuid AND s.product=${b.product} AND c.active AND s.enabled`);
-    if(!exists)throw new BillingError('subscription_missing','Abunəlik tapılmadı.',404);
+    const [exists]=await query(app.db,sql`SELECT id FROM customers WHERE id=${identity.customerId}::uuid AND active`);
+    if(!exists)return reply.code(401).send({error:'Hesab deaktivdir.'});
     const token=randomBytes(32).toString('base64url');
     await app.db.execute(sql`INSERT INTO billing_handoffs(token_hash,customer_id,product,expires_at) VALUES(${digest(token)},${identity.customerId}::uuid,${b.product},now()+interval '90 seconds')`);
     return {url:'https://possistem.az/odenis/davam?handoff='+token};
@@ -198,9 +226,10 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     if(req.method!=='GET'&&req.headers['x-csrf-token']!==who.csrf)return reply.code(403).send({error:'Ödənişi yenidən açın.'});
     return fn(who,req,reply);
   });
-  app.get('/billing/site',site(async who=>{const result=await billing.listSubscriptions(who.customerId);return {...result,subscriptions:result.subscriptions.filter(s=>s.product===who.product),csrfToken:who.csrf};}));
+  app.get('/billing/site',site(async who=>{const result=await billing.listSubscriptions(who.customerId);const [customer]=await query(app.db,sql`SELECT id,name,email FROM customers WHERE id=${who.customerId}::uuid AND active`);return {...result,customer,product:who.product,subscriptions:result.subscriptions.filter(s=>s.product===who.product),csrfToken:who.csrf};}));
   app.post('/billing/site/checkout',site(async(who,req)=>{
-    const b=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean(),paymentMode:z.enum(['manual','automatic']).optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);
+    const b=z.object({customerId:uuid.optional(),requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean(),paymentMode:z.enum(['manual','automatic']).optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);
+    if(b.customerId&&b.customerId!==who.customerId)throw new BillingError('payment_account_changed','Ödəniş hesabı dəyişib. POS tətbiqindən keçidi yenidən açın.',403);
     const [sub]=await query<{id:string}>(app.db,sql`SELECT id FROM billing_subscriptions WHERE customer_id=${who.customerId}::uuid AND product=${who.product}`);
     if(!sub)throw new BillingError('subscription_missing','Abunəlik yoxdur.',404);
     return billing.subscriptionCheckout(who.customerId,sub.id,b,req.ip);

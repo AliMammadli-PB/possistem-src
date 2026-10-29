@@ -8,3 +8,14 @@ test('billing-only sign-in requires a fresh sign-in after successful payment',as
 test('offline accepts only unexpired signed managed active billing proof',async()=>{assert.equal((await run({throwRemote:true})).loginAllowed,true);assert.equal((await run({throwRemote:true,proof:{expiresAt:at-1}})).allowed,false);assert.equal((await run({throwRemote:true,proof:{features:{billingManaged:true,billingStatus:'awaiting_payment'}}})).allowed,false)});
 test('revoked server session does not fall back to a local paid license',async()=>{assert.equal((await run({remote:{ok:false,status:401}})).loginAllowed,false)});
 test('a batch cannot bypass the PIN barrier',()=>{assert.equal(create.requiresPin('auth.login'),true);assert.equal(create.requiresPin('core.batch',{calls:[{method:'core.batch',payload:{calls:[{method:'auth.login'}]}}]}),true);assert.equal(create.requiresPin('core.batch',{calls:[{method:'license.status'}]}),false)});
+
+test('administrator free access is valid without a bank payment and stays product scoped',async()=>{
+ const proof={customerId:'owner',status:'active',expiresAt:Date.now()+60000,features:{billingManaged:true,billingStatus:'active',product:'restaurant'}};
+ const access=create({owner:()=>({token:'owner-token',customerId:'owner'}),license:async()=>({success:true,data:proof}),status:async()=>({ok:true,data:{subscriptions:[{product:'restaurant',hasAccess:true,accessStatus:'free',hasPaidSubscription:false}],productAssigned:true}})});
+ assert.equal((await access(true)).loginAllowed,true);proof.features.product='market';assert.equal((await access(true)).loginAllowed,false);
+});
+test('a fresh check rereads the newly signed license after confirmation',async()=>{
+ let proof={customerId:'owner',status:'expired',expiresAt:1,features:{billingManaged:true,billingStatus:'expired'}};
+ const access=create({owner:()=>({token:'owner-token',customerId:'owner'}),license:async()=>({success:true,data:proof}),status:async verify=>{assert.equal(verify,true);proof={...proof,status:'active',expiresAt:Date.now()+60000,features:{billingManaged:true,billingStatus:'active'}};return {ok:true,data:{subscriptions:[{product:'restaurant',hasAccess:true,accessStatus:'trial'}],productAssigned:true}};}});
+ assert.equal((await access(true,true)).loginAllowed,true);
+});

@@ -19,7 +19,7 @@ export function SiteFooter({compact=false}:{compact?:boolean}){
   const {language}=useI18n();
   const c=COPY[language];
   return <footer className={`marketing-footer${compact?' is-compact':''}`}>
-    <div className="ps-footer-transition" aria-hidden="true"><svg viewBox="0 0 1440 40" preserveAspectRatio="none"><path className="ps-footer-wave-tint" d="M0 18C240 42 390-8 680 12S1180 38 1440 8V40H0Z"/><path className="ps-footer-wave" d="M0 27C240 48 420 0 720 22S1190 43 1440 18V40H0Z"/></svg></div>
+    <div className="ps-footer-transition" aria-hidden="true"><svg viewBox="0 0 1440 40" preserveAspectRatio="none"><path className="ps-footer-wave-tint" d="M0 0H1440V18C1190 43 960 36 720 22S240 48 0 27Z"/><path className="ps-footer-wave" d="M0 0H1440V8C1180 38 920 32 680 12S240 42 0 18Z"/></svg></div>
     <div className="marketing-container ps-footer-top">
       <div className="ps-footer-address"><Icon name="map"/><span>Ziya Bünyadov Pr. 5/7</span></div>
       <div className="ps-footer-contact">

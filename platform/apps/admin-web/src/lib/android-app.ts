@@ -17,14 +17,12 @@ export type AppMessage =
 
 export const inAndroidApp = () => Boolean(window.PossistemAndroid);
 
-export function tellApp(message: AppMessage): void {
-  // Older APKs also stop receiving passwords from the live console.
-  if(message.type==='clear-login')window.PossistemAndroid?.postMessage(JSON.stringify(message));
+/** Passwords never leave the page: the app may only be told to forget a stored login. */
+export function tellApp(message: AppMessage) {
+  if (message.type === 'clear-login') window.PossistemAndroid?.postMessage(JSON.stringify(message));
 }
 
-
-/**
- * Asks the app for the saved login; resolves null when there is none or no app.
- * At most once a minute, so a session that dies right after login cannot loop.
- */
-export function savedLogin(): Promise<{ email: string; password: string } | null> { return Promise.resolve(null); }
+/** Auto-login with a stored password is disabled; the admin signs in each time. */
+export function savedLogin(): Promise<{ email: string; password: string } | null> {
+  return Promise.resolve(null);
+}

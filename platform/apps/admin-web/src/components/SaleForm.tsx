@@ -37,7 +37,7 @@ export function SaleForm({ onCreated }: { onCreated?: () => void }) {
   const [product, setProduct] = useState<PosProduct>(activeProductMode);
   const [notes, setNotes] = useState("");
   const [days, setDays] = useState("30");
-  const [monthlyFee,setMonthlyFee]=useState("50");
+  const [monthlyFee,setMonthlyFee]=useState("");
   const monthly = product === "market" || product === "restaurant";
   const [maxDevices, setMaxDevices] = useState("1");
   const [loyaltyRate, setLoyaltyRate] = useState("1.00");
@@ -168,7 +168,7 @@ export function SaleForm({ onCreated }: { onCreated?: () => void }) {
       issued && `${t.sale.email}: ${issued.email}`,
       issued && `${t.sale.password}: ${issued.password}`,
       result && `Açar: ${result.activationKey}`,
-      result && (result.billingRequired?`Aylıq haqq: ${Number(result.monthlyAmountMinor)/100} ₼. Ödənişi müştəri panelinin Abunəliklər bölməsindən idarə edin.`:`${t.sale.days}: ${result.days}`),
+      result && (result.billingRequired?`Aylıq haqq: ${Number(result.monthlyAmountMinor)/100} ₼. İlk ödənişdən sonra aktivləşir.`:`${t.sale.days}: ${result.days}`),
     ]
       .filter(Boolean)
       .join("\n");

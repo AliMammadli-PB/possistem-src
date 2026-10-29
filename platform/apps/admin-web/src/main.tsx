@@ -11,7 +11,6 @@ import './theme-refresh.css';
 import './console-canvas.css';
 import './mobile-admin.css';
 import './receipt.css';
-import './commerce-admin.css';
 import './support-service.css';
 
 function resolveRouterBase() {

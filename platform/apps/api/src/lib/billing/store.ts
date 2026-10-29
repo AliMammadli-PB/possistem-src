@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { Db } from '@milioner/database';
 import { BillingError } from './domain.js';
+import {subscriptionAccess} from './access.js';
 
 export type Executor = Pick<Db, 'execute'>;
 export async function query<T = Record<string, unknown>>(db: Executor, statement: SQL): Promise<T[]> {
@@ -14,6 +15,7 @@ export type Subscription = {
   id: string; customer_id: string; product: string; monthly_amount_minor: string | number; enabled: boolean;
   paid_until: string | Date | null; anchor_day: number | null; price_version: number; auto_renew: boolean;
   consent_version: number | null; card_ciphertext: string | null; card_mask: string | null;
+  access_mode?:string;trial_until?:string|Date|null;deleted_at?:string|Date|null;
   retry_stage: number; last_attempt_at: string | Date | null;
 };
 
@@ -25,12 +27,13 @@ export async function attachManagedLicense(db: Executor, input: {customerId:stri
   if (monthlyAmountMinor !== undefined) await db.execute(sql`
     INSERT INTO billing_subscriptions(customer_id,product,monthly_amount_minor)
     VALUES(${customerId}::uuid,${product},${monthlyAmountMinor}) ON CONFLICT(customer_id,product) DO NOTHING`);
-  const [sub] = await query<Subscription>(db, sql`SELECT * FROM billing_subscriptions WHERE customer_id=${customerId}::uuid AND product=${product} AND enabled=true FOR UPDATE`);
+  const [sub] = await query<Subscription>(db, sql`SELECT * FROM billing_subscriptions WHERE customer_id=${customerId}::uuid AND product=${product} FOR UPDATE`);
   if (!sub) return; // legacy licences are not enrolled implicitly
   if (monthlyAmountMinor !== undefined && Number(sub.monthly_amount_minor) !== monthlyAmountMinor) throw new BillingError('amount_conflict','Bu proqramın mövcud aylıq haqqını Abunəliklər bölməsindən dəyişin.');
   await db.execute(sql`INSERT INTO billing_license_links(subscription_id,license_id) VALUES(${sub.id}::uuid,${licenseId}::uuid) ON CONFLICT DO NOTHING`);
   const [rollout]=await query<{enforcement_enabled:boolean}>(db,sql`SELECT enforcement_enabled FROM billing_settings WHERE id=true`);
-  const accessEnd=!rollout?.enforcement_enabled?new Date(Date.now()+7*86400000):sub.paid_until?new Date(sub.paid_until):new Date();
+  const rights=subscriptionAccess(sub);
+  const accessEnd=rights.accessMode==='free'||!rollout?.enforcement_enabled?new Date(Date.now()+7*86400000):new Date(rights.accessUntil??Date.now());
   const active=accessEnd.getTime()>Date.now();
   await db.execute(sql`UPDATE licenses SET features=COALESCE(features,'{}'::jsonb)||'{"billingManaged":true,"offlineGraceDays":0}'::jsonb,status=${active?'active':'billing_pending'},valid_until=${accessEnd.toISOString()}::timestamptz,updated_at=now() WHERE id=${licenseId}::uuid`);
   await db.execute(sql`UPDATE activation_keys SET expires_at=${accessEnd.toISOString()}::timestamptz WHERE license_id=${licenseId}::uuid`);

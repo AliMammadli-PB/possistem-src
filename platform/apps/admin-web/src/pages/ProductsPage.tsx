@@ -11,7 +11,7 @@ type AdminProduct = {
   parentCategory: string;
   shortDescription: string;
   image: string;
-  price: number|null;
+  price: number;
   partnerPrice?: number | null;
   originalPrice: number;
   inStock: boolean;
@@ -80,9 +80,10 @@ export function ProductsPage() {
   }, [data]);
 
   async function savePrice(product: AdminProduct) {
-    const raw = (draftPrices[product.id]??'').trim().replace(',','.');
-    const price = raw===''?null:Number(raw);
-    if (price!==null&&(!/^\d+(\.\d{1,2})?$/.test(raw)||!Number.isFinite(price)||price<=0||price>1000000)) {
+    // Empty takes the product off sale; otherwise a positive amount with at most two decimals.
+    const raw = (draftPrices[product.id] ?? '').trim().replace(',', '.');
+    const price = raw === '' ? null : Number(raw);
+    if (price !== null && (!/^\d+(\.\d{1,2})?$/.test(raw) || !Number.isFinite(price) || price <= 0 || price > 1_000_000)) {
       setError(t.products.invalidPrice);
       return;
     }
@@ -277,7 +278,7 @@ export function ProductsPage() {
                       type="text"
                       inputMode="decimal"
                       placeholder="Qiymət yoxdur"
-                      aria-label={product.name+' satış qiyməti'}
+                      aria-label={product.name + ' satış qiyməti'}
                       value={draftPrices[product.id] ?? ''}
                       onChange={(e) =>
                         setDraftPrices((prev) => ({ ...prev, [product.id]: e.target.value }))
@@ -298,7 +299,9 @@ export function ProductsPage() {
                   </small>
                 </label>
 
-                <details className="commerce-partner-details"><summary>Partnyor qiymətini idarə et</summary><label className="field partner-price-editor">
+                <details className="commerce-partner-details">
+                <summary>Partnyor qiymətini idarə et</summary>
+                <label className="field partner-price-editor">
                   <span>Partnyor qiyməti</span>
                   <div className="product-price-row">
                     <input type="text" inputMode="decimal" aria-label="Partnyor qiyməti" value={draftPartnerPrices[product.id]??''} placeholder="Xüsusi qiymət yoxdur" onChange={e=>setDraftPartnerPrices(prev=>({...prev,[product.id]:e.target.value}))}/>
@@ -306,7 +309,8 @@ export function ProductsPage() {
                     <button type="button" className="btn" disabled={savingId===product.id} onClick={()=>void savePartnerPrice(product)}>Saxla</button>
                   </div>
                   <small className="muted">Yalnız daxil olmuş partnyorlar görür. Boş saxlayıb saxlasanız, adi qiymət tətbiq olunur.</small>
-                </label></details>
+                </label>
+                </details>
 
                 <label className="field commerce-stock-editor">
                   <span>{t.products.stock}</span>

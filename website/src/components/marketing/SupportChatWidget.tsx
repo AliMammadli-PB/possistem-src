@@ -1,26 +1,39 @@
  'use client';
+/*
+ * Website support chat. Answers come from the server assistant (POST /pos/api/customer/assistant/reply,
+ * source: /opt/possistem-pos-control/.security-build-20261024/apps/api/src/lib/assistant + routes/assistant.ts).
+ * lib/support-conversation.ts is only the offline fallback. Contact order: bot → live agent → WhatsApp after 5 min.
+ * Edit THIS file in place — rebuilding from an older copy drops the server assistant, the agent hand-over and ratings.
+ */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useCustomerSession } from '@/components/providers/CustomerSessionProvider';
 import { useI18n } from '@/components/providers/I18nProvider';
 import { getConversationReply, type ConversationReply } from '@/lib/support-conversation';
+import { whatsappSupportUrl } from '@/lib/whatsapp';
 import { SupportMessageFeedback, SupportReport } from './SupportReport';
 import { Close, ArrowRight } from './DesignIcons';
 import './support-chat.css';
 import { SupportMascot, MascotMotionMenu, useMascotMotion, useMascotGesture } from './SupportMascot';
 type Message = { id: string; authorKind: string; body: string; createdAt: string; meta?: { attachment?: { id?: string; fileName?: string; mimeType?: string } } };
-type Ticket = { id: string; status: string };
-type LocalMessage = { id: number; author: 'me' | 'helper'; body: string; reply?: ConversationReply; createdAt?:string; file?: { url: string; name: string }; feedback?:'up'|'down' };
+type Ticket = { id: string; status: string; createdAt?: string };
+type AssistantLink = { href: string; label: string };
+type AssistantChip = { label: string; send: string };
+type AssistantConfirm = { token: string; summary: string; done?: boolean };
+type ServerReply = { id: string; text: string; links?: AssistantLink[]; chips?: AssistantChip[]; confirm?: AssistantConfirm; needLogin?: boolean; handoff?: boolean };
+type AssistantContext = { last?: string; turn?: number; offered?: boolean };
+type Rating = 'bad' | 'fine' | 'good';
+type LocalMessage = { id: number; author: 'me' | 'helper'; body: string; reply?: ConversationReply; createdAt?:string; file?: { url: string; name: string }; links?: AssistantLink[]; chips?: AssistantChip[]; confirm?: AssistantConfirm; needLogin?: boolean; replyId?: string; rating?: Rating; rateNote?: 'open' | 'sent'; feedback?: 'up' | 'down' };
 const CHAT_KEY = (id?: string | null) => `possistem.support.chat.${id || 'guest'}`;
 const readChat = (key: string) => {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const data = JSON.parse(raw) as { local?: LocalMessage[]; mode?: 'assistant' | 'agent'; startedAt?: string };
-    return { local: (data.local ?? []).slice(-80).map((m) => ({ ...m, file: undefined })), mode: data.mode === 'agent' ? 'agent' as const : 'assistant' as const, startedAt: data.startedAt };
+    const data = JSON.parse(raw) as { local?: LocalMessage[]; mode?: 'assistant' | 'agent'; startedAt?: string; sessionKey?: string };
+    return { local: (data.local ?? []).slice(-80).map((m) => ({ ...m, file: undefined })), mode: data.mode === 'agent' ? 'agent' as const : 'assistant' as const, startedAt: data.startedAt, sessionKey: data.sessionKey };
   } catch { return null; }
 };
-const writeChat = (key: string, data: { local: LocalMessage[]; mode: 'assistant' | 'agent'; startedAt: string }) => {
-  try { localStorage.setItem(key, JSON.stringify({ ...data, local: data.local.slice(-80).map(({ file: _file, ...m }) => m) })); } catch { /* storage full */ }
+const writeChat = (key: string, data: { local: LocalMessage[]; mode: 'assistant' | 'agent'; startedAt: string; sessionKey: string }) => {
+  try { localStorage.setItem(key, JSON.stringify({ ...data, local: data.local.slice(-80).map(({ file: _file, confirm: _confirm, ...m }) => m) })); } catch { /* storage full */ }
 };
 const OPEN_EVENT = 'possistem:open-support';
 const SEEN_KEY = 'possistem.support.seenAdmin';
@@ -41,9 +54,9 @@ const COPY = {
 };
 
 const HELP_COPY = {
- az: { thinking:'Cavab hazırlanır…',launcherLabel:'Dəstək',launcherHint:'Sualınız var?',clear:'Yeni söhbət',open:'Texniki dəstək',title:'Possistem köməkçisi',subtitle:'Hazır cavablarla texniki kömək',helper:'Avtomatik köməkçi',assistant:'Köməkçi',agent:'Əməkdaşa yaz',back:'Köməkçiyə qayıt',intro:'Salam, sizə necə kömək edə bilərəm?',notice:'Hazır cavablarla işləyir. Hesabınıza baxmır və dəyişiklik etmir.',placeholder:'Sualınızı yazın…',more:'Təlimatı aç',handoff:'Yazışmanı nəzərdən keçirin və göndərin. Yalnız göndərdikdən sonra dəstək sorğusu yaranacaq.',context:'Köməkçi ilə söhbətdən:',safe:'Şifrə və PIN göndərməyin.',questions:['Proqramı necə quraşdırım?','Printer çek çap etmir','Anbar qalığını necə görüm?','Paketlərin qiyməti nədir?'],sent:'Mesaj göndərildi.',limit:'Söhbət uzanıb. Davam etmək üçün əməkdaşa yazın və ya Yeni söhbət seçin.' },
- en: { thinking:'Preparing a reply…',launcherLabel:'Support',launcherHint:'Need a hand?',clear:'New conversation',open:'Technical support',title:'Possistem assistant',subtitle:'Technical help with prepared answers',helper:'Automated assistant',assistant:'Assistant',agent:'Contact an agent',back:'Back to assistant',intro:'Hello! How can I help?',notice:'Uses prepared answers. Cannot access or change your account.',placeholder:'Ask a question…',more:'Open guide',handoff:'Review the conversation and send it. A support ticket is created only after you send.',context:'From the assistant conversation:',safe:'Do not send passwords or PINs.',questions:['How do I install the app?','My printer does not print','How do I check stock?','What are the plan prices?'],sent:'Message sent.',limit:'This conversation is long. Contact an agent or choose New conversation to continue.' },
- ru: { thinking:'Готовлю ответ…',launcherLabel:'Поддержка',launcherHint:'Есть вопрос?',clear:'Новая беседа',open:'Техническая поддержка',title:'Помощник Possistem',subtitle:'Техническая помощь по готовым ответам',helper:'Автоматический помощник',assistant:'Помощник',agent:'Написать специалисту',back:'Вернуться к помощнику',intro:'Здравствуйте! Чем помочь?',notice:'Использует готовые ответы. Не видит и не меняет ваш аккаунт.',placeholder:'Задайте вопрос…',more:'Открыть инструкцию',handoff:'Проверьте переписку и отправьте. Обращение создаётся только после отправки.',context:'Из переписки с помощником:',safe:'Не отправляйте пароли и PIN.',questions:['Как установить приложение?','Принтер не печатает','Как проверить остатки?','Какие цены на пакеты?'],sent:'Сообщение отправлено.',limit:'Переписка слишком длинная. Напишите специалисту или начните новую беседу.' },
+ az: { thinking:'Cavab hazırlanır…',launcherLabel:'Dəstək',launcherHint:'Sualınız var?',clear:'Yeni söhbət',open:'Texniki dəstək',title:'Possistem köməkçisi',subtitle:'Proqram, quraşdırma və hesabınız üzrə kömək',helper:'Avtomatik köməkçi',assistant:'Köməkçi',agent:'Əməkdaşa yaz',back:'Köməkçiyə qayıt',intro:'Salam, sizə necə kömək edə bilərəm?',notice:'Bilik bazası ilə cavab verir. Daxil olsanız, öz satış və anbar rəqəmlərinizi göstərir; dəyişikliyi yalnız sizin təsdiqinizlə edir.',placeholder:'Sualınızı yazın…',more:'Təlimatı aç',handoff:'Yazışmanı nəzərdən keçirin və göndərin. Yalnız göndərdikdən sonra dəstək sorğusu yaranacaq.',context:'Köməkçi ilə söhbətdən:',safe:'Şifrə və PIN göndərməyin.',questions:['Proqramı necə quraşdırım?','Printer çek çap etmir','Bugünkü satışım','Sən nə edə bilirsən?'],sent:'Mesaj göndərildi.',limit:'Söhbət uzanıb. Davam etmək üçün əməkdaşa yazın və ya Yeni söhbət seçin.',confirmLabel:'Hesab şifrəsi',confirm:'Təsdiqlə',cancel:'Ləğv et',cancelled:'Ləğv edildi. Heç nə dəyişmədi.',rateLabel:'Cavab necə idi?',rate:{bad:'Pis',fine:'Normal',good:'Yaxşı'},rateIcon:{bad:'👎',fine:'😐',good:'👍'},rateThanks:'Təşəkkürlər!',rateThanksBad:'Təşəkkürlər, qeyd etdik — komandamız bu cavaba baxacaq.',rateNotePh:'Nə səhv idi? (istəyə bağlı)',rateNoteSend:'Göndər',busy:'Hazırda bütün əməkdaşlarımız məşğuldur. Zəhmət olmasa WhatsApp nömrəmiz ilə əlaqə saxlayın: 051 333 35 55. Sorğunuz burada da qalır — əməkdaş boşalan kimi cavab verəcək.',busyLink:'WhatsApp-a yaz' },
+ en: { thinking:'Preparing a reply…',launcherLabel:'Support',launcherHint:'Need a hand?',clear:'New conversation',open:'Technical support',title:'Possistem assistant',subtitle:'Help with the software, setup and your account',helper:'Automated assistant',assistant:'Assistant',agent:'Contact an agent',back:'Back to assistant',intro:'Hello! How can I help?',notice:'Answers from the knowledge base. When you sign in it shows your own sales and stock; it changes data only after you confirm.',placeholder:'Ask a question…',more:'Open guide',handoff:'Review the conversation and send it. A support ticket is created only after you send.',context:'From the assistant conversation:',safe:'Do not send passwords or PINs.',questions:['How do I install the app?','My printer does not print','Today’s sales','What can you do?'],sent:'Message sent.',limit:'This conversation is long. Contact an agent or choose New conversation to continue.',confirmLabel:'Account password',confirm:'Confirm',cancel:'Cancel',cancelled:'Cancelled. Nothing changed.',rateLabel:'How was this answer?',rate:{bad:'Bad',fine:'Fine',good:'Good'},rateIcon:{bad:'👎',fine:'😐',good:'👍'},rateThanks:'Thanks!',rateThanksBad:'Thanks, noted — our team will review this answer.',rateNotePh:'What was wrong? (optional)',rateNoteSend:'Send',busy:'All our agents are busy right now. Please contact us on WhatsApp: 051 333 35 55. Your request stays here too — an agent will reply as soon as one is free.',busyLink:'Message on WhatsApp' },
+ ru: { thinking:'Готовлю ответ…',launcherLabel:'Поддержка',launcherHint:'Есть вопрос?',clear:'Новая беседа',open:'Техническая поддержка',title:'Помощник Possistem',subtitle:'Помощь по программе, установке и аккаунту',helper:'Автоматический помощник',assistant:'Помощник',agent:'Написать специалисту',back:'Вернуться к помощнику',intro:'Здравствуйте! Чем помочь?',notice:'Отвечает по базе знаний. После входа показывает ваши продажи и склад; меняет данные только с вашим подтверждением.',placeholder:'Задайте вопрос…',more:'Открыть инструкцию',handoff:'Проверьте переписку и отправьте. Обращение создаётся только после отправки.',context:'Из переписки с помощником:',safe:'Не отправляйте пароли и PIN.',questions:['Как установить приложение?','Принтер не печатает','Продажи сегодня','Что ты умеешь?'],sent:'Сообщение отправлено.',limit:'Переписка слишком длинная. Напишите специалисту или начните новую беседу.',confirmLabel:'Пароль аккаунта',confirm:'Подтвердить',cancel:'Отмена',cancelled:'Отменено. Ничего не изменено.',rateLabel:'Как вам ответ?',rate:{bad:'Плохо',fine:'Нормально',good:'Хорошо'},rateIcon:{bad:'👎',fine:'😐',good:'👍'},rateThanks:'Спасибо!',rateThanksBad:'Спасибо, отметили — команда проверит этот ответ.',rateNotePh:'Что было не так? (необязательно)',rateNoteSend:'Отправить',busy:'Сейчас все специалисты заняты. Пожалуйста, свяжитесь с нами в WhatsApp: 051 333 35 55. Запрос остаётся и здесь — специалист ответит, как только освободится.',busyLink:'Написать в WhatsApp' },
 };
 const lastAdminAt = (list: Message[]) => list.filter(m => m.authorKind === 'admin').map(m => m.createdAt).sort().at(-1) ?? '';
 const readSeen = () => { try { return localStorage.getItem(SEEN_KEY) ?? ''; } catch { return ''; } };
@@ -57,11 +70,13 @@ export function SupportChatWidget() {
  const [local,setLocal]=useState<LocalMessage[]>([]),[draft,setDraft]=useState(''),[agentDraft,setAgentDraft]=useState('');
  const [thinking,setThinking]=useState(false),[tools,setTools]=useState(false),[pendingHandoff,setPendingHandoff]=useState(false);
  const [availability,setAvailability]=useState<{isOpen:boolean;start:string;end:string;nextOpen:string|null}>();
- const reportKeys=useRef<Record<string,string>>({}),startedAt=useRef(new Date().toISOString());
+ const [now,setNow]=useState(()=>Date.now());
+ const newKey=()=>globalThis.crypto?.randomUUID?.()??'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,ch=>{const r=Math.random()*16|0;return(ch==='x'?r:(r&3)|8).toString(16);});
+ const reportKeys=useRef<Record<string,string>>({}),startedAt=useRef(new Date().toISOString()),sessionKey=useRef(newKey());
  useEffect(()=>{let alive=true;const pull=()=>void fetch('/pos/api/public/support/availability',{cache:'no-store'}).then(r=>r.ok?r.json():undefined).then(v=>{if(alive&&v)setAvailability(v);}).catch(()=>{});if(open){pull();const timer=setInterval(pull,60000);return()=>{alive=false;clearInterval(timer);};}return()=>{alive=false;};},[open]);
  const pendingReply=useRef<ReturnType<typeof setTimeout>|null>(null),answering=useRef(false);
  useEffect(()=>()=>{if(pendingReply.current)clearTimeout(pendingReply.current);},[]);
- const clearConversation=()=>{if(pendingReply.current)clearTimeout(pendingReply.current);pendingReply.current=null;answering.current=false;setThinking(false);setPendingHandoff(false);setLocal([]);setDraft('');startedAt.current=new Date().toISOString();input.current?.focus();};
+ const clearConversation=()=>{if(pendingReply.current)clearTimeout(pendingReply.current);pendingReply.current=null;answering.current=false;setThinking(false);setPendingHandoff(false);setLocal([]);setDraft('');assistantCtx.current={};pendingAsk.current=null;setConfirmPwd('');setRateNote('');sessionKey.current=newKey();startedAt.current=new Date().toISOString();input.current?.focus();};
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[email,setEmail]=useState(''),[password,setPassword]=useState('');
  const list=useRef<HTMLDivElement>(null),input=useRef<HTMLTextAreaElement>(null),panel=useRef<HTMLElement>(null),fab=useRef<HTMLButtonElement>(null);
  const previousFocus=useRef<HTMLElement|null>(null),sending=useRef(false),sequence=useRef(0),identity=useRef(session.customerId),hydrated=useRef('');
@@ -81,20 +96,20 @@ export function SupportChatWidget() {
   setTicket(data.ticket);setMessages(data.messages??[]);setError('');writeSeen(lastAdminAt(data.messages??[]));
  },[call,session.customerId]);
  useEffect(()=>{const show=()=>{previousFocus.current=document.activeElement as HTMLElement;setOpen(true);};window.addEventListener(OPEN_EVENT,show);return()=>window.removeEventListener(OPEN_EVENT,show);},[]);
- useEffect(()=>{const key=CHAT_KEY(session.customerId);if(hydrated.current!==key)return;writeChat(key,{local,mode,startedAt:startedAt.current});},[local,mode,session.customerId]);
+ useEffect(()=>{const key=CHAT_KEY(session.customerId);if(hydrated.current!==key)return;writeChat(key,{local,mode,startedAt:startedAt.current,sessionKey:sessionKey.current});},[local,mode,session.customerId]);
  useEffect(()=>{
   const key=CHAT_KEY(session.customerId);
   if(hydrated.current===key)return;
   if(identity.current!==session.customerId){const previous=identity.current;identity.current=session.customerId;setTicket(null);setMessages([]);setUnread(false);setError('');if(previous){setAgentDraft('');setPendingHandoff(false);}}
   const saved=readChat(key);
-  if(saved){setLocal(saved.local);setMode(saved.mode);sequence.current=saved.local.reduce((max,m)=>Math.max(max,m.id),0);if(saved.startedAt)startedAt.current=saved.startedAt;}
+  if(saved){setLocal(saved.local);setMode(saved.mode);sequence.current=saved.local.reduce((max,m)=>Math.max(max,m.id),0);if(saved.startedAt)startedAt.current=saved.startedAt;if(saved.sessionKey)sessionKey.current=saved.sessionKey;}
   else setLocal([]);
   hydrated.current=key;
  },[session.customerId]);
  useEffect(()=>{
   if(!humanOpen||!session.authenticated)return;
   let alive=true;
-  const refresh=()=>{if(document.visibilityState==='visible')void load().then(()=>{if(alive)setUnread(false);}).catch(()=>{if(alive)setError(c.offline);});};
+  const refresh=()=>{setNow(Date.now());if(document.visibilityState==='visible')void load().then(()=>{if(alive)setUnread(false);}).catch(()=>{if(alive)setError(c.offline);});};
   refresh();const timer=window.setInterval(refresh,4000);
   return()=>{alive=false;window.clearInterval(timer);};
  },[humanOpen,session.authenticated,load,c.offline]);
@@ -123,49 +138,59 @@ export function SupportChatWidget() {
    window.setTimeout(()=>{const target=previousFocus.current?.isConnected&&previousFocus.current.tagName!=='BODY'?previousFocus.current:fab.current;target?.focus({preventScroll:true});},0);
   };
  },[open]);
- const ask=(text:string)=>{
+ const assistantCtx=useRef<AssistantContext>({}),pendingAsk=useRef<string|null>(null);
+ const [confirmPwd,setConfirmPwd]=useState('');
+ const helperSays=(body:string,extra:Partial<LocalMessage>={})=>setLocal(old=>[...old,{id:++sequence.current,author:'helper',body,createdAt:new Date().toISOString(),...extra}]);
+ const ask=(text:string,label?:string)=>{
   const body=text.trim().slice(0,1000);if(!body||local.length>=100||answering.current)return;
-  const plain=body.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ə/g,'e').replace(/ı/g,'i').toLowerCase();
-  const pendingConfirm=local.at(-1)?.reply;
-  if(pendingConfirm?.id==='confirm'&&/^sifre\b/.test(plain)){
-   const password=body.replace(/^\s*sifr[eə]\s*:?\s*/i,'').trim();
-   const [query,qty]=String(pendingConfirm.contextQuestion||'').split('|');
-   answering.current=true;setThinking(true);setDraft('');
-   setLocal(old=>[...old,{id:++sequence.current,author:'me',body:'Şifrə göndərildi',createdAt:new Date().toISOString()}]);
-   void (async()=>{
-    try{
-     const res=await fetch('/pos/api/customer/support/adjust',{method:'POST',credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',...(session.csrfToken?{'x-csrf-token':session.csrfToken}:{})},body:JSON.stringify({password,query,qty:Number(qty)})});
-     const data=await res.json().catch(()=>({})) as {text?:string;error?:string};
-     setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:data.text||data.error||'Qalıq dəyişmədi.',createdAt:new Date().toISOString()}]);
-    }catch{setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:'Qalıq dəyişmədi. Bir az sonra yenidən yoxlayın.',createdAt:new Date().toISOString()}]);}
-    finally{answering.current=false;setThinking(false);}
-   })();
-   return;
-  }
+  const plain=body.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ə/g,'e').replace(/ı/g,'i').toLowerCase();
   if(/^(live\s*agent|canli\s*(destek|emekdas)|operator)$/i.test(plain)){setLocal(old=>[...old,{id:++sequence.current,author:'me',body,createdAt:new Date().toISOString()}]);setDraft('');handoff();return;}
-  const reply=getConversationReply(body,language,local);
-  answering.current=true;setThinking(true);
-  setLocal(old=>[...old,{id:++sequence.current,author:'me',body,createdAt:new Date().toISOString()}]);setDraft('');
-  if(reply.id==='account'){
-   const format=reply.suggestion==='pdf'?'pdf':'text';
-   const intent=encodeURIComponent(reply.contextQuestion||'earn:today');
-   void (async()=>{
-    try{
-     const res=await fetch(`/pos/api/customer/support/summary?format=${format}&intent=${intent}`,{credentials:'include',headers:{Accept:format==='pdf'?'application/pdf':'application/json'}});
-     if(res.status===401){setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:'Bu rəqəmlər sizin hesabınızdadır. Dəstək pəncərəsində e-poçt və şifrə ilə daxil olun, sonra sualı yenidən yazın.',createdAt:new Date().toISOString()}]);return;}
-     if(!res.ok){setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:'Hesab məlumatını indi oxuya bilmədim. Bir az sonra yenidən yazın.',createdAt:new Date().toISOString()}]);return;}
-     if(format==='pdf'){const blob=await res.blob();const url=URL.createObjectURL(blob);setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:'PDF hazırdır. Aşağıdakı faylı açın.',file:{url,name:'possistem-hesabat.pdf'},reply:{...reply,contextQuestion:reply.contextQuestion},createdAt:new Date().toISOString()}]);return;}
-     const data=await res.json() as {text?:string};
-     const confirm=String(reply.contextQuestion||'').startsWith('adjust:');
-     const parts=String(reply.contextQuestion||'').split(':');
-     setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:data.text||'Məlumat gəlmədi.',reply:confirm?{id:'confirm',title:'Düzəliş',body:data.text||'',matched:true,href:'',contextQuestion:`${parts[1]||''}|${parts[2]||''}`}:reply,createdAt:new Date().toISOString()}]);
-    }catch{setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:'Hesab məlumatını indi oxuya bilmədim. Bir az sonra yenidən yazın.',createdAt:new Date().toISOString()}]);}
-    finally{answering.current=false;setThinking(false);}
-   })();
-   return;
-  }
-  pendingReply.current=setTimeout(()=>{setLocal(old=>[...old,{id:++sequence.current,author:'helper',body:reply.body,reply,createdAt:new Date().toISOString()}]);pendingReply.current=null;answering.current=false;setThinking(false);},850);
+  answering.current=true;setThinking(true);setDraft('');
+  setLocal(old=>[...old,{id:++sequence.current,author:'me',body:label||body,createdAt:new Date().toISOString()}]);
+  const history=local;
+  void (async()=>{
+   try{
+    const res=await fetch('/pos/api/customer/assistant/reply',{method:'POST',credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',...(session.csrfToken?{'x-csrf-token':session.csrfToken}:{})},body:JSON.stringify({text:body,language,context:assistantCtx.current})});
+    if(!res.ok)throw new Error(String(res.status));
+    const data=await res.json() as {reply:ServerReply;context?:AssistantContext};
+    assistantCtx.current=data.context??{};
+    const r=data.reply;
+    if(r.handoff){handoff();return;}
+    if(r.needLogin)pendingAsk.current=body;
+    helperSays(r.text,{links:r.links,chips:r.chips,confirm:r.confirm,needLogin:r.needLogin,replyId:r.id});
+   }catch{
+    // Server unreachable: the bundled rules still answer the common questions.
+    const reply=getConversationReply(body,language,history);
+    helperSays(reply.id==='account'?'Hesab məlumatını indi oxuya bilmədim. Bir az sonra yenidən yazın.':reply.body,{reply});
+   }finally{answering.current=false;setThinking(false);}
+  })();
  };
+ const [rateNote,setRateNote]=useState('');
+ // Every answer can be rated; "bad" sends the whole conversation to the admin's complaint list.
+ const rate=async(message:LocalMessage,rating:Rating,comment='')=>{
+  const updated=local.map(m=>m.id===message.id?{...m,rating,feedback:rating==='good'?'up' as const:rating==='bad'?'down' as const:m.feedback}:m);
+  setLocal(updated);if(comment)setRateNote('');
+  const index=updated.findIndex(m=>m.id===message.id);
+  const question=[...updated.slice(0,index)].reverse().find(m=>m.author==='me')?.body??'';
+  const transcript=[{author:'helper' as const,body:h.intro,createdAt:startedAt.current},...updated.map(m=>({author:m.author,body:m.body,createdAt:m.createdAt,topic:m.replyId,rating:m.rating,key:String(m.id)})),...messages.map(m=>({author:m.authorKind==='customer'?'me' as const:'helper' as const,body:m.body,createdAt:m.createdAt}))].slice(-300);
+  try{await fetch('/pos/api/customer/assistant/feedback',{method:'POST',credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',...(session.csrfToken?{'x-csrf-token':session.csrfToken}:{})},body:JSON.stringify({sessionKey:sessionKey.current,messageKey:String(message.id),rating,replyId:message.replyId??'',question,answer:message.body,comment,language,transcript:rating==='bad'?transcript:[]})});}catch{/* rating is best effort */}
+ };
+ const confirmAction=async(message:LocalMessage,approve:boolean)=>{
+  const token=message.confirm?.token;if(!token||answering.current)return;
+  const done=()=>setLocal(old=>old.map(m=>m.id===message.id&&m.confirm?{...m,confirm:{...m.confirm,done:true}}:m));
+  if(!approve){done();setConfirmPwd('');helperSays(h.cancelled);return;}
+  if(!confirmPwd)return;
+  answering.current=true;setThinking(true);
+  try{
+   const res=await fetch('/pos/api/customer/assistant/confirm',{method:'POST',credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',...(session.csrfToken?{'x-csrf-token':session.csrfToken}:{})},body:JSON.stringify({token,password:confirmPwd,language})});
+   const data=await res.json().catch(()=>({})) as {text?:string;error?:string};
+   setConfirmPwd('');
+   if(res.ok)done();
+   helperSays(data.text||data.error||c.offline);
+  }catch{helperSays(c.offline);}finally{answering.current=false;setThinking(false);}
+ };
+ // After an inline sign-in, answer the question that asked for it.
+ useEffect(()=>{if(session.authenticated&&pendingAsk.current&&mode==='assistant'&&!answering.current){const q=pendingAsk.current;pendingAsk.current=null;ask(q);}},[session.authenticated,session.csrfToken]);
  const handoff=()=>{
   if(!agentDraft.trim()){
    const transcript=local.map(m=>`${m.author==='me'?c.you:'Possistem'}: ${m.body}`).join('\n\n');
@@ -191,6 +216,9 @@ export function SupportChatWidget() {
  const reportKey=(scope:string)=>{if(!reportKeys.current[scope])reportKeys.current[scope]=globalThis.crypto?.randomUUID?.()??'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3)|8).toString(16);});return reportKeys.current[scope];};
  reportKey(reportEnd);
  const status=!ticket?c.empty:ticket.status==='claimed'?c.claimed:ticket.status==='resolved'?c.resolved:c.waiting;
+ // Order of contact: bot, then a live agent; WhatsApp only when nobody takes the request within 5 minutes.
+ const waitingSince=ticket&&ticket.status==='open'&&!messages.some(m=>m.authorKind==='admin')?Date.parse(ticket.createdAt??messages.find(m=>m.authorKind==='customer')?.createdAt??''):NaN;
+ const agentsBusy=Number.isFinite(waitingSince)&&now-waitingSince>=5*60_000;
  const time=(iso:string)=>new Date(iso).toLocaleTimeString(language==='ru'?'ru-RU':language==='en'?'en-GB':'az-AZ',{hour:'2-digit',minute:'2-digit'});
  const sendFile=async(file:File)=>{
   if(!session.authenticated||sending.current)return;
@@ -211,21 +239,32 @@ export function SupportChatWidget() {
    onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(assistant)ask(draft);else void send();}}}/>
   <button type="submit" disabled={assistant?thinking||!draft.trim()||local.length>=100:busy||!agentDraft.trim()} aria-label={c.send}>{busy&&!assistant?'…':<ArrowRight/>}</button>
  </form>;
- const localBubbles=<>{local.map((m,index)=>{const choices=m.reply?.suggestions?.length?m.reply.suggestions:m.reply?.suggestion?[m.reply.suggestion]:[];const transcript=[{author:'helper' as const,body:h.intro,createdAt:startedAt.current},...local.slice(0,index+1)];return <div key={m.id} className={`support-msg is-${m.author==='me'?'me':'helper'}`}><p>{m.body}</p>{m.file&&<a className="support-file" href={m.file.url} download={m.file.name}>{m.file.name}</a>}{m.reply?.href&&<a href={m.reply.href}>{h.more}<ArrowRight/></a>}{choices.map(choice=><button key={choice} type="button" className="support-choice" disabled={thinking} onClick={()=>ask(choice)}>{choice}</button>)}{m.author==='helper'&&<SupportMessageFeedback vote={m.feedback} onVote={feedback=>setLocal(old=>old.map(item=>item.id===m.id?{...item,feedback}:item))} messages={transcript} language={language} requestKey={reportKey(`reply:${m.id}`)} send={payload=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(payload)})}/>}</div>;})}</>;
+ const lastHelper=[...local].reverse().find(m=>m.author==='helper')?.id;
+ const external=(href:string)=>/^https?:\/\//.test(href);
+ const localBubbles=<>{local.map((m,index)=>{const choices=m.reply?.suggestions?.length?m.reply.suggestions:m.reply?.suggestion?[m.reply.suggestion]:[];const latest=m.id===lastHelper;const transcript=[{author:'helper' as const,body:h.intro,createdAt:startedAt.current},...local.slice(0,index+1)];return <div key={m.id} className={`support-msg is-${m.author==='me'?'me':'helper'}`}><p>{m.body}</p>
+  {m.file&&<a className="support-file" href={m.file.url} download={m.file.name}>{m.file.name}</a>}
+  {m.reply?.href&&<a href={m.reply.href}>{h.more}<ArrowRight/></a>}
+  {m.links?.length?<div className="support-links">{m.links.map(l=><a key={l.href} href={l.href} {...(external(l.href)?{target:'_blank',rel:'noreferrer'}:{})}>{l.label}<ArrowRight/></a>)}</div>:null}
+  {m.confirm&&!m.confirm.done&&latest&&<form className="support-confirm" onSubmit={e=>{e.preventDefault();void confirmAction(m,true);}}><strong>{m.confirm.summary}</strong><label>{h.confirmLabel}<input type="password" autoComplete="current-password" value={confirmPwd} onChange={e=>setConfirmPwd(e.target.value)} required/></label><div><button type="submit" disabled={thinking||!confirmPwd}>{h.confirm}</button><button type="button" className="is-ghost" disabled={thinking} onClick={()=>void confirmAction(m,false)}>{h.cancel}</button></div></form>}
+  {m.needLogin&&latest&&!session.authenticated&&<form className="support-login support-login-inline" onSubmit={e=>void signIn(e)}><label>{c.email}<input type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} required/></label><label>{c.password}<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label><button type="submit" disabled={busy}>{busy?'…':c.login}</button>{error&&<p className="support-error" role="alert">{error}</p>}</form>}
+  {latest&&m.chips?.map(chip=><button key={chip.send} type="button" className="support-choice" disabled={thinking} onClick={()=>ask(chip.send,chip.label)}>{chip.label}</button>)}
+  {choices.map(choice=><button key={choice} type="button" className="support-choice" disabled={thinking} onClick={()=>ask(choice)}>{choice}</button>)}
+  {/* 👍/👎 also log the whole conversation for the admin's complaint list; ⚑ opens the detailed report. */}
+  {m.author==='helper'&&<SupportMessageFeedback vote={m.feedback} onVote={feedback=>{setLocal(old=>old.map(item=>item.id===m.id?{...item,feedback}:item));if(m.replyId)void rate(m,feedback==='up'?'good':'bad');}} messages={transcript} language={language} requestKey={reportKey(`reply:${m.id}`)} send={payload=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(payload)})}/>}</div>;})}</>;
  return <>
   {!open&&<button ref={fab} type="button" className="support-fab" onPointerEnter={()=>mascot.hover(true)} onPointerLeave={()=>mascot.hover(false)} onFocus={()=>mascot.hover(true)} onBlur={()=>mascot.hover(false)} onClick={()=>{previousFocus.current=document.activeElement as HTMLElement;setOpen(true);}} aria-label={h.open} aria-haspopup="dialog" aria-controls="possistem-support-panel"><SupportMascot gesture={mascot.gesture} motion={motion.effective} preference={motion.mode}/>{unread&&<i className="support-fab-dot" aria-hidden="true"/>}</button>}
   {open&&<section ref={panel} id="possistem-support-panel" className="support-panel" tabIndex={-1} role="dialog" aria-modal="false" aria-labelledby="possistem-support-title">
    <header className="support-panel-head"><a href="/" id="possistem-support-title">Possistem</a><div className="support-head-actions"><button type="button" aria-label={language==='az'?'Söhbət seçimləri':language==='ru'?'Настройки беседы':'Conversation options'} aria-expanded={tools} aria-controls="support-tools" onClick={()=>setTools(v=>!v)}>•••</button><button type="button" onClick={()=>setOpen(false)} aria-label={c.close}><Close/></button></div></header>
    {tools&&<div className="support-tools" id="support-tools"><MascotMotionMenu mode={motion.mode} onChange={motion.change}/><button type="button" onClick={()=>{clearConversation();setMode('assistant');setTools(false);}}>{h.clear}</button>{local.length>0&&<SupportReport key={reportEnd} messages={[{author:'helper',body:h.intro,createdAt:startedAt.current},...local,...messages.map(m=>({author:m.authorKind==='customer'?'me' as const:'helper' as const,body:m.body,createdAt:m.createdAt}))]} language={language} requestKey={reportKey(reportEnd)} send={body=>call('/public/chat/assistant-reports',{method:'POST',body:JSON.stringify(body)})}/>}</div>}
    <div className="support-list" ref={list} role="log" aria-label={c.title} aria-live="polite" aria-relevant="additions">
-    <div className="support-msg is-helper"><p>{h.intro}</p></div>
+    <div className="support-msg is-helper"><p>{h.intro}</p>{local.length===0&&mode==='assistant'&&h.questions.map(q=><button key={q} type="button" className="support-choice" disabled={thinking} onClick={()=>ask(q)}>{q}</button>)}</div>
     {localBubbles}
     {thinking&&<div className="support-thinking" role="status"><span aria-hidden="true"><i/><i/><i/></span>{h.thinking}</div>}
     {mode==='agent'&&<>
      {availability&&!availability.isOpen&&<p className="support-conversation-status" role="status">{language==='az'?`İş saatları ${availability.start}–${availability.end} (Bakı). Mesajınızı göndərə bilərsiniz; əməkdaşlara bildiriş növbəti iş vaxtında çatdırılacaq.`:language==='ru'?`Часы работы ${availability.start}–${availability.end} (Баку). Сообщение сохранится; специалист получит уведомление в рабочее время.`:`Support hours ${availability.start}–${availability.end} (Baku). Your message will be saved and staff notified during working hours.`}</p>}
      {session.loading?<p className="support-conversation-status">{c.loading}</p>:!session.authenticated?<form className="support-login" onSubmit={e=>void signIn(e)}>
       <p>{c.loginHint}</p><label>{c.email}<input type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} required/></label><label>{c.password}<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label><button type="submit" disabled={busy}>{busy?'…':c.login}</button><a href="/pos/app/login">{c.register}</a>
-     </form>:<><p className="support-conversation-status" role="status">{status}</p>{messages.map(m=>{const file=m.meta?.attachment;const href=file?.id?`/pos/api/customer/support/attachments/${file.id}`:'';const image=Boolean(file&&((file.mimeType??'').startsWith('image/')||/\.(png|jpe?g|gif|webp)$/i.test(file.fileName??'')));const caption=file&&m.body.trim()===`📎 ${file.fileName}`?'':m.body;return <div key={m.id} className={`support-msg is-${m.authorKind==='customer'?'me':m.authorKind==='admin'?'agent':'system'}`}><small>{m.authorKind==='admin'?c.support+' · ':''}{time(m.createdAt)}</small>{caption?<p>{caption}</p>:null}{href?<a className="support-file" href={href} target="_blank" rel="noreferrer">{image?<img src={href} alt={file?.fileName??'Şəkil'}/>:(file?.fileName??'Faylı aç')}</a>:null}</div>;})}</>}
+     </form>:<><p className="support-conversation-status" role="status">{status}</p>{messages.map(m=>{const file=m.meta?.attachment;const href=file?.id?`/pos/api/customer/support/attachments/${file.id}`:'';const image=Boolean(file&&((file.mimeType??'').startsWith('image/')||/\.(png|jpe?g|gif|webp)$/i.test(file.fileName??'')));const caption=file&&m.body.trim()===`📎 ${file.fileName}`?'':m.body;return <div key={m.id} className={`support-msg is-${m.authorKind==='customer'?'me':m.authorKind==='admin'?'agent':'system'}`}><small>{m.authorKind==='admin'?c.support+' · ':''}{time(m.createdAt)}</small>{caption?<p>{caption}</p>:null}{href?<a className="support-file" href={href} target="_blank" rel="noreferrer">{image?<img src={href} alt={file?.fileName??'Şəkil'}/>:(file?.fileName??'Faylı aç')}</a>:null}</div>;})}{agentsBusy&&<div className="support-msg is-helper" role="status"><p>{h.busy}</p><div className="support-links"><a href={whatsappSupportUrl(language)} target="_blank" rel="noreferrer">{h.busyLink}<ArrowRight/></a></div></div>}</>}
     </>}
    </div>
    {error&&<p className="support-error" role="alert">{error}</p>}

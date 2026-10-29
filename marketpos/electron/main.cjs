@@ -1100,9 +1100,9 @@ async function forgetPreviousAccount(state) {
 
 function registerIpc() {
   require('./ipc-budget.cjs').install(ipcMain);
-  ipcMain.handle('market:billing:status',async event=>{
+  ipcMain.handle('market:billing:status',async (event,verify=false)=>{
     assertTrusted(event);const state=loadSecureState();if(!state.tenant?.token)throw Error('Hesaba daxil olun');
-    const response=await fetch(controlApi('/billing/desktop/status'),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+state.tenant.token},body:JSON.stringify({product:'market'}),signal:AbortSignal.timeout(10000)});
+    const response=await fetch(controlApi('/billing/desktop/status'),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+state.tenant.token},body:JSON.stringify({product:'market',refresh:!!verify,...(state.activation?.deviceId?{deviceId:state.activation.deviceId}:{})}),signal:AbortSignal.timeout(15000)});
     const data=await response.json();if(!response.ok)throw Error(data.error||'Ödəniş məlumatı alınmadı');return data;
   });
   ipcMain.handle('market:billing:open',async (event,mode='manual')=>{

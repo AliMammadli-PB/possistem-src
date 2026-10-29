@@ -1,0 +1,24 @@
+/* Legal pages (privacy policy). Same palette and dark-theme override as the payment pages. */
+.legal-page{padding:clamp(28px,5vw,56px) 0 72px;color:var(--text,#142b4b)}
+.legal-shell{max-width:860px}
+.legal-head h1{font-size:clamp(28px,4.4vw,42px);line-height:1.15;margin:10px 0 14px}
+.legal-eyebrow{font-size:11px;font-weight:800;letter-spacing:.12em;color:#5481be;margin:0}
+.legal-lead{font-size:16px;line-height:1.75;margin:0 0 10px}
+.legal-meta{font-size:13px;opacity:.7;margin:0 0 26px}
+.legal-operator{display:grid;gap:4px;padding:18px 20px;border:1px solid #d4e1f2;border-radius:12px;background:#f6f9fe;font-size:14px;line-height:1.6;margin-bottom:22px}
+.legal-operator strong{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#5481be}
+.legal-toc{padding:18px 20px;border:1px solid #d4e1f2;border-radius:12px;margin-bottom:34px}
+.legal-toc strong{display:block;font-size:13px;margin-bottom:8px}
+.legal-toc ol{margin:0;padding-left:20px;columns:2;column-gap:28px;font-size:14px;line-height:1.9}
+.legal-page a{color:#2473d5;text-underline-offset:3px}
+.legal-section{scroll-margin-top:96px;margin-bottom:30px}
+.legal-section h2{font-size:21px;margin:0 0 12px}
+.legal-section p,.legal-section li{font-size:15px;line-height:1.8}
+.legal-section p{margin:0 0 10px}
+.legal-section ul{margin:0 0 12px;padding-left:22px}
+.legal-section li{margin-bottom:6px}
+html[data-theme=dark] .legal-page{color:#dce8fa}
+html[data-theme=dark] .legal-operator{background:#10213a;border-color:#2b4565}
+html[data-theme=dark] .legal-toc{border-color:#2b4565}
+html[data-theme=dark] .legal-page a{color:#7fb0ff}
+@media(max-width:700px){.legal-toc ol{columns:1}.legal-section h2{font-size:19px}}

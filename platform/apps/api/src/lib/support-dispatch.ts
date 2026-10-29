@@ -48,6 +48,15 @@ export async function drainSupportDispatch(app:FastifyInstance,now=new Date()){
    WHERE excluded.event_at>support_dispatch_jobs.event_at`);
   await tx.execute(sql`UPDATE support_dispatch_jobs j SET status='resolved',expires_at=NULL,updated_at=${stamp}
    WHERE source_type='ticket' AND status<>'resolved' AND EXISTS(SELECT 1 FROM support_tickets t WHERE t.id=j.source_id AND t.status='resolved')`);
+  // A deleted chat or thread leaves nothing to answer; without this its job would be offered again every minute.
+  await tx.execute(sql`UPDATE support_dispatch_attempts a SET decision='source_deleted',decided_at=${stamp} FROM support_dispatch_jobs j
+   WHERE a.offer_id=j.offer_id AND a.decision='offered' AND j.status<>'resolved' AND (
+    (j.source_type='ticket' AND NOT EXISTS(SELECT 1 FROM support_tickets t WHERE t.id=j.source_id)) OR
+    (j.source_type='public_chat' AND NOT EXISTS(SELECT 1 FROM public_chat_threads t WHERE t.id=j.source_id)))`);
+  await tx.execute(sql`UPDATE support_dispatch_jobs j SET status='resolved',device_id=NULL,offer_id=NULL,expires_at=NULL,updated_at=${stamp}
+   WHERE status<>'resolved' AND (
+    (source_type='ticket' AND NOT EXISTS(SELECT 1 FROM support_tickets t WHERE t.id=j.source_id)) OR
+    (source_type='public_chat' AND NOT EXISTS(SELECT 1 FROM public_chat_threads t WHERE t.id=j.source_id)))`);
   const lost=await rows(tx,sql`SELECT j.id,j.offer_id,j.status FROM support_dispatch_jobs j LEFT JOIN support_staff_devices d ON d.id=j.device_id
    LEFT JOIN users u ON u.id=d.user_id WHERE j.status IN('offered','accepted') AND
     (${!availability.isOpen} OR (j.status='offered' AND j.expires_at<=${stamp}) OR d.id IS NULL OR NOT d.enabled OR NOT d.available OR NOT u.active OR u.role<>'superadmin' OR d.last_seen_at<${new Date(now.getTime()-60000).toISOString()})`);

@@ -562,5 +562,5 @@ electron.contextBridge.exposeInMainWorld("possistemBilling",{status:()=>electron
 electron.contextBridge.exposeInMainWorld("possistemQr",{call:(method,payload)=>["qr.config","qr.inbox","qr.decision"].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:60000}}):Promise.resolve({success:false,error:{message:"Not allowed"}})});
 
 /* POSSISTEM_PRELOAD_1917 */
-electron.contextBridge.exposeInMainWorld('possistemAccess',{check:(fresh=false)=>electron.ipcRenderer.invoke(IPC.invoke,{method:'billing.access',payload:{fresh},options:{timeoutMs:20000}})});
+electron.contextBridge.exposeInMainWorld('possistemAccess',{check:(fresh=false,verify=false)=>electron.ipcRenderer.invoke(IPC.invoke,{method:'billing.access',payload:{fresh,verify},options:{timeoutMs:20000}})});
 electron.contextBridge.exposeInMainWorld('posPrinterNetwork',{call:(method,payload)=>['print.xprinterDiscover','print.xprinterConfigure'].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:30000}}):Promise.resolve({success:false,error:{message:'Not allowed'}})});
