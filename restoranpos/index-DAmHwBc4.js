@@ -14914,7 +14914,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.17 · 1f04130";
+const _PS_BUILD = "1.9.19 · 5e3f257";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -20460,7 +20460,7 @@ function LoginPage() {
   const [selected, setSelected] = reactExports.useState({ id: "", fullName: "", role: "" });
   const [pin, setPin] = reactExports.useState("");
   /* POS_PLATFORM_PAD_199 */
-  const [pinMode,setPinMode]=reactExports.useState("auto");
+  /* POSSISTEM_SINGLE_PIN_1919 */
   const [prefixChecking,setPrefixChecking]=reactExports.useState(false);
   const loginLatest=reactExports.useRef(null);
   const [busy, setBusy] = reactExports.useState(false);
@@ -20478,9 +20478,9 @@ function LoginPage() {
     }).catch(error => { setLoadingUsers(false); setError(String(error?.message || error)); });
   }, []);
   const [pinChange, setPinChange] = reactExports.useState(null); /* POS_DEFAULT_PIN_v1 */
-  const pinLength=pinChange?4:pinMode==="platform"||pin.length>4?10:4;
+  const pinLength=pinChange?4:10;
   const submit = reactExports.useCallback(async () => {
-    if (pin.length !== (pinChange?4:pinMode==="platform"?10:4) || busy || submittingRef.current) return;
+    if ((pinChange ? pin.length!==4 : ![4,10].includes(pin.length)) || busy || submittingRef.current) return;
     if (pinChange && !pinChange.first) {
       setPinChange({ old: pinChange.old, first: pin });
       setPin("");
@@ -20527,23 +20527,25 @@ function LoginPage() {
     await new Promise((done) => window.setTimeout(done, 420));
     setSession({ ...session, authenticated: true });
     navigate(homeRouteForRole(session), { replace: true });
-  }, [selected, pin, busy, navigate, t, setSession, pinChange, pinMode]);
-  loginLatest.current={pin,submit,pinChange,pinMode};
+  }, [selected, pin, busy, navigate, t, setSession, pinChange]);
+  loginLatest.current={pin,submit,pinChange,busy};
+  // A prefix check may identify a long PIN, but never blocks full-length entry.
   reactExports.useEffect(()=>{
-    if(pinMode!=="auto"||pinChange||pin.length<4){setPrefixChecking(false);return;}
-    let live=true;setPrefixChecking(true);
-    Promise.resolve(window.pos.auth.adminPrefix?.(pin.slice(0,4))||{success:true,data:{extended:false}}).then(result=>{
-      if(!live)return;setPrefixChecking(false);
-      if(!result.success){setError(result.error?.message||t.login.wrongPin);return;}
-      if(result.data?.extended||loginLatest.current.pin.length>4){setPinMode("platform");setError(null);}
-      else void loginLatest.current.submit();
-    }).catch(error=>{if(live){setPrefixChecking(false);setError(String(error?.message||error));}});
-    return()=>{live=false;};
-  },[pin.slice(0,4),pinMode,Boolean(pinChange)]);
+    if(pinChange||pin.length!==4||busy){setPrefixChecking(false);return;}
+    let live=true;
+    const timer=window.setTimeout(async()=>{
+      setPrefixChecking(true);
+      try{
+        const result=await window.pos.auth.adminPrefix?.(pin);
+        if(live&&result?.success&&result.data?.available!==false&&!result.data?.extended&&loginLatest.current.pin===pin&&!loginLatest.current.busy)void loginLatest.current.submit();
+      }catch{/* Keep typing; only an actual login attempt reports an error. */}
+      finally{if(live)setPrefixChecking(false);}
+    },400);
+    return()=>{live=false;window.clearTimeout(timer);};
+  },[pin,Boolean(pinChange),busy]);
   reactExports.useEffect(()=>{
-    if((pinChange||pinMode==="staff")&&pin.length===4)void submit();
-    else if(!pinChange&&pinMode==="platform"&&pin.length===10)void submit();
-  },[pin,submit,pinMode,Boolean(pinChange)]);
+    if((pinChange&&pin.length===4)||(!pinChange&&pin.length===10))void submit();
+  },[pin,submit,Boolean(pinChange)]);
   const resetSelection = reactExports.useCallback(() => {
     setSelected(null);
     setPin("");
@@ -20565,13 +20567,15 @@ function LoginPage() {
   reactExports.useEffect(() => {
     const onKey = (event) => {
       if (busy) return;
-      if (/^\d$/.test(event.key)) setPin((current) => current.length < (pinChange||pinMode==="staff"?4:10) ? current + event.key : current);
-      else if (event.key === "Backspace") setPin((current) => current.slice(0, -1));
-      else if (event.key === "Escape") { setPin(""); setError(null); setPinPhase("idle"); setPinChange(null); setPinMode("auto"); }
+      if(event.target instanceof HTMLElement&&event.target.matches('input,textarea,[contenteditable="true"]'))return;
+      if (/^\d$/.test(event.key)) {event.preventDefault();setPin((current) => current.length < (pinChange?4:10) ? current + event.key : current);}
+      else if (event.key === "Backspace") {event.preventDefault();setPin((current) => current.slice(0, -1));}
+      else if(event.key === "Enter") {event.preventDefault();void submit();}
+      else if (event.key === "Escape") { setPin(""); setError(null); setPinPhase("idle"); setPinChange(null); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, busy, resetSelection, pinChange, pinMode]);
+  }, [selected, busy, resetSelection, pinChange, submit]);
   const activeUsers = reactExports.useMemo(() => users.filter((user) => !user.locked), [users]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "main",
@@ -20707,24 +20711,13 @@ function LoginPage() {
                         ] }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-staff-pin-label brand-kicker text-gold-dim", children: t.login.enterPin }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "ps-staff-pin-title mt-2 font-display text-[2rem] leading-none text-cream", children: t.login.pinTitle }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs leading-5 text-muted", children: psAdminText("PIN kodunuzu yazın","PIN kodunuzu girin","Enter your PIN") }),
-                        null,
-                        null,
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `ps-staff-pin-dots my-5 flex items-center${pinLength===10?" is-platform":""}${pinPhase === "busy" ? " is-busy" : pinPhase === "ok" ? " is-ok" : pinPhase === "err" ? " is-err" : ""}`, "aria-label": `${pin.length} / ${pinLength}`, children: [
-                          Array.from({ length: pinLength }).map((_, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                            "span",
-                            {
-                              className: `ps-staff-pin-cell grid place-items-center ${index < pin.length ? "is-on" : ""}`,
-                              children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${index < pin.length ? "bg-gold" : "bg-gold/16"}` })
-                            },
-                            index
-                          )),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ps-staff-pin-count", children: [
-                            pin.length,
-                            "/"+pinLength
-                          ] })
-                        ] }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(PinPad, { value: pin, maxLength: pinChange||pinMode==="staff"?4:10, disabled: busy, onChange: setPin, onSubmit: () => {if(pinMode!=="auto")void submit();} }),
+                        jsxRuntimeExports.jsx("input", {
+                          className:"ps-pin-input",type:"password",inputMode:"numeric",pattern:"[0-9]*",autoComplete:"off",autoFocus:true,
+                          "aria-label":psAdminText("PIN kodu","PIN kodu","PIN code"),maxLength:pinLength,value:pin,disabled:busy,
+                          "aria-invalid":pinPhase==="err",onChange:event=>{setPin(event.target.value.replace(/[^0-9]/g,"").slice(0,pinLength));setError(null);setPinPhase("idle");},
+                          onKeyDown:event=>{if(event.key==="Enter"){event.preventDefault();void submit();}else if(event.key==="Escape"){event.preventDefault();setPin("");setError(null);setPinChange(null);setPinPhase("idle");}}
+                        }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(PinPad, { value: pin, maxLength: pinLength, disabled: busy, onChange: value=>{setPin(value);setError(null);setPinPhase("idle");} }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 min-h-10", children: error ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           motion.p,
                           {

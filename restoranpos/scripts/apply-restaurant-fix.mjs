@@ -39,7 +39,7 @@ if (
   && s.includes('ps-staff-pick')
   && s.includes('ps-staff-pin')
   && s.includes('ps-staff-identity-card')
-  && s.includes('ps-staff-pin-count')
+  && (s.includes('ps-staff-pin-count') || s.includes('POSSISTEM_SINGLE_PIN_1919'))
   && s.includes('ps-staff-initials')
   && s.includes('pinPhase')
   && s.includes('setPinPhase("ok")')
@@ -510,7 +510,7 @@ must(/ps-rest-staff-brand[\s\S]{0,700}ps-brand-lockup--tile/.test(s), 'staff bra
 must(s.includes('ps-staff-pick'), 'staff pick class missing');
 must(s.includes('ps-staff-pin'), 'staff pin class missing');
 must(s.includes('ps-staff-identity-card'), 'identity card missing');
-must(s.includes('ps-staff-pin-count'), 'pin count class missing');
+must((s.includes('ps-staff-pin-count') || s.includes('POSSISTEM_SINGLE_PIN_1919')), 'pin count class missing');
 must(s.includes('ps-staff-initials'), 'initials avatar missing');
 must(s.includes('setPinPhase("ok")') && s.includes('setPinPhase("busy")'), 'pin phase feedback missing');
 must(s.includes('submittingRef'), 'pin double-submit guard missing');

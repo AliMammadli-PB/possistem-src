@@ -24,8 +24,8 @@ chmod +x "$CORE_WRAPPER" 2>/dev/null || true
 
 cd "$ROOT"
 if [[ "${POS_REBUILD_ON_LAUNCH:-1}" == "1" ]]; then
-  # Same assembly as `npm run build:desktop`; a dev launch keeps going past a
-  # failing patch (with a warning) so the till still opens for debugging.
-  node scripts/assemble-restaurant.mjs --allow-partial
+  # Use the same fail-closed assembly as packaging so a partial patch cannot
+  # silently open an older PIN screen. The tested desktop shortcut skips rebuild.
+  node scripts/assemble-restaurant.mjs
 fi
 exec "$ELECTRON" . --no-sandbox --ozone-platform=x11 "$@"

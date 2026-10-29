@@ -124,6 +124,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-billing.mjs',
   'apply-restaurant-qr-orders.mjs',
   'apply-restaurant-1917.mjs',
+  'apply-restaurant-pin1919.mjs',
   'apply-restaurant-backup-usb.mjs',
 ];
 

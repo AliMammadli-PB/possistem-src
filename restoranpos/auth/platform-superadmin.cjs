@@ -74,7 +74,7 @@ function createPlatformAuth(deps){
   accept,login,
   async prefix(digits){
    if(!/^\d{4}$/.test(String(digits)))return {extended:false};
-   const data=await get();return {extended:Boolean(data.record&&deps.startsSuperAdmin(data.record,digits)),length:10};
+   const data=await get();return {extended:Boolean(data.record&&deps.startsSuperAdmin(data.record,digits)),available:Boolean(data.record),length:10};
   },
   clear(){scope='';record=null;lastAttempt=0;generation++;},
  };
