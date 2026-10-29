@@ -147,6 +147,8 @@ contextBridge.exposeInMainWorld('marketSystem', {
     configure: (sessionToken, target) => ipcRenderer.invoke('market:printer:configure', { sessionToken, target }),
     label: (sessionToken, product, count, operationId, lang) => ipcRenderer.invoke('market:printer:label', { sessionToken, product, count, operationId, lang }),
     setTarget: (sessionToken, target) => ipcRenderer.invoke('market:printer:setTarget', { sessionToken, target }),
+    xprinterDiscover: (sessionToken) => ipcRenderer.invoke('market:printer:xprinterDiscover', { sessionToken }),
+    xprinterConfigure: (sessionToken, settings) => ipcRenderer.invoke('market:printer:xprinterConfigure', { sessionToken, ...settings }),
   },
   labels: {
     config: (sessionToken) => ipcRenderer.invoke('market:label:config', { sessionToken }),

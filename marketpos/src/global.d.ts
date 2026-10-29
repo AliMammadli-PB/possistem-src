@@ -40,6 +40,13 @@ declare global {
       auth: { login(userId: string, pin: string): Promise<SessionUser>; adminPrefix?(digits: string): Promise<boolean>; logout(sessionToken: string): Promise<boolean>; current?(): Promise<SessionUser | null>; changePin(sessionToken: string, newPin: string): Promise<StaffProfile>; rights?(sessionToken: string, userId?: string): Promise<string[]> };
       display: { get(): Promise<{ prefs: DisplayPrefs; presets: DisplayPreset[] }>; set(sessionToken: string, prefs: DisplayPrefs): Promise<DisplayPrefs>; toggleFullscreen(): Promise<DisplayPrefs> };
       image: { pick(sessionToken: string): Promise<string | null> };
+      backup?: {
+        status(): Promise<{ configured: boolean; directory: string; lastBackupAt: number; retentionDays: number }>;
+        configure(sessionToken: string, directory: string, password: string): Promise<{ configured: boolean; directory: string } | null>;
+        create(sessionToken: string, reason: string): Promise<{ file: string; sizeBytes: number; createdAt: number }>;
+        list(): Promise<Array<{ name: string; path: string; sizeBytes: number; createdAt: number }>>;
+        restore(sessionToken: string, file: string, password: string): Promise<{ restored: boolean; file: string } | null>;
+      };
       activation: {
         status(): Promise<ActivationStatus>;
         refresh(): Promise<ActivationStatus>;
@@ -84,6 +91,8 @@ declare global {
           probed: Array<{ target: string; displayName: string; ok: boolean; error: string }>;
         }>;
         setTarget(sessionToken: string, target: string): Promise<{ ok: boolean; current: string }>;
+        xprinterDiscover?(sessionToken: string): Promise<PosResult<{ devices: Array<{ mac: string; ip: string; mask: string; gateway: string; dhcp: boolean }> }>>;
+        xprinterConfigure?(sessionToken: string, settings: { mac: string; oldIp: string; ip: string; mask: string; gateway: string; confirmed: boolean }): Promise<PosResult<{ sent: boolean; verified: boolean }>>;
       };
       drawer?: { open(sessionToken: string, options?: { reason?: string; managerPin?: string }): Promise<unknown> };
       terminal?: { pay(sessionToken: string, payload: { amountMinor: number; mode: 'manual' | 'mock_integrated'; reference?: string }): Promise<Record<string, unknown>> };

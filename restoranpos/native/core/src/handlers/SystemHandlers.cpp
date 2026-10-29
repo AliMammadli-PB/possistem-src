@@ -5,6 +5,8 @@
 #include <utility>
 #include <vector>
 
+#include <sqlite3.h>
+
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
 #include "pos/handlers/Handlers.hpp"
@@ -1181,6 +1183,59 @@ void registerSystem(const ContextPtr& ctx) {
             "FROM backup_manifests ORDER BY created_at DESC");
         return Json{{"backups", stmt.rows()}};
     });
+
+    // A backup brought back from a USB stick. Electron main copies the chosen
+    // file into the backups folder; this only registers it, so the normal
+    // restore (preview, admin PIN, safety copy) is the one way to apply it.
+    // Stored as kind 'manual' (migration 007's CHECK) with a note saying so.
+    server.registerHandler(
+        std::string(protocol::method::kBackupImport), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("backup.manage");
+            const auto dir = std::filesystem::weakly_canonical(
+                std::filesystem::path(ctx->db().path()).parent_path() / "backups");
+            const auto file = std::filesystem::weakly_canonical(
+                std::filesystem::path(getOr<std::string>(request.payload, "path", "")));
+            const auto rel = file.lexically_relative(dir);
+            if (rel.empty() || rel.native()[0] == '.' || rel.has_parent_path() ||
+                !std::filesystem::is_regular_file(file)) {
+                throw PosError(std::string(protocol::err::kValidation),
+                               "Backup faylı backups qovluğunda olmalıdır");
+            }
+            // Only a restaurant database: anything else would restore into a broken till.
+            sqlite3* input = nullptr;
+            bool valid = sqlite3_open_v2(file.string().c_str(), &input, SQLITE_OPEN_READONLY,
+                                         nullptr) == SQLITE_OK;
+            if (valid) {
+                sqlite3_stmt* stmt = nullptr;
+                valid = sqlite3_prepare_v2(input,
+                                           "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                                           "AND name IN ('orders','payments','backup_manifests')",
+                                           -1, &stmt, nullptr) == SQLITE_OK &&
+                        sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int(stmt, 0) == 3;
+                sqlite3_finalize(stmt);
+            }
+            sqlite3_close_v2(input);
+            if (!valid) {
+                throw PosError(std::string(protocol::err::kValidation),
+                               "Bu fayl Restoran POS backup-ı deyil");
+            }
+            const std::string id = crypto::uuid4();
+            std::error_code ec;
+            const auto size = static_cast<std::int64_t>(std::filesystem::file_size(file, ec));
+            auto insert = ctx->db().prepare(
+                "INSERT INTO backup_manifests (id, path, kind, size_bytes, content_sha256, "
+                "  includes_json, created_by, created_at, note) "
+                "VALUES (:id, :path, 'manual', :size, '', '[\"db\"]', :user, :now, :note)");
+            insert.bind(":id", id)
+                .bind(":path", file.string())
+                .bind(":size", size)
+                .bindOptional(":user", ctx->session().userId)
+                .bind(":now", nowMs())
+                .bind(":note", getOr<std::string>(request.payload, "note", "USB / fayldan yüklənib"));
+            insert.exec();
+            ctx->auditRequired("backup.import", "backup", id, Json{{"path", file.string()}});
+            return Json{{"id", id}, {"path", file.string()}, {"sizeBytes", size}};
+        });
 
     server.registerHandler(
         std::string(protocol::method::kBackupRestorePreview), [ctx](const ipc::Request& request) {

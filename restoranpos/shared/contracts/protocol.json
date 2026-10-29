@@ -1251,6 +1251,11 @@
       "auth": true,
       "perm": "backup.manage"
     },
+    "backup.import": {
+      "auth": true,
+      "perm": "backup.manage",
+      "timeout": 60000
+    },
     "backup.restore": {
       "auth": true,
       "perm": "backup.manage",

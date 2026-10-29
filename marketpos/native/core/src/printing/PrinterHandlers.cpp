@@ -8,6 +8,7 @@
 #include "market/RetailOps.hpp"
 #include "market/printing/DeviceDiscovery.hpp"
 #include "market/printing/RawSend.hpp"
+#include "market/printing/XprinterNetwork.hpp"
 
 namespace market::printing {
 namespace {
@@ -214,6 +215,23 @@ void registerPrinterHandlers(ipc::StdioServer& server, db::Database& db) {
         rememberTarget(db, target);
         auditPrinter(db, p.value("actorId", "system"), "PRINTER_SET_TARGET", target);
         return Json{{"ok", true}, {"current", target}};
+    });
+
+    // The printer's own IP / mask / gateway (Ethernet Xprinter, official SDK). Success
+    // means the new settings were read back from the device, not merely sent.
+    server.on("printer.xprinterDiscover", [&db](const Json& p) {
+        requirePermission(db, p, "MANAGE_SETTINGS");
+        return scanXprinterNetwork();
+    });
+    server.on("printer.xprinterConfigure", [&db](const Json& p) {
+        requirePermission(db, p, "MANAGE_SETTINGS");
+        const auto valid = validateXprinterNetwork(p);
+        if (!p.value("confirmed", false)) throw PosError("E_VALIDATION", "Şəbəkə dəyişikliyini təsdiqləyin");
+        const auto actor = p.value("actorId", std::string{"system"});
+        auditPrinter(db, actor, "PRINTER_NETWORK_REQUESTED", valid.dump());
+        auto result = configureXprinterNetwork(p);
+        auditPrinter(db, actor, "PRINTER_NETWORK_RESULT", result.dump());
+        return result;
     });
 
     // Electron builds the ESC/POS bytes and hands them here. `target` overrides

@@ -87,6 +87,18 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
       target: String(input?.target || ''),
     });
   });
+  // The printer's own IP / mask / gateway (Ethernet Xprinter SDK); the core audits both steps.
+  ipcMain.handle('market:printer:xprinterDiscover', async (event, input) => {
+    assertTrusted(event);
+    const user = requireSession(input?.sessionToken, ['manager']);
+    return coreSupervisor.invoke('printer.xprinterDiscover', { role: user.role, actorId: user.id }, 20000);
+  });
+  ipcMain.handle('market:printer:xprinterConfigure', async (event, input) => {
+    assertTrusted(event);
+    const user = requireSession(input?.sessionToken, ['manager']);
+    const { mac, oldIp, ip, mask, gateway, confirmed } = input || {};
+    return coreSupervisor.invoke('printer.xprinterConfigure', { role: user.role, actorId: user.id, mac, oldIp, ip, mask, gateway, confirmed: confirmed === true }, 45000);
+  });
   ipcMain.handle('market:printer:test', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken, ['manager']);
     return printerProvider.printTest({ widthMm: input?.widthMm || 80 });

@@ -14914,7 +14914,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.17 · 3cfbb58";
+const _PS_BUILD = "1.9.17 · 1f04130";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15472,6 +15472,23 @@ function AdminBackupPage() {
     setNote("");
     await refresh();
   };
+  /* POSSISTEM_BACKUP_USB_UI */
+  const exportBackup = async (backupId) => {
+    setBusy(true);
+    const res = await window.pos.backup.exportFile(backupId);
+    setBusy(false);
+    if (!res.success) { toast(res.error.message, "danger"); return; }
+    if (!res.data?.canceled) toast(psAdminText("Flaşa köçürüldü: ","USB belleğe kopyalandı: ","Copied to flash drive: ") + res.data.path, "success");
+  };
+  const importBackup = async () => {
+    setBusy(true);
+    const res = await window.pos.backup.importFile();
+    setBusy(false);
+    if (!res.success) { toast(res.error.message, "danger"); return; }
+    if (res.data?.canceled) return;
+    await refresh();
+    await openRestore(res.data.id);
+  };
   const openRestore = async (backupId) => {
     setBusy(true);
     const res = await window.pos.backup.restorePreview(backupId);
@@ -15531,7 +15548,9 @@ function AdminBackupPage() {
             className: "touch-target mt-4 rounded-xl bg-gold/20 px-4 py-3 text-sm text-gold hover:bg-gold/30 disabled:opacity-50",
             children: t.backup.create
           }
-        )
+        ),
+        jsxRuntimeExports.jsx("button", { type: "button", disabled: busy, onClick: () => void importBackup(), className: "touch-target mt-4 ml-3 rounded-xl border border-gold/40 px-4 py-3 text-sm text-gold hover:bg-gold/10 disabled:opacity-50", children: psAdminText("Fayldan yüklə (flaş)","Dosyadan yükle (USB)","Load from file (flash drive)") }),
+        jsxRuntimeExports.jsx("p", { className: "mt-3 text-xs text-faint", children: psAdminText("Flaşa köçürülən fayl parolsuzdur — flaşı etibarlı yerdə saxlayın. Yükləmədən əvvəl hazırkı baza ayrıca saxlanılır.","USB’ye kopyalanan dosya şifresizdir — belleği güvenli yerde saklayın. Yüklemeden önce mevcut veritabanı ayrıca saklanır.","The file copied to the flash drive is not encrypted — keep the drive safe. The current database is kept aside before loading.") })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass overflow-hidden rounded-2xl", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-b border-hairline px-5 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: t.backup.list }) }),
@@ -15547,6 +15566,7 @@ function AdminBackupPage() {
             ] }),
             row.note ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-muted", children: row.note }) : null
           ] }),
+          jsxRuntimeExports.jsx("button", { type: "button", disabled: busy, onClick: () => void exportBackup(row.id), className: "touch-target shrink-0 rounded-xl border border-gold/40 px-4 py-2 text-sm text-gold hover:bg-gold/10 disabled:opacity-40", children: psAdminText("Flaşa köçür","USB’ye kopyala","Copy to flash drive") }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {

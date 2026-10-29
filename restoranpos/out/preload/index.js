@@ -400,7 +400,9 @@ const api = {
     create: (note, options) => call("backup.create", { note }, options),
     list: () => call("backup.list"),
     restorePreview: (backupId) => call("backup.restorePreview", { backupId }),
-    restore: (backupId, adminPin, options) => call("backup.restore", { backupId, adminPin }, options)
+    restore: (backupId, adminPin, options) => call("backup.restore", { backupId, adminPin }, options),
+    exportFile: (backupId) => call("backup.exportFile", { backupId }),
+    importFile: () => call("backup.importFile", {})
   },
   orders: {
     create: (input, options) => call("orders.create", input, options),

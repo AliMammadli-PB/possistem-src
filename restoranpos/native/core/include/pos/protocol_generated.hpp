@@ -368,6 +368,7 @@ inline constexpr std::string_view kWhatsappTest = "whatsapp.test";
 inline constexpr std::string_view kBackupCreate = "backup.create";
 inline constexpr std::string_view kBackupList = "backup.list";
 inline constexpr std::string_view kBackupRestorePreview = "backup.restorePreview";
+inline constexpr std::string_view kBackupImport = "backup.import";
 inline constexpr std::string_view kBackupRestore = "backup.restore";
 inline constexpr std::string_view kSystemResetOperational = "system.resetOperational";
 inline constexpr std::string_view kSyncStatus = "sync.status";

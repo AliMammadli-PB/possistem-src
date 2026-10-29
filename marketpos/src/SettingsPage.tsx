@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Barcode, Building2, Scale, Check, CreditCard, Download, ImagePlus, KeyRound, Monitor, Printer, ReceiptText, RefreshCw, ShieldCheck, Store, ShoppingBag, Boxes, X } from 'lucide-react';
+import { Barcode, Building2, Scale, Check, CreditCard, Download, ImagePlus, KeyRound, Monitor, Printer, ReceiptText, RefreshCw, ShieldCheck, Store, ShoppingBag, Boxes, X, DatabaseBackup } from 'lucide-react';
 import type { ActivationStatus, Lang, PersistedState, Product, SessionUser, StoreSettings, UpdateStatus } from './types';
 import { Field } from './forms';
 import { tr } from './i18n';
@@ -8,6 +8,8 @@ import { HardwareSettingsCard } from './RetailOpsPanels';
 import { KitchenStationsCard } from './KitchenStations';
 import { BarcodeSettings } from './BarcodeSettings';
 import { ScaleSettings } from './ScaleSettings';
+import { BackupSettings } from './BackupSettings';
+import { XprinterNetworkCard } from './XprinterNetwork';
 import { OpsFrame, ReceiptDesignCard } from './OpsFrame';
 
 export function SettingsPage({ state, session, lang, coreReady, notify, onSettings, onBarcodeProduct, deviceInfo = [], extra = null }: { deviceInfo?: Array<[string, string]>; extra?: React.ReactNode; state: PersistedState; session: SessionUser; lang: Lang; coreReady: boolean; notify: (text: string) => void; onBarcodeProduct?: (p: Product) => void; onSettings: (settings: StoreSettings) => Promise<void> }) {
@@ -52,6 +54,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
     { id: 'sunmi', icon: CreditCard, name: 'SUNMI', hint: text('Fiskal kassa', 'Фискальная касса', 'Fiscal register') },
     { id: 'hardware', icon: CreditCard, name: text('Ödəniş cihazları', 'Платёжные устройства', 'Payment devices'), hint: text('Terminal, pul qutusu və fiskal', 'Терминал, ящик и фискализация', 'Terminal, drawer and fiscal') },
     { id: 'display', icon: Monitor, name: text('Ekran', 'Экран', 'Display'), hint: text('Ölçü və miqyas', 'Размер и масштаб', 'Size and scale') },
+    { id: 'backup', icon: DatabaseBackup, name: 'Backup', hint: text('Flaşa yaz və geri yüklə', 'Копия на флешку и восстановление', 'Copy to flash drive and restore') },
     { id: 'license', icon: ShieldCheck, name: text('Lisenziya', 'Лицензия', 'Licence'), hint: text('Hesab və aktivasiya', 'Аккаунт и активация', 'Account and activation') },
     { id: 'update', icon: RefreshCw, name: text('Yeniləmələr', 'Обновления', 'Updates'), hint: text('Proqramın son versiyası', 'Последняя версия', 'Latest application version') },
   ];
@@ -92,6 +95,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
       )}
       {section === 'catalog' && <div className="settings-embedded"><OpsFrame lang={lang} catalogOnly session={session} notify={notify}/></div>}
       {(section === 'printer' || section === 'receipt') && <ReceiptDesignCard key={section} session={session} lang={lang} panel={section}/>}
+      {section === 'printer' && <XprinterNetworkCard session={session} lang={lang} notify={setMessage}/>}
       {section === 'scale' && <ScaleSettings session={session} lang={lang} products={state.products} notify={notify}/>}
       {section === 'barcode' && <BarcodeSettings session={session} lang={lang} notify={notify} onProduct={onBarcodeProduct}/>}
       {section === 'stations' && <KitchenStationsCard settings={state.settings} products={state.products} session={session} lang={lang} notify={notify} onSave={(kitchenStations) => { void onSettings({ ...state.settings, kitchenStations }).then(() => notify(text('Saxlanıldı', 'Сохранено', 'Saved'))).catch((error: Error) => notify(error.message)); }}/>}
@@ -139,6 +143,7 @@ export function SettingsPage({ state, session, lang, coreReady, notify, onSettin
         <p className="hint">F11 düyməsi istənilən ekranda tam ekranı açıb-bağlayır. 1024×768 terminallar ayrıca optimallaşdırılıb.</p>
       </section>
       )}
+      {section === 'backup' && <BackupSettings session={session} lang={lang} notify={setMessage}/>}
       {section === 'license' && (
       <section className="panel-card settings-card"><div className="panel-title">
           <h3>{tr(lang, 'activation')}</h3>

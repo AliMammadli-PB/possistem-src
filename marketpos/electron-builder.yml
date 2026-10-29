@@ -1,6 +1,6 @@
 appId: com.cyberplus.market.pos
 productName: MarketPos
-buildVersion: 1.5.74
+buildVersion: 1.5.75
 executableName: MarketPos
 copyright: Copyright © 2026 Ali Mammadli / possistem
 electronVersion: 43.8.3
@@ -36,6 +36,9 @@ files:
   - { from: node_modules/ms, to: node_modules/ms }
   - { from: node_modules/sax, to: node_modules/sax }
 extraResources:
+  # Xprinter Ethernet SDK (printer IP/gateway), loaded beside the core exe.
+  - from: ../restoranpos/integrations/xprinter/win32-x64/printer.sdk.dll
+    to: native/win32-x64/printer.sdk.dll
   - from: native/build/market-pos-core.exe
     to: native/win32-x64/market-pos-core.exe
   # Əməliyyatlar (1.5.0): the restaurant warehouse core, built in ../restoranpos.

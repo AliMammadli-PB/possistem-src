@@ -173,6 +173,12 @@
     "market:printer:setTarget": {
       "auth": "roles:manager"
     },
+    "market:printer:xprinterConfigure": {
+      "auth": "roles:manager"
+    },
+    "market:printer:xprinterDiscover": {
+      "auth": "roles:manager"
+    },
     "market:printer:station": {
       "auth": "session"
     },

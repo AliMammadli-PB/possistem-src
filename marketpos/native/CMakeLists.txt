@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(market_pos_core LANGUAGES C CXX VERSION 1.5.74)
+project(market_pos_core LANGUAGES C CXX VERSION 1.5.75)
 
 # The WebAssembly demo build: the core reports refusals as exceptions, and
 # Emscripten turns exception catching off unless asked.
@@ -101,6 +101,16 @@ if(TEST_SOURCES)
   target_include_directories(market_core_tests PRIVATE ${TP}/catch2)
   target_link_libraries(market_core_tests PRIVATE market_core_lib)
   add_test(NAME market_core_tests COMMAND market_core_tests --reporter compact)
+endif()
+
+# Xprinter Ethernet SDK, shared with the restaurant build (same pinned checksum).
+if(WIN32)
+  set(XPRINTER_SDK "${CMAKE_CURRENT_SOURCE_DIR}/../../restoranpos/integrations/xprinter/win32-x64/printer.sdk.dll")
+  file(SHA256 "${XPRINTER_SDK}" XPRINTER_HASH)
+  if(NOT XPRINTER_HASH STREQUAL "9d6898c344464edc94a38f5f8108c3b88b7a9f22d123cf7657adb7559d85f71f")
+    message(FATAL_ERROR "Xprinter SDK checksum mismatch")
+  endif()
+  configure_file("${XPRINTER_SDK}" "${CMAKE_BINARY_DIR}/printer.sdk.dll" COPYONLY)
 endif()
 
 message(STATUS "market-pos-core ${PROJECT_VERSION} | ${CMAKE_BUILD_TYPE} | ${CMAKE_CXX_COMPILER_ID}")
