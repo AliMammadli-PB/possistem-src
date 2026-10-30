@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <mutex>
 #include <thread>
+#include <typeinfo>
 #ifdef _WIN32
 #define NOMINMAX
 #include <filesystem>
@@ -83,11 +84,39 @@ void __cdecl discovered(unsigned char *data) {
                        {"gateway", ipText(data + 16)},
                        {"dhcp", data[22] != 0}});
 }
+// SearchEscNetDevice takes an MSVC `std::function<void(unsigned char*)>` by value
+// (a pointer to a 64-byte object whose last word points at the callable's vtable
+// holder), not a plain function pointer: the DLL is MSVC-built, this core is not.
+// The SDK copies it (_Copy), calls _Do_call with a pointer to the argument and
+// destroys it (_Delete_this), so a hand-built object with that vtable is enough.
+struct MsvcCallback {
+  const void *const *vtable;
+};
+void *__cdecl callbackCopy(MsvcCallback *self, void *where) {
+  static_cast<MsvcCallback *>(where)->vtable = self->vtable;
+  return where;
+}
+void __cdecl callbackCall(MsvcCallback *, unsigned char **arg) { discovered(*arg); }
+const void *__cdecl callbackType(MsvcCallback *) { return &typeid(void); }
+void __cdecl callbackDelete(MsvcCallback *, bool) {}
+const void *__cdecl callbackGet(MsvcCallback *) { return nullptr; }
+// _Copy, _Move, _Do_call, _Target_type, _Delete_this, _Get (MSVC _Func_base order).
+const void *const callbackVtable[] = {
+    reinterpret_cast<const void *>(&callbackCopy), reinterpret_cast<const void *>(&callbackCopy),
+    reinterpret_cast<const void *>(&callbackCall), reinterpret_cast<const void *>(&callbackType),
+    reinterpret_cast<const void *>(&callbackDelete), reinterpret_cast<const void *>(&callbackGet)};
+struct alignas(16) MsvcFunction {
+  void *words[8]{};
+  MsvcFunction() {
+    words[0] = const_cast<void *>(static_cast<const void *>(callbackVtable));
+    words[7] = &words[0];
+  }
+};
 class Sdk {
   HMODULE module = nullptr;
 
 public:
-  using Search = int(__cdecl *)(int, void(__cdecl *)(unsigned char *));
+  using Search = int(__cdecl *)(int, MsvcFunction *);
   using Set = int(__cdecl *)(unsigned char *, unsigned char *, unsigned char *,
                              unsigned char *, unsigned char);
   Search search = nullptr;
@@ -123,7 +152,8 @@ public:
       std::lock_guard lock(resultMutex);
       found = Json::array();
     }
-    const int rc = search(3, discovered);
+    MsvcFunction callback;
+    const int rc = search(3, &callback);
     require(rc == 0, "Xprinter axtarışı alınmadı. Şəbəkə və firewall icazəsini "
                      "yoxlayın. Kod: " +
                          std::to_string(rc));
@@ -195,15 +225,19 @@ Json configureXprinterNetwork(const Json &input) {
   const auto rc =
       sdk.set(mac.data(), ip.data(), mask.data(), gateway.data(), 0);
   require(rc == 0, "Xprinter əmri göndərilmədi. Kod: " + std::to_string(rc));
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  // The printer restarts its network stack after the change; a real Ethernet
+  // Xprinter on 2026-10-30 reported the new settings only after the first 2 s read-back.
   bool verified = false;
-  try {
-    for (const auto &d : sdk.scan())
-      if (d["mac"] == checked["mac"] && d["ip"] == checked["ip"] &&
-          d["mask"] == checked["mask"] && d["gateway"] == checked["gateway"] &&
-          !d.value("dhcp", true))
-        verified = true;
-  } catch (...) { /* A sent command is not proof that the device applied it. */
+  for (int attempt = 0; attempt < 5 && !verified; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    try {
+      for (const auto &d : sdk.scan())
+        if (d["mac"] == checked["mac"] && d["ip"] == checked["ip"] &&
+            d["mask"] == checked["mask"] && d["gateway"] == checked["gateway"] &&
+            !d.value("dhcp", true))
+          verified = true;
+    } catch (...) { /* A sent command is not proof that the device applied it. */
+    }
   }
   return Json{{"sent", true}, {"verified", verified}, {"settings", checked}};
 #else
