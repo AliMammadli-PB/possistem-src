@@ -1,7 +1,8 @@
 import { query as billingQuery } from '../lib/billing/store.js';
 import { licenseBilling } from '../lib/billing/service.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import {z} from 'zod';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { TenantLoginRequestSchema } from '@milioner/contracts';
 import { activationKeys, customers, featureFlags, licenses } from '@milioner/database';
@@ -113,14 +114,32 @@ async function resolvePaymentUrl(app: FastifyInstance): Promise<string | null> {
   return typeof url === 'string' && url.length > 0 ? url : null;
 }
 
+/** Both password login and grant resumption use the same serialized seat policy. */
+async function bindTenantHardware(app:FastifyInstance,customerId:string,hwid:string,bypass:boolean){
+ return app.db.transaction(async tx=>{
+  const [current]=await billingQuery<{bound_hwid:string|null;active:boolean}>(tx,sql`SELECT bound_hwid,active FROM customers WHERE id=${customerId}::uuid FOR UPDATE`);
+  if(!current?.active)return {error:'Hesab deaktivdir.',code:'CUSTOMER_INACTIVE'};
+  if(bypass){await tx.execute(sql`UPDATE customers SET bound_hwid=NULL,updated_at=now() WHERE id=${customerId}::uuid`);return {boundHwid:null};}
+  if(!hwid||current.bound_hwid===hwid)return {boundHwid:current.bound_hwid};
+  if(!current.bound_hwid){await tx.execute(sql`UPDATE customers SET bound_hwid=${hwid},updated_at=now() WHERE id=${customerId}::uuid`);return {boundHwid:hwid};}
+  const known=await billingQuery<{hwid:string}>(tx,sql`SELECT hwid FROM customer_hwids WHERE customer_id=${customerId}::uuid`);
+  if(!known.some(r=>r.hwid===hwid)){
+   const [row]=await billingQuery<{seats:number}>(tx,sql`SELECT COALESCE(SUM(seats),1)::int AS seats FROM licenses WHERE customer_id=${customerId}::uuid AND status='active'`);
+   const seats=Math.max(1,Number(row?.seats??1));
+   if(1+known.length>=seats)return {error:`Bu hesabda boş kompüter yeri qalmayıb (${seats}). Admin yer əlavə etməli və ya HWID-i sıfırlamalıdır.`,code:'HWID_MISMATCH'};
+   await tx.execute(sql`INSERT INTO customer_hwids(customer_id,hwid) VALUES(${customerId}::uuid,${hwid}) ON CONFLICT DO NOTHING`);
+  }
+  return {boundHwid:current.bound_hwid};
+ });
+}
+
 export async function tenantRoutes(app: FastifyInstance) {
-  app.post(
-    '/tenant/login',
-    {
-      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
-    },
-    async (req, reply) => {
-      const body = parseBody(TenantLoginRequestSchema, req.body, reply);
+  // Reuse the normal customer, product and hardware checks when a password-
+  // authenticated billing session gains access. Never turn a browser redirect
+  // or a different customer's/device's grant into a POS login.
+  type Resume={customerId:string;email:string;product:'restaurant'|'market'|'geyim'|'aptek'|'topdan';hwid:string;expiresAt:number};
+  const login=async(req:FastifyRequest,reply:FastifyReply,resume?:Resume)=>{
+      const body = resume ? {email:resume.email,password:'',client:'pos' as const,product:resume.product,hwid:resume.hwid} : parseBody(TenantLoginRequestSchema, req.body, reply);
       if (!body) return;
 
       const email = body.email.toLowerCase().trim();
@@ -131,11 +150,11 @@ export async function tenantRoutes(app: FastifyInstance) {
         .where(and(sql`lower(${customers.email}) = ${email}`, eq(customers.active, true)))
         .limit(1);
 
-      if (!customer?.passwordHash) {
+      if (!customer?.passwordHash || (resume && resume.customerId!==customer.id)) {
         return reply.code(401).send({ error: 'Invalid credentials' });
       }
 
-      const ok = await verifyPassword(customer.passwordHash, body.password);
+      const ok = resume ? true : await verifyPassword(customer.passwordHash, body.password);
       if (!ok) {
         return reply.code(401).send({ error: 'Invalid credentials' });
       }
@@ -165,7 +184,7 @@ export async function tenantRoutes(app: FastifyInstance) {
           .limit(1);
         if (!productLicense) {
           const [managed] = await billingQuery(app.db,sql`SELECT l.id FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id JOIN licenses l ON l.id=b.license_id WHERE s.customer_id=${customer.id}::uuid AND s.product=${requestedProduct} AND l.status NOT IN ('revoked','suspended') LIMIT 1`);
-          if (managed) { const details=await licenseBilling(app.db,String((managed as {id:unknown}).id)); billingOnly=details?.billingEnforced!==false; }
+          if (managed) { const details=await licenseBilling(app.db,String((managed as {id:unknown}).id)); billingOnly=!(details?.hasAccess||details?.billingEnforced===false); }
           else return reply.code(403).send({
             /* geyim-product: login */
             error: `Bu hesab üçün ${({ restaurant: 'Restoran POS', market: 'Market POS', geyim: 'Geyim POS', aptek: 'Aptek POS' /* aptek-product */, topdan: 'Topdan POS' /* topdan-product */ } as Record<string, string>)[requestedProduct]} lisenziyası yoxdur`,
@@ -177,50 +196,12 @@ export async function tenantRoutes(app: FastifyInstance) {
       // POS: bind email → one PC. Owner web skips HWID. Legacy clients (pre-1.1.13) skip until upgraded.
       // Internal admin test accounts (POS_HWID_BYPASS_EMAILS) skip bind entirely so they can use any POS.
       const bypassHwid = env.posHwidBypassEmails.has(email);
-      if (!billingOnly && !bypassHwid && (client === 'pos' || (client !== 'owner' && body.hwid))) {
-        const hwid = (body.hwid ?? '').trim();
-        if (client === 'pos' && !hwid) {
-          return reply.code(400).send({ error: 'HWID (device fingerprint) required for POS login' });
-        }
-        if (hwid) {
-          if (!customer.boundHwid) {
-            await app.db
-              .update(customers)
-              .set({ boundHwid: hwid, updatedAt: new Date() })
-              .where(eq(customers.id, customer.id));
-            customer.boundHwid = hwid;
-          } else if (customer.boundHwid !== hwid) {
-            // A shop runs the till, the kitchen and the store room on separate
-            // PCs under one account. The first PC stays in bound_hwid; the rest
-            // are listed, up to the seats the customer's active licences have.
-            const known = (await app.db.execute(sql`
-              SELECT hwid FROM customer_hwids WHERE customer_id = ${customer.id}::uuid
-            `)) as unknown as Array<{ hwid: string }>;
-            if (!known.some((row) => row.hwid === hwid)) {
-              const [seatRow] = (await app.db.execute(sql`
-                SELECT COALESCE(SUM(seats), 1)::int AS seats FROM licenses
-                WHERE customer_id = ${customer.id}::uuid AND status = 'active'
-              `)) as unknown as Array<{ seats: number }>;
-              const seats = Math.max(1, Number(seatRow?.seats ?? 1));
-              if (1 + known.length >= seats) {
-                return reply.code(403).send({
-                  error: `Bu hesabda boş kompüter yeri qalmayıb (${seats}). Admin yer əlavə etməli və ya HWID-i sıfırlamalıdır.`,
-                  code: 'HWID_MISMATCH',
-                });
-              }
-              await app.db.execute(sql`
-                INSERT INTO customer_hwids (customer_id, hwid) VALUES (${customer.id}::uuid, ${hwid})
-                ON CONFLICT DO NOTHING
-              `);
-            }
-          }
-        }
-      } else if (bypassHwid && customer.boundHwid) {
-        await app.db
-          .update(customers)
-          .set({ boundHwid: null, updatedAt: new Date() })
-          .where(eq(customers.id, customer.id));
-        customer.boundHwid = null;
+      if (!billingOnly && (bypassHwid || client==='pos' || (client!=='owner' && body.hwid))) {
+        const hwid=(body.hwid??'').trim();
+        if(client==='pos'&&!hwid)return reply.code(400).send({error:'HWID (device fingerprint) required for POS login'});
+        const hardware=await bindTenantHardware(app,customer.id,hwid,bypassHwid);
+        if('error' in hardware)return reply.code(403).send(hardware);
+        customer.boundHwid=hardware.boundHwid;
       }
 
       await app.db
@@ -251,7 +232,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       const billingDetails = await Promise.all(licenseRows.map(l => licenseBilling(app.db,l.id)));
       const selectedBilling = requestedProduct ? billingDetails.find((b,i)=>b && (licenseRows[i]?.features?.vertical || licenseRows[i]?.features?.product) === requestedProduct) : billingDetails.find(Boolean);
       const paymentUrl = selectedBilling?.paymentUrl ?? await resolvePaymentUrl(app);
-      const expiresAt = Date.now() + TENANT_TTL_MS;
+      const expiresAt = Math.min(Date.now() + TENANT_TTL_MS,resume?.expiresAt??Infinity);
       const jti = generateSessionToken();
       const token = signTenantPayload({
         customerId: customer.id,
@@ -270,7 +251,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       });
 
       await writeAudit(app, {
-        action: client === 'owner' ? 'owner.login' : 'tenant.login',
+        action: resume ? 'tenant.access.resume' : client === 'owner' ? 'owner.login' : 'tenant.login',
         entityType: 'customer',
         entityId: customer.id,
         ip: clientIp(req),
@@ -301,8 +282,22 @@ export async function tenantRoutes(app: FastifyInstance) {
         })),
         paymentUrl,
       };
-    },
-  );
+  };
+  app.post('/tenant/login',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},(req,reply)=>login(req,reply));
+  app.post('/tenant/resume',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(req,reply)=>{
+    reply.header('Cache-Control','private, no-store');
+    const raw=String(req.headers.authorization??'').replace(/^Bearer\s+/i,'');
+    const session=verifySignedTenantToken(raw);
+    if(!session||session.client!=='billing')return reply.code(401).send({error:'Yenidən daxil olun.'});
+    const [revocation]=await billingQuery(app.db,sql`SELECT token_hash FROM tenant_session_revocations WHERE token_hash=${hashSessionToken(raw)} AND expires_at>now()`);
+    if(revocation)return reply.code(401).send({error:'Yenidən daxil olun.'});
+    const parsed=z.object({product:z.enum(['restaurant','market','geyim','aptek','topdan']),hwid:z.string().trim().min(8).max(512)}).strict().safeParse(req.body);
+    if(!parsed.success)return reply.code(400).send({error:'POS və kompüter məlumatını yoxlayın.'});
+    const {product,hwid}=parsed.data;
+    const [managed]=await billingQuery<{id:string}>(app.db,sql`SELECT l.id FROM billing_subscriptions s JOIN billing_license_links b ON b.subscription_id=s.id JOIN licenses l ON l.id=b.license_id JOIN customers c ON c.id=l.customer_id WHERE s.customer_id=${session.customerId}::uuid AND l.customer_id=${session.customerId}::uuid AND c.active=true AND s.product=${product} AND COALESCE(l.features->>'vertical',l.features->>'product',CASE WHEN l.plan IN ('market','geyim','aptek','topdan') THEN l.plan ELSE 'restaurant' END)=${product} AND l.status NOT IN ('revoked','suspended') LIMIT 1`);
+    if(!managed||!(await licenseBilling(app.db,managed.id))?.hasAccess)return reply.code(403).send({code:'POS_ACCESS_PENDING',error:'Aktiv istifadə icazəsi yoxdur.'});
+    return login(req,reply,{...session,product,hwid});
+  });
 
   app.post('/tenant/logout', async (req) => {
     const auth = req.headers.authorization;

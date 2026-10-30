@@ -19,3 +19,18 @@ test('a fresh check rereads the newly signed license after confirmation',async()
  const access=create({owner:()=>({token:'owner-token',customerId:'owner'}),license:async()=>({success:true,data:proof}),status:async verify=>{assert.equal(verify,true);proof={...proof,status:'active',expiresAt:Date.now()+60000,features:{billingManaged:true,billingStatus:'active'}};return {ok:true,data:{subscriptions:[{product:'restaurant',hasAccess:true,accessStatus:'trial'}],productAssigned:true}};}});
  assert.equal((await access(true,true)).loginAllowed,true);
 });
+test('a confirmed trial resumes the same billing-only account without re-entering a password',async()=>{
+ let owner={token:'billing-token',customerId:'owner',billingOnly:true};
+ const access=create({owner:()=>owner,license:async()=>({success:true,data:{customerId:'owner',status:'active',expiresAt:Date.now()+60000,features:{billingManaged:true,billingStatus:'active',product:'restaurant'}}}),status:async()=>{owner={...owner,token:'pos-token',billingOnly:false};return {ok:true,data:{subscriptions:[{product:'restaurant',hasAccess:true,accessStatus:'trial',accessUntil:new Date(Date.now()+60000).toISOString()}],sessionResumed:true}};}});
+ const result=await access(true,true);assert.equal(result.allowed,true);assert.equal(result.loginAllowed,true);assert.equal(result.sessionResumed,true);
+});
+test('switching customer while a trial check is in flight never opens the former account',async()=>{
+ let owner={token:'one',customerId:'one'};
+ const access=create({owner:()=>owner,license:async()=>({success:true,data:{customerId:'one',status:'active',expiresAt:Date.now()+60000}}),status:async()=>{owner={token:'two',customerId:'two'};return {ok:true,data:{subscriptions:[{product:'restaurant',hasAccess:true,accessStatus:'trial'}]}};}});
+ assert.equal((await access(true,true)).allowed,false);
+});
+test('cached access cannot extend a trial past its exact deadline',async()=>{
+ let clock=at,calls=0;const end=at+1000;
+ const access=create({now:()=>clock,owner:()=>({token:'one',customerId:'one'}),license:async()=>({success:true,data:{customerId:'one',status:'active',expiresAt:end,features:{billingManaged:true,billingStatus:'active'}}}),status:async()=>{calls++;return {ok:true,data:{subscriptions:[{product:'restaurant',hasAccess:clock<end,accessStatus:clock<end?'trial':'payment_required',accessUntil:new Date(end).toISOString()}]}};}});
+ assert.equal((await access()).loginAllowed,true);clock=end;assert.equal((await access()).loginAllowed,false);assert.equal(calls,2);
+});
