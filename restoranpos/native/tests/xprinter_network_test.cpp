@@ -13,6 +13,3 @@ TEST_CASE("Xprinter configuration requires settings permission","[printer][xprin
  ServiceFixture f;pos::handlers::registerPrinting(f.contextPtr());f.ctx().session().permissions.clear();pos::ipc::Request request;request.requestId="xprinter-test";request.method="print.xprinterConfigure";request.payload=config();request.payload["confirmed"]=true;REQUIRE_THROWS_AS(f.server().callHandler(request),pos::PosError);
 }
 
-#ifdef _WIN32
-TEST_CASE("Xprinter official SDK can load its documented exports", "[printer][xprinter]") { REQUIRE(pos::printing::xprinterSdkAvailable()); }
-#endif

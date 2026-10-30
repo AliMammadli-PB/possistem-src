@@ -26,6 +26,3 @@ TEST_CASE("Xprinter network validates addresses before touching hardware", "[pri
     REQUIRE_THROWS_AS(market::printing::configureXprinterNetwork(input), market::PosError);
 }
 
-#ifdef _WIN32
-TEST_CASE("Xprinter official SDK can load its documented exports", "[printing][xprinter]") { REQUIRE(market::printing::xprinterSdkAvailable()); }
-#endif

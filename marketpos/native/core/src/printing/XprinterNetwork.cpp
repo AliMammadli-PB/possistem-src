@@ -7,15 +7,28 @@
 #include <cstdio>
 #include <mutex>
 #include <thread>
-#include <typeinfo>
+#include <cstring>
+#include <vector>
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
-#include <filesystem>
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <mstcpip.h>
+#ifndef SIO_UDP_CONNRESET // missing from mingw-w64 headers
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
 #include <windows.h>
 #include <iphlpapi.h>
 #include <icmpapi.h>
-#include <cstring>
-#include <vector>
+#else
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #endif
 namespace market::printing {
 namespace {
@@ -65,57 +78,197 @@ std::array<unsigned char, 6> macBytes(const std::string &text) {
           "MAC ünvanı düzgün deyil");
   return out;
 }
+// Own protocol (1.9.23). The SDK's SearchEscNetDevice found nothing on a real
+// Windows till that reached the same printer on TCP 9100, so neither the search
+// nor the change goes through printer.sdk.dll any more. "XP0001FIND" goes to UDP 9000 as unicast to every host
+// of this PC's subnets and as broadcasts; the printer always answers on port
+// 9600 with "XP0001FOUND" + MAC 0..5, IPv4 8..11, mask 12..15, gateway 16..19,
+// DHCP 22. A unicast reply returns on the flow the request opened, so Windows
+// Firewall admits it without a rule; the broadcast covers another subnet.
+// A change is "XP0001SAVE" + MAC + 22 00 + IP, mask, gateway + 8C 23 + DHCP,
+// the bytes SetEscNetInfo sends, by broadcast: the printer matches its MAC.
 #ifdef _WIN32
-std::mutex operationMutex, resultMutex;
-Json found = Json::array();
+using Socket = SOCKET;
+const Socket kNoSocket = INVALID_SOCKET;
+void closeSocket(Socket s) { closesocket(s); }
+#else
+using Socket = int;
+const Socket kNoSocket = -1;
+void closeSocket(Socket s) { ::close(s); }
+#endif
+struct Subnet {
+  std::uint32_t ip, mask; // host byte order
+};
+std::vector<Subnet> localSubnets() {
+  std::vector<Subnet> out;
+  const auto keep = [&out](std::uint32_t ip, std::uint32_t mask) {
+    if (ip != 0 && (ip >> 24) != 127 && (ip >> 16) != 0xA9FE && mask != 0)
+      out.push_back({ip, mask});
+  };
+#ifdef _WIN32
+  ULONG size = 0;
+  if (GetAdaptersInfo(nullptr, &size) != ERROR_BUFFER_OVERFLOW)
+    return out;
+  std::vector<unsigned char> buffer(size);
+  auto *info = reinterpret_cast<IP_ADAPTER_INFO *>(buffer.data());
+  if (GetAdaptersInfo(info, &size) != NO_ERROR)
+    return out;
+  for (auto *a = info; a; a = a->Next)
+    for (auto *ip = &a->IpAddressList; ip; ip = ip->Next)
+      keep(ntohl(inet_addr(ip->IpAddress.String)), ntohl(inet_addr(ip->IpMask.String)));
+#else
+  ifaddrs *list = nullptr;
+  if (getifaddrs(&list) != 0)
+    return out;
+  for (auto *i = list; i; i = i->ifa_next)
+    if (i->ifa_addr && i->ifa_netmask && i->ifa_addr->sa_family == AF_INET)
+      keep(ntohl(reinterpret_cast<sockaddr_in *>(i->ifa_addr)->sin_addr.s_addr),
+           ntohl(reinterpret_cast<sockaddr_in *>(i->ifa_netmask)->sin_addr.s_addr));
+  freeifaddrs(list);
+#endif
+  return out;
+}
 std::string ipText(const unsigned char *p) {
   return std::to_string(p[0]) + "." + std::to_string(p[1]) + "." +
          std::to_string(p[2]) + "." + std::to_string(p[3]);
 }
-void __cdecl discovered(unsigned char *data) {
-  if (!data)
-    return;
+Json parseFound(const unsigned char *data, int size) {
+  if (size < 11 + 23 || std::memcmp(data, "XP0001FOUND", 11) != 0)
+    return nullptr;
+  const unsigned char *d = data + 11;
   char mac[18];
-  std::snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X", data[0],
-                data[1], data[2], data[3], data[4], data[5]);
-  std::lock_guard lock(resultMutex);
-  for (const auto &item : found)
-    if (item["mac"] == mac)
-      return;
-  found.push_back(Json{{"mac", mac},
-                       {"ip", ipText(data + 8)},
-                       {"mask", ipText(data + 12)},
-                       {"gateway", ipText(data + 16)},
-                       {"dhcp", data[22] != 0}});
+  std::snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X", d[0], d[1], d[2],
+                d[3], d[4], d[5]);
+  return Json{{"mac", mac},
+              {"ip", ipText(d + 8)},
+              {"mask", ipText(d + 12)},
+              {"gateway", ipText(d + 16)},
+              {"dhcp", d[22] != 0}};
 }
-// SearchEscNetDevice takes an MSVC `std::function<void(unsigned char*)>` by value
-// (a pointer to a 64-byte object whose last word points at the callable's vtable
-// holder), not a plain function pointer: the DLL is MSVC-built, this core is not.
-// The SDK copies it (_Copy), calls _Do_call with a pointer to the argument and
-// destroys it (_Delete_this), so a hand-built object with that vtable is enough.
-struct MsvcCallback {
-  const void *const *vtable;
-};
-void *__cdecl callbackCopy(MsvcCallback *self, void *where) {
-  static_cast<MsvcCallback *>(where)->vtable = self->vtable;
-  return where;
-}
-void __cdecl callbackCall(MsvcCallback *, unsigned char **arg) { discovered(*arg); }
-const void *__cdecl callbackType(MsvcCallback *) { return &typeid(void); }
-void __cdecl callbackDelete(MsvcCallback *, bool) {}
-const void *__cdecl callbackGet(MsvcCallback *) { return nullptr; }
-// _Copy, _Move, _Do_call, _Target_type, _Delete_this, _Get (MSVC _Func_base order).
-const void *const callbackVtable[] = {
-    reinterpret_cast<const void *>(&callbackCopy), reinterpret_cast<const void *>(&callbackCopy),
-    reinterpret_cast<const void *>(&callbackCall), reinterpret_cast<const void *>(&callbackType),
-    reinterpret_cast<const void *>(&callbackDelete), reinterpret_cast<const void *>(&callbackGet)};
-struct alignas(16) MsvcFunction {
-  void *words[8]{};
-  MsvcFunction() {
-    words[0] = const_cast<void *>(static_cast<const void *>(callbackVtable));
-    words[7] = &words[0];
+class Udp {
+#ifdef _WIN32
+  struct Winsock {
+    Winsock() { WSADATA wsa; require(WSAStartup(MAKEWORD(2, 2), &wsa) == 0, "Şəbəkə açılmadı"); }
+    ~Winsock() { WSACleanup(); }
+  } winsock;
+#endif
+  Socket s = kNoSocket;
+
+public:
+  // The printer always answers on 9600, so the request has to leave from it.
+  Udp() {
+    s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    require(s != kNoSocket, "Xprinter üçün şəbəkə açılmadı");
+    int yes = 1;
+    setsockopt(s, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char *>(&yes), sizeof(yes));
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes));
+#ifdef _WIN32
+    // Hosts in the sweep answer with ICMP port-unreachable; without this Windows
+    // fails the next recv with WSAECONNRESET and the printer's reply is lost.
+    BOOL report = FALSE;
+    DWORD unused = 0;
+    WSAIoctl(s, SIO_UDP_CONNRESET, &report, sizeof(report), nullptr, 0, &unused, nullptr, nullptr);
+#endif
+    sockaddr_in local{};
+    local.sin_family = AF_INET;
+    local.sin_port = htons(9600);
+    local.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(s, reinterpret_cast<sockaddr *>(&local), sizeof(local)) != 0) {
+      closeSocket(s);
+      throw PosError("E_VALIDATION", "UDP 9600 portu başqa proqramdadır. Digər printer "
+                                     "proqramlarını bağlayıb yenidən cəhd edin.");
+    }
+  }
+  ~Udp() { closeSocket(s); }
+  Udp(const Udp &) = delete;
+  Udp &operator=(const Udp &) = delete;
+  void send(const unsigned char *data, int size, const std::vector<std::uint32_t> &targets) {
+    for (const auto target : targets) {
+      sockaddr_in to{};
+      to.sin_family = AF_INET;
+      to.sin_port = htons(9000);
+      to.sin_addr.s_addr = htonl(target);
+      sendto(s, reinterpret_cast<const char *>(data), size, 0,
+             reinterpret_cast<sockaddr *>(&to), sizeof(to));
+    }
+  }
+  // -1 when nothing arrived in time; 0 for a datagram that failed to read.
+  int receive(unsigned char *buffer, int size, long long waitMs) {
+    fd_set ready;
+    FD_ZERO(&ready);
+    FD_SET(s, &ready);
+    timeval wait{static_cast<long>(waitMs / 1000), static_cast<long>((waitMs % 1000) * 1000)};
+    if (select(static_cast<int>(s) + 1, &ready, nullptr, nullptr, &wait) <= 0)
+      return -1;
+    const int n = recv(s, reinterpret_cast<char *>(buffer), size, 0);
+    return n < 0 ? 0 : n;
   }
 };
+// The limited broadcast plus every local subnet's directed broadcast.
+std::vector<std::uint32_t> broadcasts() {
+  std::vector<std::uint32_t> out{0xFFFFFFFFu};
+  for (const auto &n : localSubnets())
+    out.push_back((n.ip & n.mask) | ~n.mask);
+  return out;
+}
+Json discover() {
+  Udp udp;
+  // ponytail: unicast sweep only up to a /22 (1022 hosts); wider subnets rely on the broadcast.
+  auto targets = broadcasts();
+  for (const auto &n : localSubnets()) {
+    const std::uint32_t hosts = ~n.mask, net = n.ip & n.mask;
+    if (hosts <= 1023)
+      for (std::uint32_t h = 1; h < hosts; ++h)
+        if ((net | h) != n.ip)
+          targets.push_back(net | h);
+  }
+  static const unsigned char probe[] = {'X', 'P', '0', '0', '0', '1', 'F', 'I', 'N', 'D'};
+  udp.send(probe, sizeof(probe), targets);
+  // A real XP printer skipped about one request in three (2026-10-30), so the
+  // broadcasts repeat every 700 ms for 4 s.
+  const auto again = broadcasts();
+  Json found = Json::array();
+  const auto start = std::chrono::steady_clock::now();
+  int repeats = 0;
+  for (;;) {
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - start)
+                             .count();
+    if (elapsed >= 4000)
+      break;
+    if (repeats < 4 && elapsed >= 700 * (repeats + 1)) {
+      udp.send(probe, sizeof(probe), again);
+      ++repeats;
+    }
+    unsigned char buffer[512];
+    const auto next = repeats < 4 ? 700 * (repeats + 1) : 4000;
+    const int n = udp.receive(buffer, sizeof(buffer), std::max<long long>(1, next - elapsed));
+    const auto device = n > 0 ? parseFound(buffer, n) : Json(nullptr);
+    if (device.is_null())
+      continue;
+    if (std::none_of(found.begin(), found.end(),
+                     [&](const Json &d) { return d["mac"] == device["mac"]; }))
+      found.push_back(device);
+  }
+  return found;
+}
+void sendSave(const Json &checked) {
+  std::vector<unsigned char> packet{'X', 'P', '0', '0', '0', '1', 'S', 'A', 'V', 'E'};
+  const auto mac = macBytes(checked["mac"].get<std::string>());
+  packet.insert(packet.end(), mac.begin(), mac.end());
+  packet.insert(packet.end(), {0x22, 0x00});
+  for (const char *key : {"ip", "mask", "gateway"}) {
+    const auto part = ipv4(checked[key].get<std::string>());
+    packet.insert(packet.end(), part.begin(), part.end());
+  }
+  packet.insert(packet.end(), {0x8C, 0x23, 0x00}); // TCP 9100, static (no DHCP)
+  auto targets = broadcasts();
+  targets.push_back(number(ipv4(checked["oldIp"].get<std::string>())));
+  Udp udp;
+  udp.send(packet.data(), static_cast<int>(packet.size()), targets);
+}
+std::mutex operationMutex;
+#ifdef _WIN32
 // This PC's IPv4 networks that have a gateway: the UI offers "match this
 // computer's network" from them when the printer sits on another subnet.
 Json localAdapters() {
@@ -155,55 +308,6 @@ bool answersPing(const std::string &text) {
   IcmpCloseHandle(icmp);
   return answered;
 }
-class Sdk {
-  HMODULE module = nullptr;
-
-public:
-  using Search = int(__cdecl *)(int, MsvcFunction *);
-  using Set = int(__cdecl *)(unsigned char *, unsigned char *, unsigned char *,
-                             unsigned char *, unsigned char);
-  Search search = nullptr;
-  Set set = nullptr;
-  Sdk() {
-    std::wstring exe(32768, L'\0');
-    const auto count =
-        GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
-    require(count > 0 && count < exe.size(), "SDK yolu alınmadı");
-    exe.resize(count);
-    const auto file =
-        std::filesystem::path(exe).parent_path() / L"printer.sdk.dll";
-    module = LoadLibraryExW(file.c_str(), nullptr,
-                            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
-                                LOAD_LIBRARY_SEARCH_SYSTEM32);
-    require(module != nullptr,
-            "Xprinter SDK tapılmadı. Quraşdırıcını yenidən quraşdırın.");
-    search =
-        reinterpret_cast<Search>(GetProcAddress(module, "SearchEscNetDevice"));
-    set = reinterpret_cast<Set>(GetProcAddress(module, "SetEscNetInfo"));
-    if (!search || !set) {
-      FreeLibrary(module);
-      module = nullptr;
-      throw PosError("E_VALIDATION", "Xprinter SDK versiyası uyğun deyil");
-    }
-  }
-  ~Sdk() {
-    if (module)
-      FreeLibrary(module);
-  }
-  Json scan() {
-    {
-      std::lock_guard lock(resultMutex);
-      found = Json::array();
-    }
-    MsvcFunction callback;
-    const int rc = search(3, &callback);
-    require(rc == 0, "Xprinter axtarışı alınmadı. Şəbəkə və firewall icazəsini "
-                     "yoxlayın. Kod: " +
-                         std::to_string(rc));
-    std::lock_guard lock(resultMutex);
-    return found;
-  }
-};
 #endif
 } // namespace
 Json validateXprinterNetwork(const Json &input) {
@@ -232,51 +336,36 @@ Json validateXprinterNetwork(const Json &input) {
               {"mask", input.at("mask")},
               {"gateway", input.at("gateway")}};
 }
-bool xprinterSdkAvailable() {
-#ifdef _WIN32
-  Sdk sdk; return true;
-#else
-  return false;
-#endif
-}
 Json scanXprinterNetwork() {
-#ifdef _WIN32
   std::lock_guard lock(operationMutex);
-  Sdk sdk;
-  return Json{{"devices", sdk.scan()}, {"adapters", localAdapters()}};
+#ifdef _WIN32
+  return Json{{"devices", discover()}, {"adapters", localAdapters()}};
 #else
-  throw PosError("E_VALIDATION",
-                 "Xprinter şəbəkə sazlaması Windows-da işləyir");
+  return Json{{"devices", discover()}, {"adapters", Json::array()}};
 #endif
 }
 Json configureXprinterNetwork(const Json &input) {
   const auto checked = validateXprinterNetwork(input);
   require(getOr<bool>(input, "confirmed", false),
           "Şəbəkə dəyişikliyini təsdiqləyin");
-#ifdef _WIN32
   std::lock_guard lock(operationMutex);
-  Sdk sdk;
-  const auto devices = sdk.scan();
   bool present = false;
-  for (const auto &d : devices)
+  for (const auto &d : discover())
     if (d["mac"] == checked["mac"] && d["ip"] == checked["oldIp"])
       present = true;
   require(present, "Printer dəyişib və ya tapılmadı. Yenidən axtarın.");
+#ifdef _WIN32
   require(checked["ip"] == checked["oldIp"] || !answersPing(checked["ip"]),
           "Bu IP artıq şəbəkədə başqa cihazdadır. Başqa IP seçin.");
-  auto mac = macBytes(checked["mac"].get<std::string>());
-  auto ip = ipv4(checked["ip"]), mask = ipv4(checked["mask"]),
-       gateway = ipv4(checked["gateway"]);
-  const auto rc =
-      sdk.set(mac.data(), ip.data(), mask.data(), gateway.data(), 0);
-  require(rc == 0, "Xprinter əmri göndərilmədi. Kod: " + std::to_string(rc));
+#endif
+  sendSave(checked);
   // The printer restarts its network stack after the change; a real Ethernet
   // Xprinter on 2026-10-30 reported the new settings only after the first 2 s read-back.
   bool verified = false;
   for (int attempt = 0; attempt < 5 && !verified; ++attempt) {
     std::this_thread::sleep_for(std::chrono::seconds(2));
     try {
-      for (const auto &d : sdk.scan())
+      for (const auto &d : discover())
         if (d["mac"] == checked["mac"] && d["ip"] == checked["ip"] &&
             d["mask"] == checked["mask"] && d["gateway"] == checked["gateway"] &&
             !d.value("dhcp", true))
@@ -285,9 +374,5 @@ Json configureXprinterNetwork(const Json &input) {
     }
   }
   return Json{{"sent", true}, {"verified", verified}, {"settings", checked}};
-#else
-  throw PosError("E_VALIDATION",
-                 "Xprinter şəbəkə sazlaması Windows-da işləyir");
-#endif
 }
 } // namespace market::printing
