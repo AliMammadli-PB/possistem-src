@@ -15,6 +15,14 @@ const { createLabelService } = require('./label-printer.cjs');
 const { CorePrinterProvider } = require('./hardware/printer');
 const { MockFiscalProvider } = require('./hardware/fiscal');
 const { ManualTerminalProvider, MockTerminalProvider } = require('./hardware/terminal');
+const { execFile } = require('node:child_process');
+
+const XPRINTER_RULE = 'MarketPos Xprinter';
+/** Whether Windows Firewall lets the printer's search reply (UDP 9600) in; elsewhere nothing blocks it. */
+function xprinterRule() {
+  if (process.platform !== 'win32') return Promise.resolve(true);
+  return new Promise((done) => execFile('netsh.exe', ['advfirewall', 'firewall', 'show', 'rule', `name=${XPRINTER_RULE}`], { windowsHide: true }, (error) => done(!error)));
+}
 
 /** Registers the hardware channels and returns the printer provider main uses elsewhere. */
 function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requireSession, requireCorePermission, verifyManagerPin, opsEngine, staffName, currentSunmiActor }) {
@@ -91,13 +99,26 @@ function registerHardwareIpc({ ipcMain, app, coreSupervisor, assertTrusted, requ
   ipcMain.handle('market:printer:xprinterDiscover', async (event, input) => {
     assertTrusted(event);
     const user = requireSession(input?.sessionToken, ['manager']);
-    return coreSupervisor.invoke('printer.xprinterDiscover', { role: user.role, actorId: user.id }, 20000);
+    const result = await coreSupervisor.invoke('printer.xprinterDiscover', { role: user.role, actorId: user.id }, 30000);
+    // Nothing found: say whether Windows Firewall lacks the rule for the printer's reply.
+    if (result?.success && result.data && !(result.data.devices || []).length) result.data.firewall = await xprinterRule();
+    return result;
+  });
+  // The installer adds this rule; a portable copy or a removed rule gets it here through UAC.
+  ipcMain.handle('market:printer:xprinterFirewall', async (event, input) => {
+    assertTrusted(event);
+    requireSession(input?.sessionToken, ['manager']);
+    if (await xprinterRule()) return { granted: true };
+    const args = `advfirewall firewall add rule name="${XPRINTER_RULE}" dir=in action=allow protocol=UDP localport=9600 profile=any program="${coreSupervisor.resolveCorePath()}"`.replace(/'/g, "''");
+    await new Promise((done) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Start-Process -FilePath netsh.exe -ArgumentList '${args}' -Verb RunAs -Wait -WindowStyle Hidden`], { windowsHide: true }, () => done()));
+    if (!(await xprinterRule())) throw new Error('İcazə verilmədi. Windows-un Administrator sualına “Bəli” deyin.');
+    return { granted: true };
   });
   ipcMain.handle('market:printer:xprinterConfigure', async (event, input) => {
     assertTrusted(event);
     const user = requireSession(input?.sessionToken, ['manager']);
     const { mac, oldIp, ip, mask, gateway, confirmed } = input || {};
-    return coreSupervisor.invoke('printer.xprinterConfigure', { role: user.role, actorId: user.id, mac, oldIp, ip, mask, gateway, confirmed: confirmed === true }, 45000);
+    return coreSupervisor.invoke('printer.xprinterConfigure', { role: user.role, actorId: user.id, mac, oldIp, ip, mask, gateway, confirmed: confirmed === true }, 60000);
   });
   ipcMain.handle('market:printer:test', async (event, input) => {
     assertTrusted(event); requireSession(input?.sessionToken, ['manager']);

@@ -128,6 +128,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-1920.mjs',
   'apply-restaurant-1921.mjs',
   'apply-restaurant-backup-usb.mjs',
+  'apply-restaurant-xprinter-access.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');

@@ -1084,3 +1084,4 @@ button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .mp-support-line:only-child,.mp-support-line span:only-child{font-size:15px;color:#fff}
 .backup-list{display:grid;gap:8px;margin:14px 0 0;padding:0;list-style:none}.backup-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:#f8fafc}.backup-list button{min-height:44px;padding:8px 16px;border:1px solid var(--line);border-radius:10px;background:#fff;font-weight:700}
 .settings-error{margin:10px 0 0;color:#b42318;font-weight:650}
+.xprinter-match{margin-top:12px;padding:12px 14px;border:1px solid #f0c36b;border-radius:11px;background:#fff8e6;color:#5c4100}.xprinter-match p{margin:0 0 10px}.xprinter-match button{min-height:44px;padding:8px 16px;border:1px solid #e2b04d;border-radius:10px;background:#fff;font-weight:700;display:inline-flex;gap:8px;align-items:center}

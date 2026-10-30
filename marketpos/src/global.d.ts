@@ -91,7 +91,8 @@ declare global {
           probed: Array<{ target: string; displayName: string; ok: boolean; error: string }>;
         }>;
         setTarget(sessionToken: string, target: string): Promise<{ ok: boolean; current: string }>;
-        xprinterDiscover?(sessionToken: string): Promise<PosResult<{ devices: Array<{ mac: string; ip: string; mask: string; gateway: string; dhcp: boolean }> }>>;
+        xprinterDiscover?(sessionToken: string): Promise<PosResult<{ devices: Array<{ mac: string; ip: string; mask: string; gateway: string; dhcp: boolean }>; adapters?: Array<{ ip: string; mask: string; gateway: string }>; firewall?: boolean }>>;
+        xprinterFirewall?(sessionToken: string): Promise<{ granted: boolean }>;
         xprinterConfigure?(sessionToken: string, settings: { mac: string; oldIp: string; ip: string; mask: string; gateway: string; confirmed: boolean }): Promise<PosResult<{ sent: boolean; verified: boolean }>>;
       };
       drawer?: { open(sessionToken: string, options?: { reason?: string; managerPin?: string }): Promise<unknown> };

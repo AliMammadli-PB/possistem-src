@@ -179,6 +179,9 @@
     "market:printer:xprinterDiscover": {
       "auth": "roles:manager"
     },
+    "market:printer:xprinterFirewall": {
+      "auth": "roles:manager"
+    },
     "market:printer:station": {
       "auth": "session"
     },

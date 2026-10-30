@@ -11,6 +11,10 @@
 #define NOMINMAX
 #include <filesystem>
 #include <windows.h>
+#include <iphlpapi.h>
+#include <icmpapi.h>
+#include <cstring>
+#include <vector>
 #endif
 namespace pos::printing {
 namespace {
@@ -104,6 +108,45 @@ struct alignas(16) MsvcFunction {
     words[7] = &words[0];
   }
 };
+// This PC's IPv4 networks that have a gateway: the UI offers "match this
+// computer's network" from them when the printer sits on another subnet.
+Json localAdapters() {
+  Json out = Json::array();
+  ULONG size = 0;
+  if (GetAdaptersInfo(nullptr, &size) != ERROR_BUFFER_OVERFLOW)
+    return out;
+  std::vector<unsigned char> buffer(size);
+  auto *info = reinterpret_cast<IP_ADAPTER_INFO *>(buffer.data());
+  if (GetAdaptersInfo(info, &size) != NO_ERROR)
+    return out;
+  for (auto *a = info; a; a = a->Next) {
+    const std::string ip = a->IpAddressList.IpAddress.String,
+                      mask = a->IpAddressList.IpMask.String,
+                      gateway = a->GatewayList.IpAddress.String;
+    if (ip.empty() || ip == "0.0.0.0" || gateway.empty() || gateway == "0.0.0.0")
+      continue;
+    out.push_back(Json{{"ip", ip}, {"mask", mask}, {"gateway", gateway}});
+  }
+  return out;
+}
+// A device already answering on the new address would collide with the printer.
+bool answersPing(const std::string &text) {
+  const auto address = ipv4(text);
+  HANDLE icmp = IcmpCreateFile();
+  if (icmp == INVALID_HANDLE_VALUE)
+    return false;
+  IPAddr destination;
+  std::memcpy(&destination, address.data(), 4);
+  char data[8] = {};
+  std::vector<unsigned char> reply(sizeof(ICMP_ECHO_REPLY) + sizeof(data) + 8);
+  bool answered = false;
+  for (int attempt = 0; attempt < 2 && !answered; ++attempt)
+    answered = IcmpSendEcho(icmp, destination, data, sizeof(data), nullptr, reply.data(),
+                            static_cast<DWORD>(reply.size()), 700) > 0 &&
+               reinterpret_cast<ICMP_ECHO_REPLY *>(reply.data())->Status == IP_SUCCESS;
+  IcmpCloseHandle(icmp);
+  return answered;
+}
 class Sdk {
   HMODULE module = nullptr;
 
@@ -192,7 +235,7 @@ Json scanXprinterNetwork() {
 #ifdef _WIN32
   std::lock_guard lock(operationMutex);
   Sdk sdk;
-  return Json{{"devices", sdk.scan()}};
+  return Json{{"devices", sdk.scan()}, {"adapters", localAdapters()}};
 #else
   throw PosError("E_VALIDATION",
                  "Xprinter şəbəkə sazlaması Windows-da işləyir");
@@ -211,6 +254,8 @@ Json configureXprinterNetwork(const Json &input) {
     if (d["mac"] == checked["mac"] && d["ip"] == checked["oldIp"])
       present = true;
   require(present, "Printer dəyişib və ya tapılmadı. Yenidən axtarın.");
+  require(checked["ip"] == checked["oldIp"] || !answersPing(checked["ip"]),
+          "Bu IP artıq şəbəkədə başqa cihazdadır. Başqa IP seçin.");
   auto mac = macBytes(checked["mac"].get<std::string>());
   auto ip = ipv4(checked["ip"]), mask = ipv4(checked["mask"]),
        gateway = ipv4(checked["gateway"]);
