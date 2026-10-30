@@ -12,6 +12,7 @@
 #include "pos/handlers/Handlers.hpp"
 #include "pos/payments/TerminalAdapter.hpp"
 #include "pos/printing/ReceiptBuilder.hpp"
+#include "pos/printing/PrinterAssignments.hpp"
 #include "pos/protocol_generated.hpp"
 #include "pos/services/BusinessDayService.hpp"
 #include "pos/services/CashService.hpp"
@@ -362,7 +363,28 @@ void registerSystem(const ContextPtr& ctx) {
                 value = raw.is_string() ? raw.get<std::string>() : serialize(raw);
             }
 
+            // Validate before writing, then commit station labels and physical
+            // role destinations together. An interrupted save cannot leave half
+            // the configuration behind or erase another printer's role.
+            std::optional<printing::PrinterAssignments> assignments;
+            bool legacyStations=false;
+            if(key=="kitchen.stations") {
+                Json input;try{input=Json::parse(value);}catch(...){require(false,"Printer siyahısı düzgün JSON deyil");}
+                assignments=printing::printerAssignments(input);
+                // Old menu editors write station/dish mappings without role
+                // metadata. They must not erase a separately assigned till.
+                for(const auto& row:input)if(!row.contains("roles"))legacyStations=true;
+                value=legacyStations?input.dump():assignments->stations.dump();
+            }
             db::Transaction txn(ctx->db());
+            if(assignments){
+                writeSetting(*ctx,"printer.routingNotice","");
+                for(const auto role:{"receipt","kitchen","warehouse"}){
+                    const auto it=assignments->roles.find(role);
+                    if(legacyStations&&it==assignments->roles.end())continue;
+                    writeSetting(*ctx,("printer."+std::string(role)).c_str(),it==assignments->roles.end()?"auto":it->second);
+                }
+            }
 
             auto previous = ctx->db().prepare("SELECT value FROM app_settings WHERE key = :key");
             previous.bind(":key", key);

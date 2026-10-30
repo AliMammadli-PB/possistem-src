@@ -1,6 +1,6 @@
 appId: com.cyberplus.maisonaurelia.pos
 productName: possistem
-buildVersion: 1.9.23
+buildVersion: 1.9.24
 executableName: possistem
 copyright: Copyright © 2026 Ali Mammadli / possistem
 electronVersion: 43.8.3

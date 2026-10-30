@@ -157,6 +157,10 @@ export async function registerWarehousePortal(app:FastifyInstance,deps=warehouse
    // Broad warehouse/restaurant grants are retained; narrower area grants remain independent.
    const permitted=(suffix='')=>grants===null||['anbar','restoran',...areas].some(a=>areaAllowed(grants,a+suffix));
    if(!(kind==='r'&&(['__session','settings.getAll','warehouses.list','categories.list','roles.list'].includes(c.method)||c.method==='business.call'&&c.payload?.action==='context')?readable(grants):permitted())||kind==='w'&&!permitted('.write'))return deny(403,{error:kind==='w'?'Dəyişiklik etməyə icazəniz yoxdur (yalnız baxmaq)':'Bu bölməyə icazəniz yoxdur'});
+   if(kind==='w'&&c.method.startsWith('catalog.')&&target.product!=='market'){
+    const v=String(target.app_version||'0.0.0').split('.').map(Number);
+    if(!((v[0]||0)>1||v[0]===1&&((v[1]||0)>9||v[1]===9&&(v[2]||0)>=24)))return deny(409,{error:'Menyu redaktəsi üçün kassada Restoran POS 1.9.24 və ya daha yeni versiyanı quraşdırın.',code:'CATALOG_UPDATE_REQUIRED'});
+   }
    if(c.method==='business.call'&&c.payload?.action==='transfer.save'){
     const destination=c.payload.toDeviceId;
     if(destination&&(!devices.some(d=>d.id===destination&&d.product==='market'&&inventoryEnabled(d.license_features))||target.product!=='market'))return deny(403,{error:'Qəbul edən filial bu sahibkara bağlı deyil'});

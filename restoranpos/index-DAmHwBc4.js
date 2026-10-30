@@ -1,3 +1,19 @@
+function PsSizeVariants({rows,onChange,price,disabled}) {
+ const h=psH,{lang}=useI18n(),L=(a,t,e)=>psBizText(lang,a,t,e);
+ const update=(i,key,value)=>onChange(rows.map((row,n)=>n===i?{...row,[key]:value}:row));
+ return h('fieldset',{className:'ps-size-variants',disabled},h('legend',null,L('Ölçü variantları','Boyut seçenekleri','Size variants')),
+ h('label',{className:'ps-size-toggle'},h('input',{type:'checkbox',checked:rows.length>0,onChange:e=>onChange(e.target.checked?[{size:'28',price:price||''},{size:'30',price:price||''},{size:'32',price:price||''}]:[])}),L('Müxtəlif ölçülər əlavə et','Farklı boyutlar ekle','Add different sizes')),
+ rows.length?h('div',{},h('p',null,L('Ölçünü özünüz yazın. Hər ölçü ayrıca məhsul, qiymət və kalkulyasiya ilə saxlanılır.','Boyutu kendiniz yazın. Her boyut ayrı ürün, fiyat ve reçeteyle kaydedilir.','Enter any size. Each size has its own product, price and recipe.')),
+ ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü (sm)','Boyut (cm)','Size (cm)'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
+ h('button',{type:'button',disabled:rows.length>=24,onClick:()=>onChange([...rows,{size:'',price:price||''}])},L('+ Ölçü əlavə et','+ Boyut ekle','+ Add size'))):null);
+}
+
+
+
+
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14914,7 +14930,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.23 · f320a5e";
+const _PS_BUILD = "1.9.24 · 923bd17";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -16429,6 +16445,9 @@ function PsMenuCatalog() {
   const [modifierGroups, setModifierGroups] = reactExports.useState([]);
   const [loading, setLoading] = reactExports.useState(true);
   const [saving, setSaving] = reactExports.useState(false);
+  /* POSSISTEM_SIZES_1924 */
+  const [sizeVariants,setSizeVariants]=reactExports.useState([]);
+  const saveAttempt=reactExports.useRef(null);
   const [editId, setEditId] = reactExports.useState(null);
   const [nameAz, setNameAz] = reactExports.useState("");
   const [nameTr, setNameTr] = reactExports.useState("");
@@ -16543,6 +16562,7 @@ function PsMenuCatalog() {
     await loadProducts(categoryId);
   };
   const startEdit = async (product) => {
+    setSizeVariants([]);saveAttempt.current=null;
     setEditorOpen(true);
     setEditId(product.id);
     setNameAz(product.nameAz || "");
@@ -16569,6 +16589,7 @@ function PsMenuCatalog() {
     }
   };
   const startCreate = () => {
+    setSizeVariants([]);saveAttempt.current=null;
     setEditorOpen(true);
     setEditId(null);
     setNameAz("");
@@ -16770,7 +16791,7 @@ function PsMenuCatalog() {
       toast(t.catalog.nameRequired, "danger");
       return;
     }
-    if (priceMinor == null || priceMinor < 0 || published && priceMinor <= 0) {
+    if (!sizeVariants.length && (priceMinor == null || priceMinor < 0 || published && priceMinor <= 0)) {
       toast(t.catalog.priceRequired, "danger");
       return;
     }
@@ -16778,7 +16799,10 @@ function PsMenuCatalog() {
       toast(t.catalog.categoryRequired, "danger");
       return;
     }
+    const sizes=sizeVariants.map(row=>({sizeCm:Number(String(row.size).trim().replace(",",".")),priceMinor:parseMoneyInput(String(row.price))}));
+    if(sizes.some(row=>!Number.isFinite(row.sizeCm)||row.sizeCm<=0||row.sizeCm>300||row.priceMinor==null||row.priceMinor<0||(published&&row.priceMinor<=0))||new Set(sizes.map(row=>Math.round(row.sizeCm*100))).size!==sizes.length){toast("Ölçüləri və qiymətləri düzgün yazın. Ölçülər təkrarlanmamalıdır.","danger");return;}
     setSaving(true);
+    try{
     const payload = {
       nameAz: nameAz.trim(),
       nameTr: nameTr.trim() || nameAz.trim(),
@@ -16794,8 +16818,10 @@ function PsMenuCatalog() {
       sortOrder: productSortOrder || Math.max(0, ...products2.map((product) => product.sortOrder ?? 0)) + 1
     };
     if (editId) payload.id = editId;
+    if(sizes.length)payload.sizeVariants=sizes;
+    const fingerprint=JSON.stringify(payload);if(saveAttempt.current?.fingerprint!==fingerprint)saveAttempt.current={fingerprint,key:newIdempotencyKey()};
     const res = await window.pos.catalogAdmin.upsertProduct(payload, {
-      idempotencyKey: newIdempotencyKey()
+      idempotencyKey: saveAttempt.current.key
     });
     if (!res.success) {
       setSaving(false);
@@ -16803,19 +16829,12 @@ function PsMenuCatalog() {
       return;
     }
     const productId = editId || (typeof res.data === "object" && res.data && "id" in res.data ? String(res.data.id) : "");
+    window.dispatchEvent(new Event("possistem-catalog-changed"));
     /* POS_RECIPE_V2 */
-    if (!editId && productId) {
-      // It shows up in Anbar straight away and is taken out 1:1 when sold,
-      // until a real recipe is written for it in Kalkulyasiya.
-      try {
-        const ing = await window.pos.inventory.saveIngredient({ name: nameAz.trim(), unit: "ədəd", costMinor: 0, minQtyMilli: 0, sku: "MENU-" + productId });
-        const ingId = ing.success ? (ing.data?.id || ing.data?.ingredient?.id) : null;
-        if (ingId) await window.pos.inventory.saveRecipe(productId, [{ ingredientId: ingId, qtyMilli: 1000 }]);
-      } catch {}
-    }
-    if (productId) {
+    /* Stock card is committed with the catalog product. */
+    for (const variantId of (res.data?.variants?.map(row=>row.id) || (productId?[productId]:[]))) {
       const link = await window.pos.catalogAdmin.setProductModifierGroups(
-        productId,
+        variantId,
         productGroupIds,
         { idempotencyKey: newIdempotencyKey() }
       );
@@ -16829,7 +16848,9 @@ function PsMenuCatalog() {
     toast(t.common.save, "success");
     setEditorOpen(false);
     setEditId(null);
+    saveAttempt.current=null;
     await loadProducts(categoryId);
+    }catch(error){toast(error.message||String(error),"danger");}finally{setSaving(false);}
   };
   const [showGallery, setShowGallery] = reactExports.useState(false);
   reactExports.useEffect(() => { if (!editorOpen) setShowGallery(false); }, [editorOpen]);
@@ -17143,6 +17164,7 @@ function PsMenuCatalog() {
             ] }),
             modifierGroups.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: modifierGroups.map((group) => /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => toggleProductGroup(group.id), className: "touch-target rounded-xl border border-hairline px-3 py-2 text-xs", children: localizedName(group, lang) }, group.id)) }) : null
           ] }) : null,
+          !editId ? jsxRuntimeExports.jsx(PsSizeVariants,{rows:sizeVariants,onChange:setSizeVariants,price:priceRaw,disabled:saving}) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void saveProduct(), className: "ps-catalog-new-btn w-full", children: t.common.save })
         ] })
       ] })
@@ -23307,6 +23329,7 @@ function OpsStock() {
   }, [warehouseId]);
 
   reactExports.useEffect(() => { void reload(); return () => { ++requestSeq.current; }; }, [reload]);
+  usePsCatalogRefresh(reload);
   const [busy, run] = useOpsAction(reload);
 
   // Four states, because "low" alone cannot tell an owner whether to order now
@@ -26947,6 +26970,7 @@ function OpsGoods() {
     if (r.success) setData(r.data); else toast(r.error.message, "danger");
   }, [needle, categoryId, objectId, warehouseId]);
   reactExports.useEffect(() => { void reload(); }, [reload]);
+  usePsCatalogRefresh(reload);
   const [busy, run] = useOpsAction(reload);
   if (!data || !cats) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
   const goods = data.goods ?? [];
@@ -27415,6 +27439,7 @@ function OperationsPage() {
   useAuthStore((s) => s.session);
   const[, _psAccessTick]=reactExports.useState(0);reactExports.useEffect(()=>{const fn=()=>_psAccessTick(n=>n+1);window.addEventListener("ps:access",fn);return()=>window.removeEventListener("ps:access",fn);},[]);
   const _psTabs = [
+    {id: "menuCatalog", label:"Restoran menyusu", show:Boolean(window.__psCloudBranchMode)&&(hasPermission("catalog.manage")||hasPermission("inventory.view")),render:()=>jsxRuntimeExports.jsx("div",{className:"ps-catalog-embedded",children:jsxRuntimeExports.jsx(PsMenuCatalog,{})})},
     { id: "sales", label: "Satışlar", show: hasPermission("sales.view") && _psArea("/operations?tab=sales"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsSales, {}) },
     { id: "stock", label: "Anbar", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsStock, {}) },
     { id: "goods", label: "Mallar", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => jsxRuntimeExports.jsx(OpsGoods, {}) },
@@ -29016,16 +29041,23 @@ function SettingsPage() {
 }
 /* POS_KITCHEN_STATIONS_v4 */
 /** Kitchen printers a dish can be sent to besides the main kitchen (kitchen.stations). */
-function psExtraKitchenPrinters(list) {
-  return (Array.isArray(list) ? list : []).filter((s) => psPrinterKind(s) === "kitchen" && !psIsMainKitchen(s));
-}
-function psPrinterKind(s) {
-  if (s.kind) return s.kind;
-  const roles = s.roles || [];
-  return roles.includes("receipt") ? "receipt" : roles.includes("warehouse") ? "warehouse" : "kitchen";
-}
-function psIsMainKitchen(s) { return s.main === true || (s.roles || []).includes("kitchen"); }
+function psExtraKitchenPrinters(list){return (Array.isArray(list)?list:[]).filter(row=>psPrinterKind(row)==="kitchen"&&!psIsMainKitchen(row));}
+function psPrinterKind(row){return row?.kind==="kitchen"||psPrinterRoles(row).includes("kitchen")?"kitchen":psPrinterRoles(row).includes("receipt")?"receipt":psPrinterRoles(row).includes("warehouse")?"warehouse":row?.kind||"kitchen";}
+function psIsMainKitchen(row){return psPrinterRoles(row).includes("kitchen");}
 
+function psPrinterRoles(row){if(Array.isArray(row?.roles))return row.roles.filter(r=>["receipt","kitchen","warehouse"].includes(r));const kind=row?.kind;return kind==="receipt"||kind==="warehouse"?[kind]:kind==="kitchen"&&row.main?["kitchen"]:[];}
+function psReconcilePrinterRoles(raw,current,names={receipt:"Kassa",kitchen:"Mətbəx",warehouse:"Anbar"}) {
+  const saved=raw.map(row=>({...row,roles:psPrinterRoles(row)}));
+  for(const role of ["receipt","kitchen","warehouse"]){
+    const target=current[role];let row=saved.find(s=>s.roles.includes(role)&&s.printer===target)||saved.find(s=>s.printer===target);
+    for(const item of saved)item.roles=item.roles.filter(r=>r!==role);
+    if(!target||target==="auto"||/^virtual\b/i.test(target))continue;
+    if(!row){let id="st-"+role;while(saved.some(s=>s.id===id))id+="-role";row={id,name:names[role],printer:target,kind:role,roles:[],itemIds:[],categoryIds:[]};saved.push(row);}
+    row.roles.push(role);if(role==="kitchen")row.kind="kitchen";
+  }
+  for(const row of saved)row.main=row.roles.includes("kitchen");
+  return saved;
+}
 function PsKitchenStations() {
   const L = psAdminText;
   /* POS_FOCUS_FIX_v1 */
@@ -29042,8 +29074,9 @@ function PsKitchenStations() {
     ["receipt", L("Kassa", "Kasa", "Till")],
     ["warehouse", L("Anbar", "Depo", "Warehouse")],
   ];
-  const ROLE_OF = { receipt: "receipt", warehouse: "warehouse" };
+
   const [stations, setStations] = reactExports.useState([]);
+  const [loaded,setLoaded]=reactExports.useState(false);
   // The printer being set up: { id, name, printer, kind, main, itemIds, categoryIds, step: "name" | "search" | "kind" }.
   const [draft, setDraft] = reactExports.useState(null);
   const [list, setList] = reactExports.useState([]);
@@ -29056,40 +29089,24 @@ function PsKitchenStations() {
   const [found, setFound] = reactExports.useState(null);
 
   reactExports.useEffect(() => {
-    let off = false;
-    void (async () => {
-      const all = await window.pos.settings.getAll();
-      let saved = [];
-      if (all.success) {
-        try { const v = JSON.parse(all.data.settings["kitchen.stations"] || "[]"); saved = Array.isArray(v) ? v : []; } catch { saved = []; }
-      }
-      const current = await window.pos.print.printers().catch(() => null);
-      if (off) return;
-      // Printers set up before this screen keep showing, under their role.
-      if (current?.success) {
-        const names = { receipt: L("Kassa", "Kasa", "Till"), kitchen: L("Mətbəx", "Mutfak", "Kitchen"), warehouse: L("Anbar", "Depo", "Warehouse") };
-        for (const role of ["receipt", "kitchen", "warehouse"]) {
-          const target = current.data[role];
-          if (!target || target === "auto" || /^virtual\b/i.test(target)) continue;
-          if (saved.some((s) => (role === "kitchen" ? psPrinterKind(s) === "kitchen" && psIsMainKitchen(s) : psPrinterKind(s) === role))) continue;
-          saved.push({ id: "st-" + role, name: names[role], printer: target, kind: role, main: role === "kitchen", roles: [role], itemIds: [], categoryIds: [] });
-        }
-      }
-      setStations(saved);
-      if (saved.length === 0) startNew();
-    })();
-    return () => { off = true; };
+    let off=false;
+    void(async()=>{try{
+      const all=await window.pos.settings.getAll();if(!all.success)throw Error(all.error?.message||"Printerlər alınmadı");
+      const raw=JSON.parse(all.data.settings["kitchen.stations"]||"[]");if(!Array.isArray(raw))throw Error("Printer siyahısı oxunmadı");
+      const current=await window.pos.print.printers();if(!current.success)throw Error(current.error?.message||"Printer təyinatları alınmadı");
+      const saved=psReconcilePrinterRoles(raw,current.data,{receipt:L("Kassa","Kasa","Till"),kitchen:L("Mətbəx","Mutfak","Kitchen"),warehouse:L("Anbar","Depo","Warehouse")});
+      if(off)return;setStations(saved);setLoaded(true);if(all.data.settings["printer.routingNotice"])setNote(all.data.settings["printer.routingNotice"]);if(!saved.length)startNew();
+    }catch(error){if(!off)setNote(error.message||String(error));}})();
+    return()=>{off=true;};
   }, []);
 
   const resetSearch = () => { setList([]); setAt(-1); setPrinted(false); setManual(false); setAddress(""); setNote(""); setFound(null); };
-  const startNew = () => { resetSearch(); setDraft({ id: "st-" + Date.now().toString(36), name: "", printer: "", kind: "", main: false, itemIds: [], categoryIds: [], step: "name" }); };
+  const startNew = () => { resetSearch(); setDraft({ id: "st-" + Date.now().toString(36), name: "", printer: "", kind: "", roles: [], kitchenEnabled:false, main: false, itemIds: [], categoryIds: [], step: "name" }); };
   const label = () => (draft?.name || "").trim();
 
   const persist = async (next) => {
-    setBusy(true);
     const res = await window.pos.settings.set("kitchen.stations", JSON.stringify(next));
-    setBusy(false);
-    if (!res.success) { toast(res.error.message, "danger"); return false; }
+    if (!res.success) { setNote(res.error.message);toast(res.error.message, "danger"); return false; }
     setStations(next);
     return true;
   };
@@ -29123,8 +29140,7 @@ function PsKitchenStations() {
     catch (error) { setBusy(false); setNote(error.message || String(error)); setFound([]); return; }
     setBusy(false);
     if (!res.success) { setNote(res.error?.message || ""); setFound([]); return; }
-    const used = new Set(stations.filter((s) => s.id !== draft.id).map((s) => s.printer));
-    const all = (res.data?.candidates ?? []).filter((p) => p.connection !== "virtual" && !used.has(p.name));
+    const all = (res.data?.candidates ?? []).filter((p) => p.connection !== "virtual");
     const candidates = only ? all.filter((p) => (only === "network" ? p.connection === "network" : p.connection !== "network")) : all;
     setList(candidates); setFound(candidates);
     if (candidates.length === 0) {
@@ -29138,40 +29154,34 @@ function PsKitchenStations() {
   };
   const keep = (target) => { setDraft((d) => ({ ...d, printer: target, step: "kind" })); setNote(""); };
   const save = async () => {
-    const kind = draft.kind;
-    if (!kind) { toast(L("Printerin haraya aid olduğunu seçin", "Yazıcının nereye ait olduğunu seçin", "Choose where the printer belongs"), "danger"); return; }
-    // The first kitchen printer is the main kitchen; later ones (Kababçı) get dishes in the dish editor.
-    const mainTaken = stations.some((s) => s.id !== draft.id && psPrinterKind(s) === "kitchen" && psIsMainKitchen(s));
-    const main = kind === "kitchen" && (draft.main || !mainTaken);
-    const role = kind === "kitchen" ? (main ? "kitchen" : "") : ROLE_OF[kind];
-    if (role) {
-      const res = await window.pos.print.setPrinter(role, draft.printer);
-      if (!res.success) { toast(res.error.message, "danger"); return; }
-    }
-    // A till role moved here leaves the printer that had it.
-    const others = stations.filter((s) => s.id !== draft.id).map((s) => ({ ...s, roles: (s.roles || []).filter((r) => r !== role) }));
-    const row = { id: draft.id, name: label(), printer: draft.printer, kind, main, roles: role ? [role] : [],
-      itemIds: kind === "kitchen" && !main ? draft.itemIds || [] : [], categoryIds: kind === "kitchen" && !main ? draft.categoryIds || [] : [] };
-    const next = others.some((s) => s.id === row.id) ? others.map((s) => (s.id === row.id ? row : s)) : [...others, row];
-    if (!(await persist(next))) return;
-    toast(row.name + L(" printeri yadda saxlanıldı", " yazıcısı kaydedildi", " printer saved"), "success");
-    startNew();
+    if(!label()||!draft.printer){toast(L("Printerin adını və ünvanını seçin","Yazıcının adını ve adresini seçin","Choose a printer name and address"),"danger");return;}
+    const roles=psPrinterRoles(draft).filter(r=>r!=="kitchen");if(draft.kitchenEnabled&&draft.main)roles.push("kitchen");
+    if(!roles.length&&!draft.kitchenEnabled){toast(L("Ən azı bir çap işi seçin","En az bir görev seçin","Select at least one print purpose"),"danger");return;}
+    setBusy(true);setNote("");
+    try{
+      const all=await window.pos.settings.getAll();if(!all.success)throw Error(all.error?.message||"Printerlər alınmadı");
+      const latest=JSON.parse(all.data.settings["kitchen.stations"]||"[]");if(!Array.isArray(latest))throw Error("Printer siyahısı düzgün deyil");
+      const current=await window.pos.print.printers();if(!current.success)throw Error(current.error?.message||"Printer təyinatları alınmadı");
+      const base=psReconcilePrinterRoles(Object.prototype.hasOwnProperty.call(all.data.settings,"kitchen.stations")?latest:stations,current.data),existing=base.find(s=>s.id===draft.id);
+      const others=base.filter(s=>s.id!==draft.id).map(s=>{const nextRoles=psPrinterRoles(s).filter(r=>!roles.includes(r));return {...s,roles:nextRoles,main:nextRoles.includes("kitchen")};});
+      const row={id:draft.id,name:label(),printer:draft.printer,kind:draft.kitchenEnabled?"kitchen":roles.includes("receipt")?"receipt":"warehouse",main:roles.includes("kitchen"),roles,itemIds:draft.kitchenEnabled?(existing?.itemIds||draft.itemIds||[]):[],categoryIds:draft.kitchenEnabled?(existing?.categoryIds||draft.categoryIds||[]):[]};
+      if(!(await persist([...others,row])))return;
+      toast(row.name+L(" printeri və çap işləri yadda saxlanıldı"," yazıcısı ve görevleri kaydedildi"," printer and print purposes saved"),"success");setDraft(null);resetSearch();
+    }catch(error){setNote(error.message||String(error));}finally{setBusy(false);}
   };
-  const remove = async (row) => {
-    if (!(await confirmAsk(L(`"${row.name}" printeri silinsin?`, `"${row.name}" yazıcısı silinsin mi?`, `Remove "${row.name}"?`), { danger: true }))) return;
-    for (const role of row.roles || []) await window.pos.print.setPrinter(role, "auto");
-    await persist(stations.filter((s) => s.id !== row.id));
+  const remove = async row => {
+    if(!(await confirmAsk(L(`"${row.name}" printeri silinsin?`,`"${row.name}" yazıcısı silinsin mi?`,`Remove "${row.name}"?`))))return;
+    setBusy(true);try{const all=await window.pos.settings.getAll();if(!all.success)throw Error(all.error?.message||"Printerlər alınmadı");const latest=JSON.parse(all.data.settings["kitchen.stations"]||"[]");const current=await window.pos.print.printers();if(!current.success)throw Error(current.error?.message||"Printer təyinatları alınmadı");await persist(psReconcilePrinterRoles(Object.prototype.hasOwnProperty.call(all.data.settings,"kitchen.stations")?latest:stations,current.data).filter(s=>s.id!==row.id));}catch(error){setNote(error.message||String(error));}finally{setBusy(false);}
   };
-  const edit = (row) => { resetSearch(); setDraft({ ...row, kind: psPrinterKind(row), main: psIsMainKitchen(row), step: "name" }); };
-  const kindLabel = (row) => {
-    const kind = psPrinterKind(row);
-    if (kind === "kitchen") {
-      if (psIsMainKitchen(row)) return L("Mətbəx — əsas (bütün yeməklər)", "Mutfak — ana", "Kitchen — main");
-      const n = (row.itemIds || []).length;
-      return L("Mətbəx — ", "Mutfak — ", "Kitchen — ") + (n ? n + L(" yemək", " yemek", " dishes") : L("yeməkləri Menyuda seçin", "yemekleri Menüde seçin", "pick its dishes in the Menu"));
-    }
-    return (KINDS.find((k) => k[0] === kind) || [kind, kind])[1];
+  const edit = row => {resetSearch();setDraft({...row,roles:psPrinterRoles(row),kitchenEnabled:psPrinterKind(row)==="kitchen",main:psIsMainKitchen(row),step:"kind"});};
+  const kindLabel = row => {
+    const labels=[];const roles=psPrinterRoles(row);if(roles.includes("receipt"))labels.push(L("Kassa","Kasa","Till"));if(roles.includes("warehouse"))labels.push(L("Anbar","Depo","Warehouse"));
+    if(psPrinterKind(row)==="kitchen")labels.push(psIsMainKitchen(row)?L("Mətbəx — bütün yeməklər","Mutfak — tüm yemekler","Kitchen — all dishes"):L("Mətbəx — seçilmiş yeməklər","Mutfak — seçili yemekler","Kitchen — selected dishes"));return labels.join(" · ")||L("Rol seçilməyib","Görev seçilmedi","No print purpose assigned");
   };
+  const togglePurpose = id => setDraft(d=>{
+    if(id==="kitchen"){const enabled=!d.kitchenEnabled;return {...d,kitchenEnabled:enabled,main:enabled?(d.main||!stations.some(s=>s.id!==d.id&&psIsMainKitchen(s))):false};}
+    const roles=psPrinterRoles(d);return {...d,roles:roles.includes(id)?roles.filter(r=>r!==id):[...roles,id]};
+  });
 
   const primary = "touch-target rounded-xl bg-gold/25 px-4 py-2.5 text-sm font-medium text-gold hover:bg-gold/35 disabled:opacity-50";
   const quiet = "touch-target rounded-xl border border-hairline px-4 py-2 text-sm text-muted hover:text-cream disabled:opacity-40";
@@ -29199,6 +29209,7 @@ function PsKitchenStations() {
       h("button", { type: "button", disabled: busy || !name, className: "ps-printer-find-button", onClick: () => void search() },
         busy && draft.step === "search" ? L("Axtarılır…", "Aranıyor…", "Searching…") : L("Axtar", "Ara", "Search")));
 
+    const reuse=stations.length&&draft.step==="name"?h("label",{className:"block text-sm"},L("Mövcud printerdən istifadə et","Mevcut yazıcıyı kullan","Use a saved printer"),h("select",{className:field,value:"",onChange:e=>{const row=stations.find(s=>s.id===e.target.value);if(row)keep(row.printer);}},h("option",{value:""},L("Printer seçin","Yazıcı seçin","Select printer")),...stations.map(s=>h("option",{key:s.id,value:s.id},s.name+" · "+s.printer)))):null;
     const nothing = Array.isArray(found) && found.length === 0;
     const candidate = draft.step === "search" && !manual && at >= 0 && at < list.length ? list[at] : null;
     const okLabel = [L("OK — bu ", "Tamam — bu ", "OK — this is the "), name, L(" printeridir", " yazıcısı", " printer")];
@@ -29229,27 +29240,26 @@ function PsKitchenStations() {
 
     const stepKind = draft.step === "kind" ? h("div", { className: "space-y-3 border-t border-hairline pt-3" },
       h("p", { className: "ps-printer-role-status is-ready" }, name, ": ", draft.printer),
-      h("p", { className: "text-sm text-cream" }, name, L(" printeri haraya aiddir?", " yazıcısı nereye ait?", " printer belongs to?")),
-      h("div", { className: "flex flex-wrap gap-2" }, KINDS.map(([id, text]) => h("button", { key: id, type: "button", onClick: () => setDraft((d) => ({ ...d, kind: id })),
-        className: `touch-target rounded-xl px-5 py-3 text-sm ${draft.kind === id ? "bg-gold/15 text-gold" : "border border-hairline text-muted hover:text-cream"}` },
-        (draft.kind === id ? "✓ " : "") + text))),
-      draft.kind === "kitchen" && stations.some((s) => s.id !== draft.id && psPrinterKind(s) === "kitchen" && psIsMainKitchen(s)) && !draft.main
-        ? h("p", { className: "text-xs text-muted" }, L("Əsas mətbəx printeri artıq var. Bu printerdən çıxacaq yeməkləri Menyuda yemək açıb «Printer» sahəsindən seçin.", "Ana mutfak yazıcısı zaten var. Bu yazıcıdan çıkacak yemekleri Menüde yemeği açıp «Yazıcı» alanından seçin.", "There is already a main kitchen printer. Choose the dishes for this one in the Menu, in each dish's Printer field."))
-        : null,
+      h("p",{className:"text-sm text-cream"},L("Bu cihaz hansı çekləri çap etsin? Bir neçə iş seçə bilərsiniz.","Bu cihaz hangi fişleri yazdırsın? Birden fazla görev seçebilirsiniz.","Which receipts should this device print? Select more than one if needed.")),
+      h("div",{className:"flex flex-wrap gap-3"},...KINDS.map(([id,text])=>h("label",{key:id,className:"flex items-center gap-2 rounded-xl border border-hairline px-4 py-3"},h("input",{type:"checkbox",style:{width:18,height:18},checked:id==="kitchen"?!!draft.kitchenEnabled:psPrinterRoles(draft).includes(id),onChange:()=>togglePurpose(id),disabled:busy}),text))),
+      draft.kitchenEnabled?h("label",{className:"block text-sm"},L("Mətbəx çapının növü","Mutfak baskı türü","Kitchen ticket routing"),h("select",{className:field,value:draft.main?"all":"selected",onChange:e=>setDraft(d=>({...d,main:e.target.value==="all"}))},h("option",{value:"all"},L("Bütün yeməklər — əsas mətbəx","Tüm yemekler — ana mutfak","All dishes — main kitchen")),h("option",{value:"selected"},L("Seçilmiş yeməklər — dönər, bar və s.","Seçili yemekler — döner, bar vb.","Selected dishes — grill, bar, etc.")))):null,
+      draft.kitchenEnabled&&!draft.main?h("p",{className:"text-xs text-muted"},L("Menyu bölməsində yeməyi açın və Printer sahəsindən bu printeri seçin. Kassa çeki də eyni cihazdan çıxa bilər.","Menüde ürünü açıp Yazıcı alanından bu cihazı seçin. Kasa fişi de aynı cihazdan çıkabilir.","Open a dish in the Menu and choose this printer. Till receipts can use this same device.")):null,
       h("div", { className: "flex flex-wrap gap-2" },
-        h("button", { type: "button", disabled: busy || !draft.kind, className: yes, onClick: () => void save() }, L("Yadda saxla", "Kaydet", "Save")),
+        h("button", { type: "button", disabled: busy || (!draft.kitchenEnabled&&!psPrinterRoles(draft).length), className: yes, onClick: () => void save() }, L("Yadda saxla", "Kaydet", "Save")),
         h("button", { type: "button", disabled: busy, className: quiet, onClick: () => setDraft((d) => ({ ...d, step: "search" })) }, L("Geri", "Geri", "Back")))) : null;
 
     wizard = h("div", { className: "ps-printer-role is-open" },
       h("p", { className: "ps-printer-role-title" }, stations.some((s) => s.id === draft.id) ? L("Printeri dəyişdir", "Yazıcıyı değiştir", "Change printer") : L("Yeni printer", "Yeni yazıcı", "New printer")),
-      h("div", { className: "mt-3 space-y-3" }, stepName, stepSearch, stepKind),
+      h("div", { className: "mt-3 space-y-3" }, stepName, reuse, stepSearch, stepKind),
       stations.length ? h("button", { type: "button", disabled: busy, className: quiet + " mt-3", onClick: () => { setDraft(null); resetSearch(); } }, L("Bağla", "Kapat", "Close")) : null);
   }
 
+  if(!loaded)return h("section",{className:"ps-printer-section"},h("p",{role:note?"alert":"status"},note||L("Printerlər yüklənir…","Yazıcılar yükleniyor…","Loading saved printers…")),note?h("button",{className:quiet,onClick:()=>location.reload()},L("Yenidən yoxla","Yeniden dene","Try again")):null);
   return h("section", { className: "ps-printer-section space-y-4" },
     h("h2", { className: "font-display text-lg text-cream" }, L("Printerlər", "Yazıcılar", "Printers")),
     h(PsXprinterNetwork),
     h("p", { className: "text-sm text-muted" }, L("Printerin adını yazın və Axtar basın.", "Yazıcının adını yazıp Ara'ya basın.", "Type the printer's name and press Search.")),
+    note&&draft?.step!=="search"?h("p",{role:"alert",className:"text-warning"},note):null,
     h("div", { className: "ps-printer-setup space-y-2" }, saved, wizard,
       !draft ? h("button", { type: "button", className: primary, onClick: () => startNew() }, L("+ Printer əlavə et", "+ Yazıcı ekle", "+ Add printer")) : null),
     confirmDialog);
@@ -30561,3 +30571,5 @@ function _psArea(path){
 }
 
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
+
+function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}

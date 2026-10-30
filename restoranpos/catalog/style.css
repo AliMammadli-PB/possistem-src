@@ -1,0 +1,21 @@
+/* One bounded product scroller: the unified catalogue toolbar must not consume its height twice. */
+.ps-business-catalog{display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden}
+.ps-business-catalog>.ps-business-tabs{flex:none}
+.ps-business-catalog>.ps-catalog-page{height:auto!important;min-height:0!important;flex:1 1 0!important;overflow:hidden}
+.ps-catalog-page>.border-b,.ps-catalog-toolbar,.ps-catalog-bulk{flex:none}
+.ps-catalog-body{min-height:0!important;grid-template-rows:minmax(0,1fr)}
+.ps-catalog-main{min-height:0!important;overflow:hidden}
+.ps-catalog-list{min-height:0;overflow-y:auto;overscroll-behavior-y:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+.ps-catalog-embedded{height:calc(100vh - 170px);height:calc(100dvh - 170px);min-height:440px}
+.ps-size-variants{margin:12px 0;padding:14px;border:1px solid #cbdbee;border-radius:12px;color:#183556;background:#f7faff}
+.ps-size-variants legend{padding:0 6px;font-weight:700;font-size:14px}.ps-size-variants p{font-size:12px;line-height:1.5;color:#506582;margin:10px 0}
+.ps-size-toggle{display:flex;align-items:center;gap:10px;font-size:14px}.ps-size-toggle input{width:18px;height:18px;min-height:18px!important;accent-color:#175eca}
+.ps-size-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 38px;gap:10px;align-items:end;margin:12px 0}.ps-size-row label{display:grid;gap:6px;font-size:12px}.ps-size-row input{width:100%;min-width:0;border:1px solid #c4d5e9;background:white;border-radius:8px;padding:10px;box-sizing:border-box;min-height:44px;color:#183556;font-size:16px}.ps-size-variants button{min-height:44px;border:1px solid #b7cce7;border-radius:8px;padding:8px 12px;background:white;color:#1756a8;font:inherit;font-size:13px}.ps-size-row button{padding:5px;font-size:22px}.ps-size-variants button:disabled{opacity:.4}.ps-size-variants :is(input,button):focus-visible{outline:3px solid #82adf1;outline-offset:2px}
+
+@media(max-width:850px){
+.ps-business-catalog>.ps-business-tabs{flex-wrap:nowrap;overflow-x:auto;min-height:52px}.ps-business-catalog>.ps-business-tabs button{flex:0 0 auto;white-space:nowrap}
+.ps-catalog-body{display:block!important;overflow-y:auto!important;overscroll-behavior-y:contain;touch-action:pan-y}
+.ps-catalog-body>.ps-catalog-cats{max-height:190px;overflow:auto!important}
+.ps-catalog-body>.ps-catalog-main{display:block!important;overflow:visible;min-height:0!important}
+.ps-catalog-main>.ps-catalog-list{height:auto;overflow:visible;min-height:0}
+}

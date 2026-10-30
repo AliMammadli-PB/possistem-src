@@ -1,3 +1,4 @@
+import ts from 'typescript';
 // Applied to both remote products only; local operation pages keep their existing lifecycle.
 export function patchRetainedBranchPages(source){
  const start=source.indexOf('function OperationsPage()'),end=source.indexOf('/* POS_ADMIN_COMPONENTS_START */',start);
@@ -24,6 +25,8 @@ function PsBranchPages({tabs,active}){
  if(!page.includes(needle))throw Error('Remote page render needle missing');
  page=page.replace(needle,'children: jsxRuntimeExports.jsx(PsBranchPages,{tabs,active})');
  source=source.slice(0,start)+helper+page+source.slice(end);
+ // A retained menu must refresh after another tab changes a name, price or recipe.
+ source=source.replace('  const [showGallery, setShowGallery]', '  const reloadMenu=reactExports.useCallback(()=>loadProducts(categoryId),[categoryId]);usePsBranchReload(reloadMenu);\n  const [showGallery, setShowGallery]');
  // Each page and its shared option lists refresh only while active, retaining filters and editors.
  source=source.replaceAll('reactExports.useEffect(() => { void reload(); }, [reload]);','reactExports.useEffect(() => { void reload(); }, [reload]); usePsBranchReload(reload);');
  source=source.replace('reactExports.useEffect(() => { void reload(); return () => { ++requestSeq.current; }; }, [reload]);','reactExports.useEffect(() => { void reload(); return () => { ++requestSeq.current; }; }, [reload]); usePsBranchReload(reload);');
@@ -42,5 +45,10 @@ function PsBranchPages({tabs,active}){
  }
  // Never remove a populated stock page (and its editor) during a background refresh.
  source=source.replace('if (loading || loadError) return jsxRuntimeExports.jsx(PsOpsLoadState','if ((loading && !levels.length) || loadError) return jsxRuntimeExports.jsx(PsOpsLoadState');
+ // Remote workspaces authenticate through their parent/API. The desktop
+ // payment screen must not request its local billing IPC from a browser frame.
+ // No native access policy or server authorization is changed here.
+ const ast=ts.createSourceFile('remote.js',source,99,true),boundary=ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='PsSubscriptionBoundary');
+ if(boundary)source=source.slice(0,boundary.getStart(ast))+'function PsSubscriptionBoundary({children}){return children;}'+source.slice(boundary.end);
  return source+'\n// POS_BRANCH_RETAINED_PAGES_1538\n';
 }

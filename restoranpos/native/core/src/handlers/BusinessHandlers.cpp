@@ -216,10 +216,9 @@ void registerBusiness(const ContextPtr& ctx) {
             if(link.step())return Json{{"id",link.columnText(0)}};
             require(good.value("sale_price_minor",Money{0})>0,"Əvvəlcə malın satış qiymətini yazın");
             auto category=ctx->db().prepare("INSERT OR IGNORE INTO menu_categories(id,name_az,name_tr,name_en,sort_order) VALUES('cat-goods','Mallar','Ürünler','Goods',999)");category.exec();
-            const auto menu=services::CatalogAdminService(*ctx).upsertProduct(Json{{"id","goods-"+id},{"nameAz",good.at("name")},{"categoryId","cat-goods"},{"priceMinor",good.at("sale_price_minor")},{"barcode",good.at("barcode")},{"active",true}});
-            auto save=ctx->db().prepare("INSERT INTO catalog_goods_links(menu_id,ingredient_id) VALUES(:m,:i)");save.bind(":m",menu.at("id").get<std::string>()).bind(":i",id);save.exec();
-            // A sold unit consumes this same stock card, not a second catalogue clone.
-            auto recipe=ctx->db().prepare("INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES(:m,:i,1000)");recipe.bind(":m",menu.at("id").get<std::string>()).bind(":i",id);recipe.exec();
+            // Publication reuses this exact stock identity, including weighed goods.
+            // The catalog service owns the link and recipe in this transaction.
+            const auto menu=services::CatalogAdminService(*ctx).upsertProduct(Json{{"id","goods-"+id},{"nameAz",good.at("name")},{"categoryId","cat-goods"},{"priceMinor",good.at("sale_price_minor")},{"barcode",good.at("barcode")},{"active",true}},id);
             ctx->auditRequired("catalog.link","ingredient",id,menu);tx.commit();return menu;
         }
         if(action=="documents") {

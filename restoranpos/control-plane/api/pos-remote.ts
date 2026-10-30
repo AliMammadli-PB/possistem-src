@@ -25,6 +25,23 @@ import { branchSnapshots } from './inventory.js';
  * 'r' needs the portal area "restoran", 'w' also "restoran.write".
  */
 const REMOTE_METHODS: Record<string, 'r' | 'w'> = {
+  'catalog.categories': 'r',
+  'catalog.products': 'r',
+  'catalog.product': 'r',
+  'catalog.modifierGroups': 'r',
+  'catalog.priceHistory': 'r',
+  'catalog.upsertProduct': 'w',
+  'catalog.upsertCategory': 'w',
+  'catalog.archiveProduct': 'w',
+  'catalog.archiveCategory': 'w',
+  'catalog.setProductModifierGroups': 'w',
+  'catalog.setSoldOut': 'w',
+  'catalog.setImageHidden': 'w',
+  'catalog.setAllImagesHidden': 'w',
+  'catalog.setAvailability': 'w',
+  'catalog.upsertModifierGroup': 'w',
+  'catalog.upsertModifier': 'w',
+  'catalog.archiveModifier': 'w',
   'business.call': 'r', 'orders.get': 'r', 'print.enqueue': 'w',
   'cash.list': 'r', 'cash.movement': 'w',
   'cashAccounts.list': 'r', 'cashAccounts.moves': 'r', 'cashAccounts.save': 'w', 'cashAccounts.deactivate': 'w',

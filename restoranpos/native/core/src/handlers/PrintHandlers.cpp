@@ -234,45 +234,34 @@ void rememberPrinter(Context& ctx, const std::string& settingKey, const std::str
     upsert.exec();
 }
 
-/**
- * Fall-back targets, best first, for when the configured one did not answer.
- *
- * Auto-detection is what makes a freshly plugged-in USB printer work with no
- * setup at all, what recovers when the same printer comes back on a different
- * USB port (device path and spooler queue both change), and - since the LAN
- * sweep was added - what finds a receipt printer that is only reachable over
- * the switch.
- *
- * This is deliberately *not* called before the configured target is tried: the
- * sweep costs seconds, and a till that is already configured must never pay for
- * it on the happy path.
- */
-std::vector<std::string> discoveredTargets(Context& ctx, const std::string& configured,
-                                           const std::vector<std::string>& alreadyTried) {
-    std::vector<std::string> targets;
-    if (ctx.settingInt("printer.autoDetect", 1) == 0) return targets;
-
-    // The address this till last printed to. One connect is far cheaper than a
-    // sweep and covers the common case where the printer simply rebooted.
-    const std::string lastKnownIp = ctx.setting("printer.lastKnownIp", "");
-    if (!lastKnownIp.empty()) {
-        const std::string target = "tcp:" + lastKnownIp + ":9100";
-        if (std::find(alreadyTried.begin(), alreadyTried.end(), target) == alreadyTried.end()) {
-            targets.push_back(target);
+// Older versions silently remembered a kitchen device as the till during
+// fallback. Repair only a positively kitchen-only setup with NO matching
+// operator assignment of the receipt role. Intentionally shared devices stay.
+void repairUnconfirmedReceipt(Context& ctx) {
+    const auto target=ctx.setting("printer.receipt","auto");
+    if(target.empty()||target=="auto"||target=="virtual"||target!=ctx.setting("printer.kitchen","auto"))return;
+    auto list=Json::parse(ctx.setting("kitchen.stations","[]"),nullptr,false);
+    if(!list.is_array())return;
+    bool kitchen=false;
+    for(const auto& row:list){
+        if(!row.is_object()||!row.contains("printer")||!row["printer"].is_string()||row["printer"].get<std::string>()!=target)continue;
+        if(row.contains("roles")&&row["roles"].is_array())for(const auto& role:row["roles"]){if(role=="receipt")return;if(role=="kitchen")kitchen=true;}
+        // Pre-role-list versions recorded kind/main only. Those are the
+        // installations that originally suffered silent kitchen fallback.
+        if(!row.contains("roles")&&row.contains("kind")&&row["kind"].is_string()){
+            const auto kind=row["kind"].get<std::string>();if(kind=="receipt")return;
+            if(kind=="kitchen"&&row.contains("main")&&row["main"].is_boolean()&&row["main"].get<bool>())kitchen=true;
         }
     }
-
-    for (const auto& candidate : printing::rankPrinterCandidates(configured)) {
-        if (candidate.link == printing::PrinterLink::Virtual) continue;
-        if (candidate.score <= 0) continue;
-        if (std::find(alreadyTried.begin(), alreadyTried.end(), candidate.target) !=
-            alreadyTried.end()) {
-            continue;
-        }
-        if (std::find(targets.begin(), targets.end(), candidate.target) != targets.end()) continue;
-        targets.push_back(candidate.target);
+    if(!kitchen)return;
+    auto audit=ctx.db().prepare("SELECT data FROM audit_logs WHERE entity_type='settings' AND entity_id='printer.receipt' AND action IN ('printer.change','printer.autodetect','settings.change') ORDER BY created_at DESC LIMIT 500");
+    while(audit.step()){
+        auto data=Json::parse(audit.columnText(0),nullptr,false);if(!data.is_object())continue;
+        for(const auto key:{"printerName","chosen","to"})if(data.contains(key)&&data[key].is_string()&&data[key].get<std::string>()==target)return;
     }
-    return targets;
+    db::Transaction txn(ctx.db());rememberPrinter(ctx,"printer.receipt","auto");
+    rememberPrinter(ctx,"printer.routingNotice","Kassa printerini ayrıca təsdiqləyin. Əvvəlki avtomatik mətbəx yönləndirilməsi dayandırıldı.");
+    ctx.audit("printer.routing.repaired","settings","printer.receipt",Json{{"previous",target},{"reason","unconfirmed_kitchen_fallback"}});txn.commit();
 }
 
 /** Remembers the address a network printer was reached at, plus its MAC. */
@@ -301,11 +290,9 @@ void rememberNetworkPrinter(Context& ctx, const std::string& target) {
 }
 
 /**
- * Delivers a rendered document, falling back to the spool file.
- *
- * `settingKey` is the `app_settings` row to update when auto-detection lands on
- * a different printer than the one that was configured, so the next receipt
- * goes straight there.
+ * Delivers only to the explicitly assigned device. A missing/offline
+ * destination stays in the retry queue; the local text copy is diagnostic and
+ * never counts as a successful physical print.
  */
 DeliveryReport deliver(Context& ctx, const std::string& printerName, const std::string& jobId,
                        const RenderedPayload& payload, const std::string& settingKey) {
@@ -332,7 +319,6 @@ DeliveryReport deliver(Context& ctx, const std::string& printerName, const std::
         report.payloadBytes = built.bytes.size();
         report.note = built.note;
 
-        std::vector<std::string> tried;
         std::string lastError;
 
         const auto attempt = [&](const std::string& target) {
@@ -340,7 +326,6 @@ DeliveryReport deliver(Context& ctx, const std::string& printerName, const std::
             if (!sendOnce(target, built.bytes, error)) {
                 lastError = target + ": " + error;
                 logger()->warn("print job {} could not reach {}: {}", jobId, target, error);
-                tried.push_back(target);
                 return false;
             }
 
@@ -350,13 +335,6 @@ DeliveryReport deliver(Context& ctx, const std::string& printerName, const std::
             report.usedTarget = target;
             report.durationMs = monotonicMs() - started;
 
-            if (target != printerName && !settingKey.empty()) {
-                rememberPrinter(ctx, settingKey, target);
-                report.note = report.note.empty()
-                                  ? "auto-selected " + target
-                                  : report.note + "; auto-selected " + target;
-                logger()->info("print target auto-selected: {} = {}", settingKey, target);
-            }
             rememberNetworkPrinter(ctx, target);
 
             logger()->info(
@@ -375,17 +353,16 @@ DeliveryReport deliver(Context& ctx, const std::string& printerName, const std::
         // working till never pays for a scan.
         if (!isAutoTarget(printerName) && attempt(printerName)) return report;
 
-        // Discovery sweeps the LAN, which takes seconds. When the configured
-        // printer is merely busy or switched off, sweeping again for every
-        // ticket kept the core busy for minutes; once a minute is enough.
-        static std::int64_t lastDiscoveryMs = -60000;
-        // Without a role (an extra kitchen printer) a substitute could print
-        // the kebab ticket at the till, so only role printers are rediscovered.
-        if (!settingKey.empty() && (isAutoTarget(printerName) || monotonicMs() - lastDiscoveryMs >= 60000)) {
-            lastDiscoveryMs = monotonicMs();
-            for (const auto& target : discoveredTargets(ctx, printerName, tried)) {
-                if (attempt(target)) return report;
-            }
+        // A sale may never guess a different physical destination. Kitchen,
+        // till and warehouse are operator assignments, even when a single
+        // device intentionally serves several of them. Discovery belongs to
+        // the explicit settings/test flow, never to a payment or queue retry.
+        if (isAutoTarget(printerName)) {
+            report.errorCode="E_PRINTER_NOT_CONFIGURED";
+            report.errorMessage=settingKey+": Bu çek üçün printer seçilməyib. Parametrlər → Printerlər bölməsində təyin edin.";
+            report.durationMs=monotonicMs()-started;
+            writeSpoolCopy(ctx,jobId,payload.text);
+            return report;
         }
 
         if (lastError.empty()) lastError = "Heç bir printer tapılmadı";
@@ -565,7 +542,6 @@ int drainQueue(Context& ctx) {
     std::vector<std::string> unreachable;
 
     for (const auto& job : jobs) {
-        if (std::find(unreachable.begin(), unreachable.end(), job.printer) != unreachable.end()) continue;
         printing::ReceiptBuilder builder(ctx);
         RenderedPayload payload;
         std::string receiptId = job.receiptId;
@@ -726,7 +702,22 @@ int drainQueue(Context& ctx) {
         // remember another printer for it, never hunt for a substitute.
         const bool stationJob = !overrides.value("station", "").empty();
         const std::string settingKey = stationJob ? std::string() : printerRoleFor(job.kind);
-        const DeliveryReport report = deliver(ctx, job.printer, job.id, payload, settingKey);
+        const bool exact=stationJob||overrides.value("explicitPrinter",false);
+        std::string destination=exact?job.printer:ctx.setting(printerRoleFor(job.kind),"auto");
+        if(stationJob&&overrides.value("station",std::string())!="test"){
+            // Changing the address of the SAME named station is intentional;
+            // switching to an unrelated device after a failure is not.
+            destination="auto";auto stations=Json::parse(ctx.setting("kitchen.stations","[]"),nullptr,false);
+            if(stations.is_array())for(const auto& station:stations){if(!station.is_object()||station.value("id",std::string())!=overrides.value("station",std::string()))continue;
+                bool kitchen=station.value("kind",std::string("kitchen"))=="kitchen";
+                if(station.contains("roles")&&station["roles"].is_array())for(const auto& role:station["roles"])if(role=="kitchen")kitchen=true;
+                if(kitchen){destination=station.value("printer",std::string("auto"));}
+                break;
+            }
+        }
+        if(destination!=job.printer){auto reroute=ctx.db().prepare("UPDATE print_jobs SET target_printer=:target WHERE id=:id");reroute.bind(":target",destination).bind(":id",job.id).exec();}
+        if(std::find(unreachable.begin(),unreachable.end(),destination)!=unreachable.end())continue;
+        const DeliveryReport report = deliver(ctx, destination, job.id, payload, settingKey);
         const std::string error =
             report.errorMessage.empty() ? report.note
                                         : report.errorCode + ": " + report.errorMessage;
@@ -773,7 +764,7 @@ int drainQueue(Context& ctx) {
             update.exec();
 
             logger()->warn("print job {} attempt {} failed: {}", job.id, attempts, error);
-            unreachable.push_back(job.printer);
+            unreachable.push_back(destination);
         }
 
         txn.commit();
@@ -866,6 +857,7 @@ std::vector<std::uint8_t> buildProbePage(Context& ctx, const std::string& label)
 }  // namespace
 
 void registerPrinting(const ContextPtr& ctx) {
+    repairUnconfirmedReceipt(*ctx);
     auto& server = ctx->server();
     server.registerHandler("print.xprinterDiscover", [ctx](const ipc::Request&) {
         ctx->requirePermission("settings.manage");
@@ -1193,6 +1185,7 @@ void registerPrinting(const ContextPtr& ctx) {
                     {"charsPerLine", profile.charsPerLine}, {"renderMode", printing::renderModeToString(profile.renderMode)},
                     {"fontHeightPx", profile.fontHeightPx}, {"fontWidthPx", profile.fontWidthPx},
                     {"sideMarginPx", profile.sideMarginPx}, {"qrOn", profile.printQr}};
+                if(hasField(request.payload,"printer"))options["explicitPrinter"]=true;
                 if (kind == "test_page") {
                     for (const char* key : {"qrUrl", "brand", "currencyDisplay"})
                         if (request.payload.contains(key)) options[key] = request.payload[key];

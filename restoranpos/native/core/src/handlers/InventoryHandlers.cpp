@@ -192,7 +192,7 @@ void registerInventory(const ContextPtr& ctx) {
             if(sku.empty() && !id.empty()) {auto stored=ctx->db().prepare("SELECT sku FROM ingredients WHERE id=:id");stored.bind(":id",id);if(stored.step())sku=stored.columnText(0);}
             const auto costMinor = getOr<std::int64_t>(request.payload, "costMinor", 0);
             const auto minQty = getOr<std::int64_t>(request.payload, "minQtyMilli", 0);
-            const auto barcode = getOr<std::string>(request.payload, "barcode", "");
+            auto barcode = getOr<std::string>(request.payload, "barcode", "");
             // Optional: an edit that does not send it keeps what was there.
             const bool hasSalePrice = request.payload.contains("salePriceMinor");
             const auto salePrice = getOr<std::int64_t>(request.payload, "salePriceMinor", 0);
@@ -205,6 +205,11 @@ void registerInventory(const ContextPtr& ctx) {
             services::Idempotency idem(*ctx);
             const auto key = getOr<std::string>(request.payload, "idempotencyKey", "");
             if (auto replay = idem.begin(key, "ingredients.save", request.payload)) return *replay;
+            // Older clients created the MENU card in a follow-up call. The
+            // catalog now owns it atomically; reuse its identity rather than
+            // create a duplicate when one of those clients retries.
+            if(id.empty()&&sku.rfind("MENU-",0)==0){auto own=ctx->db().prepare("SELECT id,barcode FROM ingredients WHERE sku=:sku AND active=1");own.bind(":sku",sku);if(own.step()){id=own.columnText(0);if(!request.payload.contains("barcode"))barcode=own.columnText(1);}}
+
             // One barcode, one good: a copy must get its own barcode.
             if (!barcode.empty()) {
                 auto other = ctx->db().prepare(

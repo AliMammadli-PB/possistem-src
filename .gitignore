@@ -32,3 +32,6 @@ marketpos/build/offline/
 # Native and staged SUNMI build output
 marketpos/native/build/
 marketpos/electron/sunmi/
+
+# Generated owner iframe assets; rebuilt from Restaurant POS sources.
+platform/apps/owner-web/public/warehouse-20261020/

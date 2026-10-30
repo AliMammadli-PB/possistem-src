@@ -271,14 +271,16 @@ void registerCatalog(const ContextPtr& ctx) {
                     txn.commit();
                     return *replay;
                 }
-                result = services::CatalogAdminService(*ctx).upsertProduct(request.payload);
+                result = request.payload.contains("sizeVariants")
+                    ? services::CatalogAdminService(*ctx).upsertSizedProducts(request.payload)
+                    : services::CatalogAdminService(*ctx).upsertProduct(request.payload);
                 // The dish editor's "Printer" choice: which kitchen printer this
                 // dish prints on ("" = the main kitchen).
                 if (request.payload.contains("printerStationId") &&
                     request.payload["printerStationId"].is_string()) {
-                    const std::string next = printing::assignItemToStation(
-                        ctx->setting("kitchen.stations", "[]"), result.value("id", ""),
-                        request.payload["printerStationId"].get<std::string>());
+                    std::string next=ctx->setting("kitchen.stations","[]");
+                    const auto variants=result.value("variants",Json::array({Json{{"id",result.value("id","")}}}));
+                    for(const auto& variant:variants)next=printing::assignItemToStation(next,variant.at("id").get<std::string>(),request.payload["printerStationId"].get<std::string>());
                     auto upsert = ctx->db().prepare(
                         "INSERT INTO app_settings (key, value, value_type, updated_at) "
                         "VALUES ('kitchen.stations', :value, 'string', :now) "

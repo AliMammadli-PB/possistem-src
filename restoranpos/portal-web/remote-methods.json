@@ -100,5 +100,22 @@
   "income.delete",
   "business.call",
   "orders.get",
-  "print.enqueue"
+  "print.enqueue",
+  "catalog.categories",
+  "catalog.products",
+  "catalog.product",
+  "catalog.modifierGroups",
+  "catalog.priceHistory",
+  "catalog.upsertProduct",
+  "catalog.upsertCategory",
+  "catalog.archiveProduct",
+  "catalog.archiveCategory",
+  "catalog.setProductModifierGroups",
+  "catalog.setSoldOut",
+  "catalog.setImageHidden",
+  "catalog.setAllImagesHidden",
+  "catalog.setAvailability",
+  "catalog.upsertModifierGroup",
+  "catalog.upsertModifier",
+  "catalog.archiveModifier"
 ]

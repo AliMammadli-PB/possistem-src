@@ -14,7 +14,9 @@ public:
 
     Json upsertCategory(const Json& payload);
     Json archiveCategory(const std::string& categoryId);
-    Json upsertProduct(const Json& payload);
+    // stockIngredientId is an internal warehouse-publication hint, never a client payload field.
+    Json upsertProduct(const Json& payload, const std::string& stockIngredientId = {});
+    Json upsertSizedProducts(const Json& payload);
     Json archiveProduct(const std::string& productId);
     Json setSoldOut(const std::string& productId, bool soldOut);
     /** Hides one dish's photo on the order screen; the picture itself is kept. */

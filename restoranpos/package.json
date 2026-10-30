@@ -1,7 +1,7 @@
 {
   "name": "possistem",
   "productName": "possistem",
-  "version": "1.9.23",
+  "version": "1.9.24",
   "description": "possistem restaurant POS (Electron + React + C++20 sidecar)",
   "author": "possistem",
   "license": "UNLICENSED",

@@ -7,6 +7,8 @@
 #include "pos/handlers/Handlers.hpp"
 #include "pos/printing/ReceiptBuilder.hpp"
 #include "pos/printing/EscPos.hpp"
+#include "pos/printing/KitchenStations.hpp"
+#include <chrono>
 #include <algorithm>
 
 /**
@@ -27,6 +29,8 @@ class PrinterRoleFixture {
 public:
     PrinterRoleFixture() {
         pos::handlers::registerPrinting(fixture_.contextPtr());
+        pos::handlers::registerSystem(fixture_.contextPtr());
+        pos::handlers::registerOrders(fixture_.contextPtr());
         pos::handlers::registerInventory(fixture_.contextPtr());
     }
 
@@ -231,4 +235,79 @@ TEST_CASE("drawer pulse follows receipt and cutter once in text and raster", "[p
     }
     PrinterRoleFixture f;
     CHECK(f.setting("printer.openCashDrawer")=="1");
+}
+
+TEST_CASE("an unassigned till never prints a payment at an available kitchen destination", "[printer][routing1924]") {
+    PrinterRoleFixture f;
+    f.call("print.setPrinter",{{"target","kitchen"},{"printerName","tcp:127.0.0.1:9100"}});
+    const auto started=std::chrono::steady_clock::now();
+    const auto order=f.call("orders.create",{{"tableId","tbl-01"},{"guestCount",1}});
+    const auto job=f.call("print.enqueue",{{"kind","customer_receipt"},{"orderId",order.at("id")}});
+    REQUIRE(job.at("status")=="retrying");
+    REQUIRE(job.at("lastError").get<std::string>().find("E_PRINTER_NOT_CONFIGURED")!=std::string::npos);
+    REQUIRE(job.at("printer")=="auto");
+    REQUIRE(f.setting("printer.receipt")=="auto");
+    REQUIRE(f.setting("printer.kitchen")=="tcp:127.0.0.1:9100");
+    REQUIRE(std::chrono::steady_clock::now()-started<std::chrono::seconds(1));
+}
+TEST_CASE("pending receipts follow an explicit role reassignment and completed paper is not repeated", "[printer][routing1924]") {
+    PrinterRoleFixture f;
+    const auto order=f.call("orders.create",{{"tableId","tbl-01"},{"guestCount",1}});
+    auto job=f.call("print.enqueue",{{"kind","customer_receipt"},{"orderId",order.at("id")}});const auto id=job.at("id").get<std::string>();
+    f.call("print.setPrinter",{{"target","receipt"},{"printerName","virtual"}});
+    auto retried=f.call("print.retry",{{"jobId",id}});
+    REQUIRE(retried.at("status")=="completed");REQUIRE(retried.at("printer")=="virtual");
+    auto read=f.call("print.jobs",pos::Json::object());REQUIRE(read.at("pendingCount")==0);
+    auto count=f.fixture().db().prepare("SELECT COUNT(*) FROM print_jobs");REQUIRE(count.step());REQUIRE(count.columnInt(0)==1);
+}
+TEST_CASE("printer purposes and saved station labels commit atomically", "[printer][routing1924]") {
+    PrinterRoleFixture f;
+    const auto saved=pos::Json::array({{{"id","shared"},{"name","Kassa və dönər"},{"printer","tcp:127.0.0.1:61001"},{"kind","kitchen"},{"main",false},{"roles",{"receipt"}},{"itemIds",{"doner"}}},{{"id","main"},{"name","Mətbəx"},{"printer","tcp:127.0.0.1:61002"},{"kind","kitchen"},{"main",true},{"roles",{"kitchen"}}}});
+    f.call("settings.set",{{"key","kitchen.stations"},{"value",saved.dump()}});
+    REQUIRE(f.setting("printer.receipt")=="tcp:127.0.0.1:61001");REQUIRE(f.setting("printer.kitchen")=="tcp:127.0.0.1:61002");
+    const auto stations=pos::printing::parseKitchenStations(f.setting("kitchen.stations"));
+    REQUIRE(stations.size()==1);const auto* doner=pos::printing::stationFor(stations,"doner","");REQUIRE(doner);REQUIRE(doner->printer==f.setting("printer.receipt"));
+    auto invalid=saved;invalid[1]["roles"].push_back("receipt");
+    REQUIRE_THROWS_AS(f.call("settings.set",{{"key","kitchen.stations"},{"value",invalid.dump()}}),pos::PosError);
+    REQUIRE(f.setting("printer.receipt")=="tcp:127.0.0.1:61001");REQUIRE(pos::Json::parse(f.setting("kitchen.stations"))[0]["name"]=="Kassa və dönər");
+    auto combined=pos::Json::array({{{"id","shared"},{"name","Hamısı"},{"printer","tcp:127.0.0.1:61001"},{"kind","kitchen"},{"roles",{"receipt","kitchen","warehouse"}}}});
+    f.call("settings.set",{{"key","kitchen.stations"},{"value",combined.dump()}});
+    REQUIRE(f.setting("printer.receipt")==f.setting("printer.kitchen"));REQUIRE(f.setting("printer.warehouse")==f.setting("printer.receipt"));
+}
+TEST_CASE("saved printer configuration survives fresh database and handler instances", "[printer][routing1924]") {
+    PrinterRoleFixture f;
+    f.call("settings.set",{{"key","kitchen.stations"},{"value",pos::Json::array({{{"id","saved"},{"name","Kassa və mətbəx"},{"printer","usbraw:saved-device"},{"kind","kitchen"},{"roles",{"receipt","kitchen"}}}}).dump()}});
+    std::string filename;{auto location=f.fixture().db().prepare("PRAGMA database_list");REQUIRE(location.step());filename=location.columnText(2);}
+    pos::db::Database fresh;fresh.open(filename);pos::ipc::StdioServer server;auto ctx=std::make_shared<pos::handlers::Context>(server,fresh);ctx->session().authenticated=true;ctx->session().userId="usr-admin";ctx->session().role="administrator";ctx->loadPermissions(ctx->session(),"role-administrator");pos::handlers::registerPrinting(ctx);pos::handlers::registerSystem(ctx);
+    pos::ipc::Request req;req.requestId=pos::crypto::uuid4();req.method="print.printers";req.payload=pos::Json::object();auto printers=server.callHandler(req);
+    REQUIRE(printers.at("receipt")=="usbraw:saved-device");REQUIRE(printers.at("kitchen")=="usbraw:saved-device");
+    req.method="settings.getAll";req.requestId=pos::crypto::uuid4();auto settings=server.callHandler(req);auto rows=pos::Json::parse(settings.at("settings").at("kitchen.stations").get<std::string>());REQUIRE(rows.at(0).at("name")=="Kassa və mətbəx");REQUIRE(rows.at(0).at("roles").size()==2);
+}
+
+TEST_CASE("startup repairs a historic implicit kitchen fallback but preserves deliberate sharing", "[printer][routing1924]") {
+    PrinterRoleFixture f;
+    const bool legacy=GENERATE(false,true);
+    auto stations=pos::Json::array({{{"id","main"},{"name","Mətbəx"},{"printer","tcp:127.0.0.1:61002"},{"kind","kitchen"},{"main",true}}});
+    if(!legacy)stations[0]["roles"]=pos::Json::array({"kitchen"});
+    f.call("settings.set",{{"key","kitchen.stations"},{"value",stations.dump()}});
+    // Model the old internal rememberPrinter write: it wrote the setting
+    // without an operator-confirmation audit. Audit history remains immutable.
+    f.fixture().db().exec("UPDATE app_settings SET value='tcp:127.0.0.1:61002' WHERE key='printer.receipt'");
+    pos::ipc::StdioServer fresh;auto ctx=std::make_shared<pos::handlers::Context>(fresh,f.fixture().db());pos::handlers::registerPrinting(ctx);
+    REQUIRE(f.setting("printer.receipt")=="auto");REQUIRE(f.setting("printer.kitchen")=="tcp:127.0.0.1:61002");
+    REQUIRE_FALSE(f.fixture().ctx().setting("printer.routingNotice","").empty());
+    f.call("print.setPrinter",{{"target","receipt"},{"printerName","tcp:127.0.0.1:61002"}});
+    pos::ipc::StdioServer shared;auto sharedCtx=std::make_shared<pos::handlers::Context>(shared,f.fixture().db());pos::handlers::registerPrinting(sharedCtx);
+    REQUIRE(f.setting("printer.receipt")=="tcp:127.0.0.1:61002");
+}
+
+TEST_CASE("legacy dish-mapping saves preserve the separately configured receipt destination", "[printer][routing1924]") {
+    PrinterRoleFixture f;
+    f.call("print.setPrinter",{{"target","receipt"},{"printerName","usbraw:cash-desk"}});
+    auto legacy=pos::Json::array({{{"id","doner"},{"name","Dönər"},{"printer","usbraw:kitchen"},{"kind","kitchen"},{"main",false},{"itemIds",{"menu-doner"}}}});
+    for(int i=0;i<2;++i)f.call("settings.set",{{"key","kitchen.stations"},{"value",legacy.dump()}});
+    REQUIRE(f.setting("printer.receipt")=="usbraw:cash-desk");
+    REQUIRE(f.setting("printer.kitchen")=="auto");
+    f.call("settings.set",{{"key","kitchen.stations"},{"value","[]"}});
+    REQUIRE(f.setting("printer.receipt")=="auto");
 }

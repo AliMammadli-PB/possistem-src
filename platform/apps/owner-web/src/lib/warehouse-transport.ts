@@ -1,6 +1,6 @@
 import {warehouseBatch,type WarehouseCall} from '../api';
 const reads=new Set(['context','documents','document.get','staff','branch.summary','transfer.list','transfer.get','transfer.targets']);
-export const warehouseWrite=(call:WarehouseCall)=>call.method==='business.call'?!reads.has(String(call.payload?.action)):!(/\.(list|get|levels|lowStock|movements|valuation|pricesList|pricelist|returns|suggestions|costing|expiry|stockLoss|suppliers|export|dashboard|salesSummary|period|topProducts|getSnapshot|categories|products|ledger|moves)$/.test(call.method)||['__session','settings.getAll','recipes.get'].includes(call.method));
+export const warehouseWrite=(call:WarehouseCall)=>call.method==='business.call'?!reads.has(String(call.payload?.action)):!(/\.(list|get|levels|lowStock|movements|valuation|pricesList|pricelist|returns|suggestions|costing|expiry|stockLoss|suppliers|export|dashboard|salesSummary|period|topProducts|getSnapshot|categories|products|ledger|moves)$/.test(call.method)||['__session','settings.getAll','recipes.get','catalog.modifierGroups','catalog.product','catalog.priceHistory'].includes(call.method));
 /** One instance per authenticated owner page. Retain request + original native keys on uncertain writes. */
 export function createWarehouseTransport(send=warehouseBatch){
  const pending=new Map<string,{requestId:string;calls:WarehouseCall[]}>(),inflight=new Map<string,ReturnType<typeof warehouseBatch>>();

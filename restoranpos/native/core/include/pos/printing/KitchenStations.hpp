@@ -39,6 +39,12 @@ inline std::vector<KitchenStation> parseKitchenStations(const std::string& raw) 
     if (!list.is_array()) return stations;
     for (const auto& row : list) {
         if (!row.is_object()) continue;
+        // Shared devices may print till receipts AND selected kitchen dishes.
+        // Main kitchen entries use printer.kitchen; a receipt-only entry must
+        // not retain an old dish route when its purpose changes.
+        bool main=row.value("main",false),kitchen=row.value("kind",std::string())=="kitchen";
+        if(row.contains("roles")&&row["roles"].is_array())for(const auto& role:row["roles"])if(role=="kitchen"){main=true;kitchen=true;}
+        if(main||(row.contains("kind")&&!kitchen))continue;
         KitchenStation station;
         station.id = row.value("id", "");
         station.name = row.value("name", "");

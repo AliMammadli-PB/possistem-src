@@ -1,6 +1,8 @@
 #include "pos/services/CatalogAdminService.hpp"
 
 #include <sstream>
+#include <cmath>
+#include <set>
 #include <vector>
 
 #include "pos/Crypto.hpp"
@@ -41,6 +43,42 @@ std::vector<std::string> splitCsvLine(const std::string& line) {
     }
     cells.push_back(cur);
     return cells;
+}
+
+// A newly created sale product owns a stock card immediately. This runs in
+// the caller's catalog transaction, before success is acknowledged. Recipes
+// already using real ingredients remain authoritative and are never replaced.
+void ensureCatalogStock(handlers::Context& ctx,const std::string& menuId,const std::string& name,
+                        const std::string& barcode,Money price,Timestamp now,const std::string& stockIngredientId) {
+    std::string ingredient;bool active=true;
+    {auto link=ctx.db().prepare("SELECT i.id,i.active FROM catalog_goods_links l JOIN ingredients i ON i.id=l.ingredient_id WHERE l.menu_id=:id");link.bind(":id",menuId);if(link.step()){ingredient=link.columnText(0);active=link.columnInt(1)!=0;}}
+    auto recipes=ctx.db().prepare("SELECT COUNT(*) FROM menu_item_ingredients WHERE menu_item_id=:id");recipes.bind(":id",menuId);recipes.step();const bool hasRecipe=recipes.columnInt(0)>0;
+    if(ingredient.empty()){
+        auto owned=ctx.db().prepare("SELECT id,active FROM ingredients WHERE sku=:sku");owned.bind(":sku","MENU-"+menuId);if(owned.step()){ingredient=owned.columnText(0);active=owned.columnInt(1)!=0;}
+    }
+    if(!stockIngredientId.empty()){
+        require(ingredient.empty()||ingredient==stockIngredientId,"Məhsul başqa anbar kartına bağlıdır");
+        auto stock=ctx.db().prepare("SELECT id,active FROM ingredients WHERE id=:id");stock.bind(":id",stockIngredientId);require(stock.step(),"Anbar kartı tapılmadı");
+        ingredient=stock.columnText(0);active=stock.columnInt(1)!=0;
+    }
+    if(hasRecipe&&ingredient.empty())return;
+    if(ingredient.empty()&&!barcode.empty()){
+        auto existing=ctx.db().prepare("SELECT i.id,i.unit FROM ingredients i WHERE i.barcode=:barcode AND i.active=1");existing.bind(":barcode",barcode);
+        if(existing.step()){
+            ingredient=existing.columnText(0);
+            require(existing.columnText(1)=="ədəd","Bu barkod fərqli ölçü vahidi ilə anbarda var");
+            auto linked=ctx.db().prepare("SELECT menu_id FROM catalog_goods_links WHERE ingredient_id=:id AND menu_id!=:menu");linked.bind(":id",ingredient).bind(":menu",menuId);
+            require(!linked.step(),"Bu barkod başqa kataloq məhsuluna bağlıdır");
+        }
+    }
+    if(ingredient.empty()){
+        ingredient="ing-menu-"+menuId;
+        auto insert=ctx.db().prepare("INSERT INTO ingredients(id,sku,name,unit,cost_minor,avg_cost_minor,min_qty_milli,barcode,sale_price_minor,created_at,updated_at) VALUES(:id,:sku,:name,'ədəd',0,0,0,:barcode,:price,:now,:now)");
+        insert.bind(":id",ingredient).bind(":sku","MENU-"+menuId).bind(":name",name).bind(":barcode",barcode).bind(":price",price).bind(":now",now).exec();
+    }
+    auto link=ctx.db().prepare("INSERT INTO catalog_goods_links(menu_id,ingredient_id) VALUES(:menu,:ingredient) ON CONFLICT(menu_id) DO NOTHING");link.bind(":menu",menuId).bind(":ingredient",ingredient).exec();
+    auto metadata=ctx.db().prepare("UPDATE ingredients SET name=:name,sale_price_minor=:price,barcode=:barcode,updated_at=:now WHERE id=:id");metadata.bind(":name",name).bind(":price",price).bind(":barcode",barcode).bind(":now",now).bind(":id",ingredient).exec();
+    if(active&&!hasRecipe){auto recipe=ctx.db().prepare("INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES(:menu,:ingredient,1000)");recipe.bind(":menu",menuId).bind(":ingredient",ingredient).exec();}
 }
 
 }  // namespace
@@ -93,7 +131,38 @@ Json CatalogAdminService::upsertCategory(const Json& payload) {
     return load.row();
 }
 
-Json CatalogAdminService::upsertProduct(const Json& payload) {
+// Each size is an ordinary product identity: its price, recipe, sales and stock
+// stay independent everywhere, including QR ordering and the owner portal.
+Json CatalogAdminService::upsertSizedProducts(const Json& payload) {
+    require(payload.value("id",std::string()).empty(),"Mövcud variantı ayrıca redaktə edin");
+    const auto& variants=payload.at("sizeVariants");
+    require(variants.is_array()&&!variants.empty()&&variants.size()<=24,"1–24 ölçü variantı daxil edin");
+    std::set<long long> seen;
+    Json normalized=Json::array();
+    for(const auto& row:variants){
+        require(row.is_object()&&row.contains("sizeCm")&&row["sizeCm"].is_number()&&row.contains("priceMinor")&&row["priceMinor"].is_number_integer(),"Ölçünü və qiyməti düzgün yazın");
+        const double cm=row["sizeCm"].get<double>();
+        require(std::isfinite(cm)&&cm>0&&cm<=300,"Ölçü 0-dan böyük, ən çox 300 sm olmalıdır");
+        const auto hundredths=std::llround(cm*100);
+        require(std::abs(cm*100-hundredths)<0.000001&&seen.insert(hundredths).second,"Ölçülər təkrarlanmamalı, ən çox iki onluq rəqəm olmalıdır");
+        const auto price=row["priceMinor"].get<Money>();
+        require(price>=0&&price<=100000000&&(!payload.value("active",false)||price>0),"Variantın qiyməti düzgün deyil");
+        std::string label=std::to_string(hundredths/100);
+        if(hundredths%100){label+="."+std::to_string(100+hundredths%100).substr(1);while(label.back()=='0')label.pop_back();}
+        normalized.push_back(Json{{"label",label},{"sizeCm",cm},{"priceMinor",price}});
+    }
+    Json result,rows=Json::array();int index=0;
+    for(const auto& row:normalized){
+        auto item=payload;item.erase("sizeVariants");item.erase("sku");item.erase("barcode");
+        for(const auto key:{"nameAz","nameTr","nameEn"}){const auto name=payload.value(key,payload.value("nameAz",std::string()));item[key]=name+" · "+row["label"].get<std::string>()+(std::string(key)=="nameAz"?" sm":" cm");}
+        item["priceMinor"]=row["priceMinor"];item["sortOrder"]=payload.value("sortOrder",0)+index++;
+        const auto saved=upsertProduct(item);if(result.is_null())result=saved;
+        rows.push_back(Json{{"id",saved.at("id")},{"nameAz",item.at("nameAz")},{"priceMinor",row["priceMinor"]},{"sizeCm",row["sizeCm"]}});
+    }
+    result["variants"]=rows;return result;
+}
+
+Json CatalogAdminService::upsertProduct(const Json& payload, const std::string& stockIngredientId) {
     const auto nameAz = requireNonEmpty(payload, "nameAz");
     const auto categoryId = requireNonEmpty(payload, "categoryId");
     const auto now = nowMs();
@@ -277,6 +346,7 @@ Json CatalogAdminService::upsertProduct(const Json& payload) {
         ins.exec();
     }
 
+    ensureCatalogStock(ctx_,id,nameAz,barcode,price,now,stockIngredientId);
     ctx_.auditRequired("catalog.upsertProduct", "menu_item", id,
                        Json{{"priceMinor", price}, {"sku", sku}});
     auto load = ctx_.db().prepare(

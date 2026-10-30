@@ -66,13 +66,15 @@ TEST_CASE("staff PIN identity and payroll identity stay linked without merging n
  REQUIRE(x.scalar("SELECT COUNT(*) FROM user_warehouse_access WHERE user_id='"+user+"'")==1);
 }
 TEST_CASE("unified catalog publishes the same stock card and synchronizes name and price","[business]"){
- BusinessFixture x;
- const auto good=x.call("ingredients.save",{{"name","Sirab"},{"unit","ədəd"},{"salePriceMinor",120},{"barcode","4760000000123"}}).at("id").get<std::string>();
+ BusinessFixture x;const std::string unit=GENERATE("ədəd","kg");
+ const auto good=x.call("ingredients.save",{{"name","Sirab"},{"unit",unit},{"salePriceMinor",120},{"barcode","4760000000123"}}).at("id").get<std::string>();
+ pos::services::InventoryService(x.f.ctx()).move(good,"wh-main",5000,"adjustment","","test");
  const auto item=x.biz("catalog.publish",{{"ingredientId",good}}).at("id").get<std::string>();
  REQUIRE(x.biz("catalog.publish",{{"ingredientId",good}}).at("id")==item);
+ REQUIRE(x.call("goods.list").at("goods")[0].at("qtyMilli")==5000);
  REQUIRE(x.scalar("SELECT COUNT(*) FROM ingredients WHERE id='"+good+"'")==1);
  REQUIRE(x.scalar("SELECT qty_milli FROM menu_item_ingredients WHERE menu_item_id='"+item+"' AND ingredient_id='"+good+"'")==1000);
- x.call("ingredients.save",{{"id",good},{"name","Sirab yeni"},{"unit","ədəd"},{"salePriceMinor",170}});
+ x.call("ingredients.save",{{"id",good},{"name","Sirab yeni"},{"unit",unit},{"salePriceMinor",170}});
  REQUIRE(x.scalar("SELECT price_minor FROM menu_items WHERE id='"+item+"'")==170);
  REQUIRE(x.scalar("SELECT COUNT(*) FROM menu_item_price_history WHERE item_id='"+item+"' AND old_price_minor=120 AND new_price_minor=170")==1);
 }
