@@ -40,10 +40,10 @@ try{
  for(const [width,height] of [[360,800],[768,1024],[1024,768],[1366,900],[1920,1080],[3840,2160]]){
   await page.setViewportSize({width,height});await page.goto(`${address}?page=shell#/tables`);await page.waitForTimeout(500);await page.locator('.ps-touch-sidebar').waitFor({timeout:3000});
   const buttons=page.locator('.ps-touch-sidebar .ps-nav');assert.ok(await buttons.count()>0);
-  for(let i=0;i<await buttons.count();i++){const box=await buttons.nth(i).boundingBox();assert.ok(box.height>=72&&box.width>=72,'Touch target '+width);assert.equal(await buttons.nth(i).locator('.ps-touch-nav-label').isVisible(),true);}
-  assert.equal(await page.locator('.ps-touch-nav-icon').first().evaluate(el=>el.complete&&el.naturalWidth>0),true,'PNG icon loaded');
+  for(let i=0;i<await buttons.count();i++){const box=await buttons.nth(i).boundingBox();assert.ok(box.height>=48&&box.width>=48,'Touch target '+width);assert.equal(await buttons.nth(i).locator('.ps-touch-nav-label').isVisible(),false);}
+  assert.ok(await buttons.first().locator('svg').count(),'Navigation icon is present');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Shell overflow '+width);await page.screenshot({path:path.join(out,'touch-shell-'+width+'.png')});
   await page.goto(`${address}?page=deliverybutton#/tables`);await page.getByRole('button',{name:'Çatdırılma',exact:true}).waitFor();await page.getByRole('button',{name:'Çatdırılma',exact:true}).click();await page.getByRole('dialog').waitFor();assert.deepEqual(errors,[]);await page.screenshot({path:path.join(out,'touch-delivery-'+width+'.png')});
  }
- console.log('PASS touch sidebar PNG icons, visible labels, 72px targets and delivery dialog at 360 / 768 / 1024 / 1366 / 1920 / 3840 px');
+ console.log('PASS touch sidebar icons, collapsed labels, 48px targets and delivery dialog at 360 / 768 / 1024 / 1366 / 1920 / 3840 px');
 }finally{await browser.close();server.close();}

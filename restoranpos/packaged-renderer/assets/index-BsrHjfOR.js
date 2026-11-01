@@ -18,6 +18,9 @@ function PsSizeVariants({rows,onChange,price,disabled}) {
 
 
 
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14934,7 +14937,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.25 · 60f5a11";
+const _PS_BUILD = "1.9.26 · aefa913";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15264,6 +15267,7 @@ function AppShell() {
           {
             to,
             end: to === "/admin",
+            "aria-label": label,
             title: _psOk ? label : `${label} · Buna icazəniz yoxdur`,
             "aria-disabled": _psOk ? void 0 : true,
             onClick: _psOk ? void 0 : (event) => { event.preventDefault(); _psDenied(); },
@@ -27431,7 +27435,7 @@ function PsBranchNetwork(){
  const h=psH,{lang}=useI18n(),has=useAuthStore(s=>s.hasPermission);const [data,setData]=reactExports.useState(null),[error,setError]=reactExports.useState(""),[selected,setSelected]=reactExports.useState(""),[query,setQuery]=reactExports.useState("");
  const load=reactExports.useCallback(async()=>{const r=await window.pos.business.branches();if(r.success){setData(r.data.branches||[]);setError("");}else setError(r.error.message);},[]);reactExports.useEffect(()=>{if(!has("users.manage"))return;void load();const t=setInterval(()=>void load(),30000);return()=>clearInterval(t);},[load,has]);
  if(!has("users.manage"))return null;const needle=query.toLocaleLowerCase("az");const rows=(data||[]).filter(r=>!selected||r.deviceId===selected);
- return h("section",{className:"ps-business-section space-y-3"},h("button",{type:"button",className:"ps-ops-button",onClick:()=>{location.hash="/branches";}},psBizText(lang,"Filialı uzaqdan idarə et","Şubeyi uzaktan yönet","Manage remote branch")),h("h2",null,psBizText(lang,"Filialların anbarları və kassaları","Şubelerin depoları ve kasaları","Branch warehouses and tills")),h("p",{className:"text-sm text-muted"},psBizText(lang,"Eyni sahibkarın POS-ları internet olduqda məlumatı avtomatik paylaşır. Son yenilənmə hər filialda göstərilir.","Aynı işletmenin POS cihazları internet varken bilgileri otomatik paylaşır. Son güncelleme her şubede gösterilir.","POS devices under the same owner share snapshots automatically while online. Each branch shows its last update.")),h("div",{className:"flex flex-wrap gap-2"},h("select",{className:psSelectCls,value:selected,onChange:e=>setSelected(e.target.value)},h("option",{value:""},psBizText(lang,"Bütün filiallar","Tüm şubeler","All branches")),(data||[]).map(d=>h("option",{value:d.deviceId,key:d.deviceId},d.name))),psSearchBox(query,setQuery,psBizText(lang,"Mal / barkod","Ürün / barkod","Product / barcode")),jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>void load(),children:psBizText(lang,"Yenilə","Yenile","Refresh")})),error?h("p",{role:"alert",className:"text-danger"},error):null,data&&data.length===0?h("p",null,psBizText(lang,"Digər kassa hələ məlumat göndərməyib. Filial POS-u açıq və eyni sahibkar hesabına bağlı olmalıdır.","Diğer kasa henüz veri göndermedi. Şube POS'u açık ve aynı işletme hesabına bağlı olmalı.","No other till has uploaded yet. Branch POS devices must be open and linked to the same owner.")):null,rows.map(d=>h("article",{key:d.deviceId,className:"ps-business-peer space-y-3"},h("div",{className:"flex flex-wrap justify-between gap-2"},h("h3",null,d.name),h("small",{className:"text-muted"},psBizText(lang,"Son yenilənmə: ","Son güncelleme: ","Last updated: ")+opsWhen(Date.parse(d.updatedAt)))),jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Kassa","Kasa","Till"),psBizText(lang,"Balans","Bakiye","Balance")],empty:psBizText(lang,"Kassa məlumatı yoxdur","Kasa bilgisi yok","No till data"),rows:(d.accounts||[]).map(a=>[a.name,formatMoney(a.balanceMinor||0)])}),jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Anbar","Depo","Warehouse"),psBizText(lang,"Mal","Ürün","Product"),psBizText(lang,"Qalıq","Stok","Stock")],empty:psBizText(lang,"Mal tapılmadı","Ürün bulunamadı","No products found"),rows:(d.lines||[]).filter(g=>!needle||[g.name,g.barcode].join(" ").toLocaleLowerCase("az").includes(needle)).slice(0,200).map(g=>[g.warehouseName,g.name,String((g.qty||0)/1000)+" "+(g.unit||"")])}))));
+ return h("section",{className:"ps-business-section space-y-3"},h("button",{type:"button",className:"ps-ops-button",onClick:()=>{location.hash="/operations?tab=stock&branchSwitch=1";}},psBizText(lang,"Filialı uzaqdan idarə et","Şubeyi uzaktan yönet","Manage remote branch")),h("h2",null,psBizText(lang,"Filialların anbarları və kassaları","Şubelerin depoları ve kasaları","Branch warehouses and tills")),h("p",{className:"text-sm text-muted"},psBizText(lang,"Eyni sahibkarın POS-ları internet olduqda məlumatı avtomatik paylaşır. Son yenilənmə hər filialda göstərilir.","Aynı işletmenin POS cihazları internet varken bilgileri otomatik paylaşır. Son güncelleme her şubede gösterilir.","POS devices under the same owner share snapshots automatically while online. Each branch shows its last update.")),h("div",{className:"flex flex-wrap gap-2"},h("select",{className:psSelectCls,value:selected,onChange:e=>setSelected(e.target.value)},h("option",{value:""},psBizText(lang,"Bütün filiallar","Tüm şubeler","All branches")),(data||[]).map(d=>h("option",{value:d.deviceId,key:d.deviceId},d.name))),psSearchBox(query,setQuery,psBizText(lang,"Mal / barkod","Ürün / barkod","Product / barcode")),jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>void load(),children:psBizText(lang,"Yenilə","Yenile","Refresh")})),error?h("p",{role:"alert",className:"text-danger"},error):null,data&&data.length===0?h("p",null,psBizText(lang,"Digər kassa hələ məlumat göndərməyib. Filial POS-u açıq və eyni sahibkar hesabına bağlı olmalıdır.","Diğer kasa henüz veri göndermedi. Şube POS'u açık ve aynı işletme hesabına bağlı olmalı.","No other till has uploaded yet. Branch POS devices must be open and linked to the same owner.")):null,rows.map(d=>h("article",{key:d.deviceId,className:"ps-business-peer space-y-3"},h("div",{className:"flex flex-wrap justify-between gap-2"},h("h3",null,d.name),h("small",{className:"text-muted"},psBizText(lang,"Son yenilənmə: ","Son güncelleme: ","Last updated: ")+opsWhen(Date.parse(d.updatedAt)))),jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Kassa","Kasa","Till"),psBizText(lang,"Balans","Bakiye","Balance")],empty:psBizText(lang,"Kassa məlumatı yoxdur","Kasa bilgisi yok","No till data"),rows:(d.accounts||[]).map(a=>[a.name,formatMoney(a.balanceMinor||0)])}),jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Anbar","Depo","Warehouse"),psBizText(lang,"Mal","Ürün","Product"),psBizText(lang,"Qalıq","Stok","Stock")],empty:psBizText(lang,"Mal tapılmadı","Ürün bulunamadı","No products found"),rows:(d.lines||[]).filter(g=>!needle||[g.name,g.barcode].join(" ").toLocaleLowerCase("az").includes(needle)).slice(0,200).map(g=>[g.warehouseName,g.name,String((g.qty||0)/1000)+" "+(g.unit||"")])}))));
 }
 function PsDashboardSales(){
  const h=psH,{lang}=useI18n(),navigate=useNavigate(),has=useAuthStore(s=>s.hasPermission);const [rows,setRows]=reactExports.useState([]);
@@ -30492,9 +30496,27 @@ function OpsSalary(){return psH("div",{className:"space-y-4"},jsxRuntimeExports.
 /* POS_TOUCH_NAV_v1 */
 function PsTouchNavIcon({to,Icon}){const key=to.startsWith('/operations')?new URLSearchParams(to.split('?')[1]).get('tab'):to.slice(1);return ['tables','refund','kds','admin','stock','goods','delivery','stocktake','sales'].includes(key)?jsxRuntimeExports.jsx('img',{src:'./assets/nav/'+key+'.png',alt:'',className:'ps-touch-nav-icon',draggable:false}):jsxRuntimeExports.jsx(Icon,{className:'ps-touch-nav-icon',strokeWidth:1.9});}
 /* POS_CLOUD_BRANCHES_v1 */
-function PsCloudBranches(){const {lang}=useI18n();const has=useAuthStore(s=>s.hasPermission),session=useAuthStore(s=>s.session);if(!has("users.manage")&&!(["manager","administrator"].includes(session?.role)))return psH("p",null,psAdminText("Buna icazəniz yoxdur","Buna izniniz yok","Access denied"));return psH("iframe",{title:psAdminText("Obyektlərin idarəsi","İşletme yönetimi","Location management"),src:"./cloud-branches/hub.html?lang="+lang,style:{width:"100%",height:"100%",minHeight:"720px",border:0},className:"ps-cloud-branches"});}
+function PsCloudBranches({mode='objects'}={}){const {lang}=useI18n(),has=useAuthStore(s=>s.hasPermission),session=useAuthStore(s=>s.session);if(!has('users.manage')&&!['manager','administrator'].includes(session?.role))return psH('p',null,psAdminText('Buna icazəniz yoxdur','Buna izniniz yok','Access denied'));return psH('iframe',{title:mode==='warehouse'?psAdminText('Filiallararası keçid','Şubeler arası geçiş','Switch branches'):psAdminText('Obyektlərin idarəsi','İşletme yönetimi','Location management'),src:'./cloud-branches/hub.html?lang='+encodeURIComponent(lang)+'&mode='+mode,style:{width:'100%',height:'calc(100dvh - 290px)',minHeight:'440px',border:0},className:'ps-cloud-branches'});}
 function PsObjectLoginBoundary({children}){const session=useAuthStore(x=>x.session),{lang}=useI18n();const key=String(session?.userId||session?.id||"")+":"+String(session?.loginAt||"");const [confirmed,setConfirmed]=reactExports.useState(null);const ref=reactExports.useRef(null);reactExports.useEffect(()=>{const receive=async event=>{if(event.source!==ref.current?.contentWindow||event.origin!==location.origin)return;if(event.data?.type==="pos:object:selected")setConfirmed(key);else if(event.data?.type==="pos:object:logout"){try{await window.pos.auth.logout();useAuthStore.getState().setSession(null);}catch(e){toast(String(e?.message||e),"danger");}}};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[key]);if(window.__psCloudBranchMode||psMarketMode()||!window.pos?.business?.cloudSelection||confirmed===key)return children;return psH("iframe",{ref,title:psAdminText("Obyekt seçimi","İşletme seçimi","Choose location"),src:"./cloud-branches/selection.html?lang="+encodeURIComponent(lang),style:{width:"100%",height:"100dvh",border:0,display:"block"}});}
 const PsPinAccessContext=reactExports.createContext(null);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -30509,7 +30531,12 @@ function psGroupOrderSizes(products,lang){
 function PsOrderSizes({family,onPick,onClose,busy}){const h=psH;return jsxRuntimeExports.jsx(PsAdminDialog,{title:localizedName(family,useI18n().lang)+' — ölçü seçin',onClose,busy,children:h('div',{className:'ps-order-sizes'},h('p',null,'İstədiyiniz ölçünü seçin. Hər ölçünün qiyməti və kalkulyasiyası ayrıdır.'),...family.__psSizeVariants.map(row=>h('button',{key:row.product.id,type:'button',disabled:busy||!!row.product.soldOut||row.product.available===false||row.product.available===0,onClick:()=>onPick(row.product)},h('strong',null,row.size+' sm'),h('span',null,formatMoney(row.product.priceMinor)))))});}
 function PsStockMenuPicker({onClose,onSaved}){const h=psH,[goods,setGoods]=reactExports.useState([]),[query,setQuery]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false),[loading,setLoading]=reactExports.useState(true),[error,setError]=reactExports.useState(''),lock=reactExports.useRef(false);reactExports.useEffect(()=>{let live=true;void window.pos.erp.call('goods.list',{}).then(r=>{if(!r.success)throw Error(r.error?.message||'Mallar alınmadı');if(live)setGoods(r.data.goods||[])}).catch(e=>{if(live)setError(e.message)}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[]);return jsxRuntimeExports.jsx(PsAdminDialog,{title:'Anbardan menyuya əlavə et',onClose,busy,children:h('div',{className:'ps-stock-menu-picker'},h('p',null,'Satılan hazır malı seçin. Xammal və resept üçün istifadə edilən malları menyuya çıxarmayın.'),h('label',null,'Mal axtarışı',h('input',{value:query,onChange:e=>setQuery(e.target.value),placeholder:'Ad və ya barkod'})),loading&&h('p',{role:'status'},'Mallar alınır…'),error&&h('p',{role:'alert'},error),...goods.filter(g=>!g.menuActive&&[g.name,g.barcode].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0,80).map(g=>h('button',{type:'button',key:g.id,disabled:busy||g.basePriceMinor<=0,onClick:async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const r=await psBusinessCall('catalog.publish',{ingredientId:g.id});if(!r.success)throw Error(r.error?.message||'Əlavə edilmədi');window.dispatchEvent(new Event('possistem-catalog-changed'));await onSaved(r.data);onClose();}catch(e){setError(e.message)}finally{lock.current=false;setBusy(false)}}},h('strong',null,g.name),h('span',null,g.basePriceMinor>0?formatMoney(g.basePriceMinor):'Əvvəlcə satış qiyməti yazın'))))});}
 function PsWorkspaceNav(){const h=psH,{pathname,search}=useLocation(),has=useAuthStore(s=>s.hasPermission);const links=[['/operations?tab=sales','Satışlar',['sales.view']],['/operations?tab=stock','Anbar',['inventory.view']],['/admin/catalog','Kataloq',['catalog.manage']],['/operations?tab=delivery','Çatdırılma',['delivery.view']],['/admin/staff','İstifadəçilər',['users.manage']],['/admin/reports','Hesabatlar',['reports.view']],['/settings','Parametrlər',['settings.manage']]];return h('nav',{className:'ps-workspace-nav','aria-label':'İş sahəsi'},...links.filter(([, ,permissions])=>permissions.some(has)).map(([to,label])=>{const match=to.includes('?')?pathname+search===to:pathname===to;return h(Link,{to,key:to,'aria-current':match?'page':undefined},label)}));}
-function PsStockBranches(){const h=psH,[tab,setTab]=reactExports.useState('local'),has=useAuthStore(s=>s.hasPermission);return h('div',{className:'ps-stock-workspace'},has('users.manage')&&h('nav',{className:'ps-business-tabs','aria-label':'Anbarın əhatəsi'},h('button',{type:'button','aria-pressed':tab==='local',onClick:()=>setTab('local')},'Bu filialın anbarı'),h('button',{type:'button','aria-pressed':tab==='branches',onClick:()=>setTab('branches')},'Filialların qalıqları')),tab==='branches'?h(PsBranchNetwork):h(OpsStock));}
+function PsStockBranches(){
+ const h=psH,has=useAuthStore(s=>s.hasPermission),role=useAuthStore(s=>s.session?.role),{search}=useLocation(),[tab,setTab]=reactExports.useState('local');
+ const requested=new URLSearchParams(search).get('branchSwitch')==='1',canSwitch=!window.__psCloudBranchMode&&(has('users.manage')||['manager','administrator'].includes(role));
+ reactExports.useEffect(()=>{if(requested&&canSwitch)setTab('switch');},[requested,canSwitch]);
+ return h('div',{className:'ps-stock-workspace'},canSwitch&&h('nav',{className:'ps-business-tabs','aria-label':'Anbarın əhatəsi'},h('button',{type:'button','aria-pressed':tab==='local',onClick:()=>setTab('local')},'Bu filialın anbarı'),h('button',{type:'button','aria-pressed':tab==='branches',onClick:()=>setTab('branches')},'Filialların qalıqları'),h('button',{type:'button','aria-pressed':tab==='switch',onClick:()=>setTab('switch')},'Filiallararası keçid')),tab==='switch'&&canSwitch?h(PsCloudBranches,{mode:'warehouse'}):tab==='branches'&&canSwitch?h(PsBranchNetwork):h(OpsStock));
+}
 function PsPinAccessInfo(){const h=psH,state=reactExports.useContext(PsPinAccessContext);if(!state?.allowed)return null;const sub=state.subscription||{},trial=sub.accessStatus==='trial',end=Date.parse(trial?sub.accessUntil:sub.paidUntil||sub.accessUntil||''),left=Math.max(0,end-Date.now()),hours=Math.ceil(left/3600000);return h('aside',{className:'ps-pin-access-info',role:'status'},h('strong',null,trial?'Pulsuz test istifadəsi':sub.accessStatus==='exempt'?'Administrator icazəsi':'İstifadə aktivdir'),Number.isFinite(end)&&h('span',null,trial?Math.floor(hours/24)+' gün '+hours%24+' saat qalıb':'Ödənilmiş müddət: '+new Date(end).toLocaleDateString('az-AZ',{timeZone:'Asia/Baku'})),Number.isFinite(end)&&trial&&h('small',null,'Son tarix: '+new Date(end).toLocaleString('az-AZ',{timeZone:'Asia/Baku'})));}
 const container = document.getElementById("root");
 if (!container) {
@@ -30603,17 +30630,3 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
-
-
-
-
-
-
-
-
-
-
-
-
-
-

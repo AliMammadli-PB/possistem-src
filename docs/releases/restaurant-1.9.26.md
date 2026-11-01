@@ -1,0 +1,9 @@
+# Restaurant POS 1.9.26
+
+The left rail shows icons at rest and reveals unbroken labels on pointer hover or keyboard focus. Expansion overlays the workspace: the cart and work surface do not move. Mouse clicks do not leave the rail expanded. Touch screens retain icon navigation and accessible names, with at least 48 px targets. Reduced-motion users receive the same behavior without a width transition.
+
+Branch switching now lives under **Anbar → Filiallararası keçid**. The existing authenticated branch hub opens there, with online branch/till selectors and existing unsaved-change/availability guards. Selecting a remote branch does not reassign the local till. The peer-stock shortcut opens the same Anbar view. The Objects entrance retains creation, naming and administrative assignment tools; it no longer exposes remote-workspace entry buttons or clickable branch headings. Local setup selection and the shared Market hub default remain unchanged.
+
+Validation: shipped React shell at 768/1366/1920, collapse after click, keyboard focus, stable workspace position; touch rail and delivery dialog at 360/768/1024/1366/1920/3840; actual hub in Anbar switches to the selected device without a metadata mutation; Objects rename remains functional while remote entry is absent; peer-stock shortcut and restricted warehouse-user visibility; retained owner iframe/catalog and read-only checks. Chromium 151.0.7922.34. Installer package/module closure, matching renderer and compiled core, archive integrity, version and public-link checks are recorded in task artifacts. Native business code is unchanged from 1.9.25; its version was rebuilt for 1.9.26.
+
+Update the till using the official `/download/pos/` page. `Possistem NEWEST` points at this source version. Previous releases remain available for rollback. No database migration, stock transfer or account reassignment is performed by this release.
