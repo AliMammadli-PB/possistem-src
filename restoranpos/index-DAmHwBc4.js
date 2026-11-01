@@ -21,6 +21,7 @@ function PsSizeVariants({rows,onChange,price,disabled}) {
 
 
 
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14937,7 +14938,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.26 · aefa913";
+const _PS_BUILD = "1.9.27 · 2c3343c";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15250,7 +15251,7 @@ function AppShell() {
   const links = [...serviceLinks, ...adminLinksNav];
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-shell flex h-full flex-col overflow-hidden bg-ink", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(CoreBanner, {}),
-    jsxRuntimeExports.jsx(PsQrInbox, {}),
+    /* QR_SIDEBAR_1927 */
     /* @__PURE__ */ jsxRuntimeExports.jsx(UpdateBanner, {}),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "ps-touch-sidebar relative z-20 flex w-16 shrink-0 flex-col border-r border-gold/15 bg-surface/92 px-2 py-4 shadow-2xl backdrop-blur-xl 2xl:w-48 2xl:px-3 2xl:py-5", children: [
@@ -15262,7 +15263,7 @@ function AppShell() {
           ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-px bg-gradient-to-r from-gold/40 to-transparent 2xl:mx-2" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "mt-4 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden 2xl:mt-5", children: links.map(({ to, label, icon: Icon2, show: _psOk }) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "mt-4 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden 2xl:mt-5", children: [links.map(({ to, label, icon: Icon2, show: _psOk }) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
           NavLink,
           {
             to,
@@ -15278,7 +15279,7 @@ function AppShell() {
             ]
           },
           to
-        )) }),
+        )),jsxRuntimeExports.jsx(PsQrInbox,{})] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 border-t border-gold/15 pt-4", children: [
           session && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 hidden px-3 2xl:block", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[13px] font-medium text-cream", children: session.fullName }),
@@ -23167,7 +23168,7 @@ function PsQrInbox(){
  if(!enabled)return null;
  const pending=orders.filter(o=>o.status==='pending'||o.status==='accepting');
  const decide=async(o,action)=>{setBusy(o.id);setError("");try{const r=await psQrCall("qr.decision",{id:o.id,action,reason:reason[o.id]||""});await load();if(action==='accept'){setOpen(false);navigate('/orders/'+r.tableId);toast(psQrText("Sifariş hesaba əlavə edildi. Mətbəxə göndərməyi unutmayın.","Sipariş hesaba eklendi. Mutfağa göndermeyi unutmayın.","Order added to the bill. Remember to send it to the kitchen."),"success");}}catch(e){setError(e.message)}finally{setBusy("")}};
- return h(reactExports.Fragment,null,h("button",{className:"ps-qr-inbox-toggle",onClick:()=>{setOpen(true);void load()}},psQrText("QR sifarişlər","QR siparişler","QR orders"),pending.length>0&&h("b",null,pending.length)),open&&h("div",{className:"ps-qr-overlay",onClick:e=>{if(e.target===e.currentTarget)setOpen(false)}},h("section",{className:"ps-qr-inbox",ref:dialogRef,role:"dialog","aria-modal":"true","aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders"),onKeyDown:e=>{if(e.key==='Escape')setOpen(false)}},h("header",{className:"ps-qr-heading"},h("h2",null,psQrText("QR sifarişlər","QR siparişler","QR orders")),h("button",{onClick:()=>setOpen(false)},psQrText("Bağla","Kapat","Close"))),error&&h("p",{className:"ps-qr-error",role:"alert"},error),h("button",{onClick:load},psQrText("Yenilə","Yenile","Refresh")),!orders.length&&h("p",null,psQrText("Hələ QR sifariş yoxdur.","Henüz QR sipariş yok.","No QR orders yet.")),...orders.map(o=>h("article",{key:o.id,className:"ps-qr-order"},h("div",{className:"ps-qr-heading"},h("h3",null,o.tableLabel),h("span",null,new Date(o.createdAt).toLocaleString())),h("ul",null,...o.lines.map((l,i)=>h("li",{key:i},h("strong",null,l.qty+' × '+l.name),h("span",null,psQrMoney(l.lineTotalMinor)),l.selected?.length>0&&h("small",null,l.selected.map(m=>m.name).join(', ')),l.note&&h("small",null,l.note)))),o.note&&h("p",null,o.note),h("p",null,psQrText("Məhsullar: ","Ürünler: ","Items: ")+psQrMoney(o.subtotalMinor)),o.reason&&h("p",{className:"ps-qr-error"},o.reason),['pending','accepting'].includes(o.status)?h("div",{className:"ps-qr-actions"},h("button",{className:"primary",disabled:!!busy||(o.status==='accepting'&&Date.parse(o.claimUntil)>Date.now()),onClick:()=>decide(o,'accept')},psQrText("Qəbul et və hesabı aç","Kabul et ve hesabı aç","Accept and open bill")),o.status==='pending'&&h(reactExports.Fragment,null,h("input",{placeholder:psQrText("İmtina səbəbi","Ret nedeni","Rejection reason"),value:reason[o.id]||"",onChange:e=>setReason({...reason,[o.id]:e.target.value})}),h("button",{disabled:!!busy||!(reason[o.id]||'').trim(),onClick:()=>decide(o,'reject')},psQrText("İmtina et","Reddet","Reject")))):h("span",{className:"ps-qr-state"},({accepted:psQrText("Qəbul edilib","Kabul edildi","Accepted"),rejected:psQrText("İmtina edilib","Reddedildi","Rejected"),expired:psQrText("Müddəti bitib","Süresi doldu","Expired")})[o.status]||o.status))))));
+ return h(reactExports.Fragment,null,h("button",{type:"button",className:"ps-qr-inbox-toggle ps-nav "+(open?"ps-nav-on":"ps-nav-off"),"aria-haspopup":"dialog","aria-expanded":open,"aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders")+(pending.length?' · '+pending.length:''),title:psQrText("QR sifarişlər","QR siparişler","QR orders"),onClick:()=>{setOpen(true);void load()}},h("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.8,"aria-hidden":"true"},h("path",{d:"M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h2v2h-2z M19 15h2 M15 19v2 M19 19h2v2h-2z"})),h("span",{className:"ps-touch-nav-label"},psQrText("QR sifarişlər","QR siparişler","QR orders")),pending.length>0&&h("b",{"aria-hidden":"true"},pending.length>99?'99+':pending.length)),open&&requireReactDom().createPortal(h("div",{className:"ps-qr-overlay",onClick:e=>{if(e.target===e.currentTarget)setOpen(false)}},h("section",{className:"ps-qr-inbox",ref:dialogRef,role:"dialog","aria-modal":"true","aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders"),onKeyDown:e=>{if(e.key==='Escape')setOpen(false)}},h("header",{className:"ps-qr-heading"},h("h2",null,psQrText("QR sifarişlər","QR siparişler","QR orders")),h("button",{onClick:()=>setOpen(false)},psQrText("Bağla","Kapat","Close"))),error&&h("p",{className:"ps-qr-error",role:"alert"},error),h("button",{onClick:load},psQrText("Yenilə","Yenile","Refresh")),!orders.length&&h("p",null,psQrText("Hələ QR sifariş yoxdur.","Henüz QR sipariş yok.","No QR orders yet.")),...orders.map(o=>h("article",{key:o.id,className:"ps-qr-order"},h("div",{className:"ps-qr-heading"},h("h3",null,o.tableLabel),h("span",null,new Date(o.createdAt).toLocaleString())),h("ul",null,...o.lines.map((l,i)=>h("li",{key:i},h("strong",null,l.qty+' × '+l.name),h("span",null,psQrMoney(l.lineTotalMinor)),l.selected?.length>0&&h("small",null,l.selected.map(m=>m.name).join(', ')),l.note&&h("small",null,l.note)))),o.note&&h("p",null,o.note),h("p",null,psQrText("Məhsullar: ","Ürünler: ","Items: ")+psQrMoney(o.subtotalMinor)),o.reason&&h("p",{className:"ps-qr-error"},o.reason),['pending','accepting'].includes(o.status)?h("div",{className:"ps-qr-actions"},h("button",{className:"primary",disabled:!!busy||(o.status==='accepting'&&Date.parse(o.claimUntil)>Date.now()),onClick:()=>decide(o,'accept')},psQrText("Qəbul et və hesabı aç","Kabul et ve hesabı aç","Accept and open bill")),o.status==='pending'&&h(reactExports.Fragment,null,h("input",{placeholder:psQrText("İmtina səbəbi","Ret nedeni","Rejection reason"),value:reason[o.id]||"",onChange:e=>setReason({...reason,[o.id]:e.target.value})}),h("button",{disabled:!!busy||!(reason[o.id]||'').trim(),onClick:()=>decide(o,'reject')},psQrText("İmtina et","Reddet","Reject")))):h("span",{className:"ps-qr-state"},({accepted:psQrText("Qəbul edilib","Kabul edildi","Accepted"),rejected:psQrText("İmtina edilib","Reddedildi","Rejected"),expired:psQrText("Müddəti bitib","Süresi doldu","Expired")})[o.status]||o.status))))),document.body));
 }
 
 function settingsSections(t) {
@@ -30499,6 +30500,12 @@ function PsTouchNavIcon({to,Icon}){const key=to.startsWith('/operations')?new UR
 function PsCloudBranches({mode='objects'}={}){const {lang}=useI18n(),has=useAuthStore(s=>s.hasPermission),session=useAuthStore(s=>s.session);if(!has('users.manage')&&!['manager','administrator'].includes(session?.role))return psH('p',null,psAdminText('Buna icazəniz yoxdur','Buna izniniz yok','Access denied'));return psH('iframe',{title:mode==='warehouse'?psAdminText('Filiallararası keçid','Şubeler arası geçiş','Switch branches'):psAdminText('Obyektlərin idarəsi','İşletme yönetimi','Location management'),src:'./cloud-branches/hub.html?lang='+encodeURIComponent(lang)+'&mode='+mode,style:{width:'100%',height:'calc(100dvh - 290px)',minHeight:'440px',border:0},className:'ps-cloud-branches'});}
 function PsObjectLoginBoundary({children}){const session=useAuthStore(x=>x.session),{lang}=useI18n();const key=String(session?.userId||session?.id||"")+":"+String(session?.loginAt||"");const [confirmed,setConfirmed]=reactExports.useState(null);const ref=reactExports.useRef(null);reactExports.useEffect(()=>{const receive=async event=>{if(event.source!==ref.current?.contentWindow||event.origin!==location.origin)return;if(event.data?.type==="pos:object:selected")setConfirmed(key);else if(event.data?.type==="pos:object:logout"){try{await window.pos.auth.logout();useAuthStore.getState().setSession(null);}catch(e){toast(String(e?.message||e),"danger");}}};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[key]);if(window.__psCloudBranchMode||psMarketMode()||!window.pos?.business?.cloudSelection||confirmed===key)return children;return psH("iframe",{ref,title:psAdminText("Obyekt seçimi","İşletme seçimi","Choose location"),src:"./cloud-branches/selection.html?lang="+encodeURIComponent(lang),style:{width:"100%",height:"100dvh",border:0,display:"block"}});}
 const PsPinAccessContext=reactExports.createContext(null);
+
+
+
+
+
+
 
 
 
