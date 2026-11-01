@@ -14,11 +14,8 @@ function PsSubscriptionBoundary({children}){
  if(exempt)return children;
  if(!state)return h('main',{className:'ps-payment-gate'},h('p',{role:'status'},L('Abunəlik yoxlanılır…','Abonelik kontrol ediliyor…','Checking subscription…')));
  if(!state.authenticated)return h(Navigate,{to:'/tenant-login',replace:true});
- if(state.allowed){
-  const trial=state.subscription?.accessStatus==='trial',end=Date.parse(state.subscription?.accessUntil||''),left=Math.max(0,end-Date.now()),totalHours=Math.ceil(left/3600000),days=Math.floor(totalHours/24),hours=totalHours%24,until=Number.isFinite(end)?new Date(end).toLocaleString('az-AZ',{timeZone:'Asia/Baku'}):'';
-  if(!trial)return children;
-  return h('div',{className:'ps-access-shell'},h('aside',{className:'ps-trial-notice',role:'status'},h('strong',null,L('Pulsuz test istifadəsi','Ücretsiz deneme','Free trial')),h('span',null,L(`Test vaxtı: ${days} gün ${hours} saat qalıb`,`Deneme süresi: ${days} gün ${hours} saat kaldı`,`Trial: ${days} day(s) ${hours} hour(s) remaining`)),h('small',null,L('Son tarix: ','Bitiş: ','Until: ')+until)),h('div',{className:'ps-access-content'},children));
- }
+ if(state.allowed)return pathname==='/login'?h(PsPinAccessContext.Provider,{value:state},children):children;
+ if(pathname!=='/login')return h(Navigate,{to:'/login',replace:true});
  const sub=state.subscription,unassigned=state.reason==='product_not_assigned';
  return h('main',{className:'ps-payment-gate'},h('section',{className:'ps-payment-card'},h('p',{className:'ps-payment-product'},'Restoran POS'),h('h1',null,state.paymentConfirmed?L('İstifadə icazəsi təsdiqləndi','Kullanım izni doğrulandı','Access confirmed'):unassigned?L('Bu POS hesaba təyin edilməyib','Bu POS hesaba atanmamış','This POS is not assigned to your account'):L('Davam etmək üçün ödəniş edin','Devam etmek için ödeme yapın','Pay to continue')),
  state.accountEmail&&h('p',{className:'ps-access-account'},state.accountEmail),

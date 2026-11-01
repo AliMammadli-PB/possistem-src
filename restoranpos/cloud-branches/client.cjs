@@ -3,7 +3,7 @@ const {randomUUID}=require('node:crypto');
 const METHODS=require('./cloud-branches-methods.json');
 const {project}=require('./branch-presence.cjs');
 const READ=['context','documents','document.get','staff','branch.summary','transfer.list','transfer.get','waste.list','waste.get'];
-const WRITE=['correct','delivery.update','staff.save','staff.link','catalog.publish','transfer.save','transfer.dispatch','transfer.receive','transfer.returnConfirm','transfer.cancel','transfer.reverse','transfer.recall','transfer.revoke','transfer.sync','waste.save','waste.delete'];
+const WRITE=['correct','delivery.update','staff.save','staff.link','catalog.publish','catalog.stockEdit','transfer.save','transfer.dispatch','transfer.receive','transfer.returnConfirm','transfer.cancel','transfer.reverse','transfer.recall','transfer.revoke','transfer.sync','waste.save','waste.delete'];
 function kind(call){if(call?.method==='business.call')return READ.includes(call.payload?.action)?'r':WRITE.includes(call.payload?.action)?'w':null;if(call?.method==='settings.set'&&call.payload?.key!=='costing.resetAt')return null;return METHODS[call?.method]||null;}
 function createCloudBranches({credentials,fetchImpl=fetch}){
  const pendingWrites=new Map();

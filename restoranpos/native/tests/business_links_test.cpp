@@ -243,3 +243,32 @@ TEST_CASE("a reverse cross-device transfer restores the original product without
  const auto reverse=b.biz("transfer.reverse",{{"id",d.at("id")},{"reason","Əlaqəli düzəliş"}});b.biz("transfer.dispatch",{{"id",reverse.at("id")}});event=b.biz("transfer.outbox").at("events")[0];a.biz("transfer.sync",{{"event",event.at("payload")},{"cloudSourceDeviceId","B"},{"cloudTargetDeviceId","A"}});const auto returned=a.biz("transfer.get",{{"id",reverse.at("id")}});REQUIRE(returned.at("lines")[0].at("ingredientId")==good);
  a.biz("transfer.receive",{{"id",reverse.at("id")},{"lines",pos::Json::array({{{"id",returned.at("lines")[0].at("id")},{"acceptedMilli",3000},{"rejectedMilli",0}}})}});REQUIRE(ai.levelOf(good,"wh-main")==3000);REQUIRE(a.scalar("SELECT COUNT(*) FROM ingredients WHERE name='Barkodsuz məhsul'")==1);
 }
+TEST_CASE("stock metadata edits preserve costing quantities and recipe and are replay safe","[business][stockedit]"){
+ BusinessFixture x;const auto id=x.call("ingredients.save",{{"name","Dönər"},{"unit","kg"},{"salePriceMinor",500},{"costMinor",230},{"barcode","4760987654321"},{"minQtyMilli",1200}}).at("id").get<std::string>();
+ pos::services::InventoryService(x.f.ctx()).move(id,"wh-main",7000,"adjustment","","test");
+ const pos::Json payload{{"ingredientId",id},{"name","Dönər yeni"},{"salePriceMinor",650},{"publish",true}};
+ const auto out=x.biz("catalog.stockEdit",payload,"stock-edit-once");const auto menu=out.at("menu").at("id").get<std::string>();
+ const auto replay=x.biz("catalog.stockEdit",payload,"stock-edit-once");REQUIRE(replay.at("id")==out.at("id"));REQUIRE(replay.at("idempotentReplay")==true);
+ REQUIRE(x.scalar("SELECT qty_milli FROM stock_levels WHERE ingredient_id='"+id+"'")==7000);
+ REQUIRE(x.scalar("SELECT cost_minor FROM ingredients WHERE id='"+id+"'")==230);
+ REQUIRE(x.scalar("SELECT min_qty_milli FROM ingredients WHERE id='"+id+"'")==1200);
+ REQUIRE(x.scalar("SELECT price_minor FROM menu_items WHERE id='"+menu+"'")==650);
+ auto q=x.f.db().prepare("SELECT unit,barcode FROM ingredients WHERE id=:id");q.bind(":id",id);REQUIRE(q.step());REQUIRE(q.columnText(0)=="kg");REQUIRE(q.columnText(1)=="4760987654321");
+ auto draft=x.f.db().prepare("UPDATE menu_items SET active=0 WHERE id=:id");draft.bind(":id",menu).exec();
+ REQUIRE(x.biz("catalog.publish",{{"ingredientId",id}}).at("id")==menu);
+ REQUIRE(x.scalar("SELECT active FROM menu_items WHERE id='"+menu+"'")==1);
+ x.biz("catalog.stockEdit",{{"ingredientId",id},{"name","Dönər ən yeni"},{"salePriceMinor",700}});
+ REQUIRE(x.scalar("SELECT price_minor FROM menu_items WHERE id='"+menu+"'")==700);
+ REQUIRE(x.scalar("SELECT COUNT(*) FROM menu_item_ingredients WHERE menu_item_id='"+menu+"'")==1);
+ REQUIRE_THROWS_AS(x.biz("catalog.stockEdit",{{"ingredientId",id},{"name","Səhv"},{"salePriceMinor",-1}}),pos::PosError);
+ REQUIRE(x.scalar("SELECT sale_price_minor FROM ingredients WHERE id='"+id+"'")==700);
+ const auto rows=x.call("goods.list").at("goods");REQUIRE(rows[0].at("menuItemId")==menu);REQUIRE(rows[0].at("menuActive")==1);
+}
+TEST_CASE("stock publication without a positive price rolls back the metadata edit","[business][stockedit]"){
+ BusinessFixture x;const auto id=x.call("ingredients.save",{{"name","Un"},{"unit","kg"},{"salePriceMinor",80}}).at("id").get<std::string>();
+ REQUIRE_THROWS_AS(x.biz("catalog.stockEdit",{{"ingredientId",id},{"name","Silinməyəcək"},{"salePriceMinor",0},{"publish",true}}),pos::PosError);
+ REQUIRE(x.scalar("SELECT sale_price_minor FROM ingredients WHERE id='"+id+"'")==80);
+ REQUIRE(x.scalar("SELECT COUNT(*) FROM catalog_goods_links WHERE ingredient_id='"+id+"'")==0);
+ x.f.ctx().session().permissions.erase("catalog.manage");
+ REQUIRE_THROWS_AS(x.biz("catalog.stockEdit",{{"ingredientId",id},{"name","Qadağan"},{"salePriceMinor",90}}),pos::PosError);
+}

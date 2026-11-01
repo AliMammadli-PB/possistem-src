@@ -14,6 +14,10 @@ function PsSizeVariants({rows,onChange,price,disabled}) {
 
 
 
+
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14930,7 +14934,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.24 · 923bd17";
+const _PS_BUILD = "1.9.25 · 60f5a11";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15265,7 +15269,7 @@ function AppShell() {
             onClick: _psOk ? void 0 : (event) => { event.preventDefault(); _psDenied(); },
             className: ({ isActive }) => `ps-nav ${(isActive && _psNavTabMatches(to, location)) || (to === "/admin" && psAdminRoute(location.pathname)) ? "ps-nav-on" : "ps-nav-off"}`,
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(PsTouchNavIcon, { to, Icon: Icon2 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size:22, "aria-hidden":true }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ps-touch-nav-label", children: label })
             ]
           },
@@ -16445,6 +16449,7 @@ function PsMenuCatalog() {
   const [modifierGroups, setModifierGroups] = reactExports.useState([]);
   const [loading, setLoading] = reactExports.useState(true);
   const [saving, setSaving] = reactExports.useState(false);
+  /* STOCK_PICKER_1925 */ const [stockPicker,setStockPicker]=reactExports.useState(false);
   /* POSSISTEM_SIZES_1924 */
   const [sizeVariants,setSizeVariants]=reactExports.useState([]);
   const saveAttempt=reactExports.useRef(null);
@@ -16852,6 +16857,7 @@ function PsMenuCatalog() {
     await loadProducts(categoryId);
     }catch(error){toast(error.message||String(error),"danger");}finally{setSaving(false);}
   };
+  const stockPickerDialog=stockPicker?jsxRuntimeExports.jsx(PsStockMenuPicker,{onClose:()=>setStockPicker(false),onSaved:async menu=>{await loadCategories();const next=menu?.categoryId||categoryId;setCategoryId(next);await loadProducts(next);}}):null;
   const [showGallery, setShowGallery] = reactExports.useState(false);
   reactExports.useEffect(() => { if (!editorOpen) setShowGallery(false); }, [editorOpen]);
   reactExports.useEffect(() => {
@@ -16986,6 +16992,8 @@ function PsMenuCatalog() {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full items-center justify-center text-muted", children: t.common.loading });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-page flex h-full flex-col overflow-hidden", children: [
+      stockPickerDialog,
+      useAuthStore.getState().hasPermission("inventory.manage") && useAuthStore.getState().hasPermission("catalog.manage") ? jsxRuntimeExports.jsx("button",{className:"ps-stock-menu-open",type:"button",onClick:()=>setStockPicker(true),children:"Anbardan əlavə et"}):null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-hairline px-4 py-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: t.catalog.title }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-catalog-hint", children: t.catalog.hint })
@@ -20733,6 +20741,7 @@ function LoginPage() {
                         ] }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-staff-pin-label brand-kicker text-gold-dim", children: t.login.enterPin }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "ps-staff-pin-title mt-2 font-display text-[2rem] leading-none text-cream", children: t.login.pinTitle }),
+          jsxRuntimeExports.jsx(PsPinAccessInfo, {}),
                         jsxRuntimeExports.jsx("input", {
                           className:"ps-pin-input",type:"password",inputMode:"numeric",pattern:"[0-9]*",autoComplete:"off",autoFocus:true,
                           "aria-label":psAdminText("PIN kodu","PIN kodu","PIN code"),maxLength:pinLength,value:pin,disabled:busy,
@@ -20958,6 +20967,8 @@ function PsOriginalOrderPage() {
   const [categories2, setCategories] = reactExports.useState([]);
   const [categoryId, setCategoryId] = reactExports.useState("");
   const [products2, setProducts] = reactExports.useState([]);
+  /* ORDER_SIZES_1925 */ const [sizeFamily,setSizeFamily]=reactExports.useState(null);
+  const orderProducts=reactExports.useMemo(()=>psGroupOrderSizes(products2,lang),[products2,lang]);
   const [loading, setLoading] = reactExports.useState(true);
   const [productsLoading, setProductsLoading] = reactExports.useState(false);
   const [submitting, setSubmitting] = reactExports.useState(false);
@@ -21100,6 +21111,7 @@ function PsOriginalOrderPage() {
     await loadOrder(order.id);
   };
   const onProductClick = async (product) => {
+    if(product.__psSizeVariants){setSizeFamily(product);return;}
     if (isTruthy(product.soldOut) || product.available === false || product.available === 0) {
       return;
     }
@@ -21205,17 +21217,17 @@ function PsOriginalOrderPage() {
     () => (order?.items ?? []).filter((item) => item.status !== "voided"),
     [order?.items]
   );
-  const categoryPageSize = 8;
-  const productPageSize = 16;
+  const categoryPageSize = 7;
+  const productPageSize = 12;
   const cartPageSize = 4;
   const categoryPages = Math.max(1, Math.ceil(categories2.length / categoryPageSize));
-  const productPages = Math.max(1, Math.ceil(products2.length / productPageSize));
+  const productPages = Math.max(1, Math.ceil(orderProducts.length / productPageSize));
   const cartPages = Math.max(1, Math.ceil(cartItems.length / cartPageSize));
   const visibleCategories = categories2.slice(
     categoryPage * categoryPageSize,
     categoryPage * categoryPageSize + categoryPageSize
   );
-  const visibleProducts = products2.slice(
+  const visibleProducts = orderProducts.slice(
     productPage * productPageSize,
     productPage * productPageSize + productPageSize
   );
@@ -21283,9 +21295,9 @@ function PsOriginalOrderPage() {
         )
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid min-h-0 flex-1 grid-cols-[176px_minmax(0,1fr)_304px] 2xl:grid-cols-[210px_minmax(0,1fr)_350px]", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid min-h-0 flex-1 ps-sale-columns", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "flex min-h-0 flex-col overflow-hidden border-r border-gold/15 bg-surface/36 p-2.5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid min-h-0 flex-1 grid-rows-8 gap-1.5", children: visibleCategories.map((cat) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-sale-categories", children: visibleCategories.map((cat) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "button",
           {
             type: "button",
@@ -21305,7 +21317,7 @@ function PsOriginalOrderPage() {
         productsLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingState, { label: t.common.loading, compact: true }) : products2.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted", children: t.common.noResults }) : (
           /* Denser than before, and rectangular: a text card needs width for
              the name to sit on one or two lines rather than being clipped. */
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid min-h-0 flex-1 grid-cols-4 grid-rows-4 gap-1.5 2xl:grid-cols-5", children: visibleProducts.map((product) => {
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid min-h-0 flex-1 ps-sale-products", children: visibleProducts.map((product) => {
             const disabled = isTruthy(product.soldOut) || product.available === false || product.available === 0;
             const hideImage = isTruthy(product.imageHidden);
             return /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -21314,13 +21326,13 @@ function PsOriginalOrderPage() {
                 type: "button",
                 disabled: disabled || adding,
                 onClick: () => void onProductClick(product),
-                className: `group touch-target relative flex min-h-0 overflow-hidden rounded-md border border-gold/12 shadow-[0_10px_26px_-24px_rgba(0,0,0,.95)] transition hover:-translate-y-0.5 hover:border-gold/45 disabled:cursor-not-allowed disabled:opacity-40 ${hideImage ? "flex-col items-center justify-center gap-1 bg-surface p-2 text-center" : "flex-col justify-end bg-elevated text-left"}`,
+                className: `ps-sale-product group touch-target relative flex min-h-0 overflow-hidden rounded-md border border-gold/12 shadow-[0_10px_26px_-24px_rgba(0,0,0,.95)] transition hover:-translate-y-0.5 hover:border-gold/45 disabled:cursor-not-allowed disabled:opacity-40 ${hideImage ? "flex-col items-center justify-center gap-1 bg-surface p-2 text-center" : "flex-col justify-end bg-elevated text-left"}`,
                 children: hideImage ? (
                   // No photo, so the name gets the whole card and is allowed
                   // to wrap as far as it needs — the point of turning the
                   // picture off is being able to read the dish.
                   /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-display text-[1.05rem] leading-tight text-cream 2xl:text-lg", children: localizedName(product, lang) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-display text-[1.05rem] leading-tight text-cream 2xl:text-lg", children: localizedName(product, lang)+(product.__psSizeVariants?" · Ölçü seçin":"") }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold tabular-nums text-gold", children: disabled ? "—" : /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: product.priceMinor }) })
                   ] })
                 ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -21491,6 +21503,7 @@ function PsOriginalOrderPage() {
         )
       ] })
     ] }) }),
+    sizeFamily ? jsxRuntimeExports.jsx(PsOrderSizes,{family:sizeFamily,onClose:()=>setSizeFamily(null),busy:adding,onPick:p=>{setSizeFamily(null);void onProductClick(p);}}):null,
     promptDialog
   ] });
 }
@@ -21927,7 +21940,7 @@ function PaymentPage() {
   const tenderedMinor = parseAmount(tenderedInput, dueMinor);
   const changePreview = Math.max(0, tenderedMinor - dueMinor);
   const discountMinor = order.discountMinor ?? 0;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-full flex-col overflow-auto", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-payment-workspace flex h-full flex-col overflow-auto", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between border-b border-hairline px-6 py-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -27441,7 +27454,7 @@ function OperationsPage() {
   const _psTabs = [
     {id: "menuCatalog", label:"Restoran menyusu", show:Boolean(window.__psCloudBranchMode)&&(hasPermission("catalog.manage")||hasPermission("inventory.view")),render:()=>jsxRuntimeExports.jsx("div",{className:"ps-catalog-embedded",children:jsxRuntimeExports.jsx(PsMenuCatalog,{})})},
     { id: "sales", label: "Satışlar", show: hasPermission("sales.view") && _psArea("/operations?tab=sales"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsSales, {}) },
-    { id: "stock", label: "Anbar", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsStock, {}) },
+    { id: "stock", label: "Anbar", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(PsStockBranches, {}) },
     { id: "goods", label: "Mallar", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => jsxRuntimeExports.jsx(OpsGoods, {}) },
     { id: "categories", label: "Kateqoriyalar", show: hasPermission("inventory.view") && _psArea("/operations?tab=stock"), render: () => jsxRuntimeExports.jsx(OpsCategories, {}) },
     { id: "stocktake", label: "Sayım", show: hasPermission("inventory.count") && _psArea("/operations?tab=stock"), render: () => jsxRuntimeExports.jsx(OpsStocktake, {}) },
@@ -27547,7 +27560,7 @@ function PsAdminFrame({ children }) {
   const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["Partnyorlar", "Partnerler", "Partners"], sales: ["Satışlar", "Satışlar", "Sales"], purchases: ["Alışlar", "Alımlar", "Purchases"], objects: ["Obyektlər", "Şubeler", "Branches"], kassa: ["Kassalar", "Kasalar", "Tills"], salary: ["Maaşlar", "Maaşlar", "Salaries"], expenses: ["Xərclər", "Giderler", "Expenses"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
   const title = pathname === "/operations" ? psAdminText(...ops[new URLSearchParams(search).get("tab")] || ops.stock) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
-  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
+  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, jsxRuntimeExports.jsx(PsWorkspaceNav,{}), pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
 }
 function PsAdminHub({ links }) {
   const [query, setQuery] = reactExports.useState("");
@@ -29087,6 +29100,8 @@ function PsKitchenStations() {
   const [note, setNote] = reactExports.useState("");
   const [busy, setBusy] = reactExports.useState(false);
   const [found, setFound] = reactExports.useState(null);
+  const [dishOptions,setDishOptions]=reactExports.useState([]),[dishQuery,setDishQuery]=reactExports.useState(""),[dishError,setDishError]=reactExports.useState("");
+  reactExports.useEffect(()=>{if(!draft?.kitchenEnabled)return;let live=true;void window.pos.products.list({}).then(r=>{if(!r.success)throw Error(r.error?.message||"Menyu alınmadı");if(live){setDishOptions(r.data.products||[]);setDishError("")}}).catch(e=>{if(live)setDishError(e.message)});return()=>{live=false}},[draft?.id,draft?.kitchenEnabled]);
 
   reactExports.useEffect(() => {
     let off=false;
@@ -29164,7 +29179,7 @@ function PsKitchenStations() {
       const current=await window.pos.print.printers();if(!current.success)throw Error(current.error?.message||"Printer təyinatları alınmadı");
       const base=psReconcilePrinterRoles(Object.prototype.hasOwnProperty.call(all.data.settings,"kitchen.stations")?latest:stations,current.data),existing=base.find(s=>s.id===draft.id);
       const others=base.filter(s=>s.id!==draft.id).map(s=>{const nextRoles=psPrinterRoles(s).filter(r=>!roles.includes(r));return {...s,roles:nextRoles,main:nextRoles.includes("kitchen")};});
-      const row={id:draft.id,name:label(),printer:draft.printer,kind:draft.kitchenEnabled?"kitchen":roles.includes("receipt")?"receipt":"warehouse",main:roles.includes("kitchen"),roles,itemIds:draft.kitchenEnabled?(existing?.itemIds||draft.itemIds||[]):[],categoryIds:draft.kitchenEnabled?(existing?.categoryIds||draft.categoryIds||[]):[]};
+      const row={id:draft.id,name:label(),printer:draft.printer,kind:draft.kitchenEnabled?"kitchen":roles.includes("receipt")?"receipt":"warehouse",main:roles.includes("kitchen"),roles,itemIds:draft.kitchenEnabled?(draft.dishesTouched?Array.from(new Set([...(existing?.itemIds||[]).filter(id=>!(draft.initialItemIds||[]).includes(id)||(draft.itemIds||[]).includes(id)),...(draft.itemIds||[])])):(existing?.itemIds||draft.itemIds||[])):[],categoryIds:draft.kitchenEnabled?(existing?.categoryIds||draft.categoryIds||[]):[]};
       if(!(await persist([...others,row])))return;
       toast(row.name+L(" printeri və çap işləri yadda saxlanıldı"," yazıcısı ve görevleri kaydedildi"," printer and print purposes saved"),"success");setDraft(null);resetSearch();
     }catch(error){setNote(error.message||String(error));}finally{setBusy(false);}
@@ -29173,7 +29188,7 @@ function PsKitchenStations() {
     if(!(await confirmAsk(L(`"${row.name}" printeri silinsin?`,`"${row.name}" yazıcısı silinsin mi?`,`Remove "${row.name}"?`))))return;
     setBusy(true);try{const all=await window.pos.settings.getAll();if(!all.success)throw Error(all.error?.message||"Printerlər alınmadı");const latest=JSON.parse(all.data.settings["kitchen.stations"]||"[]");const current=await window.pos.print.printers();if(!current.success)throw Error(current.error?.message||"Printer təyinatları alınmadı");await persist(psReconcilePrinterRoles(Object.prototype.hasOwnProperty.call(all.data.settings,"kitchen.stations")?latest:stations,current.data).filter(s=>s.id!==row.id));}catch(error){setNote(error.message||String(error));}finally{setBusy(false);}
   };
-  const edit = row => {resetSearch();setDraft({...row,roles:psPrinterRoles(row),kitchenEnabled:psPrinterKind(row)==="kitchen",main:psIsMainKitchen(row),step:"kind"});};
+  const edit = row => {resetSearch();setDishQuery("");setDraft({...row,initialItemIds:[...(row.itemIds||[])],roles:psPrinterRoles(row),kitchenEnabled:psPrinterKind(row)==="kitchen",main:psIsMainKitchen(row),step:"kind"});};
   const kindLabel = row => {
     const labels=[];const roles=psPrinterRoles(row);if(roles.includes("receipt"))labels.push(L("Kassa","Kasa","Till"));if(roles.includes("warehouse"))labels.push(L("Anbar","Depo","Warehouse"));
     if(psPrinterKind(row)==="kitchen")labels.push(psIsMainKitchen(row)?L("Mətbəx — bütün yeməklər","Mutfak — tüm yemekler","Kitchen — all dishes"):L("Mətbəx — seçilmiş yeməklər","Mutfak — seçili yemekler","Kitchen — selected dishes"));return labels.join(" · ")||L("Rol seçilməyib","Görev seçilmedi","No print purpose assigned");
@@ -29244,6 +29259,7 @@ function PsKitchenStations() {
       h("div",{className:"flex flex-wrap gap-3"},...KINDS.map(([id,text])=>h("label",{key:id,className:"flex items-center gap-2 rounded-xl border border-hairline px-4 py-3"},h("input",{type:"checkbox",style:{width:18,height:18},checked:id==="kitchen"?!!draft.kitchenEnabled:psPrinterRoles(draft).includes(id),onChange:()=>togglePurpose(id),disabled:busy}),text))),
       draft.kitchenEnabled?h("label",{className:"block text-sm"},L("Mətbəx çapının növü","Mutfak baskı türü","Kitchen ticket routing"),h("select",{className:field,value:draft.main?"all":"selected",onChange:e=>setDraft(d=>({...d,main:e.target.value==="all"}))},h("option",{value:"all"},L("Bütün yeməklər — əsas mətbəx","Tüm yemekler — ana mutfak","All dishes — main kitchen")),h("option",{value:"selected"},L("Seçilmiş yeməklər — dönər, bar və s.","Seçili yemekler — döner, bar vb.","Selected dishes — grill, bar, etc.")))):null,
       draft.kitchenEnabled&&!draft.main?h("p",{className:"text-xs text-muted"},L("Menyu bölməsində yeməyi açın və Printer sahəsindən bu printeri seçin. Kassa çeki də eyni cihazdan çıxa bilər.","Menüde ürünü açıp Yazıcı alanından bu cihazı seçin. Kasa fişi de aynı cihazdan çıkabilir.","Open a dish in the Menu and choose this printer. Till receipts can use this same device.")):null,
+      draft.kitchenEnabled&&!draft.main?h("section",{className:"ps-printer-product-routing"},h("h3",null,L("Bu printerdən çıxan yeməklər","Bu yazıcıdan çıkan ürünler","Dishes printed here")),h("p",null,L("Məsələn Kassa + seçilmiş yeməklər seçin, sonra Dönər-i işarələyin. Müştəri çeki və dönər sifarişi eyni cihazdan ayrı-ayrı çıxır.","Kasa ve seçili ürünleri seçip Döner'i işaretleyin. Müşteri fişi ve döner siparişi aynı cihazdan ayrı çıkar.","Select Till and selected dishes, then check Döner. Customer and preparation tickets use the same device, separately.")),h("label",null,L("Yemək axtar","Ürün ara","Find dish"),h("input",{className:field,value:dishQuery,onChange:e=>setDishQuery(e.target.value)})),dishError&&h("p",{role:"alert"},dishError),h("div",{className:"ps-printer-dishes"},...dishOptions.filter(p=>String(p.nameAz||p.name||"").toLocaleLowerCase().includes(dishQuery.toLocaleLowerCase())).map(p=>h("label",{key:p.id},h("input",{type:"checkbox",disabled:busy,checked:(draft.itemIds||[]).includes(p.id),onChange:e=>setDraft(d=>({...d,dishesTouched:true,itemIds:e.target.checked?[...(d.itemIds||[]),p.id]:(d.itemIds||[]).filter(id=>id!==p.id)}))}),p.nameAz||p.name||p.id)))):null,
       h("div", { className: "flex flex-wrap gap-2" },
         h("button", { type: "button", disabled: busy || (!draft.kitchenEnabled&&!psPrinterRoles(draft).length), className: yes, onClick: () => void save() }, L("Yadda saxla", "Kaydet", "Save")),
         h("button", { type: "button", disabled: busy, className: quiet, onClick: () => setDraft((d) => ({ ...d, step: "search" })) }, L("Geri", "Geri", "Back")))) : null;
@@ -30245,11 +30261,8 @@ function PsSubscriptionBoundary({children}){
  if(exempt)return children;
  if(!state)return h('main',{className:'ps-payment-gate'},h('p',{role:'status'},L('Abunəlik yoxlanılır…','Abonelik kontrol ediliyor…','Checking subscription…')));
  if(!state.authenticated)return h(Navigate,{to:'/tenant-login',replace:true});
- if(state.allowed){
-  const trial=state.subscription?.accessStatus==='trial',end=Date.parse(state.subscription?.accessUntil||''),left=Math.max(0,end-Date.now()),totalHours=Math.ceil(left/3600000),days=Math.floor(totalHours/24),hours=totalHours%24,until=Number.isFinite(end)?new Date(end).toLocaleString('az-AZ',{timeZone:'Asia/Baku'}):'';
-  if(!trial)return children;
-  return h('div',{className:'ps-access-shell'},h('aside',{className:'ps-trial-notice',role:'status'},h('strong',null,L('Pulsuz test istifadəsi','Ücretsiz deneme','Free trial')),h('span',null,L(`Test vaxtı: ${days} gün ${hours} saat qalıb`,`Deneme süresi: ${days} gün ${hours} saat kaldı`,`Trial: ${days} day(s) ${hours} hour(s) remaining`)),h('small',null,L('Son tarix: ','Bitiş: ','Until: ')+until)),h('div',{className:'ps-access-content'},children));
- }
+ if(state.allowed)return pathname==='/login'?h(PsPinAccessContext.Provider,{value:state},children):children;
+ if(pathname!=='/login')return h(Navigate,{to:'/login',replace:true});
  const sub=state.subscription,unassigned=state.reason==='product_not_assigned';
  return h('main',{className:'ps-payment-gate'},h('section',{className:'ps-payment-card'},h('p',{className:'ps-payment-product'},'Restoran POS'),h('h1',null,state.paymentConfirmed?L('İstifadə icazəsi təsdiqləndi','Kullanım izni doğrulandı','Access confirmed'):unassigned?L('Bu POS hesaba təyin edilməyib','Bu POS hesaba atanmamış','This POS is not assigned to your account'):L('Davam etmək üçün ödəniş edin','Devam etmek için ödeme yapın','Pay to continue')),
  state.accountEmail&&h('p',{className:'ps-access-account'},state.accountEmail),
@@ -30481,6 +30494,23 @@ function PsTouchNavIcon({to,Icon}){const key=to.startsWith('/operations')?new UR
 /* POS_CLOUD_BRANCHES_v1 */
 function PsCloudBranches(){const {lang}=useI18n();const has=useAuthStore(s=>s.hasPermission),session=useAuthStore(s=>s.session);if(!has("users.manage")&&!(["manager","administrator"].includes(session?.role)))return psH("p",null,psAdminText("Buna icazəniz yoxdur","Buna izniniz yok","Access denied"));return psH("iframe",{title:psAdminText("Obyektlərin idarəsi","İşletme yönetimi","Location management"),src:"./cloud-branches/hub.html?lang="+lang,style:{width:"100%",height:"100%",minHeight:"720px",border:0},className:"ps-cloud-branches"});}
 function PsObjectLoginBoundary({children}){const session=useAuthStore(x=>x.session),{lang}=useI18n();const key=String(session?.userId||session?.id||"")+":"+String(session?.loginAt||"");const [confirmed,setConfirmed]=reactExports.useState(null);const ref=reactExports.useRef(null);reactExports.useEffect(()=>{const receive=async event=>{if(event.source!==ref.current?.contentWindow||event.origin!==location.origin)return;if(event.data?.type==="pos:object:selected")setConfirmed(key);else if(event.data?.type==="pos:object:logout"){try{await window.pos.auth.logout();useAuthStore.getState().setSession(null);}catch(e){toast(String(e?.message||e),"danger");}}};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[key]);if(window.__psCloudBranchMode||psMarketMode()||!window.pos?.business?.cloudSelection||confirmed===key)return children;return psH("iframe",{ref,title:psAdminText("Obyekt seçimi","İşletme seçimi","Choose location"),src:"./cloud-branches/selection.html?lang="+encodeURIComponent(lang),style:{width:"100%",height:"100dvh",border:0,display:"block"}});}
+const PsPinAccessContext=reactExports.createContext(null);
+
+
+
+
+
+
+function psGroupOrderSizes(products,lang){
+ const pattern=/^(.*?)\s*[·•|–-]\s*(\d+(?:[.,]\d+)?)\s*(?:sm|cm)\s*$/i,groups=new Map();
+ for(const product of products){const match=pattern.exec(localizedName(product,lang)||'');if(!match)continue;const key=product.categoryId+'|'+match[1].trim().toLocaleLowerCase();if(!groups.has(key))groups.set(key,[]);groups.get(key).push({product,size:Number(match[2].replace(',','.')),base:match[1].trim()});}
+ const emitted=new Set();return products.map(product=>{const match=pattern.exec(localizedName(product,lang)||'');if(!match)return product;const key=product.categoryId+'|'+match[1].trim().toLocaleLowerCase(),rows=groups.get(key);if(rows.length<2)return product;if(emitted.has(key))return null;emitted.add(key);rows.sort((a,b)=>a.size-b.size);const base=rows[0].base;return {...product,id:'size-family:'+key,nameAz:base,nameTr:base,nameEn:base,priceMinor:Math.min(...rows.map(r=>r.product.priceMinor)),soldOut:rows.every(r=>r.product.soldOut||r.product.available===false||r.product.available===0),available:rows.some(r=>!r.product.soldOut&&r.product.available!==false&&r.product.available!==0),__psSizeVariants:rows};}).filter(Boolean);
+}
+function PsOrderSizes({family,onPick,onClose,busy}){const h=psH;return jsxRuntimeExports.jsx(PsAdminDialog,{title:localizedName(family,useI18n().lang)+' — ölçü seçin',onClose,busy,children:h('div',{className:'ps-order-sizes'},h('p',null,'İstədiyiniz ölçünü seçin. Hər ölçünün qiyməti və kalkulyasiyası ayrıdır.'),...family.__psSizeVariants.map(row=>h('button',{key:row.product.id,type:'button',disabled:busy||!!row.product.soldOut||row.product.available===false||row.product.available===0,onClick:()=>onPick(row.product)},h('strong',null,row.size+' sm'),h('span',null,formatMoney(row.product.priceMinor)))))});}
+function PsStockMenuPicker({onClose,onSaved}){const h=psH,[goods,setGoods]=reactExports.useState([]),[query,setQuery]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false),[loading,setLoading]=reactExports.useState(true),[error,setError]=reactExports.useState(''),lock=reactExports.useRef(false);reactExports.useEffect(()=>{let live=true;void window.pos.erp.call('goods.list',{}).then(r=>{if(!r.success)throw Error(r.error?.message||'Mallar alınmadı');if(live)setGoods(r.data.goods||[])}).catch(e=>{if(live)setError(e.message)}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[]);return jsxRuntimeExports.jsx(PsAdminDialog,{title:'Anbardan menyuya əlavə et',onClose,busy,children:h('div',{className:'ps-stock-menu-picker'},h('p',null,'Satılan hazır malı seçin. Xammal və resept üçün istifadə edilən malları menyuya çıxarmayın.'),h('label',null,'Mal axtarışı',h('input',{value:query,onChange:e=>setQuery(e.target.value),placeholder:'Ad və ya barkod'})),loading&&h('p',{role:'status'},'Mallar alınır…'),error&&h('p',{role:'alert'},error),...goods.filter(g=>!g.menuActive&&[g.name,g.barcode].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0,80).map(g=>h('button',{type:'button',key:g.id,disabled:busy||g.basePriceMinor<=0,onClick:async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const r=await psBusinessCall('catalog.publish',{ingredientId:g.id});if(!r.success)throw Error(r.error?.message||'Əlavə edilmədi');window.dispatchEvent(new Event('possistem-catalog-changed'));await onSaved(r.data);onClose();}catch(e){setError(e.message)}finally{lock.current=false;setBusy(false)}}},h('strong',null,g.name),h('span',null,g.basePriceMinor>0?formatMoney(g.basePriceMinor):'Əvvəlcə satış qiyməti yazın'))))});}
+function PsWorkspaceNav(){const h=psH,{pathname,search}=useLocation(),has=useAuthStore(s=>s.hasPermission);const links=[['/operations?tab=sales','Satışlar',['sales.view']],['/operations?tab=stock','Anbar',['inventory.view']],['/admin/catalog','Kataloq',['catalog.manage']],['/operations?tab=delivery','Çatdırılma',['delivery.view']],['/admin/staff','İstifadəçilər',['users.manage']],['/admin/reports','Hesabatlar',['reports.view']],['/settings','Parametrlər',['settings.manage']]];return h('nav',{className:'ps-workspace-nav','aria-label':'İş sahəsi'},...links.filter(([, ,permissions])=>permissions.some(has)).map(([to,label])=>{const match=to.includes('?')?pathname+search===to:pathname===to;return h(Link,{to,key:to,'aria-current':match?'page':undefined},label)}));}
+function PsStockBranches(){const h=psH,[tab,setTab]=reactExports.useState('local'),has=useAuthStore(s=>s.hasPermission);return h('div',{className:'ps-stock-workspace'},has('users.manage')&&h('nav',{className:'ps-business-tabs','aria-label':'Anbarın əhatəsi'},h('button',{type:'button','aria-pressed':tab==='local',onClick:()=>setTab('local')},'Bu filialın anbarı'),h('button',{type:'button','aria-pressed':tab==='branches',onClick:()=>setTab('branches')},'Filialların qalıqları')),tab==='branches'?h(PsBranchNetwork):h(OpsStock));}
+function PsPinAccessInfo(){const h=psH,state=reactExports.useContext(PsPinAccessContext);if(!state?.allowed)return null;const sub=state.subscription||{},trial=sub.accessStatus==='trial',end=Date.parse(trial?sub.accessUntil:sub.paidUntil||sub.accessUntil||''),left=Math.max(0,end-Date.now()),hours=Math.ceil(left/3600000);return h('aside',{className:'ps-pin-access-info',role:'status'},h('strong',null,trial?'Pulsuz test istifadəsi':sub.accessStatus==='exempt'?'Administrator icazəsi':'İstifadə aktivdir'),Number.isFinite(end)&&h('span',null,trial?Math.floor(hours/24)+' gün '+hours%24+' saat qalıb':'Ödənilmiş müddət: '+new Date(end).toLocaleDateString('az-AZ',{timeZone:'Asia/Baku'})),Number.isFinite(end)&&trial&&h('small',null,'Son tarix: '+new Date(end).toLocaleString('az-AZ',{timeZone:'Asia/Baku'})));}
 const container = document.getElementById("root");
 if (!container) {
   throw new Error("Root container missing from index.html");
@@ -30573,3 +30603,17 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
+
+
+
+
+
+
+
+
+
+
+
+
+
+

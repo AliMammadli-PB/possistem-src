@@ -158,6 +158,16 @@ Json correct(Context& ctx,const Json& p) {
     ctx.auditRequired("document.correct",type,id,Json{{"before",before},{"after",p},{"oldAccountId",oldAccount},{"accountId",nextAccount}});
     return Json{{"id",id},{"amountMinor",amount}};
 }
+// Called inside the caller's transaction: keep stock identity and existing recipes.
+Json publishStock(Context& ctx,const std::string& id) {
+ auto q=ctx.db().prepare("SELECT * FROM ingredients WHERE id=:id AND active=1");q.bind(":id",id);require(q.step(),"Mal tapılmadı");const auto good=q.row();
+ require(good.value("sale_price_minor",Money{0})>0,"Əvvəlcə malın satış qiymətini yazın");
+ auto link=ctx.db().prepare("SELECT m.id,m.category_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id WHERE l.ingredient_id=:id");link.bind(":id",id);
+ const bool linked=link.step();const auto menuId=linked?link.columnText(0):"goods-"+id;const auto categoryId=linked?link.columnText(1):"cat-goods";
+ auto category=ctx.db().prepare("INSERT OR IGNORE INTO menu_categories(id,name_az,name_tr,name_en,sort_order) VALUES('cat-goods','Mallar','Ürünler','Goods',999)");category.exec();
+ const auto menu=services::CatalogAdminService(ctx).upsertProduct(Json{{"id",menuId},{"nameAz",good.at("name")},{"categoryId",categoryId},{"priceMinor",good.at("sale_price_minor")},{"barcode",good.at("barcode")},{"active",true}},id);
+ ctx.auditRequired("catalog.link","ingredient",id,menu);return menu;
+}
 }
 void registerBusiness(const ContextPtr& ctx) {
     ctx->server().setRequestFilter([ctx](ipc::Request& r){warehouseRequest(*ctx,r);},[ctx](const ipc::Request& r,Json& d){warehouseResult(*ctx,r,d);});
@@ -207,19 +217,26 @@ void registerBusiness(const ContextPtr& ctx) {
             if(auto replay=idem.begin(key,"business.correct",r.payload)) return *replay;
             const auto out=correct(*ctx,r.payload);idem.complete(key,out,"document",out.value("id",std::string{}));tx.commit();return out;
         }
-        if(action=="catalog.publish") {
+        if(action=="catalog.publish" || action=="catalog.stockEdit") {
             ctx->requirePermission("catalog.manage");ctx->requirePermission("inventory.manage");
-            db::Transaction tx(ctx->db());
+            db::Transaction tx(ctx->db());services::Idempotency idem(*ctx);
+            const auto key=r.idempotencyKey.empty()?r.payload.value("idempotencyKey",std::string{}):r.idempotencyKey;
+            if(action=="catalog.stockEdit")require(!key.empty(),"Əməliyyat açarı tələb olunur");
+            if(!key.empty())if(auto replay=idem.begin(key,"business."+action,r.payload))return *replay;
             const auto id=r.payload.value("ingredientId",std::string{});
-            auto q=ctx->db().prepare("SELECT * FROM ingredients WHERE id=:id AND active=1");q.bind(":id",id);require(q.step(),"Mal tapılmadı");const auto good=q.row();
-            auto link=ctx->db().prepare("SELECT menu_id FROM catalog_goods_links WHERE ingredient_id=:id");link.bind(":id",id);
-            if(link.step())return Json{{"id",link.columnText(0)}};
-            require(good.value("sale_price_minor",Money{0})>0,"Əvvəlcə malın satış qiymətini yazın");
-            auto category=ctx->db().prepare("INSERT OR IGNORE INTO menu_categories(id,name_az,name_tr,name_en,sort_order) VALUES('cat-goods','Mallar','Ürünler','Goods',999)");category.exec();
-            // Publication reuses this exact stock identity, including weighed goods.
-            // The catalog service owns the link and recipe in this transaction.
-            const auto menu=services::CatalogAdminService(*ctx).upsertProduct(Json{{"id","goods-"+id},{"nameAz",good.at("name")},{"categoryId","cat-goods"},{"priceMinor",good.at("sale_price_minor")},{"barcode",good.at("barcode")},{"active",true}},id);
-            ctx->auditRequired("catalog.link","ingredient",id,menu);tx.commit();return menu;
+            Json out;
+            if(action=="catalog.stockEdit") {
+                const auto name=r.payload.value("name",std::string{});const auto price=r.payload.at("salePriceMinor").get<Money>();
+                require(!name.empty()&&name.size()<=800&&name.find_first_not_of(" \t\r\n")!=std::string::npos,"Malın adını düzgün yazın");
+                require(r.payload.at("salePriceMinor").is_number_integer()&&price>=0&&price<=1000000000,"Satış qiyməti düzgün deyil");
+                auto q=ctx->db().prepare("SELECT * FROM ingredients WHERE id=:id AND active=1");q.bind(":id",id);require(q.step(),"Mal tapılmadı");const auto before=q.row();
+                auto u=ctx->db().prepare("UPDATE ingredients SET name=:n,sale_price_minor=:p,updated_at=:at WHERE id=:id");u.bind(":n",name).bind(":p",price).bind(":at",nowMs()).bind(":id",id);u.exec();
+                ctx->auditRequired("catalog.stockEdit","ingredient",id,Json{{"before",before},{"name",name},{"salePriceMinor",price}});
+                out=Json{{"id",id},{"name",name},{"salePriceMinor",price}};
+                if(r.payload.value("publish",false))out["menu"]=publishStock(*ctx,id);
+            } else out=publishStock(*ctx,id);
+            if(!key.empty())idem.complete(key,out,"ingredient",id);
+            tx.commit();return out;
         }
         if(action=="documents") {
             Json rows=Json::array();

@@ -118,7 +118,7 @@ export async function posRemoteRoutes(app: FastifyInstance) {
       if (call.method === '__session') continue;
       const action=String(call.payload?.action ?? '');
       const businessRead=['context','documents','staff'];
-      const businessWrite=['correct','delivery.update','staff.save','staff.link','catalog.publish'];
+      const businessWrite=['correct','delivery.update','staff.save','staff.link','catalog.publish','catalog.stockEdit'];
       if(call.method==='business.call' && ![...businessRead,...businessWrite].includes(action)) return reply.code(400).send({error:'Bu əməliyyat saytdan açıq deyil'});
       const kind = call.method==='business.call' ? (businessWrite.includes(action)?'w':'r') : REMOTE_METHODS[call.method];
       if (!kind) return reply.code(400).send({ error: `Bu əməliyyat saytdan açıq deyil: ${call.method}` });

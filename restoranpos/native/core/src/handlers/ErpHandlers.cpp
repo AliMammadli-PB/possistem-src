@@ -213,6 +213,8 @@ void registerErp(const ContextPtr& ctx) {
             "SELECT i.id, i.sku, i.name, i.unit, i.barcode, COALESCE(i.category_id, '') AS categoryId, i.plu, i.weighted, "
             "       i.cost_minor AS lastCostMinor, " + services::InventoryService::unitCostSql(method, ":warehouse") + " AS costMinor, "
             "       i.min_qty_milli AS minQtyMilli, "
+            "       (SELECT l.menu_id FROM catalog_goods_links l WHERE l.ingredient_id=i.id) AS menuItemId, "
+            "       (SELECT m.active FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id WHERE l.ingredient_id=i.id) AS menuActive, "
             "       CASE WHEN i.sku LIKE 'MENU-%' THEN COALESCE((SELECT m.price_minor FROM menu_items m "
             "         WHERE m.id = substr(i.sku, 6)), i.sale_price_minor) ELSE i.sale_price_minor END AS basePriceMinor, "
             "       (SELECT p.sale_price_minor FROM item_prices p WHERE p.ingredient_id = i.id AND p.object_id = :object) AS objectPriceMinor, "
