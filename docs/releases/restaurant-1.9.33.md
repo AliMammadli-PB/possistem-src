@@ -46,3 +46,7 @@ A physical till, a real printer ticket, the portal branch list with a real accou
 ## Not included
 
 The owner portal is not rebuilt, so its embedded catalogue keeps a flat category list. Market and the other tills. A costed dish inside a recipe in the recipe editor. Adding sizes to an existing dish. Choices inside a menu at sale time.
+
+## Publication (2026-11-02)
+
+Published at the owner's request: update feed via `artifacts/release-1933/publish.sh`, verified ZIP, download page (EXE SHA-256 `53e946288f0952785b1b60eae869c25986e0760f3da2d300ce3a210ba17b4ab5`). For about 2 minutes the installer answered 404 through Cloudflare, which had cached a request made just before the upload; it then cleared. A full download from the public URL matched the signed manifest. Website rollback: `/var/www/possistem/.next-before-release-1933-20261102`, then `pm2 restart possistem`.
