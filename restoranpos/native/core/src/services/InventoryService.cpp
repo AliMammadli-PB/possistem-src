@@ -335,7 +335,8 @@ Json InventoryService::consumeForOrder(const std::string& orderId,
     auto rows = ctx_.db().prepare(
         "SELECT r.ingredient_id, SUM(r.qty_milli * i.quantity) AS needed "
         "FROM order_items i "
-        "JOIN menu_item_ingredients r ON r.menu_item_id = i.product_id "
+        // Expanded recipe: a set menu gives up the ingredients of its parts.
+        "JOIN menu_item_recipe_expanded r ON r.menu_item_id = i.product_id "
         "WHERE i.order_id = :order AND i.status != 'voided' "
         "GROUP BY r.ingredient_id");
     rows.bind(":order", orderId);

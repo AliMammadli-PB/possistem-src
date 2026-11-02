@@ -510,10 +510,14 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
         }
         if (stations.empty()) return true;
         const std::string productId = item.value("productId", "");
-        auto category = ctx_.db().prepare("SELECT category_id FROM menu_items WHERE id = :productId");
+        auto category = ctx_.db().prepare(
+            "SELECT m.category_id, COALESCE(k.parent_id, '') FROM menu_items m "
+            "LEFT JOIN menu_categories k ON k.id = m.category_id WHERE m.id = :productId");
         category.bind(":productId", productId);
-        const std::string categoryId = category.step() ? category.columnText(0) : std::string();
-        return stationFor(stations, productId, categoryId) == nullptr;
+        const bool found = category.step();
+        const std::string categoryId = found ? category.columnText(0) : std::string();
+        const std::string parentCategoryId = found ? category.columnText(1) : std::string();
+        return stationFor(stations, productId, categoryId, parentCategoryId) == nullptr;
     };
 
     const auto config = settings();
@@ -542,15 +546,31 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
         const auto status = getOr<std::string>(item, "status", "");
         // Only lines that have actually been sent belong on the pass.
         if (status == "voided" || status == "draft" || status == "held") continue;
-        if (!onTicket(item)) continue;
+        // A set menu prints as its parts, each on the printer that part belongs to.
+        const auto parts = menuParts(ctx_.db(), getOr<std::string>(item, "productId", ""));
+        if (parts.empty() ? !onTicket(item) : (forStation && !onTicket(item))) continue;
+        std::vector<std::string> titles;
+        for (const auto& part : parts) {
+            const auto* target = stationFor(stations, part.productId, part.categoryId, part.parentCategoryId);
+            const bool mine = forStation ? (target && target->id == options.value("station", "")) : target == nullptr;
+            if (mine) {
+                const auto milli = part.qtyMilli * item.value("quantity", 1);
+                titles.push_back((milli % 1000 == 0 ? std::to_string(milli / 1000)
+                                                    : std::to_string(milli / 1000) + "." + std::to_string(milli % 1000)) +
+                                 " x " + part.name);
+            }
+        }
+        if (parts.empty()) {
+            titles.push_back(std::to_string(item.value("quantity", 1)) + " x " + getOr<std::string>(item, "name", ""));
+        } else if (titles.empty()) {
+            continue;
+        }
 
         out << "\n";
-        for (const auto& line :
-             layout::wrapText(std::to_string(item.value("quantity", 1)) + " x " +
-                                  getOr<std::string>(item, "name", ""),
-                              width)) {
-            out << line << "\n";
+        for (const auto& title : titles) {
+            for (const auto& line : layout::wrapText(title, width)) out << line << "\n";
         }
+        if (!parts.empty()) out << "     > " << getOr<std::string>(item, "name", "") << "\n";
 
         for (const auto& modifier : item["modifiers"]) {
             out << "     > " << getOr<std::string>(modifier, "name", "") << "\n";

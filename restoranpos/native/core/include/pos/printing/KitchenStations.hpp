@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "pos/Common.hpp"
+#include "pos/db/Database.hpp"
 
 namespace pos::printing {
 
@@ -66,7 +67,8 @@ inline std::vector<KitchenStation> parseKitchenStations(const std::string& raw) 
 
 /** The station a dish prints on - its own choice first, then its category's - or nullptr for the main kitchen. */
 inline const KitchenStation* stationFor(const std::vector<KitchenStation>& stations,
-                                        const std::string& productId, const std::string& categoryId) {
+                                        const std::string& productId, const std::string& categoryId,
+                                        const std::string& parentCategoryId = "") {
     for (const auto& station : stations) {
         if (std::find(station.itemIds.begin(), station.itemIds.end(), productId) != station.itemIds.end()) {
             return &station;
@@ -78,7 +80,39 @@ inline const KitchenStation* stationFor(const std::vector<KitchenStation>& stati
             return &station;
         }
     }
+    // A printer chosen for İçkilər also takes Spirtli and Spirtsiz.
+    if (!parentCategoryId.empty()) {
+        for (const auto& station : stations) {
+            if (std::find(station.categoryIds.begin(), station.categoryIds.end(), parentCategoryId) !=
+                station.categoryIds.end()) {
+                return &station;
+            }
+        }
+    }
     return nullptr;
+}
+
+/** One product inside a set menu. Empty for an ordinary dish. */
+struct MenuPart {
+    std::string productId;
+    std::string name;
+    std::string categoryId;
+    std::string parentCategoryId;
+    std::int64_t qtyMilli = 1000;
+};
+
+inline std::vector<MenuPart> menuParts(db::Database& database, const std::string& productId) {
+    auto rows = database.prepare(
+        "SELECT p.component_menu_item_id, m.name_az, m.category_id, COALESCE(k.parent_id, ''), p.qty_milli "
+        "FROM menu_item_components p JOIN menu_items m ON m.id = p.component_menu_item_id "
+        "LEFT JOIN menu_categories k ON k.id = m.category_id "
+        "WHERE p.menu_item_id = :id ORDER BY m.name_az");
+    rows.bind(":id", productId);
+    std::vector<MenuPart> parts;
+    while (rows.step()) {
+        parts.push_back({rows.columnText(0), rows.columnText(1), rows.columnText(2), rows.columnText(3), rows.columnInt(4)});
+    }
+    return parts;
 }
 
 /**

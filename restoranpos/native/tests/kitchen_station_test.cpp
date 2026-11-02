@@ -226,3 +226,43 @@ TEST_CASE("the live floor sync can carry what is on each table", "[tables][live]
     REQUIRE(row["items"][0]["totalMinor"].get<std::int64_t>() == 2 * 900);  // fixture price 900
     REQUIRE_FALSE(find(f.call(pos::protocol::method::kTablesList, {{"includeItems", true}}), "tbl-06").contains("items"));
 }
+
+TEST_CASE("a set menu prints each part on that part's printer", "[printing][stations][menu]") {
+    StationFixture f;
+    const auto [barCategory, cola] = f.dish("Kola");
+    const auto [foodCategory, doner] = f.dish("Dönər");
+    const auto [menuCategory, lunch] = f.dish("Biznes lanç");
+    (void)foodCategory;
+    (void)menuCategory;
+    f.setting("printer.kitchen", "virtual");
+    f.setting("kitchen.stations",
+              pos::Json::array({{{"id", "st-bar"}, {"name", "BAR"}, {"printer", "tcp:127.0.0.1:1"}, {"categoryIds", {barCategory}}}})
+                  .dump());
+    auto& db = f.fixture().db();
+    for (const auto& part : {cola, doner}) {
+        auto add = db.prepare("INSERT INTO menu_item_components (menu_item_id, component_menu_item_id, qty_milli) VALUES (:m, :p, 1000)");
+        add.bind(":m", lunch).bind(":p", part).exec();
+    }
+
+    const auto order = f.call(pos::protocol::method::kOrdersCreate, {{"tableId", "tbl-01"}, {"guestCount", 1}});
+    const std::string orderId = order["id"];
+    f.call(pos::protocol::method::kOrdersAddItem, {{"orderId", orderId}, {"productId", lunch}, {"quantity", 2}});
+    f.call(pos::protocol::method::kOrdersSubmit, {{"orderId", orderId}});
+
+    auto jobs = kitchenJobs(f.fixture(), orderId);
+    REQUIRE(jobs.size() == 2);
+    const auto& barJob = jobs[0].printer == "virtual" ? jobs[1] : jobs[0];
+    REQUIRE(barJob.options.value("station", "") == "st-bar");
+
+    pos::printing::ReceiptBuilder builder(f.fixture().ctx());
+    const auto kitchen = builder.kitchenTicket(orderId);
+    REQUIRE(kitchen.text.find("2 x Dönər") != std::string::npos);
+    REQUIRE(kitchen.text.find("Kola") == std::string::npos);
+    REQUIRE(kitchen.text.find("Biznes lanç") != std::string::npos);
+
+    const auto bar = builder.kitchenTicket(orderId, barJob.options);
+    REQUIRE(bar.text.find("BAR") != std::string::npos);
+    REQUIRE(bar.text.find("2 x Kola") != std::string::npos);
+    REQUIRE(bar.text.find("Dönər") == std::string::npos);
+    REQUIRE(bar.text.find("Biznes lanç") != std::string::npos);
+}

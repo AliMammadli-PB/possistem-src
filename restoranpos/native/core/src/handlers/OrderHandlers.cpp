@@ -803,26 +803,42 @@ void registerOrders(const ContextPtr& ctx) {
                     markSent.exec();
 
                     auto station = ctx->db().prepare(
-                        "SELECT station, prep_minutes, category_id FROM menu_items WHERE id = :productId");
+                        "SELECT station, prep_minutes, category_id, "
+                        "       COALESCE((SELECT c.parent_id FROM menu_categories c WHERE c.id = menu_items.category_id), '') "
+                        "FROM menu_items WHERE id = :productId");
                     station.bind(":productId", line.productId);
                     std::string stationName = "kitchen";
                     std::int64_t prepMinutes = 15;
                     std::string categoryId;
+                    std::string parentCategoryId;
                     if (station.step()) {
                         stationName = station.columnText(0);
                         prepMinutes = station.columnInt(1);
                         categoryId = station.columnText(2);
+                        parentCategoryId = station.columnText(3);
                     }
-                    if (const auto* extra = printing::stationFor(stations, line.productId, categoryId)) {
+                    const auto route = [&](const printing::KitchenStation* extra) {
+                        if (!extra) {
+                            mainKitchenLines = true;
+                            return;
+                        }
                         auto group = std::find_if(stationLines.begin(), stationLines.end(),
                                                   [&](const auto& entry) { return entry.first == extra; });
                         if (group == stationLines.end()) {
                             stationLines.push_back({extra, {}});
                             group = std::prev(stationLines.end());
                         }
-                        group->second.push_back(line.id);
-                    } else {
-                        mainKitchenLines = true;
+                        if (std::find(group->second.begin(), group->second.end(), line.id) == group->second.end()) {
+                            group->second.push_back(line.id);
+                        }
+                    };
+                    // A set menu goes where its parts go: the dönər to the kitchen, the cola to the bar.
+                    const auto parts = printing::menuParts(ctx->db(), line.productId);
+                    if (parts.empty()) {
+                        route(printing::stationFor(stations, line.productId, categoryId, parentCategoryId));
+                    }
+                    for (const auto& part : parts) {
+                        route(printing::stationFor(stations, part.productId, part.categoryId, part.parentCategoryId));
                     }
 
                     auto job = ctx->db().prepare(

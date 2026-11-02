@@ -50,7 +50,7 @@ std::pair<std::string, std::string> normaliseReceiptCode(std::string_view raw) {
     // includes R, so about one code in thirty-two reads `R-RBC…`; deciding that
     // a leading R must be the prefix would make exactly those codes unfindable
     // for any guest who left the prefix off, and nobody would ever work out why.
-    const std::string withPrefix = compact.empty() || compact.front() != 'R' ? "R" + compact : compact;
+    const std::string withPrefix = "R" + compact;
     const std::string asTyped = compact;
     return {withPrefix, asTyped};
 }

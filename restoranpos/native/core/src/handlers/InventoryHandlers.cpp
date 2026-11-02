@@ -932,14 +932,30 @@ void registerInventory(const ContextPtr& ctx) {
             stmt.bind(":item", menuItemId);
             const auto lines = stmt.rows();
 
+            // The parts of a set menu (1000 = one portion).
+            const auto unitCost = services::InventoryService::unitCostSql(inventory.costingMethod());
+            auto parts = ctx->db().prepare(
+                "SELECT c.component_menu_item_id AS menuItemId, m.name_az AS name, c.qty_milli AS qtyMilli, "
+                "       m.price_minor AS priceMinor, "
+                "       COALESCE((SELECT SUM(r.qty_milli * " + unitCost + " / 1000) "
+                "                 FROM menu_item_recipe_expanded r JOIN ingredients i ON i.id = r.ingredient_id "
+                "                 WHERE r.menu_item_id = c.component_menu_item_id), 0) AS costMinor "
+                "FROM menu_item_components c JOIN menu_items m ON m.id = c.component_menu_item_id "
+                "WHERE c.menu_item_id = :item ORDER BY m.name_az");
+            parts.bind(":item", menuItemId);
+            const auto components = parts.rows();
+
             // What the dish costs to make, which is the number a price is set
-            // against. Cost is per whole unit; quantities are thousandths.
-            Money cost = 0;
-            for (const auto& line : lines) {
-                cost += getOr<std::int64_t>(line, "qtyMilli", 0) *
-                        getOr<Money>(line, "costMinor", 0) / 1000;
-            }
-            return Json{{"menuItemId", menuItemId}, {"lines", lines}, {"costMinor", cost}};
+            // against: the expanded recipe, parts included. Cost is per whole
+            // unit; quantities are thousandths.
+            auto total = ctx->db().prepare(
+                "SELECT COALESCE(SUM(r.qty_milli * " + unitCost + " / 1000), 0) "
+                "FROM menu_item_recipe_expanded r JOIN ingredients i ON i.id = r.ingredient_id "
+                "WHERE r.menu_item_id = :item");
+            total.bind(":item", menuItemId);
+            total.step();
+            return Json{{"menuItemId", menuItemId}, {"lines", lines}, {"components", components},
+                        {"costMinor", total.columnInt(0)}};
         });
 
     // ------------------------------------------------------------ kalkulyasiya
@@ -973,7 +989,7 @@ void registerInventory(const ContextPtr& ctx) {
                 "       COALESCE(s.revenueMinor, 0) AS revenueMinor "
                 "FROM menu_items m "
                 "LEFT JOIN menu_categories c ON c.id = m.category_id "
-                "LEFT JOIN menu_item_ingredients r ON r.menu_item_id = m.id "
+                "LEFT JOIN menu_item_recipe_expanded r ON r.menu_item_id = m.id "
                 "LEFT JOIN ingredients i ON i.id = r.ingredient_id "
                 "LEFT JOIN ("
                 "  SELECT oi.product_id AS productId, "

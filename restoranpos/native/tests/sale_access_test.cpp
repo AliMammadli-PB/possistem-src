@@ -56,6 +56,6 @@ TEST_CASE("cashiers can open their assigned till without gaining Z-close permiss
 TEST_CASE("upgrade keeps administrator financial history and roles","[sale_access][migration]"){
  ServiceFixture f;
  f.db().exec("UPDATE users SET full_name='Super Admin' WHERE id='usr-admin'; UPDATE customers SET partner_origin='partner',salary_minor=12345 WHERE user_id='usr-admin'");
- f.db().exec(pos::db::kMigrations.back().sql());
+ f.db().exec(pos::db::kMigrations[64].sql());  // 065_system_login_partner
  auto card=f.db().prepare("SELECT salary_minor,partner_origin,name FROM customers WHERE user_id='usr-admin'");REQUIRE(card.step());REQUIRE(card.columnInt(0)==12345);REQUIRE(card.columnText(1)=="partner");REQUIRE(card.columnText(2)=="Yerli administrator");
 }

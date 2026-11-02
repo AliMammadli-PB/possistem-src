@@ -66,6 +66,14 @@ void registerKitchen(const ContextPtr& ctx) {
                     "FROM order_item_modifiers WHERE order_item_id = :itemId");
                 modifiers.bind(":itemId", job.value("orderItemId", ""));
                 job["modifiers"] = modifiers.rows();
+                // A set menu's parts travel the same way, so the kitchen screen shows what to make.
+                auto parts = ctx->db().prepare(
+                    "SELECT m.name_az FROM order_items i JOIN menu_item_components c ON c.menu_item_id = i.product_id "
+                    "JOIN menu_items m ON m.id = c.component_menu_item_id WHERE i.id = :itemId ORDER BY m.name_az");
+                parts.bind(":itemId", job.value("orderItemId", ""));
+                while (parts.step()) {
+                    job["modifiers"].push_back(Json{{"name", parts.columnText(0)}, {"groupName", "Menyu"}});
+                }
 
                 const auto createdAt = job.value("createdAt", now);
                 const auto elapsedMinutes = (now - createdAt) / 60000;

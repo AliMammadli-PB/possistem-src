@@ -160,11 +160,12 @@ Json correct(Context& ctx,const Json& p) {
     return Json{{"id",id},{"amountMinor",amount}};
 }
 // Called inside the caller's transaction: keep stock identity and existing recipes.
-Json publishStock(Context& ctx,const std::string& id) {
+Json publishStock(Context& ctx,const std::string& id,const std::string& wantedCategory={}) {
  auto q=ctx.db().prepare("SELECT * FROM ingredients WHERE id=:id AND active=1");q.bind(":id",id);require(q.step(),"Mal tapılmadı");const auto good=q.row();
  require(good.value("sale_price_minor",Money{0})>0,"Əvvəlcə malın satış qiymətini yazın");
  auto link=ctx.db().prepare("SELECT m.id,m.category_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id WHERE l.ingredient_id=:id");link.bind(":id",id);
- const bool linked=link.step();const auto menuId=linked?link.columnText(0):"goods-"+id;const auto categoryId=linked?link.columnText(1):"cat-goods";
+ const bool linked=link.step();const auto menuId=linked?link.columnText(0):"goods-"+id;const auto categoryId=!wantedCategory.empty()?wantedCategory:linked?link.columnText(1):"cat-goods";
+ if(!wantedCategory.empty()){auto known=ctx.db().prepare("SELECT 1 FROM menu_categories WHERE id=:id AND active=1");known.bind(":id",wantedCategory);require(known.step(),"Satış kateqoriyası tapılmadı");}
  auto category=ctx.db().prepare("INSERT OR IGNORE INTO menu_categories(id,name_az,name_tr,name_en,sort_order) VALUES('cat-goods','Mallar','Ürünler','Goods',999)");category.exec();
  const auto menu=services::CatalogAdminService(ctx).upsertProduct(Json{{"id",menuId},{"nameAz",good.at("name")},{"categoryId",categoryId},{"priceMinor",good.at("sale_price_minor")},{"barcode",good.at("barcode")},{"active",true}},id);
  ctx.auditRequired("catalog.link","ingredient",id,menu);return menu;
@@ -247,7 +248,7 @@ void registerBusiness(const ContextPtr& ctx) {
                 ctx->auditRequired("catalog.stockEdit","ingredient",id,Json{{"before",before},{"name",name},{"salePriceMinor",price}});
                 out=Json{{"id",id},{"name",name},{"salePriceMinor",price}};
                 if(r.payload.value("publish",false))out["menu"]=publishStock(*ctx,id);
-            } else out=publishStock(*ctx,id);
+            } else out=publishStock(*ctx,id,r.payload.value("categoryId",std::string{}));
             if(!key.empty())idem.complete(key,out,"ingredient",id);
             tx.commit();return out;
         }

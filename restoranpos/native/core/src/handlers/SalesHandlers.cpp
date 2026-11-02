@@ -82,7 +82,7 @@ void syncSaleStock(Context& ctx, const std::string& orderId, bool deleted) {
     if (!deleted) {
         auto rows = ctx.db().prepare(
             "SELECT r.ingredient_id, SUM(r.qty_milli * i.quantity) FROM order_items i "
-            "JOIN menu_item_ingredients r ON r.menu_item_id = i.product_id "
+            "JOIN menu_item_recipe_expanded r ON r.menu_item_id = i.product_id "
             "WHERE i.order_id = :order AND i.status != 'voided' GROUP BY r.ingredient_id");
         rows.bind(":order", orderId);
         while (rows.step()) needed[rows.columnText(0)] = rows.columnInt(1);

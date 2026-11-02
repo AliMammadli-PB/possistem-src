@@ -489,6 +489,11 @@ void registerAuth(const ContextPtr& ctx) {
             require(!fullName.empty(), "Ad tələb olunur");
 
             std::string roleId = resolveRoleId(*ctx, roleName, "");
+            // Same rule as users.create: nobody is promoted to administrator from the till.
+            if (roleId == "role-administrator" && wasRole != "administrator") {
+                throw PosError(std::string(protocol::err::kValidation),
+                               "Administrator yalnız sistem tərəfindən yaradılır");
+            }
 
             // The last administrator must keep the role, or nobody can ever
             // grant it again: `users.create` refuses to mint one.
@@ -546,6 +551,17 @@ void registerAuth(const ContextPtr& ctx) {
             const auto pin = getOr<std::string>(request.payload, "pin", "");
             require(!userId.empty(), "userId is required");
             requireValidPin(pin);
+
+            // A manager manages staff; an administrator's PIN stays with administrators.
+            {
+                auto target = ctx->db().prepare("SELECT primary_role_id FROM users WHERE id = :id");
+                target.bind(":id", userId);
+                if (target.step() && target.columnText(0) == "role-administrator" &&
+                    ctx->session().role != "administrator") {
+                    throw PosError(std::string(protocol::err::kForbidden),
+                                   "Administratorun PIN-ini yalnız administrator dəyişə bilər");
+                }
+            }
 
             // Sign-in identifies the person by PIN alone, so a duplicate would
             // hand one person's session to another.

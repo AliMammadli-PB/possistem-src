@@ -1,12 +1,21 @@
-function PsSizeVariants({rows,onChange,price,disabled}) {
+function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  const h=psH,{lang}=useI18n(),L=(a,t,e)=>psBizText(lang,a,t,e);
  const update=(i,key,value)=>onChange(rows.map((row,n)=>n===i?{...row,[key]:value}:row));
  return h('fieldset',{className:'ps-size-variants',disabled},h('legend',null,L('Ölçü variantları','Boyut seçenekleri','Size variants')),
  h('label',{className:'ps-size-toggle'},h('input',{type:'checkbox',checked:rows.length>0,onChange:e=>onChange(e.target.checked?[{size:'28',price:price||''},{size:'30',price:price||''},{size:'32',price:price||''}]:[])}),L('Müxtəlif ölçülər əlavə et','Farklı boyutlar ekle','Add different sizes')),
- rows.length?h('div',{},h('p',null,L('Ölçünü özünüz yazın. Hər ölçü ayrıca məhsul, qiymət və kalkulyasiya ilə saxlanılır.','Boyutu kendiniz yazın. Her boyut ayrı ürün, fiyat ve reçeteyle kaydedilir.','Enter any size. Each size has its own product, price and recipe.')),
- ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü (sm)','Boyut (cm)','Size (cm)'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
+ rows.length?h('div',{},h('label',{className:'ps-size-unit'},L('Ölçü vahidi','Boyut birimi','Size unit'),h('select',{value:unit,onChange:e=>onUnit&&onUnit(e.target.value),'aria-label':L('Ölçü vahidi','Boyut birimi','Size unit')},[['sm','sm'],['qr','qram (qr)'],['kq','kiloqram (kq)'],['ml','millilitr (ml)'],['l','litr (l)']].map(([k,l])=>h('option',{key:k,value:k},l)))),h('p',null,L('Ölçünü özünüz yazın. Hər ölçü ayrıca məhsul, qiymət və kalkulyasiya ilə saxlanılır.','Boyutu kendiniz yazın. Her boyut ayrı ürün, fiyat ve reçeteyle kaydedilir.','Enter any size. Each size has its own product, price and recipe.')),
+ ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü ('+unit+')','Boyut ('+unit+')','Size ('+unit+')'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
  h('button',{type:'button',disabled:rows.length>=24,onClick:()=>onChange([...rows,{size:'',price:price||''}])},L('+ Ölçü əlavə et','+ Boyut ekle','+ Add size'))):null);
 }
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12527,7 +12536,7 @@ const az = {
     diagnostics: "Diaqnostika",
     support: "Dəstək",
     logout: "Çıxış",
-    catalog: "Kataloq",
+    catalog: "Kateqoriyalar",
     adminTables: "Masa idarəsi",
     gifts: "Hədiyyələr",
     cash: "Kassa",
@@ -12540,14 +12549,14 @@ const az = {
   staff: {
     title: "İşçilər",
     hint: "Ofisiant əlavə edin və ya silin. Məlumatlar bu kompüterin lokal bazasında saxlanır.",
-    addWaiter: "Ofisiant əlavə et",
+    addWaiter: "İşçi əlavə et",
     fullName: "Ad, soyad",
-    pin: "PIN (4-8 rəqəm)",
+    pin: "PIN (4 rəqəm)",
     save: "Yadda saxla",
     list: "Aktiv işçilər",
     delete: "Sil",
     confirmDelete: "{name} silinsin?",
-    created: "Ofisiant əlavə olundu",
+    created: "İşçi əlavə olundu",
     deleted: "Ofisiant silindi",
     empty: "Aktiv işçi yoxdur",
     adminBadge: "Admin"
@@ -12757,7 +12766,7 @@ const az = {
     zHint: "Günü bağlayır; məlumat bazada saxlanır"
   },
   catalog: {
-    title: "Kataloq",
+    title: "Kateqoriyalar",
     hint: "Kateqoriya seçin, məhsulu tapın, lazım olanda redaktə edin.",
     categories: "Kateqoriyalar",
     products: "Məhsullar",
@@ -13233,7 +13242,7 @@ const en = {
     diagnostics: "Diagnostics",
     support: "Support",
     logout: "Sign out",
-    catalog: "Catalog",
+    catalog: "Categories",
     adminTables: "Table admin",
     gifts: "Gifts",
     cash: "Cash",
@@ -13246,14 +13255,14 @@ const en = {
   staff: {
     title: "Staff",
     hint: "Add or remove waiters. Data stays in this computer’s local database.",
-    addWaiter: "Add waiter",
+    addWaiter: "Add staff",
     fullName: "Full name",
-    pin: "PIN (4-8 digits)",
+    pin: "PIN (4 digits)",
     save: "Save",
     list: "Active staff",
     delete: "Delete",
     confirmDelete: "Remove {name}?",
-    created: "Waiter added",
+    created: "Staff added",
     deleted: "Waiter removed",
     empty: "No active staff",
     adminBadge: "Admin"
@@ -13463,7 +13472,7 @@ const en = {
     zHint: "Closes the day; history stays in the database"
   },
   catalog: {
-    title: "Catalog",
+    title: "Categories",
     hint: "Add food and drinks, change prices, and attach modifiers.",
     categories: "Categories",
     products: "Products",
@@ -13939,7 +13948,7 @@ const tr = {
     diagnostics: "Tanılama",
     support: "Destek",
     logout: "Çıkış",
-    catalog: "Katalog",
+    catalog: "Kategoriler",
     adminTables: "Masa yönetimi",
     gifts: "Hediyeler",
     cash: "Kasa",
@@ -13952,14 +13961,14 @@ const tr = {
   staff: {
     title: "Personel",
     hint: "Garson ekleyin veya silin. Veriler bu bilgisayarın yerel veritabanında kalır.",
-    addWaiter: "Garson ekle",
+    addWaiter: "Personel ekle",
     fullName: "Ad soyad",
-    pin: "PIN (4-8 rakam)",
+    pin: "PIN (4 rakam)",
     save: "Kaydet",
     list: "Aktif personel",
     delete: "Sil",
     confirmDelete: "{name} silinsin mi?",
-    created: "Garson eklendi",
+    created: "Personel eklendi",
     deleted: "Garson silindi",
     empty: "Aktif personel yok",
     adminBadge: "Admin"
@@ -14169,7 +14178,7 @@ const tr = {
     zHint: "Günü kapatır; kayıtlar veritabanında kalır"
   },
   catalog: {
-    title: "Katalog",
+    title: "Kategoriler",
     hint: "Yemek ve içecek ekleyin, fiyat değiştirin, ekstraları bağlayın.",
     categories: "Kategoriler",
     products: "Ürünler",
@@ -14950,7 +14959,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.32 · 6dfce24";
+const _PS_BUILD = "1.9.33 · bf402a2";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -16503,6 +16512,11 @@ function PsMenuCatalog() {
   const [productQuery, setProductQuery] = reactExports.useState("");
   const [openMenu, setOpenMenu] = reactExports.useState(null);
   const [dragId, setDragId] = reactExports.useState(null);
+  const [newParentId, setNewParentId] = reactExports.useState("");
+  const [productCategoryId, setProductCategoryId] = reactExports.useState("");
+  const [setMenu, setSetMenu] = reactExports.useState(null);
+  const [sizeUnit, setSizeUnit] = reactExports.useState("sm");
+  reactExports.useEffect(() => { setProductCategoryId(""); }, [editId, editorOpen, categoryId]);
   const loadCategories = reactExports.useCallback(async () => {
     const res = await window.pos.products.categories();
     if (!res.success) {
@@ -16638,7 +16652,8 @@ function PsMenuCatalog() {
         nameAz: categoryName.trim(),
         nameTr: categoryName.trim(),
         nameEn: categoryName.trim(),
-        sortOrder: Math.max(0, ...categories2.map((category) => category.sortOrder ?? 0)) + 1
+        sortOrder: Math.max(0, ...categories2.map((category) => category.sortOrder ?? 0)) + 1,
+        ...(newParentId ? { parentId: newParentId } : {})
       },
       { idempotencyKey: newIdempotencyKey() }
     );
@@ -16661,6 +16676,17 @@ function PsMenuCatalog() {
     image: category.image || "",
     sortOrder
   });
+  const moveCategoryInto = async (category, parentId) => {
+    setSaving(true);
+    const res = await window.pos.catalogAdmin.upsertCategory({ ...categoryPayload(category), parentId }, { idempotencyKey: newIdempotencyKey() });
+    setSaving(false);
+    if (!res.success) {
+      toast(res.error.message, "danger");
+      return;
+    }
+    toast(psAdminText("Köçürüldü", "Taşındı", "Moved"), "success");
+    await loadCategories();
+  };
   const saveCategoryRename = async (category) => {
     const nextName = editingCategoryName.trim();
     if (!nextName) {
@@ -16688,13 +16714,13 @@ function PsMenuCatalog() {
     await loadCategories();
   };
   const moveCategory = async (index, direction) => {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= categories2.length || saving) return;
     const current = categories2[index];
-    const target = categories2[targetIndex];
-    if (!current || !target) return;
+    if (!current || saving) return;
+    const peers = categories2.filter((row) => (row.parentId || "") === (current.parentId || ""));
+    const target = peers[peers.findIndex((row) => row.id === current.id) + direction];
+    if (!target) return;
     const currentOrder = current.sortOrder ?? index + 1;
-    const targetOrder = target.sortOrder ?? targetIndex + 1;
+    const targetOrder = target.sortOrder ?? categories2.indexOf(target) + 1;
     setSaving(true);
     const first = await window.pos.catalogAdmin.upsertCategory(
       categoryPayload(current, targetOrder),
@@ -16787,7 +16813,7 @@ function PsMenuCatalog() {
     if (!fromId || !toId || fromId === toId || saving) return;
     const from = categories2.findIndex((row) => row.id === fromId);
     const to = categories2.findIndex((row) => row.id === toId);
-    if (from < 0 || to < 0) return;
+    if (from < 0 || to < 0 || (categories2[from].parentId || "") !== (categories2[to].parentId || "")) return;
     const list = categories2.slice();
     const [row] = list.splice(from, 1);
     list.splice(to, 0, row);
@@ -16822,7 +16848,7 @@ function PsMenuCatalog() {
       return;
     }
     const sizes=sizeVariants.map(row=>({sizeCm:Number(String(row.size).trim().replace(",",".")),priceMinor:parseMoneyInput(String(row.price))}));
-    if(sizes.some(row=>!Number.isFinite(row.sizeCm)||row.sizeCm<=0||row.sizeCm>300||row.priceMinor==null||row.priceMinor<0||(published&&row.priceMinor<=0))||new Set(sizes.map(row=>Math.round(row.sizeCm*100))).size!==sizes.length){toast("Ölçüləri və qiymətləri düzgün yazın. Ölçülər təkrarlanmamalıdır.","danger");return;}
+    if(sizes.some(row=>!Number.isFinite(row.sizeCm)||row.sizeCm<=0||row.sizeCm>(sizeUnit==="sm"?300:100000)||row.priceMinor==null||row.priceMinor<0||(published&&row.priceMinor<=0))||new Set(sizes.map(row=>Math.round(row.sizeCm*100))).size!==sizes.length){toast("Ölçüləri və qiymətləri düzgün yazın. Ölçülər təkrarlanmamalıdır.","danger");return;}
     setSaving(true);
     try{
     const payload = {
@@ -16831,7 +16857,7 @@ function PsMenuCatalog() {
       nameEn: nameEn.trim() || nameAz.trim(),
       descriptionAz: descriptionAz.trim(),
       priceMinor,
-      categoryId,
+      categoryId: productCategoryId || categoryId,
       image: imageUrl,
       station,
       printerStationId: printerStation,
@@ -16840,7 +16866,7 @@ function PsMenuCatalog() {
       sortOrder: productSortOrder || Math.max(0, ...products2.map((product) => product.sortOrder ?? 0)) + 1
     };
     if (editId) payload.id = editId;
-    if(sizes.length)payload.sizeVariants=sizes;
+    if(sizes.length){payload.sizeVariants=sizes;payload.sizeUnit=sizeUnit;}
     const fingerprint=JSON.stringify(payload);if(saveAttempt.current?.fingerprint!==fingerprint)saveAttempt.current={fingerprint,key:newIdempotencyKey()};
     const res = await window.pos.catalogAdmin.upsertProduct(payload, {
       idempotencyKey: saveAttempt.current.key
@@ -16916,6 +16942,22 @@ function PsMenuCatalog() {
       failed ? "danger" : "success"
     );
     await loadProducts(categoryId);
+  };
+  const moveSelected = async (target) => {
+    const ids = bulkIds.filter((id) => products2.some((p) => p.id === id));
+    if (!target || target === categoryId || !ids.length) return;
+    setSaving(true);
+    const failed = await psMoveProducts(ids, products2, target);
+    setSaving(false);
+    setBulkIds([]);
+    toast(
+      failed
+        ? psAdminText(failed + " məhsul köçürülmədi", failed + " ürün taşınamadı", failed + " products not moved")
+        : psAdminText(ids.length + " məhsul köçürüldü", ids.length + " ürün taşındı", ids.length + " products moved"),
+      failed ? "danger" : "success"
+    );
+    await loadProducts(categoryId);
+    await loadCategories();
   };
   const removeProduct = async (id) => {
     if (!await confirm(t.catalog.confirmDeleteProduct, { danger: true })) return;
@@ -17022,10 +17064,11 @@ function PsMenuCatalog() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: categoryName, onChange: (e) => setCategoryName(e.target.value), placeholder: t.catalog.newCategory, className: "ps-catalog-search" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void saveCategory(), children: "+" })
         ] }),
+        jsxRuntimeExports.jsx(PsCategoryPick, { categories: categories2, value: newParentId, onChange: setNewParentId, blank: psAdminText("Ana kateqoriya kimi", "Ana kategori olarak", "As a top-level category"), topOnly: true, className: "ps-catalog-parent-pick", label: psAdminText("Hansı kateqoriyanın içində", "Hangi kategorinin içinde", "Inside which category") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-catalog-cat-list", children: categories2.map((cat, index) => {
           const selected = categoryId === cat.id;
           const menuOn = openMenu === "c:" + cat.id;
-          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-cat" + (selected ? " is-on" : "") + (dragId === cat.id ? " is-drag" : ""), draggable: true, onDragStart: (e) => { setDragId(cat.id); e.dataTransfer.setData("text/plain", cat.id); e.dataTransfer.effectAllowed = "move"; }, onDragOver: (e) => { e.preventDefault(); }, onDrop: (e) => { e.preventDefault(); void dropCategory(e.dataTransfer.getData("text/plain"), cat.id); }, style: { position: "relative" }, children: [
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-cat" + (cat.parentId ? " is-sub" : "") + (selected ? " is-on" : "") + (dragId === cat.id ? " is-drag" : ""), draggable: true, onDragStart: (e) => { setDragId(cat.id); e.dataTransfer.setData("text/plain", cat.id); e.dataTransfer.effectAllowed = "move"; }, onDragOver: (e) => { e.preventDefault(); }, onDrop: (e) => { e.preventDefault(); void dropCategory(e.dataTransfer.getData("text/plain"), cat.id); }, style: { position: "relative" }, children: [
             editingCategoryId === cat.id ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full items-center gap-1 px-1", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("input", { autoFocus: true, value: editingCategoryName, onChange: (event) => setEditingCategoryName(event.target.value), onKeyDown: (event) => { if (event.key === "Enter") void saveCategoryRename(cat); if (event.key === "Escape") setEditingCategoryId(null); }, className: "ps-catalog-search" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-kebab", onClick: () => void saveCategoryRename(cat), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 16 }) })
@@ -17039,6 +17082,8 @@ function PsMenuCatalog() {
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving || index === 0, onClick: () => { setOpenMenu(null); void moveCategory(index, -1); }, children: t.catalog.moveUp }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving || index === categories2.length - 1, onClick: () => { setOpenMenu(null); void moveCategory(index, 1); }, children: t.catalog.moveDown }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setEditingCategoryId(cat.id); setEditingCategoryName(localizedName(cat, lang)); }, children: t.catalog.renameCategory }),
+                !cat.parentId ? jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setNewParentId(cat.id); }, children: psAdminText("+ Alt kateqoriya", "+ Alt kategori", "+ Sub-category") }) : null,
+                jsxRuntimeExports.jsx(PsCategoryMove, { cat, categories: categories2, onMove: (c, parentId) => { setOpenMenu(null); void moveCategoryInto(c, parentId); } }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "is-danger", onClick: () => { setOpenMenu(null); void removeCategory(cat.id); }, children: t.staff.delete })
               ] }) : null
             ] })
@@ -17049,6 +17094,7 @@ function PsMenuCatalog() {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-toolbar", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: t.catalog.products }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: productQuery, onChange: (e) => setProductQuery(e.target.value), placeholder: t.catalog.search, className: "ps-catalog-search" }),
+          jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-menu-btn", onClick: () => setSetMenu({}), children: psAdminText("+ Menyu yarat", "+ Menü oluştur", "+ Create menu") }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-new-btn", onClick: () => { setShowLocales(false); startCreate(); }, children: "+ " + t.catalog.newProduct })
         ] }),
         visibleProducts.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-bulk", children: [
@@ -17057,7 +17103,8 @@ function PsMenuCatalog() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: psAdminText("Hamısını seç", "Tümünü seç", "Select all") })
           ] }),
           bulkIds.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ps-catalog-bulk-count", children: bulkIds.length + psAdminText(" seçildi", " seçildi", " selected") }) : null,
-          bulkIds.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-bulk-delete", disabled: saving, onClick: () => void removeSelected(), children: psAdminText("Seçilənləri sil", "Seçilenleri sil", "Delete selected") }) : null
+          bulkIds.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-bulk-delete", disabled: saving, onClick: () => void removeSelected(), children: psAdminText("Seçilənləri sil", "Seçilenleri sil", "Delete selected") }) : null,
+          bulkIds.length ? jsxRuntimeExports.jsx(PsCategoryPick, { categories: categories2, value: "", onChange: (v) => void moveSelected(v), blank: psAdminText("Seçilənləri köçür →", "Seçilenleri taşı →", "Move selected →"), className: "ps-catalog-bulk-move", label: psAdminText("Seçilənləri köçür", "Seçilenleri taşı", "Move selected") }) : null
         ] }) : null,
         visibleProducts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-catalog-empty", children: t.catalog.empty }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-thead", children: [
@@ -17083,9 +17130,11 @@ function PsMenuCatalog() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveProductVisual(product.id, product.categoryId, product.image), alt: "", className: hiddenImage ? "opacity-25 grayscale" : "" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-row-copy", onClick: () => { setShowLocales(false); void startEdit(product); }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: localizedName(product, lang) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ps-catalog-price", children: product.priceMinor > 0 ? (product.priceMinor / 100).toFixed(2) + " ₼" : "—" }),
+            product.componentCount > 0 ? jsxRuntimeExports.jsx("span", { className: "ps-catalog-menu-tag", children: psAdminText("Menyu", "Menü", "Menu") }) : null,
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: pillClass, children: pill }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-kebab" + (menuOn ? " is-on" : ""), "aria-label": t.catalog.actions, onClick: () => setOpenMenu(menuOn ? null : "p:" + product.id), children: "⋮" }),
             menuOn ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-menu", style: { right: "0.6rem", top: "2.9rem" }, children: [
+              product.componentCount > 0 ? jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setSetMenu(product); }, children: psAdminText("Menyunun tərkibi", "Menü içeriği", "Menu contents") }) : null,
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); void toggleSoldOut(product); }, children: sold ? t.catalog.available : t.catalog.hideItem }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); void toggleImageHidden(product); }, children: hiddenImage ? t.catalog.showImage : t.catalog.hideImage }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving || products2.findIndex((row) => row.id === product.id) === 0, onClick: () => { setOpenMenu(null); void moveProduct(product.id, -1); }, children: t.catalog.moveUp }),
@@ -17118,6 +17167,7 @@ function PsMenuCatalog() {
         ] })
       ] })
     ] }),
+    setMenu ? jsxRuntimeExports.jsx(PsSetMenuDialog, { menu: setMenu.id ? setMenu : null, categories: categories2, onClose: () => setSetMenu(null), onSaved: async (target) => { setSetMenu(null); await loadCategories(); setCategoryId(target); await loadProducts(target); } }) : null,
     editorOpen ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-editor-backdrop", "aria-label": t.catalog.closeEditor, onClick: () => setEditorOpen(false) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "ps-catalog-editor-panel p-5", children: [
@@ -17148,6 +17198,7 @@ function PsMenuCatalog() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", checked: published, onChange: (e) => setPublished(e.target.checked), className: "h-4 w-4" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Menyuda yayımla" })
           ] }),
+          jsxRuntimeExports.jsx(PsDishCategory, { categories: categories2, value: productCategoryId || categoryId, onChange: setProductCategoryId }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: "Hansı printerdən çıxsın" }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("select", { value: printerStation, onChange: (e) => setPrinterStation(e.target.value), className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream", children: [
@@ -17189,7 +17240,7 @@ function PsMenuCatalog() {
             ] }),
             modifierGroups.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: modifierGroups.map((group) => /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => toggleProductGroup(group.id), className: "touch-target rounded-xl border border-hairline px-3 py-2 text-xs", children: localizedName(group, lang) }, group.id)) }) : null
           ] }) : null,
-          !editId ? jsxRuntimeExports.jsx(PsSizeVariants,{rows:sizeVariants,onChange:setSizeVariants,price:priceRaw,disabled:saving}) : null,
+          !editId ? jsxRuntimeExports.jsx(PsSizeVariants,{rows:sizeVariants,onChange:setSizeVariants,price:priceRaw,disabled:saving,unit:sizeUnit,onUnit:setSizeUnit}) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void saveProduct(), className: "ps-catalog-new-btn w-full", children: t.common.save })
         ] })
       ] })
@@ -17775,6 +17826,7 @@ function PsStaffPage() {
   const [role, setRole] = reactExports.useState("waiter");
   const [roles, setRoles] = reactExports.useState([]);
   const [busy, setBusy] = reactExports.useState(false);
+  const [editingUser, setEditingUser] = reactExports.useState(null);
   reactExports.useEffect(() => {
     // Only an operator with roles.manage can read the list. For everyone else
     // the select falls back to the shipped roles rather than showing nothing -
@@ -17871,9 +17923,9 @@ function PsStaffPage() {
                   type: "password",
                   inputMode: "numeric",
                   pattern: "[0-9]*",
-                  maxLength: 8,
+                  maxLength: 4,
                   value: pin,
-                  onChange: (e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8)),
+                  onChange: (e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4)),
                   className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50",
                   required: true
                 }
@@ -17908,6 +17960,7 @@ function PsStaffPage() {
       ),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "glass rounded-2xl p-5", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: t.staff.list }),
+        editingUser ? jsxRuntimeExports.jsx(PsStaffEdit, { user: editingUser, roles: roles.length ? roles : ["waiter", "cashier", "kitchen", "storekeeper", "supervisor", "manager"], onDone: (changed) => { setEditingUser(null); if (changed) void load(); } }, editingUser.id) : null,
         /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "mt-4 space-y-2", children: [
           active.map((user) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "li",
@@ -17918,6 +17971,7 @@ function PsStaffPage() {
                   /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-cream", children: user.fullName }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-faint", children: psRoleLabel(user.role) })
                 ] }),
+                jsxRuntimeExports.jsx("button", { type: "button", className: "ps-staff-edit-btn", onClick: () => setEditingUser(user), children: psAdminText("Düzəliş", "Düzenle", "Edit") }),
                 user.role !== "administrator" && user.id !== "usr-admin" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
                   {
@@ -20987,7 +21041,7 @@ function PsOriginalOrderPage() {
   const [categoryId, setCategoryId] = reactExports.useState("");
   const [products2, setProducts] = reactExports.useState([]);
   /* ORDER_SIZES_1925 */ const [sizeFamily,setSizeFamily]=reactExports.useState(null);
-  const orderProducts=reactExports.useMemo(()=>psGroupOrderSizes(products2,lang),[products2,lang]);
+  /* POSSISTEM_1933 */const orderProducts=reactExports.useMemo(()=>[...psSubcatTiles(categoryId),...psGroupOrderSizes(products2,lang)],[products2,lang,categoryId,categories2]);
   const [loading, setLoading] = reactExports.useState(true);
   const [productsLoading, setProductsLoading] = reactExports.useState(false);
   const [submitting, setSubmitting] = reactExports.useState(false);
@@ -20998,6 +21052,9 @@ function PsOriginalOrderPage() {
   const [categoryPage, setCategoryPage] = reactExports.useState(0);
   const [productPage, setProductPage] = reactExports.useState(0);
   const [cartPage, setCartPage] = reactExports.useState(0);
+  const psAddedProduct = reactExports.useRef(null);
+  const [psAddedLine, setPsAddedLine] = reactExports.useState(null);
+  const [psSizeError, setPsSizeError] = reactExports.useState("");
   const [partnerOpen, setPartnerOpen] = reactExports.useState(false);
   const [dispatchOpen, setDispatchOpen] = reactExports.useState(false);
   const loadOrder = reactExports.useCallback(async (orderId) => {
@@ -21046,7 +21103,8 @@ function PsOriginalOrderPage() {
       const catData = unwrap(await window.pos.products.categories());
       const list = catData.categories ?? [];
       setCategories(list);
-      setCategoryId((prev) => prev || list[0]?.id || "");
+      psOrderCats = list;
+      setCategoryId((prev) => prev || psTopCats(list)[0]?.id || "");
     } catch (err) {
       const message = err instanceof PosApiError ? err.message : t.common.error;
       toast(message, "danger");
@@ -21110,7 +21168,11 @@ function PsOriginalOrderPage() {
     setPending({ product, groups });
   };
   const addProduct = async (product, modifierIds = []) => {
-    if (!order) return;
+    if (!order) {
+      const none = psAdminText("Sifariş açılmayıb", "Sipariş açılmadı", "No order is open");
+      toast(none, "danger");
+      return none;
+    }
     setAdding(true);
     const res = await window.pos.orders.addItem(
       {
@@ -21124,10 +21186,12 @@ function PsOriginalOrderPage() {
     setAdding(false);
     if (!res.success) {
       toast(res.error.message, "danger");
-      return;
+      return res.error.message;
     }
     setPending(null);
+    psAddedProduct.current = product.id;
     await loadOrder(order.id);
+    return null;
   };
   const onProductClick = async (product) => {
     if(product.__psSizeVariants){setSizeFamily(product);return;}
@@ -21239,10 +21303,10 @@ function PsOriginalOrderPage() {
   const categoryPageSize = 7;
   const productPageSize = 12;
   const cartPageSize = 4;
-  const categoryPages = Math.max(1, Math.ceil(categories2.length / categoryPageSize));
+  const categoryPages = Math.max(1, Math.ceil(psTopCats(categories2).length / categoryPageSize));
   const productPages = Math.max(1, Math.ceil(orderProducts.length / productPageSize));
   const cartPages = Math.max(1, Math.ceil(cartItems.length / cartPageSize));
-  const visibleCategories = categories2.slice(
+  const visibleCategories = psTopCats(categories2).slice(
     categoryPage * categoryPageSize,
     categoryPage * categoryPageSize + categoryPageSize
   );
@@ -21263,6 +21327,17 @@ function PsOriginalOrderPage() {
   reactExports.useEffect(() => {
     setCartPage((page) => Math.min(page, cartPages - 1));
   }, [cartPages]);
+  reactExports.useEffect(() => {
+    if (!psAddedProduct.current) return;
+    let at = -1;
+    cartItems.forEach((item, i) => { if (item.productId === psAddedProduct.current) at = i; });
+    psAddedProduct.current = null;
+    if (at < 0) return;
+    setCartPage(Math.floor(at / cartPageSize));
+    setPsAddedLine(cartItems[at].id);
+    const timer = setTimeout(() => setPsAddedLine(null), 900);
+    return () => clearTimeout(timer);
+  }, [cartItems]);
   if (loading) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingState, { label: t.common.loading });
   }
@@ -21321,7 +21396,7 @@ function PsOriginalOrderPage() {
           {
             type: "button",
             onClick: () => setCategoryId(cat.id),
-            className: `group relative touch-target h-full min-h-0 w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-sm transition ${categoryId === cat.id ? "border-gold/55 text-cream shadow-[inset_3px_0_0_#c4a66a]" : "border-gold/10 text-muted hover:border-gold/35 hover:text-cream"}`,
+            className: `group relative touch-target h-full min-h-0 w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-sm transition ${categoryId === cat.id || psParentOf(categories2, categoryId) === cat.id ? "border-gold/55 text-cream shadow-[inset_3px_0_0_#c4a66a]" : "border-gold/10 text-muted hover:border-gold/35 hover:text-cream"}`,
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveCategoryVisual(cat.id, cat.image), alt: "", className: "absolute inset-0 h-full w-full object-cover opacity-36 grayscale transition duration-500 group-hover:scale-105 group-hover:opacity-56 group-hover:grayscale-0" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute inset-0 bg-gradient-to-r from-ink/95 via-ink/72 to-ink/25" }),
@@ -21337,8 +21412,9 @@ function PsOriginalOrderPage() {
           /* Denser than before, and rectangular: a text card needs width for
              the name to sit on one or two lines rather than being clipped. */
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid min-h-0 flex-1 ps-sale-products", children: visibleProducts.map((product) => {
+            if (product._psTile) return psSubcatTile(product, () => setCategoryId(product._psTile.id), lang);
             const disabled = isTruthy(product.soldOut) || product.available === false || product.available === 0;
-            const hideImage = isTruthy(product.imageHidden);
+            const hideImage = isTruthy(product.imageHidden) || !product.image;
             return /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
@@ -21385,7 +21461,7 @@ function PsOriginalOrderPage() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-hidden p-3", children: cartItems.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-sm text-muted", children: t.order.empty }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-2", children: visibleCartItems.map((item) => {
           const busy = busyItemId === item.id;
           const sent = item.status !== "draft" && item.status !== "held";
-          return /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "border-b border-gold/12 px-1 py-3", children: [
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "border-b border-gold/12 px-1 py-3" + (psAddedLine === item.id ? " ps-sale-line-added" : ""), children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-sm text-cream", children: item.name }),
@@ -21522,7 +21598,7 @@ function PsOriginalOrderPage() {
         )
       ] })
     ] }) }),
-    sizeFamily ? jsxRuntimeExports.jsx(PsOrderSizes,{family:sizeFamily,onClose:()=>setSizeFamily(null),busy:adding,onPick:p=>{setSizeFamily(null);void onProductClick(p);}}):null,
+    sizeFamily ? jsxRuntimeExports.jsx(PsOrderSizes,{family:sizeFamily,error:psSizeError,onClose:()=>{setPsSizeError("");setSizeFamily(null);},busy:adding,onPick:async p=>{setPsSizeError("");const r=await window.pos.products.modifierGroups(p.id);if(!r.success){setPsSizeError(r.error.message);return;}const groups=r.data.groups??[];if(groups.length){setSizeFamily(null);openModifierModal(p,groups);return;}const failed=await addProduct(p);if(failed)setPsSizeError(failed);else setSizeFamily(null);}}):null,
     promptDialog
   ] });
 }
@@ -25321,6 +25397,13 @@ function OpsKassalar() {
     if (r.success) { _psAccountsCache = r.data; setData(r.data); } else toast(r.error.message, "danger");
   }, []);
   reactExports.useEffect(() => { void reload(); }, [reload]);
+  const objectsLoaded = Boolean(data);
+  reactExports.useEffect(() => {
+    if (!objectsLoaded || !canManage || psMarketMode() || window.__psCloudBranchMode) return;
+    let live = true;
+    void psSyncCloudObjects(_psAccountsCache?.objects).then((added) => { if (live && added) void reload(); }).catch(() => {});
+    return () => { live = false; };
+  }, [objectsLoaded, canManage, reload]);
   const [busy, run] = useOpsAction(reload);
   if (!data) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
 
@@ -25378,7 +25461,7 @@ function OpsKassalar() {
         jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:async()=>{if(await confirmAsk(psAdminText("Obyekt silinsin? Bağlı kassaları və anbar qalığını əvvəlcə köçürün. Tarixçə saxlanılır.","İşletme silinsin mi? Önce kasaları ve stoku taşıyın. Geçmiş korunur.","Delete location? Move linked tills and stock first. History is preserved."),{danger:true})){if(await run(window.pos.cashAccounts.saveObject({id:objectId,active:false}),psAdminText("Silindi","Silindi","Deleted")))setObjectId("all");}},children:psAdminText("Obyekti sil","İşletmeyi sil","Delete location")})) : null,
       h("span", { className: "ml-auto" }),
       canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setTransfer({ fromId: "", toId: "", value: "", note: "" }), children: "Kassalar arası transfer" }) : null,
-      canManage ? jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ name: "", kind: "till", objectId: objectId !== "all" && objectId !== "none" ? objectId : "", terminalId: data.accounts.some((a) => a.terminalId === data.currentTerminalId) ? "" : data.currentTerminalId, opening: "" }), children: "+ Yeni kassa" }) : null),
+      canManage ? jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ name: "", kind: "till", objectId: objectId !== "all" && objectId !== "none" ? objectId : data.objects.length === 1 ? data.objects[0].id : "", terminalId: data.accounts.some((a) => a.terminalId === data.currentTerminalId) ? "" : data.currentTerminalId, opening: "" }), children: "+ Yeni kassa" }) : null),
 
     accounts.length ? h("div", { className: "ps-kassa-grid" }, accounts.map((a) =>
       h("article", { key: a.id, className: "ps-kassa-card ps-kassa-" + a.kind },
@@ -25388,7 +25471,7 @@ function OpsKassalar() {
         h("p", { className: "ps-kassa-meta" },
           [a.objectName ? "Obyekt: " + a.objectName : "", a.kind === "till" ? (a.terminalId ? "Satış nöqtəsi: " + termName(a.terminalId) : "Satış nöqtəsi bağlanmayıb") : ""].filter(Boolean).join(" · ") || "—"),
         h("p", { className: "ps-kassa-balance" }, formatMoney(a.balanceMinor ?? 0)),
-        a.kind === "till" ? h("p", { className: "ps-kassa-today" }, "Bu gün: nağd " + formatMoney(a.todayCashMinor ?? 0) + " · kart " + formatMoney(a.todayCardMinor ?? 0))
+        a.kind === "till" ? h("p", { className: "ps-kassa-today" }, "Bu gün: nağd " + formatMoney(a.todayCashMinor ?? 0) + (data.accounts.some((b) => b.kind === "bank" && (!b.objectId || b.objectId === a.objectId)) ? "" : " · kart " + formatMoney(a.todayCardMinor ?? 0)))
           : a.kind === "bank" ? h("p", { className: "ps-kassa-today" }, "Bu gün kart: " + formatMoney(a.todayCardMinor ?? 0)) : null,
         h("div", { className: "flex flex-wrap gap-1" },
           jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => void openMoves(a), children: "Hərəkətlər" }),
@@ -26854,11 +26937,17 @@ function psGoodForm(g, copy) {
     weighted: g ? Boolean(Number(g.weighted)) : false,
     plu: copy || !g ? "" : (Number(g.plu) ? String(g.plu) : ""),
     prices: Object.fromEntries((g?.prices ?? []).map((p) => [p.objectId, (psAzn(p.salePriceMinor)).toFixed(2)])),
-    copyOf: copy ? g?.name : ""
+    copyOf: copy ? g?.name : "",
+    onSale: Boolean(g?.menuItemId && !copy),
+    sell: !g || copy,
+    saleCategoryId: ""
   };
 }
 function PsGoodDialog({ form, setForm, categories, objects, onSaved }) {
   const h = psH;
+  const canSell = useAuthStore((st) => st.hasPermission)("catalog.manage");
+  const [saleCategories, setSaleCategories] = reactExports.useState([]);
+  reactExports.useEffect(() => { let live = true; void window.pos.products.categories().then((r) => { if (live && r.success) setSaleCategories(r.data.categories ?? []); }); return () => { live = false; }; }, []);
   const [busy, run] = usePsDialogRun(onSaved);
   const set = (patch) => setForm({ ...form, ...patch });
   const save = () => {
@@ -26875,12 +26964,18 @@ function PsGoodDialog({ form, setForm, categories, objects, onSaved }) {
       if (!Number.isFinite(m) || m < 0) { toast(o.name + ": qiyməti düzgün yazın", "danger"); return; }
       prices.push({ objectId: o.id, salePriceMinor: m });
     }
+    const toSale = canSell && (form.onSale ? sale > 0 : form.sell);
+    if (canSell && !form.onSale && form.sell && sale <= 0) { toast("Satışda göstərmək üçün satış qiymətini yazın", "danger"); return; }
     const barcode = String(form.barcode || "").trim() || psMakeBarcode(new Set());
     void run(window.pos.inventory.saveIngredient({
       ...(form.id ? { id: form.id } : {}),
       name: form.name.trim(), unit: form.unit, barcode, costMinor: cost, salePriceMinor: sale, minQtyMilli: Number.isFinite(minQty) ? minQty : 0,
       categoryId: form.categoryId || "", weighted: Boolean(form.weighted), plu: Number(form.plu) || 0, prices,
       idempotencyKey: newIdempotencyKey()
+    }).then(async (saved) => {
+      if (!saved.success || !toSale) return saved;
+      const published = await psBusinessCall("catalog.publish", { ingredientId: saved.data?.id || form.id, categoryId: form.onSale ? "" : form.saleCategoryId || "" }, newIdempotencyKey());
+      return published.success ? saved : published;
     }), form.id ? "Saxlanıldı" : "Yeni mal yaradıldı").then((ok) => { if (ok) setForm(null); });
   };
   return jsxRuntimeExports.jsx(PsAdminDialog, { title: form.id ? "Malı dəyiş" : (form.copyOf ? "Kopyadan yeni mal" : "Yeni mal"), onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
@@ -26906,6 +27001,11 @@ function PsGoodDialog({ form, setForm, categories, objects, onSaved }) {
       h("div", { className: "grid gap-2 sm:grid-cols-2" }, objects.map((o) =>
         jsxRuntimeExports.jsx(OpsField, { key: o.id, label: o.name + " (₼)", value: form.prices[o.id] ?? "", placeholder: form.sale || "0.00",
           onChange: (v) => set({ prices: { ...form.prices, [o.id]: v } }) })))) : null,
+    canSell ? h("div", { className: "ps-good-sale" }, form.onSale
+      ? h("p", null, "Bu mal satışdadır. Adı və qiyməti satışda da dəyişəcək.")
+      : [h("label", { key: "sell" }, h("input", { type: "checkbox", checked: form.sell, onChange: (e) => set({ sell: e.target.checked }) }), "Satışda göstər"),
+        form.sell ? h("label", { key: "cat", className: "block text-sm" }, "Satış kateqoriyası", jsxRuntimeExports.jsx(PsCategoryPick, { categories: saleCategories.filter((c) => c.id !== "cat-goods"), value: form.saleCategoryId, onChange: (v) => set({ saleCategoryId: v }), blank: "Mallar", label: "Satış kateqoriyası" })) : null,
+        h("p", { key: "hint" }, form.sell ? "Sifariş ekranında görünəcək. Satış qiyməti mütləqdir." : "Xammal kimi yalnız anbarda qalacaq.")]) : null,
     h("div", { className: "flex gap-2" },
       jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: save, children: "Yadda saxla" }),
       jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setForm(null), children: "İmtina" })))
@@ -27457,7 +27557,7 @@ function PsDashboardSales(){
  reactExports.useEffect(()=>{if(!has("sales.view"))return;const load=async()=>{const [from,to]=psToday();const r=await window.pos.sales.list(from,to);if(r.success)setRows((r.data.sales||[]).filter(s=>!s.deletedAt).slice(0,12));};void load();const t=setInterval(()=>void load(),20000);return()=>clearInterval(t);},[has]);if(!has("sales.view"))return null;
  return h("section",{className:"ps-business-section space-y-3"},h("h2",null,psBizText(lang,"Son satışlar","Son satışlar","Recent sales")),jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Satış","Satış","Sale"),psBizText(lang,"Masa / filial","Masa / şube","Table / branch"),psBizText(lang,"Məbləğ","Tutar","Amount"),""],empty:psBizText(lang,"Bu gün satış yoxdur","Bugün satış yok","No sales today"),rows:rows.map(s=>[h("button",{className:"ps-business-sale",onClick:()=>navigate("/operations?tab=sales&sale="+encodeURIComponent(s.id))},"#"+s.number),[s.tableName,s.objectName].filter(Boolean).join(" · "),formatMoney(s.totalMinor),jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>navigate("/operations?tab=sales&sale="+encodeURIComponent(s.id)),children:psBizText(lang,"Ətraflı","Ayrıntılar","Details")})])}));
 }
-function PsUnifiedCatalog(){const h=psH,{lang}=useI18n(),has=useAuthStore(s=>s.hasPermission),[tab,setTab]=reactExports.useState("menu");return h("div",{className:"ps-business-catalog"},h("nav",{className:"ps-business-tabs","aria-label":psBizText(lang,"Vahid kataloq","Birleşik katalog","Unified catalogue")},[["menu","Restoran menyusu","Restoran menüsü","Restaurant menu"],["goods","Mallar və xammal","Ürünler ve hammaddeler","Goods and ingredients"],["categories","Mal kateqoriyaları","Ürün kategorileri","Goods categories"]].filter(([key])=>key==="menu"||has("inventory.view")).map(([key,a,t,e])=>h("button",{type:"button",key,"aria-pressed":tab===key,onClick:()=>setTab(key)},psBizText(lang,a,t,e)))),jsxRuntimeExports.jsx(tab==="goods"?OpsGoods:tab==="categories"?OpsCategories:PsMenuCatalog,{}));}
+function PsUnifiedCatalog(){const h=psH,{lang}=useI18n(),has=useAuthStore(s=>s.hasPermission),[tab,setTab]=reactExports.useState("menu");return h("div",{className:"ps-business-catalog"},h("nav",{className:"ps-business-tabs","aria-label":psBizText(lang,"Vahid kataloq","Birleşik katalog","Unified catalogue")},[["menu","Kateqoriyalar","Kategoriler","Categories"],["goods","Mallar və xammal","Ürünler ve hammaddeler","Goods and ingredients"],["categories","Anbar kateqoriyaları","Depo kategorileri","Warehouse categories"]].filter(([key])=>key==="menu"||has("inventory.view")).map(([key,a,t,e])=>h("button",{type:"button",key,"aria-pressed":tab===key,onClick:()=>setTab(key)},psBizText(lang,a,t,e)))),jsxRuntimeExports.jsx(tab==="goods"?OpsGoods:tab==="categories"?OpsCategories:PsMenuCatalog,{}));}
 
 function PsDeliveryInvoice({row,onClose,onSaved}){
  const h=psH,{lang}=useI18n(),navigate=useNavigate();const [detail,setDetail]=reactExports.useState(null),[edit,setEdit]=reactExports.useState(null),[busy,setBusy]=reactExports.useState(false),[error,setError]=reactExports.useState("");const has=useAuthStore(s=>s.hasPermission);const printLock=reactExports.useRef(false);
@@ -30634,14 +30734,207 @@ function PsSaleAccessNotice(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* POSSISTEM_SUBCATS_1926 */
+// One level of sub-categories (İçkilər → Spirtli / Spirtsiz). The order screen lists top-level
+// categories; a parent shows its sub-categories as tiles before its own products.
+let psOrderCats=[];
+const psTopCats=list=>(list||[]).filter(c=>!c.parentId);
+const psParentOf=(list,id)=>(list||[]).find(c=>c.id===id)?.parentId||'';
+function psSubcatTiles(catId){
+ const own=psOrderCats.find(c=>c.id===catId);if(!own)return [];
+ if(own.parentId){const parent=psOrderCats.find(c=>c.id===own.parentId);return parent?[{id:'subcat-back:'+parent.id,_psTile:parent,_psBack:true}]:[];}
+ return psOrderCats.filter(c=>c.parentId===catId).map(c=>({id:'subcat:'+c.id,_psTile:c}));
+}
+function psSubcatTile(tile,open,lang){
+ const h=psH,c=tile._psTile;
+ return h('button',{type:'button',key:tile.id,onClick:open,className:'ps-subcat-tile'+(tile._psBack?' is-back':'')},
+  h('span',{className:'ps-subcat-name'},(tile._psBack?'← ':'')+localizedName(c,lang)),
+  tile._psBack?null:h('span',{className:'ps-subcat-count'},(c.itemCount??0)+' '+psAdminText('məhsul','ürün','items')));
+}
+// Catalog: parents first, each followed by its sub-categories (the core already sends that order).
+function PsCategoryPick({categories,value,onChange,blank,exclude,topOnly,className,label}){
+ const h=psH,{lang}=useI18n();
+ const rows=(categories||[]).filter(c=>c.id!==exclude&&(!topOnly||!c.parentId)&&(!exclude||c.parentId!==exclude));
+ return h('select',{value:value||'',onChange:e=>onChange(e.target.value),className,'aria-label':label},
+  blank==null?null:h('option',{value:''},blank),
+  rows.map(c=>h('option',{key:c.id,value:c.id},(c.parentId?'   └ ':'')+localizedName(c,lang))));
+}
+function PsDishCategory({categories,value,onChange}){
+ const h=psH;
+ return h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Kateqoriya','Kategori','Category')),
+  h(PsCategoryPick,{categories,value,onChange,className:'mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream',label:psAdminText('Kateqoriya','Kategori','Category')}));
+}
+function PsCategoryMove({cat,categories,onMove}){
+ const h=psH,hasChildren=(categories||[]).some(c=>c.parentId===cat.id);
+ if(hasChildren)return h('p',{className:'ps-menu-note'},psAdminText('Alt kateqoriyası var — köçürülmür','Alt kategorisi var','Has sub-categories'));
+ return h('label',{className:'ps-menu-move'},h('span',null,psAdminText('İçinə köçür','İçine taşı','Move into')),
+  h(PsCategoryPick,{categories,value:cat.parentId||'',onChange:v=>onMove(cat,v),blank:psAdminText('— Ana kateqoriya —','— Ana kategori —','— Top level —'),exclude:cat.id,topOnly:true,label:psAdminText('İçinə köçür','İçine taşı','Move into')}));
+}
+async function psMoveProducts(ids,products,target){
+ let failed=0;
+ for(const id of ids){
+  const p=products.find(x=>x.id===id);if(!p){failed+=1;continue;}
+  const res=await window.pos.catalogAdmin.upsertProduct({id:p.id,categoryId:target,nameAz:p.nameAz},{idempotencyKey:newIdempotencyKey()});
+  if(!res.success)failed+=1;
+ }
+ return failed;
+}
+// Objects made in the Obyektlər tab are portal branches; the till form lists local objects.
+async function psSyncCloudObjects(known){
+ const cloud=await window.pos.business.cloudList();
+ if(!cloud?.success)return 0;
+ const names=new Set((known||[]).map(o=>String(o.name||'').trim()));let added=0;
+ for(const object of cloud.data?.objects||[]){
+  const name=String(object?.name||'').trim();if(!name||names.has(name))continue;
+  const saved=await window.pos.cashAccounts.saveObject({name});
+  if(saved?.success){names.add(name);added+=1;}
+ }
+ return added;
+}
+// A set menu (business lunch): one product made of others. Selling it takes the parts' stock.
+const PS_MENU_CATEGORY='cat-menus';
+function PsSetMenuDialog({menu,categories,onClose,onSaved}){
+ const h=psH,{lang}=useI18n(),R=reactExports;
+ const [name,setName]=R.useState(menu?.nameAz||''),[price,setPrice]=R.useState(menu?String((menu.priceMinor||0)/100):''),[categoryId,setCategoryId]=R.useState(menu?.categoryId||'');
+ const [all,setAll]=R.useState([]),[parts,setParts]=R.useState([]),[query,setQuery]=R.useState(''),[busy,setBusy]=R.useState(false),[error,setError]=R.useState(''),[loading,setLoading]=R.useState(true);
+ R.useEffect(()=>{let live=true;(async()=>{
+  const list=await window.pos.products.list({includeDrafts:false});
+  if(!live)return;if(!list.success){setError(list.error.message);setLoading(false);return;}
+  setAll(list.data.products||[]);
+  if(menu?.id){const recipe=await window.pos.inventory.recipe(menu.id);if(!live)return;if(recipe.success)setParts((recipe.data.components||[]).map(c=>({id:c.menuItemId,name:c.name,priceMinor:c.priceMinor||0,qty:String((c.qtyMilli||1000)/1000)})));else setError(recipe.error.message);}
+  setLoading(false);
+ })();return()=>{live=false;};},[menu?.id]);
+ const needle=query.trim().toLocaleLowerCase();
+ const found=needle?all.filter(p=>p.id!==menu?.id&&!parts.some(x=>x.id===p.id)&&localizedName(p,lang).toLocaleLowerCase().includes(needle)).slice(0,30):[];
+ const qtyOf=p=>Number(String(p.qty).replace(',','.'));
+ const sum=parts.reduce((t,p)=>t+Math.round((p.priceMinor||0)*(qtyOf(p)||0)),0);
+ const save=async()=>{
+  const priceMinor=parseMoneyInput(price);
+  if(!name.trim())return setError('Menyunun adını yazın');
+  if(priceMinor==null||priceMinor<=0)return setError('Menyunun qiymətini yazın');
+  if(!parts.length)return setError('Menyuya ən azı bir məhsul əlavə edin');
+  if(parts.some(p=>!(qtyOf(p)>0)))return setError('Məhsulun sayı 0-dan böyük olmalıdır');
+  setBusy(true);setError('');
+  try{
+   let target=categoryId;
+   if(!target){
+    target=PS_MENU_CATEGORY;
+    if(!categories.some(c=>c.id===target)){
+     const made=await window.pos.catalogAdmin.upsertCategory({id:target,nameAz:'Menyular',nameTr:'Menüler',nameEn:'Set menus',sortOrder:Math.max(0,...categories.map(c=>c.sortOrder??0))+1},{idempotencyKey:newIdempotencyKey()});
+     if(!made.success){setError(made.error.message);return;}
+    }
+   }
+   const res=await window.pos.catalogAdmin.upsertProduct({...(menu?.id?{id:menu.id}:{}),nameAz:name.trim(),nameTr:name.trim(),nameEn:name.trim(),priceMinor,categoryId:target,active:true,components:parts.map(p=>({menuItemId:p.id,qtyMilli:Math.round(qtyOf(p)*1000)}))},{idempotencyKey:newIdempotencyKey()});
+   if(!res.success){setError(res.error.message);return;}
+   toast(psAdminText('Menyu yadda saxlanıldı','Menü kaydedildi','Menu saved'),'success');await onSaved(target);
+  }finally{setBusy(false);}
+ };
+ return jsxRuntimeExports.jsx(PsAdminDialog,{title:menu?.id?psAdminText('Menyunun tərkibi','Menü içeriği','Menu contents'):psAdminText('Menyu yarat','Menü oluştur','Create menu'),onClose,busy,children:h('div',{className:'ps-set-menu'},
+  h('div',{className:'ps-set-menu-grid'},
+   h('label',null,psAdminText('Menyunun adı','Menü adı','Menu name'),h('input',{value:name,onChange:e=>setName(e.target.value),placeholder:'Biznes lanç','aria-label':psAdminText('Menyunun adı','Menü adı','Menu name')})),
+   h('label',null,psAdminText('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{value:price,inputMode:'decimal',onChange:e=>setPrice(e.target.value),placeholder:'0.00','aria-label':psAdminText('Menyunun qiyməti','Menü fiyatı','Menu price')})),
+   h('label',null,psAdminText('Kateqoriya','Kategori','Category'),h(PsCategoryPick,{categories,value:categoryId,onChange:setCategoryId,blank:psAdminText('Menyular (avtomatik)','Menüler (otomatik)','Set menus (automatic)'),label:psAdminText('Menyunun kateqoriyası','Menü kategorisi','Menu category')}))),
+  h('label',null,psAdminText('Məhsul əlavə et','Ürün ekle','Add a product'),h('input',{value:query,onChange:e=>setQuery(e.target.value),placeholder:psAdminText('Məhsulun adı','Ürün adı','Product name'),'aria-label':psAdminText('Məhsul axtar','Ürün ara','Search products')})),
+  loading?h('p',{role:'status'},psAdminText('Yüklənir…','Yükleniyor…','Loading…')):null,
+  found.length?h('div',{className:'ps-set-menu-results'},found.map(p=>h('button',{type:'button',key:p.id,onClick:()=>{setParts([...parts,{id:p.id,name:localizedName(p,lang),priceMinor:p.priceMinor||0,qty:'1'}]);setQuery('');}},h('span',null,localizedName(p,lang)),h('span',null,formatMoney(p.priceMinor||0))))):null,
+  parts.length?h('ul',{className:'ps-set-menu-parts'},parts.map(p=>h('li',{key:p.id},h('span',null,p.name),h('input',{value:p.qty,inputMode:'decimal','aria-label':p.name+' — '+psAdminText('say','adet','quantity'),onChange:e=>setParts(parts.map(x=>x.id===p.id?{...x,qty:e.target.value}:x))}),h('button',{type:'button','aria-label':p.name+' — '+psAdminText('sil','sil','remove'),onClick:()=>setParts(parts.filter(x=>x.id!==p.id))},'×')))):null,
+  parts.length?h('p',{className:'ps-set-menu-sum'},psAdminText('Məhsullar ayrı-ayrı: ','Ürünler ayrı ayrı: ','Products separately: ')+formatMoney(sum)):null,
+  error?h('p',{className:'ps-set-menu-error',role:'alert'},error):null,
+  h('div',{className:'ps-set-menu-actions'},h('button',{type:'button',className:'btn-gold',disabled:busy||loading,onClick:()=>void save()},psAdminText('Yadda saxla','Kaydet','Save')),h('button',{type:'button',disabled:busy,onClick:onClose},psAdminText('Ləğv et','İptal','Cancel')))
+ )});
+}
+/* END_POSSISTEM_SUBCATS_1926 */
+/* POSSISTEM_STAFF_EDIT_1926 */
+// Staff: change an existing user's name, role and PIN (users.update / users.setPin).
+function PsStaffEdit({user,roles,onDone}){
+ const h=psH,isAdmin=user.role==='administrator';
+ const [name,setName]=reactExports.useState(user.fullName||''),[role,setRole]=reactExports.useState(user.role||'waiter'),[pin,setPin]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false);
+ const options=roles.includes(role)||isAdmin?roles:[role,...roles];
+ const save=async()=>{
+  if(name.trim().length<2||(pin&&pin.length!==4)||busy)return;
+  setBusy(true);
+  try{
+   const res=await window.pos.auth.updateUser({userId:user.id,fullName:name.trim(),...(isAdmin?{}:{role})});
+   if(!res.success){toast(res.error.message,'danger');return;}
+   if(pin){const p=await window.pos.auth.setPin(user.id,pin);if(!p.success){toast(p.error.message,'danger');return;}}
+   toast(psAdminText('Yadda saxlanıldı','Kaydedildi','Saved'),'success');onDone(true);
+  }finally{setBusy(false);}
+ };
+ const field='mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream outline-none focus:border-gold/50';
+ return h('form',{className:'ps-staff-edit',onSubmit:e=>{e.preventDefault();void save();}},
+  h('h3',null,psAdminText('Düzəliş: ','Düzenle: ','Edit: ')+user.fullName),
+  h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Ad','Ad','Name')),h('input',{value:name,onChange:e=>setName(e.target.value),className:field,'aria-label':psAdminText('Ad','Ad','Name')})),
+  isAdmin?null:h('label',{className:'mt-2 block text-sm'},h('span',{className:'text-faint'},'Vəzifə'),
+   h('select',{value:role,onChange:e=>setRole(e.target.value),className:field,'aria-label':'Vəzifə'},options.map(r=>h('option',{key:r,value:r},_psRoleAz(r))))),
+  h('label',{className:'mt-2 block text-sm'},h('span',{className:'text-faint'},psAdminText('Yeni PIN (4 rəqəm, boş qalsa dəyişmir)','Yeni PIN (4 hane, boşsa değişmez)','New PIN (4 digits, empty keeps it)')),
+   h('input',{type:'password',inputMode:'numeric',pattern:'[0-9]*',maxLength:4,value:pin,onChange:e=>setPin(e.target.value.replace(/\D/g,'').slice(0,4)),className:field,'aria-label':'Yeni PIN'})),
+  h('div',{className:'ps-staff-edit-actions'},
+   h('button',{type:'submit',className:'btn-gold',disabled:busy||name.trim().length<2||(pin&&pin.length!==4)},psAdminText('Yadda saxla','Kaydet','Save')),
+   h('button',{type:'button',className:'ps-staff-edit-cancel',onClick:()=>onDone(false)},psAdminText('Ləğv et','İptal','Cancel'))));
+}
+/* END_POSSISTEM_STAFF_EDIT_1926 */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products,lang){
- const pattern=/^(.*?)\s*[·•|–-]\s*(\d+(?:[.,]\d+)?)\s*(?:sm|cm)\s*$/i,groups=new Map();
- for(const product of products){const match=pattern.exec(localizedName(product,lang)||'');if(!match)continue;const key=product.categoryId+'|'+match[1].trim().toLocaleLowerCase();if(!groups.has(key))groups.set(key,[]);groups.get(key).push({product,size:Number(match[2].replace(',','.')),base:match[1].trim()});}
+ const pattern=/^(.*?)\s*[·•|–-]\s*(\d+(?:[.,]\d+)?)\s*(sm|cm|qr|kq|ml|l)\s*$/i,groups=new Map();
+ for(const product of products){const match=pattern.exec(localizedName(product,lang)||'');if(!match)continue;const key=product.categoryId+'|'+match[1].trim().toLocaleLowerCase();if(!groups.has(key))groups.set(key,[]);groups.get(key).push({product,size:Number(match[2].replace(',','.')),unit:match[3].toLowerCase()==='cm'?'sm':match[3].toLowerCase(),base:match[1].trim()});}
  const emitted=new Set();return products.map(product=>{const match=pattern.exec(localizedName(product,lang)||'');if(!match)return product;const key=product.categoryId+'|'+match[1].trim().toLocaleLowerCase(),rows=groups.get(key);if(rows.length<2)return product;if(emitted.has(key))return null;emitted.add(key);rows.sort((a,b)=>a.size-b.size);const base=rows[0].base;return {...product,id:'size-family:'+key,nameAz:base,nameTr:base,nameEn:base,priceMinor:Math.min(...rows.map(r=>r.product.priceMinor)),soldOut:rows.every(r=>r.product.soldOut||r.product.available===false||r.product.available===0),available:rows.some(r=>!r.product.soldOut&&r.product.available!==false&&r.product.available!==0),__psSizeVariants:rows};}).filter(Boolean);
 }
-function PsOrderSizes({family,onPick,onClose,busy}){const h=psH;return jsxRuntimeExports.jsx(PsAdminDialog,{title:localizedName(family,useI18n().lang)+' — ölçü seçin',onClose,busy,children:h('div',{className:'ps-order-sizes'},h('p',null,'İstədiyiniz ölçünü seçin. Hər ölçünün qiyməti və kalkulyasiyası ayrıdır.'),...family.__psSizeVariants.map(row=>h('button',{key:row.product.id,type:'button',disabled:busy||!!row.product.soldOut||row.product.available===false||row.product.available===0,onClick:()=>onPick(row.product)},h('strong',null,row.size+' sm'),h('span',null,formatMoney(row.product.priceMinor)))))});}
+function PsOrderSizes({family,onPick,onClose,busy,error}){const h=psH,out=row=>!!row.product.soldOut||row.product.available===false||row.product.available===0;return jsxRuntimeExports.jsx(PsAdminDialog,{title:localizedName(family,useI18n().lang)+' — ölçü seçin',onClose,busy,children:h('div',{className:'ps-order-sizes'},h('p',null,'İstədiyiniz ölçünü seçin. Hər ölçünün qiyməti və kalkulyasiyası ayrıdır.'),error?h('p',{className:'ps-order-sizes-error',role:'alert'},error):null,...family.__psSizeVariants.map(row=>h('button',{key:row.product.id,type:'button',disabled:busy||out(row),onClick:()=>onPick(row.product)},h('strong',null,row.size+' '+(row.unit||'sm')),h('span',null,formatMoney(row.product.priceMinor),out(row)?h('small',null,'Bitib'):null))))});}
 function PsStockMenuPicker({onClose,onSaved}){const h=psH,[goods,setGoods]=reactExports.useState([]),[query,setQuery]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false),[loading,setLoading]=reactExports.useState(true),[error,setError]=reactExports.useState(''),lock=reactExports.useRef(false);reactExports.useEffect(()=>{let live=true;void window.pos.erp.call('goods.list',{}).then(r=>{if(!r.success)throw Error(r.error?.message||'Mallar alınmadı');if(live)setGoods(r.data.goods||[])}).catch(e=>{if(live)setError(e.message)}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[]);return jsxRuntimeExports.jsx(PsAdminDialog,{title:'Anbardan menyuya əlavə et',onClose,busy,children:h('div',{className:'ps-stock-menu-picker'},h('p',null,'Satılan hazır malı seçin. Xammal və resept üçün istifadə edilən malları menyuya çıxarmayın.'),h('label',null,'Mal axtarışı',h('input',{value:query,onChange:e=>setQuery(e.target.value),placeholder:'Ad və ya barkod'})),loading&&h('p',{role:'status'},'Mallar alınır…'),error&&h('p',{role:'alert'},error),...goods.filter(g=>!g.menuActive&&[g.name,g.barcode].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0,80).map(g=>h('button',{type:'button',key:g.id,disabled:busy||g.basePriceMinor<=0,onClick:async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const r=await psBusinessCall('catalog.publish',{ingredientId:g.id});if(!r.success)throw Error(r.error?.message||'Əlavə edilmədi');window.dispatchEvent(new Event('possistem-catalog-changed'));await onSaved(r.data);onClose();}catch(e){setError(e.message)}finally{lock.current=false;setBusy(false)}}},h('strong',null,g.name),h('span',null,g.basePriceMinor>0?formatMoney(g.basePriceMinor):'Əvvəlcə satış qiyməti yazın'))))});}
-function PsWorkspaceNav(){const h=psH,{pathname,search}=useLocation(),has=useAuthStore(s=>s.hasPermission);const links=[['/operations?tab=sales','Satışlar',['sales.view']],['/operations?tab=stock','Anbar',['inventory.view']],['/admin/catalog','Kataloq',['catalog.manage']],['/operations?tab=delivery','Çatdırılma',['delivery.view']],['/admin/staff','İstifadəçilər',['users.manage']],['/admin/reports','Hesabatlar',['reports.view']],['/settings','Parametrlər',['settings.manage']]];return h('nav',{className:'ps-workspace-nav','aria-label':'İş sahəsi'},...links.filter(([, ,permissions])=>permissions.some(has)).map(([to,label])=>{const match=to.includes('?')?pathname+search===to:pathname===to;return h(Link,{to,key:to,'aria-current':match?'page':undefined},label)}));}
+function PsWorkspaceNav(){const h=psH,{pathname,search}=useLocation(),has=useAuthStore(s=>s.hasPermission);const links=[['/operations?tab=sales','Satışlar',['sales.view']],['/operations?tab=stock','Anbar',['inventory.view']],['/admin/catalog','Kateqoriyalar',['catalog.manage']],['/operations?tab=delivery','Çatdırılma',['delivery.view']],['/admin/staff','İstifadəçilər',['users.manage']],['/admin/reports','Hesabatlar',['reports.view']],['/settings','Parametrlər',['settings.manage']]];return h('nav',{className:'ps-workspace-nav','aria-label':'İş sahəsi'},...links.filter(([, ,permissions])=>permissions.some(has)).map(([to,label])=>{const match=to.includes('?')?pathname+search===to:pathname===to;return h(Link,{to,key:to,'aria-current':match?'page':undefined},label)}));}
 function PsStockBranches(){
  const h=psH,has=useAuthStore(s=>s.hasPermission),role=useAuthStore(s=>s.session?.role),{search}=useLocation(),[tab,setTab]=reactExports.useState('local');
  const requested=new URLSearchParams(search).get('branchSwitch')==='1',canSwitch=!window.__psCloudBranchMode&&(has('users.manage')||['manager','administrator'].includes(role));

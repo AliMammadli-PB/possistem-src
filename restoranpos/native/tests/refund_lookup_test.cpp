@@ -138,6 +138,16 @@ TEST_CASE("a code is found however the guest reads it out", "[refund][lookup]") 
     }
 }
 
+TEST_CASE("a code that itself starts with R is found without the prefix", "[refund][lookup]") {
+    RefundLookupFixture f;
+    const std::string orderId = f.makeOrder("L-R", 1000, 1);
+    const std::string code = f.payAndPrint(orderId, 1000);
+    f.fixture().db().exec("UPDATE receipts SET number = 'R-RBC23XYZ' WHERE number = '" + code + "'");
+    for (const std::string typed : {"R-RBC23XYZ", "rbc23xyz", "RBC2 3XYZ", "RRBC23XYZ"}) {
+        REQUIRE(f.call("receipts.lookupByCode", pos::Json{{"code", typed}}).at("orderId") == orderId);
+    }
+}
+
 TEST_CASE("an unpaid bill is not refundable from its number", "[refund][lookup]") {
     RefundLookupFixture f;
     const std::string orderId = f.makeOrder("L-3", 1500, 1);

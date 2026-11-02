@@ -235,24 +235,40 @@ TEST_CASE("legacy v1 schema with unexpected objects is rejected without mutation
                 "WHERE type = 'table' AND name = 'database_migrations'") == 0);
 }
 
+namespace {
+/** The embedded migrations up to and including `last`, as the database stood on that release. */
+std::vector<pos::db::MigrationDefinition> embeddedUpTo(int last) {
+    std::vector<pos::db::MigrationDefinition> definitions;
+    for (const auto& migration : pos::db::kMigrations) {
+        if (migration.version > last) break;
+        definitions.push_back({migration.version, std::string(migration.name),
+                               std::string(migration.checksum), migration.sql()});
+    }
+    return definitions;
+}
+}  // namespace
+
 TEST_CASE("a till left on the diverged 1.9.25 history starts and keeps its data",
           "[database][migration]") {
     MigrationTestDatabase test;
     auto& database = test.database();
-    pos::db::Migrator migrator(database);
-    static_cast<void>(migrator.migrate({}));
+    pos::db::Migrator older(database, embeddedUpTo(64));
+    static_cast<void>(older.migrate({}));
 
-    database.exec("DELETE FROM database_migrations WHERE version >= 65");
+    // What that build added on top of 064: extra columns, the components table and the view.
     database.exec(
         "INSERT INTO database_migrations (version, name, checksum, applied_at) VALUES "
         "(65, '065_menu_sizes_stock_categories.sql', 'x', 1), "
         "(66, '066_category_twins_recipe_components.sql', 'x', 1)");
     database.exec("ALTER TABLE menu_items ADD COLUMN size_cm REAL");
+    database.exec("CREATE TABLE menu_item_components (menu_item_id TEXT NOT NULL, component_menu_item_id TEXT NOT NULL, "
+                  "qty_milli INTEGER NOT NULL, PRIMARY KEY (menu_item_id, component_menu_item_id))");
+    database.exec("CREATE VIEW menu_item_recipe_expanded AS SELECT menu_item_id, ingredient_id, qty_milli FROM menu_item_ingredients");
     database.exec("INSERT INTO menu_categories (id, name_az) VALUES ('kept', 'Pizza')");
     database.exec("PRAGMA user_version=66");
 
     pos::db::Migrator upgraded(database);
-    REQUIRE(upgraded.migrate({}) > 0);
+    REQUIRE(upgraded.migrate({}) == 2);
     const auto target = static_cast<std::int64_t>(pos::db::kMigrations.back().version);
     REQUIRE(upgraded.currentVersion() == target);
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM database_migrations WHERE name LIKE "
@@ -260,10 +276,26 @@ TEST_CASE("a till left on the diverged 1.9.25 history starts and keeps its data"
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_categories WHERE id = 'kept'") == 1);
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM pragma_table_info('menu_items') "
                                 "WHERE name = 'size_cm'") == 1);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM pragma_table_info('menu_categories') "
+                                "WHERE name = 'parent_id'") == 1);
 
     // The next start finds a normal database.
     pos::db::Migrator again(database);
     REQUIRE(again.migrate({}) == 0);
+}
+
+TEST_CASE("a normal till moves from schema 65 to sub-categories and set menus", "[database][migration]") {
+    MigrationTestDatabase test;
+    auto& database = test.database();
+    pos::db::Migrator older(database, embeddedUpTo(65));
+    static_cast<void>(older.migrate({}));
+    database.exec("INSERT INTO menu_categories (id, name_az) VALUES ('kept', 'Pizza')");
+
+    pos::db::Migrator upgraded(database);
+    REQUIRE(upgraded.migrate({}) == 1);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_categories WHERE id = 'kept' AND parent_id IS NULL") == 1);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_item_components") == 0);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_item_recipe_expanded") == 0);
 }
 
 TEST_CASE("pre-migration backup is only required for a real version upgrade",
