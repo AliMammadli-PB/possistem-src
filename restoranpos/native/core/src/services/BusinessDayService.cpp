@@ -62,6 +62,32 @@ Json BusinessDayService::current() {
     return nullptr;
 }
 
+// Read-only, terminal-specific check. Never creates a till or opens a day.
+Json BusinessDayService::saleReadiness() {
+    ctx_.requireAuth();
+    auto q = ctx_.db().prepare(
+        "SELECT a.id,a.name FROM cash_accounts a LEFT JOIN cash_objects o ON o.id=a.object_id "
+        "WHERE a.kind='till' AND a.active=1 AND a.terminal_id=:terminal "
+        "AND (a.object_id IS NULL OR a.object_id='' OR o.active=1) LIMIT 1");
+    q.bind(":terminal", ctx_.saleTerminalId());
+    const bool assigned=q.step();
+    const auto day=openBusinessDayId();
+    const std::string reason=!assigned?"missing_register":!day?"closed":"ready";
+    const std::string message=!assigned
+        ? "Bu kompüterə kassa təyin edilməyib. İdarə → Anbar → Kassalar bölməsində kassa yaradıb bu kompüterə bağlayın."
+        : !day ? "Kassa açıq deyil. Satışa başlamaq üçün kassanı açın." : "Kassa açıqdır";
+    return Json{{"ready",assigned && day.has_value()},{"reason",reason},{"message",message},
+                {"accountId",assigned?q.columnText(0):std::string{}},
+                {"accountName",assigned?q.columnText(1):std::string{}},
+                {"businessDayId",day.value_or("")}};
+}
+std::string BusinessDayService::requireOpenTill() {
+    const auto state=saleReadiness();
+    if (!state.at("ready").get<bool>())
+        throw PosError(std::string(protocol::err::kShiftNotOpen),state.at("message").get<std::string>());
+    return state.at("businessDayId").get<std::string>();
+}
+
 Json BusinessDayService::open(Money openingFloatMinor, std::string_view note) {
     if (openingFloatMinor < 0) badRequest("Opening float cannot be negative");
     LicenseService(ctx_).requireLicensedForNewBusinessDay();
@@ -214,33 +240,8 @@ void BusinessDayService::assertMutableBusinessDay(const std::string& businessDay
 }
 
 std::string BusinessDayService::ensureOpenBusinessDayId() {
-    if (const auto existing = openBusinessDayId()) return *existing;
-
-    // No till is open: either the previous day was Z-closed, or this is a fresh
-    // install. Opening one silently is the whole point - staff never press a
-    // button, and the zero float makes the first X after a reopen read zero.
-    try {
-        const Json day = open(0, "Avtomatik kassa acilisi");
-        return day.at("id").get<std::string>();
-    } catch (const PosError& error) {
-        const std::string_view code{error.code()};
-
-        // Another terminal won the race: idx_business_days_one_open rejected our
-        // insert. Its day is visible now, so one re-read settles it.
-        if (code == protocol::err::kConstraint || code == protocol::err::kShiftAlreadyOpen) {
-            if (const auto winner = openBusinessDayId()) return *winner;
-        }
-
-        // A dead licence must stop new trading, but the stock message talks
-        // about finishing open orders, which is nonsense on an empty till.
-        if (code == protocol::err::kLicenseExpired || code == protocol::err::kLicenseRevoked ||
-            code == protocol::err::kLicenseRequired) {
-            throw PosError(error.code(),
-                           "Lisenziya aktiv deyil - yeni kassa gunu acila bilmir. "
-                           "Zehmet olmasa lisenziyani aktivlesdirin.");
-        }
-        throw;
-    }
+    // Compatibility for internal callers: never reopen a closed till implicitly.
+    return requireOpenTill();
 }
 
 void BusinessDayService::adoptOrderIntoDay(const std::string& orderId, const std::string& dayId) {

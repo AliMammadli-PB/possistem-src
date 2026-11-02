@@ -71,11 +71,16 @@ void registerGuests(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT id, name, phone, email, address, note, "
                 "       loyalty_points AS loyaltyPoints, debt_minor AS debtMinor, "
+                "       COALESCE((SELECT u.primary_role_id FROM users u WHERE u.id=customers.user_id),'') AS userRole, "
                 "       partner_origin AS partnerOrigin, kind, credit_allowed AS creditAllowed,credit_limit_minor AS creditLimitMinor, salary_minor AS salaryMinor, COALESCE(object_id, '') AS objectId "
                 "FROM customers "
                 // Parenthesised: without it the AND binds tighter than the ORs
                 // and an inactive customer would surface on any search.
                 "WHERE active = 1 AND (:kind = '' OR kind = :kind) "
+                "AND (partner_origin!='system_login' OR salary_minor!=0 OR debt_minor!=0 "
+                "OR EXISTS(SELECT 1 FROM salary_payments WHERE customer_id=customers.id) "
+                "OR EXISTS(SELECT 1 FROM customer_ledger WHERE customer_id=customers.id) "
+                "OR EXISTS(SELECT 1 FROM orders WHERE customer_id=customers.id)) "
                 "  AND (:search = '' OR name LIKE :like OR phone LIKE :like) "
                 "ORDER BY name LIMIT 5000");
             stmt.bind(":search", search).bind(":like", "%" + search + "%")

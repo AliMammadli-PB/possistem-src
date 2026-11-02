@@ -8,6 +8,7 @@
 #include "catch_amalgamated.hpp"
 
 #include "pos/db/Database.hpp"
+#include "pos/services/BusinessDayService.hpp"
 #include "pos/db/Migrator.hpp"
 #include "pos/db/migrations_generated.hpp"
 #include "pos/handlers/Context.hpp"
@@ -42,6 +43,14 @@ public:
         database_.close();
         std::error_code ec;
         std::filesystem::remove_all(directory_, ec);
+    }
+
+    // Explicit setup for tests that trade. Fresh fixtures still have no till/day.
+    void openTill() {
+        auto q=database_.prepare("INSERT OR IGNORE INTO cash_accounts(id,name,kind,terminal_id,created_at) VALUES('test-till','Test kassa','till',:t,0)");
+        q.bind(":t",context_->saleTerminalId());q.exec();
+        pos::services::BusinessDayService days(*context_);
+        if(!days.openBusinessDayId())days.open(0);
     }
 
     pos::handlers::Context& ctx() { return *context_; }

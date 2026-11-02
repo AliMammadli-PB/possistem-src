@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 64;
+inline constexpr int kSchemaVersion = 65;
 
 namespace detail {
 
@@ -4310,6 +4310,42 @@ DROP TABLE _catalog_stock_repair;
     return sql;
 }
 
+inline const std::string& migrationSql64() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1589);
+        s += R"MIGSQL(-- The initial local administrator is a login/audit identity, not a cashier's payroll card.
+-- Keep IDs, roles, PINs, sales attribution and all financial history.
+UPDATE customers SET partner_origin='system_login'
+WHERE user_id='usr-admin' AND name IN ('Super Admin','Yerli administrator')
+AND salary_minor=0 AND debt_minor=0
+AND NOT EXISTS (SELECT 1 FROM salary_payments WHERE customer_id=customers.id)
+AND NOT EXISTS (SELECT 1 FROM customer_ledger WHERE customer_id=customers.id)
+AND NOT EXISTS (SELECT 1 FROM orders WHERE customer_id=customers.id);
+UPDATE users SET full_name='Yerli administrator'
+WHERE id='usr-admin' AND full_name='Super Admin' AND primary_role_id='role-administrator';
+DROP TRIGGER staff_partner_insert;
+CREATE TRIGGER staff_partner_insert AFTER INSERT ON users
+WHEN NEW.id <> 'possistem-admin' BEGIN
+ INSERT INTO customers(id,name,kind,user_id,active,partner_origin,created_at,updated_at)
+ VALUES('staff-'||NEW.id,NEW.full_name,'employee',NEW.id,NEW.active,
+ CASE WHEN NEW.id='usr-admin' AND NEW.full_name IN ('Super Admin','Yerli administrator') THEN 'system_login' ELSE 'partner' END,
+ NEW.created_at,NEW.updated_at);
+END;
+DROP TRIGGER staff_partner_update;
+CREATE TRIGGER staff_partner_update AFTER UPDATE OF full_name,active ON users
+WHEN NEW.id <> 'possistem-admin' BEGIN
+ UPDATE customers SET name=NEW.full_name,active=NEW.active,updated_at=NEW.updated_at,
+ partner_origin=CASE WHEN partner_origin='system_login' AND NEW.full_name NOT IN ('Super Admin','Yerli administrator') THEN 'partner' ELSE partner_origin END
+ WHERE user_id=NEW.id;
+END;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4864,7 +4900,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 64> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 65> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4929,6 +4965,7 @@ inline constexpr std::array<EmbeddedScript, 64> kMigrations{{
     {62, "062_sunmi_outbox.sql", "1fbbadd8", &detail::migrationSql61},
     {63, "063_qr_orders.sql", "d2afab71", &detail::migrationSql62},
     {64, "064_catalog_stock_atomic.sql", "a0c54ec4", &detail::migrationSql63},
+    {65, "065_system_login_partner.sql", "811695fd", &detail::migrationSql64},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

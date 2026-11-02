@@ -1,3 +1,4 @@
+#include "pos/services/BusinessDayService.hpp"
 #include "pos/handlers/Handlers.hpp"
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
@@ -176,6 +177,18 @@ void registerBusiness(const ContextPtr& ctx) {
         if(auto transfer=transfer_workflows::run(*ctx,r))return *transfer;
         if(auto waste=waste_documents::run(*ctx,r))return *waste;
         if(action=="context") return context(*ctx);
+        if(action=="sale.readiness") return services::BusinessDayService(*ctx).saleReadiness();
+        if(action=="sale.open") {
+            if(!ctx->session().permissions.contains("businessDay.manage"))ctx->requirePermission("shift.manage");
+            db::Transaction tx(ctx->db());services::Idempotency idem(*ctx);
+            const auto key=r.idempotencyKey.empty()?r.payload.value("idempotencyKey",std::string{}):r.idempotencyKey;
+            require(!key.empty(),"Əməliyyat açarı tələb olunur");
+            if(auto replay=idem.begin(key,"business.sale.open",r.payload))return *replay;
+            services::BusinessDayService days(*ctx);const auto state=days.saleReadiness();
+            require(state.at("reason")!="missing_register",state.at("message").get<std::string>());
+            const auto day=state.at("ready").get<bool>()?days.current():days.open(0,"Kassir tərəfindən açılış");
+            Json out{{"businessDay",day}};idem.complete(key,out,"business_day",day.at("id").get<std::string>());tx.commit();return out;
+        }
         if(action=="stock.snapshot"){ctx->requirePermission("inventory.view");auto q=ctx->db().prepare("SELECT id,name FROM warehouses WHERE active=1 ORDER BY sort_order,name");auto levels=ctx->db().prepare("SELECT ingredient_id AS ingredientId,warehouse_id AS warehouseId,qty_milli AS qtyMilli FROM stock_levels");return Json{{"warehouses",q.rows()},{"levels",levels.rows()}};}
         if(action=="party.snapshot"){ctx->requirePermission("customers.view");auto q=ctx->db().prepare("SELECT id,name,phone,active,credit_allowed AS creditAllowed,credit_limit_minor AS creditLimitMinor,debt_minor AS debtMinor FROM customers WHERE kind='customer'");return Json{{"customers",q.rows()}};}
         if(action=="party.import"){

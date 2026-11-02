@@ -27,7 +27,7 @@ namespace {
 
 class PrinterRoleFixture {
 public:
-    PrinterRoleFixture() {
+    PrinterRoleFixture() { fixture_.openTill();
         pos::handlers::registerPrinting(fixture_.contextPtr());
         pos::handlers::registerSystem(fixture_.contextPtr());
         pos::handlers::registerOrders(fixture_.contextPtr());

@@ -2355,6 +2355,10 @@ html body .ps-rest-staff .ps-pin-input{display:block;box-sizing:border-box;width
 
 
 
+
+/* SALE_ACCESS_1928 */
+.ps-cash-workspace{height:100%;display:flex;flex-direction:column;overflow:hidden}.ps-cash-workspace-body{flex:1;min-height:0;overflow:hidden}
+.ps-sale-access{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:14px 18px;background:#fff6e5;border-bottom:1px solid #e3c895;color:#664519;flex-shrink:0}.ps-sale-access>div{flex:1;min-width:210px}.ps-sale-access strong{font-size:16px}.ps-sale-access p{font-size:14px;margin:4px 0 0;line-height:1.5}.ps-sale-access .btn{min-height:48px;padding:10px 16px;white-space:normal;border:1px solid #b7c9e1;background:#fff;border-radius:8px;font-weight:600;color:#21466d}.ps-sale-access .btn.solid{background:#155ac5;border-color:#155ac5;color:#fff}.ps-sale-access .btn:disabled{opacity:.6}
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

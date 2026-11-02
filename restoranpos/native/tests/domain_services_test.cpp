@@ -85,7 +85,7 @@ TEST_CASE("business day open X report immutable Z blocked by open order",
 }
 
 TEST_CASE("refund ledger supports partial refunds without mutating early", "[refund]") {
-    ServiceFixture fixture;
+    ServiceFixture fixture; fixture.openTill();
     const auto now = pos::nowMs();
     const std::string orderId = pos::crypto::uuid4();
     const std::string paymentId = pos::crypto::uuid4();
@@ -416,7 +416,7 @@ TEST_CASE("X report canonical exposes cash card and total for receipt", "[report
 }
 
 TEST_CASE("mixed payment records tenders and settles", "[payment][mixed]") {
-    ServiceFixture fixture;
+    ServiceFixture fixture; fixture.openTill();
     auto anyItem = fixture.db().prepare("SELECT id FROM menu_items WHERE active = 1 LIMIT 1");
     REQUIRE(anyItem.step());
     const std::string productId = anyItem.columnText(0);
@@ -475,7 +475,7 @@ TEST_CASE("mixed payment records tenders and settles", "[payment][mixed]") {
 }
 
 TEST_CASE("a declined terminal leaves a mixed payment unsettled", "[payment][mixed]") {
-    ServiceFixture fixture;
+    ServiceFixture fixture; fixture.openTill();
     const auto now = pos::nowMs();
     const std::string orderId = pos::crypto::uuid4();
 

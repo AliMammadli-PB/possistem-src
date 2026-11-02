@@ -58,6 +58,7 @@ void queueReceiptIfSettled(Context& ctx, const std::string& orderId) {
 
 Money validateAmount(Context& ctx, const std::string& orderId, Money amountMinor) {
     services::LicenseService(ctx).requirePaidForSale();
+    services::BusinessDayService(ctx).requireOpenTill();
     require(amountMinor > 0, "The payment amount must be greater than zero");
 
     services::OrderService(ctx).recalculate(orderId);
@@ -76,14 +77,14 @@ Money validateAmount(Context& ctx, const std::string& orderId, Money amountMinor
 }
 
 /**
- * Opens the till if needed and attaches the order to it.
+ * Requires an explicitly opened till and attaches the order to it.
  *
  * Returns the business day every payment on this order must be stamped with.
  * Called inside the caller's transaction, before the money is written.
  */
 std::string resolveBusinessDay(Context& ctx, const std::string& orderId) {
     services::BusinessDayService days(ctx);
-    const std::string dayId = days.ensureOpenBusinessDayId();
+    const std::string dayId = days.requireOpenTill();
     days.adoptOrderIntoDay(orderId, dayId);
     return dayId;
 }

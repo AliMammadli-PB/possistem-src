@@ -46,7 +46,7 @@ void registerQrOrders(const ContextPtr& ctx){
    auto unique=mods;std::sort(unique.begin(),unique.end());require(std::adjacent_find(unique.begin(),unique.end())==unique.end(),"Təkrarlanan seçim");line.modifiers=orders.resolveModifiers(line.product,mods);line.delta=0;for(const auto& m:line.modifiers)line.delta+=m.priceDelta;
    require(line.price==getOr<Money>(l,"unitPriceMinor",-1)&&line.delta==getOr<Money>(l,"modifierPriceMinor",-1),"QR menyudakı qiymət dəyişib. Menyunu yenidən yayımlayın və müştəridən sifarişi yeniləməsini istəyin");require(line.price+line.delta>=0,"Qiymət düzgün deyil");lines.push_back(line);
   }
-  services::BusinessDayService days(*ctx);const auto day=days.ensureOpenBusinessDayId();auto orderId=orders.openOrderIdForTable(tableId);const auto now=nowMs();
+  services::BusinessDayService days(*ctx);const auto day=days.requireOpenTill();auto orderId=orders.openOrderIdForTable(tableId);const auto now=nowMs();
   if(orderId.empty()){
    orderId=crypto::uuid4();auto insert=ctx->db().prepare("INSERT INTO orders(id,order_number,table_id,user_id,shift_id,status,guest_count,business_day_id,opened_at,updated_at) VALUES(:id,:number,:table,:user,:shift,'draft',1,:day,:now,:now)");
    insert.bind(":id",orderId).bind(":number",orders.nextOrderNumber()).bind(":table",tableId).bind(":user",ctx->session().userId).bindOptional(":shift",ctx->session().shiftId).bind(":day",day).bind(":now",now);insert.exec();

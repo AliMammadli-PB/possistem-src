@@ -6,7 +6,7 @@ namespace {
 class QrFixture{
 public:
  ServiceFixture f;
- QrFixture(){pos::handlers::registerQrOrders(f.contextPtr());auto c=f.db().prepare("SELECT id FROM menu_categories LIMIT 1");REQUIRE(c.step());auto i=f.db().prepare("INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,active,available,created_at,updated_at) VALUES('qr-dish',:cat,'QR-TEST','Sınaq yeməyi',700,1,1,0,0)");i.bind(":cat",c.columnText(0));i.exec();}
+ QrFixture(){f.openTill();pos::handlers::registerQrOrders(f.contextPtr());auto c=f.db().prepare("SELECT id FROM menu_categories LIMIT 1");REQUIRE(c.step());auto i=f.db().prepare("INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,active,available,created_at,updated_at) VALUES('qr-dish',:cat,'QR-TEST','Sınaq yeməyi',700,1,1,0,0)");i.bind(":cat",c.columnText(0));i.exec();}
  pos::Json body(){return {{"externalId",pos::crypto::uuid4()},{"tableId","tbl-01"},{"note","Sınaq"},{"lines",pos::Json::array({{{"productId","qr-dish"},{"qty",2},{"modifiers",pos::Json::array()},{"note",""},{"unitPriceMinor",700},{"modifierPriceMinor",0}}})}};}
  pos::Json call(const pos::Json& body){pos::ipc::Request r;r.requestId=pos::crypto::uuid4();r.method="qr.accept";r.payload=body;return f.server().callHandler(r);}
  long count(const char* table){auto q=f.db().prepare(std::string("SELECT count(*) FROM ")+table);REQUIRE(q.step());return q.columnInt(0);}

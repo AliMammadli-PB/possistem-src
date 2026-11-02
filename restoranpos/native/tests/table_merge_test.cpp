@@ -12,6 +12,7 @@ namespace {
 
 std::string openOrderOnTable(ServiceFixture& fixture, const std::string& tableId,
                              pos::Money totalMinor, int guests) {
+    fixture.openTill();
     pos::services::BusinessDayService days(fixture.ctx());
     pos::services::OrderService orders(fixture.ctx());
     const std::string dayId = days.ensureOpenBusinessDayId();
@@ -54,6 +55,7 @@ std::string openOrderOnTable(ServiceFixture& fixture, const std::string& tableId
 
 void addApprovedPayment(ServiceFixture& fixture, const std::string& orderId, pos::Money amount,
                         const std::string& method = "cash") {
+    fixture.openTill();
     pos::services::BusinessDayService days(fixture.ctx());
     const std::string dayId = days.ensureOpenBusinessDayId();
     const auto now = pos::nowMs();

@@ -7,6 +7,7 @@
 #include "pos/Error.hpp"
 #include "pos/protocol_generated.hpp"
 #include "pos/services/BusinessDayService.hpp"
+#include "pos/services/LicenseService.hpp"
 #include "pos/services/OrderService.hpp"
 #include "pos/services/PaymentService.hpp"
 
@@ -178,6 +179,8 @@ void SplitBillService::markPartPaid(const std::string& splitPartId, const std::s
 MixedPreparation SplitBillService::prepareMixedPayment(const std::string& orderId,
                                                        const std::vector<MixedTender>& tenders,
                                                        const std::string& idempotencyKey) {
+    LicenseService(ctx_).requirePaidForSale();
+    BusinessDayService(ctx_).requireOpenTill();
     if (tenders.empty()) {
         throw PosError(std::string(protocol::err::kValidation), "At least one tender is required");
     }
@@ -228,7 +231,7 @@ MixedPreparation SplitBillService::prepareMixedPayment(const std::string& orderI
     // Opens the till if this is the first activity after a Z close, and pulls
     // the order onto that day so the bill and its money report together.
     BusinessDayService days(ctx_);
-    const std::string businessDayId = days.ensureOpenBusinessDayId();
+    const std::string businessDayId = days.requireOpenTill();
     days.adoptOrderIntoDay(orderId, businessDayId);
 
     const std::string paymentId = crypto::uuid4();

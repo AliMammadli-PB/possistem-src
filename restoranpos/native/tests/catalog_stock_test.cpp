@@ -44,10 +44,10 @@ TEST_CASE("migration repairs missing historical stock links without replacing re
  CatalogStockFixture x;const auto missing=pos::crypto::uuid4(),recipe=pos::crypto::uuid4();
  for(const auto& id:{missing,recipe}){auto q=x.f.db().prepare("INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,active,created_at,updated_at) VALUES(:id,:cat,:sku,:name,300,1,1,1)");q.bind(":id",id).bind(":cat",x.category).bind(":sku","SKU-"+id).bind(":name",id).exec();}
  const auto raw=x.call("ingredients.save",{{"name","Real ingredient"},{"unit","kg"},{"costMinor",500}}).at("id");x.call("recipes.save",{{"menuItemId",recipe},{"lines",pos::Json::array({{{"ingredientId",raw},{"qtyMilli",250}}})}});
- x.f.db().exec(pos::db::kMigrations.back().sql());REQUIRE_FALSE(x.card(missing).empty());REQUIRE(x.card(recipe).empty());
+ x.f.db().exec(pos::db::kMigrations.at(63).sql());REQUIRE_FALSE(x.card(missing).empty());REQUIRE(x.card(recipe).empty());
  const auto lines=x.call("recipes.get",{{"menuItemId",recipe}}).at("lines");REQUIRE(lines.size()==1);REQUIRE(lines[0].at("ingredientId")==raw);REQUIRE(lines[0].at("qtyMilli")==250);
  const auto good=x.call("goods.list",{{"search",missing}}).at("goods");REQUIRE(good.size()==1);REQUIRE(good[0].at("qtyMilli")==0);
- x.f.db().exec(pos::db::kMigrations.back().sql());REQUIRE(x.call("goods.list",{{"search",missing}}).at("goods").size()==1);
+ x.f.db().exec(pos::db::kMigrations.at(63).sql());REQUIRE(x.call("goods.list",{{"search",missing}}).at("goods").size()==1);
 }
 TEST_CASE("free-form pizza sizes have independent stock cards prices and recipes and replay once", "[catalog][stock-sync][sizes]") {
  CatalogStockFixture x;pos::ipc::Request req;req.requestId=pos::crypto::uuid4();req.idempotencyKey="pizza-sizes-once";req.method="catalog.upsertProduct";req.payload={{"nameAz","Marqarit pizza"},{"categoryId",x.category},{"active",true},{"sizeVariants",pos::Json::array({{{"sizeCm",28},{"priceMinor",800}},{{"sizeCm",29.5},{"priceMinor",950}},{{"sizeCm",32},{"priceMinor",1200}}})}};

@@ -64,7 +64,7 @@ Json TableTransferService::transferItems(const std::string& fromTableId,
             .bind(":tableId", toTableId)
             .bind(":userId", ctx_.session().userId)
             .bindOptional(":shiftId", ctx_.session().shiftId)
-            .bind(":day", BusinessDayService(ctx_).ensureOpenBusinessDayId())
+            .bind(":day", BusinessDayService(ctx_).requireOpenTill())
             .bind(":now", now);
         insert.exec();
     }

@@ -58,6 +58,7 @@ void registerOrders(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kOrdersCreate), [ctx](const ipc::Request& request) {
             services::LicenseService(*ctx).requirePaidForSale();
+            services::BusinessDayService(*ctx).requireOpenTill();
             ctx->requirePermission("order.create");
 
             const auto tableId = getOr<std::string>(request.payload, "tableId", "");
@@ -112,11 +113,9 @@ void registerOrders(const ContextPtr& ctx) {
             table.bind(":tableId", tableId);
             if (!table.step()) throw PosError::of(protocol::err::kTableNotFound);
 
-            // Taking an order is what opens the till: after a Z close the next
-            // order silently starts the new business day, so staff never press
-            // an "open cash register" button.
+            // Sales require a deliberately opened till; a new order never opens one.
             services::BusinessDayService days(*ctx);
-            const std::string businessDayId = days.ensureOpenBusinessDayId();
+            const std::string businessDayId = days.requireOpenTill();
 
             // Reopening the table's existing order is friendlier than an error:
             // two waiters tapping the same table should land in the same bill.
@@ -210,6 +209,7 @@ void registerOrders(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kOrdersAddItem), [ctx](const ipc::Request& request) {
             services::LicenseService(*ctx).requirePaidForSale();
+            services::BusinessDayService(*ctx).requireOpenTill();
             ctx->requirePermission("order.create");
 
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
@@ -397,6 +397,7 @@ void registerOrders(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kOrdersUpdateItemQuantity),
         [ctx](const ipc::Request& request) {
+            services::BusinessDayService(*ctx).requireOpenTill();
             ctx->requirePermission("order.create");
 
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
@@ -737,6 +738,7 @@ void registerOrders(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kOrdersSubmit), [ctx](const ipc::Request& request) {
             services::LicenseService(*ctx).requirePaidForSale();
+            services::BusinessDayService(*ctx).requireOpenTill();
             ctx->requirePermission("order.create");
 
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
@@ -911,6 +913,7 @@ void registerOrders(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kOrdersClose), [ctx](const ipc::Request& request) {
             services::LicenseService(*ctx).requirePaidForSale();
+            services::BusinessDayService(*ctx).requireOpenTill();
             ctx->requireAuth();
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
 

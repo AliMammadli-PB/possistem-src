@@ -22,6 +22,8 @@ public:
     explicit BusinessDayService(handlers::Context& ctx) : ctx_(ctx) {}
 
     Json current();
+    Json saleReadiness();
+    std::string requireOpenTill();
     Json open(Money openingFloatMinor, std::string_view note = "");
     BusinessDayReadiness readiness(const std::string& businessDayId);
 
@@ -36,17 +38,7 @@ public:
 
     std::optional<std::string> openBusinessDayId();
 
-    /**
-     * Id of the open business day, opening a fresh one if none exists.
-     *
-     * Staff never open a till by hand: the first order or payment after a Z
-     * silently starts the next day. Opens with a zero float so the first X
-     * after a reopen reads exactly zero.
-     *
-     * Deliberately starts no transaction of its own - every caller is already
-     * inside one, and the new day must commit atomically with whatever
-     * triggered it.
-     */
+    /** Requires the existing opened day and active local till; never opens implicitly. */
     std::string ensureOpenBusinessDayId();
 
     /**

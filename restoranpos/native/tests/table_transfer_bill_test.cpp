@@ -20,7 +20,7 @@ namespace {
 
 class TransferFixture {
 public:
-    TransferFixture() {
+    TransferFixture() { fixture_.openTill();
         pos::handlers::registerOrders(fixture_.contextPtr());
         pos::handlers::registerTables(fixture_.contextPtr());
     }

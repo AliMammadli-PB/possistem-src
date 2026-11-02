@@ -44,7 +44,7 @@ struct DemoUser {
 // before the system handles real money.
 // Only the local administrator is seeded. Waiters are created by admin in-app.
 constexpr DemoUser kDemoUsers[] = {
-    {"usr-admin", "9001", "Super Admin", "role-administrator", "1234", "#B07FC7"},
+    {"usr-admin", "9001", "Yerli administrator", "role-administrator", "1234", "#B07FC7"},
 };
 
 using SchemaDefinition = std::map<std::string, std::string>;

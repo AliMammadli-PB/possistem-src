@@ -22,7 +22,7 @@ namespace {
  */
 class PaymentFixture {
 public:
-    PaymentFixture() {
+    PaymentFixture() { fixture_.openTill();
         pos::handlers::registerPayments(fixture_.contextPtr());
         pos::handlers::registerOrders(fixture_.contextPtr());
     }
@@ -257,7 +257,7 @@ TEST_CASE("item note, seat, course and hold round-trip", "[orders][items]") {
 }
 
 TEST_CASE("managed subscription expiry blocks direct order and payment calls while preserving reads", "[billing]") {
-    ServiceFixture fixture;
+    ServiceFixture fixture; fixture.openTill();
     pos::handlers::registerOrders(fixture.contextPtr());
     pos::handlers::registerPayments(fixture.contextPtr());
     auto& db=fixture.db();

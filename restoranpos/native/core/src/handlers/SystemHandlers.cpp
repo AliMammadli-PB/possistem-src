@@ -884,6 +884,8 @@ void registerSystem(const ContextPtr& ctx) {
         std::string(protocol::method::kBusinessDayOpen), [ctx](const ipc::Request& request) {
             ctx->requirePermission("businessDay.manage");
             db::Transaction txn(ctx->db());
+            const auto state=services::BusinessDayService(*ctx).saleReadiness();
+            require(state.at("reason") != "missing_register",state.at("message").get<std::string>());
             const auto day = services::BusinessDayService(*ctx).open(
                 getOr<Money>(request.payload, "openingFloatMinor", 0),
                 getOr<std::string>(request.payload, "note", ""));
@@ -935,7 +937,11 @@ void registerSystem(const ContextPtr& ctx) {
             std::string id = getOr<std::string>(request.payload, "businessDayId", "");
             // Opening the till here is what makes "Z, then X" show an empty
             // report instead of an error: the new day exists and has no takings.
-            if (id.empty()) id = days.ensureOpenBusinessDayId();
+            if (id.empty()) {
+                const auto open=days.openBusinessDayId();
+                if (!open) throw PosError(std::string(protocol::err::kShiftNotOpen), "Kassa açıq deyil. Əvvəlcə kassanı açın.");
+                id=*open;
+            }
 
             const auto report = services::ReportService(*ctx).createXReport(id);
             txn.commit();

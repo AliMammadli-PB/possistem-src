@@ -20,7 +20,7 @@ namespace {
 
 class KassaFixture {
 public:
-    KassaFixture() {
+    KassaFixture() { pos::services::BusinessDayService(fixture_.ctx()).open(0);
         pos::handlers::registerPayments(fixture_.contextPtr());
         pos::handlers::registerOrders(fixture_.contextPtr());
         pos::handlers::registerGuests(fixture_.contextPtr());
@@ -115,22 +115,22 @@ TEST_CASE("a till holds its opening balance and the cash its sales point takes",
 
     // Rung up at PC 1: lands in Kassa 1.
     f.call("payments.createCash", pos::Json{{"orderId", f.order(1400)}, {"amountMinor", 1400}, {"tenderedMinor", 2000}}, "pc-1");
-    // Rung up at PC 2, which feeds no till: not Kassa 1's money.
-    f.call("payments.createCash", pos::Json{{"orderId", f.order(900)}, {"amountMinor", 900}, {"tenderedMinor", 900}}, "pc-2");
+    // A second PC without its own till must not create an unassigned sale.
+    REQUIRE_THROWS_AS(f.call("payments.createCash", pos::Json{{"orderId", f.order(900)}, {"amountMinor", 900}, {"tenderedMinor", 900}}, "pc-2"),pos::PosError);
 
     const auto row = f.account(till);
     REQUIRE(row.at("balanceMinor") == 11400);
     REQUIRE(row.at("todayCashMinor") == 1400);
 
-    // The second sales point shows up as unassigned, with what it took.
+    // Failed sales cannot produce unassigned takings.
     const auto now = pos::nowMs();
     const auto list = f.call("cashAccounts.list", pos::Json{{"from", now - 3600000}, {"to", now + 3600000}});
     bool loose = false;
     for (const auto& u : list.at("unassigned"))
         if (u.at("terminalId") == "pc-2") { loose = true; REQUIRE(u.at("cashMinor") == 900); }
-    REQUIRE(loose);
-    // Both PCs were seen and named, so a till can be tied to either.
-    REQUIRE(list.at("terminals").size() >= 2);
+    REQUIRE_FALSE(loose);
+    // The working till remains discoverable.
+    REQUIRE(list.at("terminals").size() >= 1);
 }
 
 TEST_CASE("one sales point feeds one till", "[kassa]") {

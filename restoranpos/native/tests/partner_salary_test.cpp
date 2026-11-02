@@ -20,7 +20,7 @@ namespace {
 
 class PartnerFixture {
 public:
-    PartnerFixture() {
+    PartnerFixture() { fixture_.openTill();
         pos::handlers::registerPayments(fixture_.contextPtr());
         pos::handlers::registerOrders(fixture_.contextPtr());
         pos::handlers::registerGuests(fixture_.contextPtr());

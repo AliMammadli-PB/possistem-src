@@ -16,7 +16,7 @@ namespace {
 
 class DeliveryFixture {
 public:
-    DeliveryFixture() {
+    DeliveryFixture() { fixture_.openTill();
         pos::handlers::registerOrders(fixture_.contextPtr());
         pos::handlers::registerPayments(fixture_.contextPtr());
         pos::handlers::registerGuests(fixture_.contextPtr());

@@ -22,6 +22,13 @@ function PsSizeVariants({rows,onChange,price,disabled}) {
 
 
 
+
+
+
+
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14938,7 +14945,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.27 · 2c3343c";
+const _PS_BUILD = "1.9.28 · f69c03c";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15327,7 +15334,7 @@ function AppShell() {
           )
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "relative min-w-0 flex-1 overflow-hidden", children: jsxRuntimeExports.jsx(PsAdminFrame, { children: location.pathname === "/branches" ? jsxRuntimeExports.jsx(PsCloudBranches,{}) : jsxRuntimeExports.jsx(PsGate, {}) }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "relative min-w-0 flex-1 overflow-hidden", children: /* SALE_NOTICE_1928 */psH("div",{className:"ps-cash-workspace"},jsxRuntimeExports.jsx(PsSaleAccessNotice,{}),psH("div",{className:"ps-cash-workspace-body"},jsxRuntimeExports.jsx(PsAdminFrame, { children: location.pathname === "/branches" ? jsxRuntimeExports.jsx(PsCloudBranches,{}) : jsxRuntimeExports.jsx(PsGate, {}) }))) })
     ] })
   ] });
 }
@@ -25407,7 +25414,7 @@ function OpsKassalar() {
             data.terminals.map((t) => h("option", { key: t.id, value: t.id }, t.name + (t.current && t.name !== "Bu kompüter" ? " (bu kompüter)" : ""))))) : null,
         !form.id ? jsxRuntimeExports.jsx(OpsField, { label: "İlkin qalıq (₼)", value: form.opening, onChange: (v) => setForm({ ...form, opening: v }), placeholder: "0.00" }) : null),
       h("p", { className: "text-xs text-muted" }, form.kind === "till"
-        ? "Bağlandığı kompüterdə alınan nağd pul bu kassaya düşür. Digər kompüter siyahıda yoxdursa, o kompüterdə bir satış edin — avtomatik görünəcək."
+        ? "Bağlandığı kompüterdə alınan nağd pul bu kassaya düşür. Digər kompüterdə hesaba daxil olun və siyahını yeniləyin. Satış üçün əvvəlcə kassa təyin edilməlidir."
         : form.kind === "bank" ? "Kartla alınan pul banka düşür (obyekt seçilibsə, yalnız o obyektin kassalarından)." : "Xəzinəyə pul transferlə gəlir və çıxır."),
       h("div", { className: "flex gap-2" },
         jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: saveKassa, children: "Yadda saxla" }),
@@ -25812,7 +25819,7 @@ function OpsPartners() {
       empty: "Bu seçimdə partnyor yoxdur",
       rows: shown.map((r) => [
         h("span", { className: "font-medium text-cream" }, r.name, r.contact ? h("small", { className: "ml-1 text-muted" }, "· " + r.contact) : null),
-        PS_PARTNER_TYPES[r.type],
+        r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):PS_PARTNER_TYPES[r.type],
         objectName(r.objectId) || "—",
         r.phone || "—",
         r.type === "employee" ? formatMoney(r.salaryMinor) : "—",
@@ -30498,7 +30505,7 @@ function OpsSalary(){return psH("div",{className:"space-y-4"},jsxRuntimeExports.
 function PsTouchNavIcon({to,Icon}){const key=to.startsWith('/operations')?new URLSearchParams(to.split('?')[1]).get('tab'):to.slice(1);return ['tables','refund','kds','admin','stock','goods','delivery','stocktake','sales'].includes(key)?jsxRuntimeExports.jsx('img',{src:'./assets/nav/'+key+'.png',alt:'',className:'ps-touch-nav-icon',draggable:false}):jsxRuntimeExports.jsx(Icon,{className:'ps-touch-nav-icon',strokeWidth:1.9});}
 /* POS_CLOUD_BRANCHES_v1 */
 function PsCloudBranches({mode='objects'}={}){const {lang}=useI18n(),has=useAuthStore(s=>s.hasPermission),session=useAuthStore(s=>s.session);if(!has('users.manage')&&!['manager','administrator'].includes(session?.role))return psH('p',null,psAdminText('Buna icazəniz yoxdur','Buna izniniz yok','Access denied'));return psH('iframe',{title:mode==='warehouse'?psAdminText('Filiallararası keçid','Şubeler arası geçiş','Switch branches'):psAdminText('Obyektlərin idarəsi','İşletme yönetimi','Location management'),src:'./cloud-branches/hub.html?lang='+encodeURIComponent(lang)+'&mode='+mode,style:{width:'100%',height:'calc(100dvh - 290px)',minHeight:'440px',border:0},className:'ps-cloud-branches'});}
-function PsObjectLoginBoundary({children}){const session=useAuthStore(x=>x.session),{lang}=useI18n();const key=String(session?.userId||session?.id||"")+":"+String(session?.loginAt||"");const [confirmed,setConfirmed]=reactExports.useState(null);const ref=reactExports.useRef(null);reactExports.useEffect(()=>{const receive=async event=>{if(event.source!==ref.current?.contentWindow||event.origin!==location.origin)return;if(event.data?.type==="pos:object:selected")setConfirmed(key);else if(event.data?.type==="pos:object:logout"){try{await window.pos.auth.logout();useAuthStore.getState().setSession(null);}catch(e){toast(String(e?.message||e),"danger");}}};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[key]);if(window.__psCloudBranchMode||psMarketMode()||!window.pos?.business?.cloudSelection||confirmed===key)return children;return psH("iframe",{ref,title:psAdminText("Obyekt seçimi","İşletme seçimi","Choose location"),src:"./cloud-branches/selection.html?lang="+encodeURIComponent(lang),style:{width:"100%",height:"100dvh",border:0,display:"block"}});}
+function PsObjectLoginBoundary({children}){/* SAVED_BRANCH_1928 */return children;}
 const PsPinAccessContext=reactExports.createContext(null);
 
 
@@ -30506,6 +30513,66 @@ const PsPinAccessContext=reactExports.createContext(null);
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* SALE_ACCESS_1928_START */
+/** The same native readiness check shown on tables, bills and till management. */
+function PsSaleAccessNotice(){
+ const location=useLocation(),path=location.pathname,has=useAuthStore(s=>s.hasPermission);
+ const [state,setState]=reactExports.useState(null),[error,setError]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false);
+ const relevant=path==='/tables'||path.startsWith('/orders/')||(path==='/operations'&&new URLSearchParams(location.search).get('tab')==='kassa');
+ const refresh=reactExports.useCallback(async()=>{try{const r=await window.pos.business.call('sale.readiness',{});if(!r.success)throw Error(r.error?.message||'Kassa vəziyyəti yoxlanılmadı');if(typeof r.data?.ready!=='boolean')throw Error('Kassa vəziyyəti alınmadı. POS-u yeniləyin.');setState(r.data);setError('');}catch(e){setState(null);setError(String(e?.message||e));}},[]);
+ reactExports.useEffect(()=>{if(!relevant||window.__psCloudBranchMode||psMarketMode())return;let alive=true;const tick=()=>{if(alive)void refresh();};tick();const timer=setInterval(tick,5000);window.addEventListener('focus',tick);return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',tick);};},[relevant,refresh]);
+ if(!relevant||window.__psCloudBranchMode||psMarketMode()||state?.ready)return null;
+ const opening=async()=>{if(busy)return;setBusy(true);try{const r=await window.pos.business.call('sale.open',{idempotencyKey:newIdempotencyKey()});if(!r.success)throw Error(r.error?.message);await refresh();}catch(e){await refresh();setError(String(e?.message||e));}finally{setBusy(false);}};
+ return psH('section',{className:'ps-sale-access',role:state?'alert':'status'},psH('div',null,psH('strong',null,state?.reason==='missing_register'?'Kassa təyin edilməyib':state?'Kassa açıq deyil':'Kassa yoxlanılır'),psH('p',null,error||state?.message||'Satış üçün kassa vəziyyəti yoxlanılır.')),
+ state?.reason==='closed'&&(has('businessDay.manage')||has('shift.manage'))?psH('button',{className:'btn solid',disabled:busy,onClick:opening},busy?'Açılır…':'Kassanı aç'):null,
+ state?.reason==='missing_register'&&has('cash.accounts')?jsxRuntimeExports.jsx(Link,{className:'btn outline',to:'/operations?tab=kassa',children:'Kassalara keç'}):null,
+ state?.reason==='closed'&&!(has('businessDay.manage')||has('shift.manage'))?psH('span',null,'Kassanın açılması üçün müdirə müraciət edin.'):null,
+ psH('button',{className:'btn outline',disabled:busy,onClick:refresh},'Yenidən yoxla'));
+}
+
+/* SALE_ACCESS_1928_END */
 
 
 

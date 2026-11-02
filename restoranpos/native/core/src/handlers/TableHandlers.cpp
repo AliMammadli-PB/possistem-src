@@ -370,7 +370,7 @@ void registerTables(const ContextPtr& ctx) {
                         .bind(":tableId", toTableId)
                         .bind(":userId", ctx->session().userId)
                         .bindOptional(":shiftId", ctx->session().shiftId)
-                        .bind(":day", services::BusinessDayService(*ctx).ensureOpenBusinessDayId())
+                        .bind(":day", services::BusinessDayService(*ctx).requireOpenTill())
                         .bind(":now", now);
                     insert.exec();
                 }

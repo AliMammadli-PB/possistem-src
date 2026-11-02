@@ -20,10 +20,12 @@ pos::Money sumPaidSalesOnDay(pos::db::Database& db, const std::string& dayId) {
 
 }  // namespace
 
-TEST_CASE("ensureOpenBusinessDayId opens once and is idempotent", "[business_day][auto_open]") {
+TEST_CASE("ensureOpenBusinessDayId requires explicit opening and is idempotent", "[business_day][auto_open]") {
     ServiceFixture fixture;
     pos::services::BusinessDayService days(fixture.ctx());
 
+    REQUIRE_THROWS_AS(days.ensureOpenBusinessDayId(), pos::PosError);
+    fixture.openTill();
     const std::string first = days.ensureOpenBusinessDayId();
     REQUIRE(!first.empty());
     REQUIRE(days.ensureOpenBusinessDayId() == first);
@@ -55,6 +57,7 @@ TEST_CASE("two business days may share the same calendar date after 009", "[busi
     REQUIRE(closed.step());
     REQUIRE(closed.columnText(0) == "closed");
 
+    fixture.openTill();
     days.ensureOpenBusinessDayId();
 
     auto dayCount = fixture.db().prepare("SELECT COUNT(*) FROM business_days");
@@ -166,6 +169,7 @@ TEST_CASE("after Z reopen X report starts empty then shows new sales only",
         txn.commit();
     }
 
+    fixture.openTill();
     const std::string day2 = days.ensureOpenBusinessDayId();
     REQUIRE(day2 != day1);
 
@@ -211,6 +215,7 @@ TEST_CASE("payments are stamped with the open business day", "[business_day][sta
     ServiceFixture fixture;
     pos::services::BusinessDayService days(fixture.ctx());
 
+    fixture.openTill();
     const std::string dayId = days.ensureOpenBusinessDayId();
     const auto now = pos::nowMs();
     const std::string orderId = pos::crypto::uuid4();

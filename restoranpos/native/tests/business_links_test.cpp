@@ -118,7 +118,7 @@ TEST_CASE("supplier payments can be corrected without changing the purchase hist
  REQUIRE(x.balance(a)==-900);REQUIRE(x.scalar("SELECT amount_minor FROM supplier_ledger WHERE id='"+id+"'")==900);
 }
 TEST_CASE("delivery filters by branch before pagination and identifies unpaid orders by origin","[business][delivery]"){
- BusinessFixture x;pos::handlers::registerOrders(x.f.contextPtr());pos::handlers::registerDelivery(x.f.contextPtr());
+ BusinessFixture x;x.f.openTill();pos::handlers::registerOrders(x.f.contextPtr());pos::handlers::registerDelivery(x.f.contextPtr());
  const auto one=x.call("cashObjects.save",{{"name","Filial 1"}}).at("id");
  const auto two=x.call("cashObjects.save",{{"name","Filial 2"}}).at("id");
  x.call("cashAccounts.save",{{"name","Kassa A"},{"kind","till"},{"terminalId","terminal-a"},{"objectId",one}});

@@ -18,7 +18,7 @@ namespace {
 
 class RefundFixture {
 public:
-    RefundFixture() {
+    RefundFixture() { fixture_.openTill();
         pos::handlers::registerPayments(fixture_.contextPtr());
         pos::handlers::registerOrders(fixture_.contextPtr());
     }

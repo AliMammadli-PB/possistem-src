@@ -26,7 +26,7 @@ namespace {
 
 class RefundLookupFixture {
 public:
-    RefundLookupFixture() {
+    RefundLookupFixture() { fixture_.openTill();
         pos::handlers::registerPayments(fixture_.contextPtr());
         pos::handlers::registerOrders(fixture_.contextPtr());
         pos::handlers::registerPrinting(fixture_.contextPtr());
