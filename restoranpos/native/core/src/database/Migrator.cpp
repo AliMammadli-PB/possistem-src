@@ -336,7 +336,27 @@ void Migrator::applyMigration(const MigrationDefinition& migration) {
     txn.commit();
 }
 
+// Restoran 1.9.25 was live for a few hours on 2026-11-01 from a line whose migrations 065/066 are
+// not in this history, and those tills stopped starting on every later version. Going back to 064
+// lets this line's own 065+ run. Only metadata changes: the columns, table and view those migrations
+// added stay in place, so a later migration here must not add the same names unguarded.
+void Migrator::rewindDivergedHistory() {
+    if (!migrationTableExists()) return;
+    Statement diverged = db_.prepare(
+        "SELECT COUNT(*) FROM database_migrations "
+        "WHERE name IN ('065_menu_sizes_stock_categories.sql', '066_category_twins_recipe_components.sql')");
+    if (!diverged.step() || diverged.columnInt(0) == 0) return;
+
+    logger()->warn("database came from the diverged 1.9.25 history; rewinding metadata to v64");
+    Transaction txn(db_);
+    db_.exec("DELETE FROM database_migrations WHERE version >= 65");
+    db_.exec("PRAGMA user_version=64");
+    txn.commit();
+}
+
 int Migrator::migrate(const ProgressFn& progress) {
+    rewindDivergedHistory();
+
     const int from = currentVersion();
     const int target = targetVersion();
 

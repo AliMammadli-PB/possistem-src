@@ -15,13 +15,14 @@ function attach(updater,{app,feed,publicKey=PUBLIC_KEY,onError=e=>{if(updater.li
  if(updater.__possistemSignedUpdates)return;updater.__possistemSignedUpdates=true;
  const base=new URL(feed);if(base.protocol!=='https:'||base.hostname!=='possistem.az')throw Error('Yeniləmə serveri etibarlı deyil.');
  Object.defineProperty(updater,'autoDownload',{configurable:false,get:()=>false,set:()=>{}});
- Object.defineProperty(updater,'autoInstallOnAppQuit',{configurable:false,get:()=>false,set:()=>{}});let verified=null,installed=false,inflight='';
+ let verified=null,installed=false,inflight='';
+ Object.defineProperty(updater,'autoInstallOnAppQuit',{configurable:false,get:()=>installed,set:()=>{}});
  const originalDownload=updater.downloadUpdate.bind(updater),originalInstall=updater.quitAndInstall.bind(updater);
  updater.downloadUpdate=async(...args)=>{if(!verified)throw Error('Əvvəlcə yeniləmə imzası yoxlanılmalıdır.');return originalDownload(...args);};
  updater.quitAndInstall=(...args)=>{if(!installed)throw Error('Yeniləmə faylının yoxlanılması tamamlanmayıb.');return originalInstall(...args);};
- const fail=e=>{verified=null;installed=false;updater.autoInstallOnAppQuit=false;onError(e);};
+ const fail=e=>{verified=null;installed=false;onError(e);};
  updater.on('update-available',async info=>{
-  if(inflight===info.version)return;inflight=info.version;verified=null;installed=false;updater.autoInstallOnAppQuit=false;
+  if(inflight===info.version)return;inflight=info.version;verified=null;installed=false;
   try{
    if(!/^\d+\.\d+\.\d+$/.test(info.version))throw Error('Yeniləmə versiyası düzgün deyil.');
    const url=new URL(base.href.replace(/\/?$/,'/')+'v/'+info.version+'/signed.json');
@@ -39,7 +40,7 @@ function attach(updater,{app,feed,publicKey=PUBLIC_KEY,onError=e=>{if(updater.li
    const stat=await fs.promises.stat(info.downloadedFile);if(stat.size!==p.size)throw Error('Yeniləmə ölçüsü uyğun deyil.');
    const hash=crypto.createHash('sha512');for await(const chunk of fs.createReadStream(info.downloadedFile))hash.update(chunk);
    if(hash.digest('base64')!==p.sha512)throw Error('Yeniləmə bütövlüyü təsdiqlənmədi.');
-   if(verified!==p)throw Error('Yeniləmə vəziyyəti dəyişib.');installed=true;updater.autoInstallOnAppQuit=true;
+   if(verified!==p)throw Error('Yeniləmə vəziyyəti dəyişib.');installed=true;updater.emit('update-verified',info);
   }catch(e){fail(e);}
  });
 }

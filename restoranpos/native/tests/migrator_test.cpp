@@ -235,6 +235,37 @@ TEST_CASE("legacy v1 schema with unexpected objects is rejected without mutation
                 "WHERE type = 'table' AND name = 'database_migrations'") == 0);
 }
 
+TEST_CASE("a till left on the diverged 1.9.25 history starts and keeps its data",
+          "[database][migration]") {
+    MigrationTestDatabase test;
+    auto& database = test.database();
+    pos::db::Migrator migrator(database);
+    static_cast<void>(migrator.migrate({}));
+
+    database.exec("DELETE FROM database_migrations WHERE version >= 65");
+    database.exec(
+        "INSERT INTO database_migrations (version, name, checksum, applied_at) VALUES "
+        "(65, '065_menu_sizes_stock_categories.sql', 'x', 1), "
+        "(66, '066_category_twins_recipe_components.sql', 'x', 1)");
+    database.exec("ALTER TABLE menu_items ADD COLUMN size_cm REAL");
+    database.exec("INSERT INTO menu_categories (id, name_az) VALUES ('kept', 'Pizza')");
+    database.exec("PRAGMA user_version=66");
+
+    pos::db::Migrator upgraded(database);
+    REQUIRE(upgraded.migrate({}) > 0);
+    const auto target = static_cast<std::int64_t>(pos::db::kMigrations.back().version);
+    REQUIRE(upgraded.currentVersion() == target);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM database_migrations WHERE name LIKE "
+                                "'065_menu%' OR name LIKE '066_category%'") == 0);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_categories WHERE id = 'kept'") == 1);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM pragma_table_info('menu_items') "
+                                "WHERE name = 'size_cm'") == 1);
+
+    // The next start finds a normal database.
+    pos::db::Migrator again(database);
+    REQUIRE(again.migrate({}) == 0);
+}
+
 TEST_CASE("pre-migration backup is only required for a real version upgrade",
           "[database][migration][backup-decision]") {
     REQUIRE_FALSE(pos::db::shouldBackupBeforeMigration(0, 1));

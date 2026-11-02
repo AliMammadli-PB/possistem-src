@@ -196,6 +196,7 @@ function buildOut() {
   }
 
   copy('index.js', path.join(OUT, 'main', 'index.js'));
+  copy('update-first.cjs', path.join(OUT, 'main', 'update-first.cjs'));
   const renderer = path.join(OUT, 'renderer');
   fs.rmSync(renderer, { recursive: true, force: true });
   fs.cpSync(STAGE, renderer, { recursive: true, filter: (src) => path.relative(STAGE, src) !== 'index.js' });
