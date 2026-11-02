@@ -31,6 +31,7 @@ function PsSizeVariants({rows,onChange,price,disabled}) {
 
 
 
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14947,7 +14948,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.29 · b6c3a9e";
+const _PS_BUILD = "1.9.30 · 6dfce24";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -20624,7 +20625,7 @@ function LoginPage() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "main",
     {
-      className: "ps-rest-staff",
+      className: "ps-rest-staff ps-pin-layout-1930",
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-rest-staff-photo", style: { backgroundImage: `url(${loginBackground})` }, "aria-hidden": "true" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-rest-staff-grid", children: [
@@ -20756,8 +20757,8 @@ function LoginPage() {
                         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-staff-pin-label brand-kicker text-gold-dim", children: t.login.enterPin }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "ps-staff-pin-title mt-2 font-display text-[2rem] leading-none text-cream", children: t.login.pinTitle }),
           jsxRuntimeExports.jsx(PsPinAccessInfo, {}),
-                        /* PIN_CIRCLES_1929 */psH("div",{className:"ps-pin-entry"+(pinPhase==="err"?" is-err":"")+(busy?" is-busy":""),style:{"--pin-slots":pinChange||pin.length<=4?4:10},"data-slots":pinChange||pin.length<=4?4:10},
- psH("div",{className:"ps-pin-circles","aria-hidden":"true"},Array.from({length:pinChange||pin.length<=4?4:10},(_,i)=>psH("span",{key:i,className:"ps-pin-circle"+(i<pin.length?" is-filled":"")},psH("span",null)))),
+                        /* PIN_CIRCLES_1929 */psH("div",{/* PIN_LAYOUT_1930 */className:"ps-pin-entry ps-pin-workbench"+(pinPhase==="err"?" is-err":"")+(busy?" is-busy":""),style:{"--pin-slots":pinChange||pin.length<=4?4:10},"data-slots":pinChange||pin.length<=4?4:10},
+ psH("div",{className:"ps-pin-slots","aria-hidden":"true"},Array.from({length:pinChange||pin.length<=4?4:10},(_,i)=>psH("span",{key:i,className:"ps-pin-slot"+(i<pin.length?" is-filled":"")+(i===pin.length?" is-current":"")},psH("span",null)))),
  jsxRuntimeExports.jsx("input", {
                           className:"ps-pin-input",type:"password",inputMode:"numeric",pattern:"[0-9]*",autoComplete:"off",autoFocus:true,
                           "aria-label":psAdminText("PIN kodu","PIN kodu","PIN code"),maxLength:pinLength,value:pin,disabled:busy,
@@ -25823,7 +25824,7 @@ function OpsPartners() {
       empty: "Bu seçimdə partnyor yoxdur",
       rows: shown.map((r) => [
         h("span", { className: "font-medium text-cream" }, r.name, r.contact ? h("small", { className: "ml-1 text-muted" }, "· " + r.contact) : null),
-        r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):PS_PARTNER_TYPES[r.type],
+        r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):PS_PARTNER_TYPES[r.type],
         objectName(r.objectId) || "—",
         r.phone || "—",
         r.type === "employee" ? formatMoney(r.salaryMinor) : "—",
@@ -30577,6 +30578,12 @@ function PsSaleAccessNotice(){
 }
 
 /* SALE_ACCESS_1928_END */
+
+
+
+
+
+
 
 
 
