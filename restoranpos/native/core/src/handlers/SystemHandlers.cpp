@@ -16,6 +16,7 @@
 #include "pos/protocol_generated.hpp"
 #include "pos/services/BusinessDayService.hpp"
 #include "pos/services/CashService.hpp"
+#include "pos/services/DataWipe.hpp"
 #include "pos/services/GiftCampaignService.hpp"
 #include "pos/services/Idempotency.hpp"
 #include "pos/services/LicenseService.hpp"
@@ -1349,6 +1350,16 @@ void registerSystem(const ContextPtr& ctx) {
                         {"safetyCopy", safety.string()},
                         {"restartRequired", true}};
         });
+
+    // Reached only from the main process, for a signed data.wipeAll command.
+    server.registerHandler("system.wipeAllData", [ctx](const ipc::Request& request) {
+        const auto kept = services::DataWipe::run(ctx->db());
+        // Whoever was signed in no longer exists in this database.
+        ctx->session() = {};
+        ctx->audit("data.wipeAll", "system", getOr<std::string>(request.payload, "commandId", ""),
+                   Json{{"keptCopy", kept}});
+        return Json{{"wiped", true}, {"keptCopy", kept}, {"restartRequired", true}};
+    });
 }
 
 }  // namespace pos::handlers

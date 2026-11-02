@@ -2,6 +2,7 @@ import { useLiveEffect } from '../lib/live';
 import {useProduct} from '../lib/product';
 import {useSearchParams} from 'react-router-dom';
 import {CustomerPosLicenses} from '../components/CustomerPosLicenses';
+import {CustomerDataWipe} from '../components/CustomerDataWipe';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
@@ -615,6 +616,8 @@ export function CustomerLivePage() {
           )}
         </section>
       </div>
+
+      {selectedProduct==='restaurant' && <CustomerDataWipe customerId={customerId} />}
 
       <p className="muted" style={{ marginTop: '1rem' }}>
         {t.live.refreshed}: {new Date(data.fetchedAt).toLocaleTimeString('az-AZ')}
