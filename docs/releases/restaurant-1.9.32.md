@@ -24,3 +24,12 @@ Not covered: application logs, the browser's local storage on the till, files th
 - `routes/data-wipe.test.ts`: exact name, no tills, wipe already running.
 - Admin panel in Chromium at 390 and 1366 px with a mocked API: the button stays off until the exact name, the payload, every status label.
 - Not tested: a signed command end to end on a real till, the restart inside Electron on Windows, or the server cleanup on real rows. The first real use should be on a test customer.
+
+## Publication (2026-11-02)
+
+Published at the owner's request: update feed via `scripts/publish-release.mjs restaurant`; download page and verified ZIP (EXE SHA-256 `343345b713b010185dee0f2a487b3561fd6c5ef0380a2b44b9343d42022c6d0c`); API as `.workspace-20261102-1932` with only `routes/data-wipe.js` added and `app.js` registering it, because the live API differs from this tree in 6 other files; admin panel in place.
+
+Rollback:
+- API: remove `/etc/systemd/system/possistem-pos-control.service.d/zzzzzz-workspace-1932.conf`, then `systemctl daemon-reload` and restart the service.
+- Admin panel: `apps/admin-web/dist-before-wipe-1932`.
+- Website: `/var/www/possistem/.next-before-release-1932-20261102`, then `pm2 restart possistem`.
