@@ -34,3 +34,7 @@ Nothing else changed from 1.9.30: renderer, roles, till rules and printing are t
 ## Use and rollback
 
 A till stuck on "Təhlükəsiz rejim" still runs the 1.9.30 updater, which has the faults above: it downloads 1.9.31 on its own but may not install it, so such a till can need one manual install from https://possistem.az/download/pos/ over the existing one. The database stays. Version 1.9.30 stays on the server.
+
+## Publication (2026-11-02)
+
+Published at the owner's request without the one-till trial first: update feed via `scripts/publish-release.mjs restaurant` (signed manifest `v/1.9.31/signed.json`, previous feed `latest.yml.bak-before-1.9.31`); download page switched to 1.9.31 with a new verified ZIP and EXE SHA-256 `731eee0a4d8887558154ad6e75d7a4cc9517d262ba4d9ff7e852adc03b64cac2`. Website rollback: `/var/www/possistem/.next-before-release-1931-20261102`, then `pm2 restart possistem`.
