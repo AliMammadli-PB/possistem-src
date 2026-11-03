@@ -292,7 +292,7 @@ void registerBusiness(const ContextPtr& ctx) {
             bind.bind(":u",user).bind(":id",target).bind(":at",nowMs());bind.exec();ctx->auditRequired("staff.link","user",user,Json{{"sourceCustomerId",source},{"targetCustomerId",target}});tx.commit();return Json{{"ok",true}};
         }
         if(action=="staff") {
-            auto q=ctx->db().prepare("SELECT u.id,u.full_name AS name,u.active,c.id AS customerId,c.salary_minor AS salaryMinor,COALESCE(c.object_id,'') AS objectId FROM users u LEFT JOIN customers c ON c.user_id=u.id WHERE u.id<>'possistem-admin' ORDER BY u.active DESC,u.full_name");
+            auto q=ctx->db().prepare("SELECT u.id,u.full_name AS name,u.active,c.id AS customerId,c.salary_minor AS salaryMinor,COALESCE(c.object_id,'') AS objectId FROM users u LEFT JOIN customers c ON c.user_id=u.id WHERE u.id NOT IN ('possistem-admin','usr-admin') ORDER BY u.active DESC,u.full_name");
             Json rows=q.rows();for(auto& row:rows){auto a=ctx->db().prepare("SELECT warehouse_id FROM user_warehouse_access WHERE user_id=:u");a.bind(":u",row.at("id").get<std::string>());row["warehouses"]=Json::array();while(a.step())row["warehouses"].push_back(a.columnText(0));}
             auto loose=ctx->db().prepare("SELECT id,name FROM customers WHERE kind='employee' AND active=1 AND user_id IS NULL ORDER BY name");
             return Json{{"staff",rows},{"unlinked",loose.rows()}};

@@ -26,6 +26,21 @@ void removeWithSidecars(const fs::path& file) {
 
 }  // namespace
 
+void DataWipe::carryIdentity(db::Database& target, const std::string& fromPath) {
+    {
+        auto attach = target.prepare("ATTACH DATABASE :path AS old");
+        attach.bind(":path", fromPath);
+        attach.exec();
+    }
+    target.exec("INSERT OR REPLACE INTO license_state SELECT * FROM old.license_state");
+    target.exec(
+        "INSERT OR REPLACE INTO app_settings (key, value, value_type, updated_at) "
+        "SELECT key, value, value_type, updated_at FROM old.app_settings "
+        "WHERE key IN ('device.installationId', 'license.controlUrl', 'sync.serverUrl', "
+        "'terminal.id', 'branch.cloudName', 'branch.code', 'branch.name')");
+    target.exec("DETACH DATABASE old");
+}
+
 std::string DataWipe::run(db::Database& db) {
     const auto source = fs::path(db.path());
     const auto dir = source.parent_path() / "backups";
@@ -43,18 +58,7 @@ std::string DataWipe::run(db::Database& db) {
         migrator.migrate({});
         migrator.seedIfEmpty({});
 
-        {
-            auto attach = target.prepare("ATTACH DATABASE :path AS old");
-            attach.bind(":path", copy.string());
-            attach.exec();
-        }
-        target.exec("INSERT OR REPLACE INTO license_state SELECT * FROM old.license_state");
-        target.exec(
-            "INSERT OR REPLACE INTO app_settings (key, value, value_type, updated_at) "
-            "SELECT key, value, value_type, updated_at FROM old.app_settings "
-            "WHERE key IN ('device.installationId', 'license.controlUrl', 'sync.serverUrl', "
-            "'terminal.id', 'branch.cloudName', 'branch.code', 'branch.name')");
-        target.exec("DETACH DATABASE old");
+        carryIdentity(target, copy.string());
         target.close();
 
         db.restoreFrom(fresh.string());

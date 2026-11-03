@@ -272,3 +272,20 @@ TEST_CASE("stock publication without a positive price rolls back the metadata ed
  x.f.ctx().session().permissions.erase("catalog.manage");
  REQUIRE_THROWS_AS(x.biz("catalog.stockEdit",{{"ingredientId",id},{"name","Qadağan"},{"salePriceMinor",90}}),pos::PosError);
 }
+
+TEST_CASE("system identities stay hidden while created managers and their payroll remain visible", "[business][staff_workspace]") {
+ BusinessFixture x;
+ // Even a legacy financial balance does not turn the local login into a visible employee.
+ x.f.db().exec("UPDATE customers SET salary_minor=55000,debt_minor=1250 WHERE user_id='usr-admin'");
+ const auto manager=x.call("users.create",{{"fullName","Rauf Müdir"},{"pin","9628"},{"role","manager"}}).at("id").get<std::string>();
+ x.biz("staff.save",{{"userId",manager},{"salaryMinor",65000},{"warehouses",pos::Json::array({"wh-main"})}});
+ const auto users=x.call("users.list").at("users");REQUIRE(users.size()==1);REQUIRE(users[0].at("id")==manager);REQUIRE(users[0].at("role")=="manager");
+ const auto staff=x.biz("staff").at("staff");REQUIRE(staff.size()==1);REQUIRE(staff[0].at("id")==manager);REQUIRE(staff[0].at("salaryMinor")==65000);
+ const auto payroll=x.call("salary.list",{{"month","2026-11"},{"from",1},{"to",2000000000000LL}}).at("employees");REQUIRE(payroll.size()==1);REQUIRE(payroll[0].at("name")=="Rauf Müdir");
+ const auto guests=x.call("customers.list",{{"kind","employee"}}).at("customers");REQUIRE(guests.size()==1);REQUIRE(guests[0].at("name")=="Rauf Müdir");
+ REQUIRE(x.scalar("SELECT salary_minor FROM customers WHERE user_id='usr-admin'")==55000);
+ REQUIRE(x.scalar("SELECT debt_minor FROM customers WHERE user_id='usr-admin'")==1250);
+ REQUIRE(x.scalar("SELECT COUNT(*) FROM users WHERE id='usr-admin' AND active=1")==1);
+ auto& session=x.f.ctx().session();session.role="waiter";session.permissions={"customers.view"};
+ REQUIRE_THROWS_AS(x.call("users.list"),pos::PosError);REQUIRE_THROWS_AS(x.biz("staff"),pos::PosError);REQUIRE_THROWS_AS(x.call("salary.list",{{"month","2026-11"},{"from",1},{"to",2000000000000LL}}),pos::PosError);
+}

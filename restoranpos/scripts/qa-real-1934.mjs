@@ -33,13 +33,9 @@ try{
   let p=await open('page=catalog','admin/catalog');
   const name=p.locator('.ps-catalog-search').first();
   await name.fill('İçkilər');await p.getByRole('button',{name:'+',exact:true}).first().click();await addRow(p,'İçkilər').waitFor();
-  await addRow(p,'İçkilər').locator('.ps-kebab').click();await p.getByRole('button',{name:'+ Alt kateqoriya'}).click();await p.getByText('İçkilər içində alt kateqoriya').waitFor();
-  assert.equal(await name.evaluate(e=>e===document.activeElement),true,'the name field takes focus');
-  await p.screenshot({path:out+'/sub-create.png'});
-  await name.fill('Spirtli');await p.getByRole('button',{name:'+',exact:true}).first().click();await addRow(p,'Spirtli').waitFor();
-  assert.equal(await p.getByText('İçkilər içində alt kateqoriya').count(),0,'the parent is cleared after saving');
-  await addRow(p,'İçkilər').first().locator('.ps-kebab').click();await p.getByRole('button',{name:'+ Alt kateqoriya'}).click();
-  await name.fill('Spirtsiz');await p.getByRole('button',{name:'+',exact:true}).first().click();await addRow(p,'Spirtsiz').waitFor();
+  // Since 1.9.35 "+ Alt kateqoriya" opens its own dialog.
+  const addSub=async(sub)=>{await addRow(p,'İçkilər').first().locator('.ps-kebab').click();await p.getByRole('button',{name:'+ Alt kateqoriya',exact:true}).click();const d=p.getByRole('dialog',{name:'Alt kateqoriya yarat'});await d.waitFor();await d.getByLabel('Alt kateqoriyanın adı',{exact:true}).fill(sub);await p.screenshot({path:out+'/sub-create.png'});await d.getByRole('button',{name:/^Yarat/}).click();await d.waitFor({state:'detached'});await addRow(p,sub).waitFor();};
+  await addSub('Spirtli');await addSub('Spirtsiz');
   assert.equal(await addRow(p,'Spirtsiz').evaluate(e=>e.classList.contains('is-sub')),true,'indented under its parent');
   // A top-level category made right after is not a child.
   await name.fill('Yemək');await p.getByRole('button',{name:'+',exact:true}).first().click();await addRow(p,'Yemək').waitFor();

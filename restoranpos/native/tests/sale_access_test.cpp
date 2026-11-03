@@ -38,7 +38,8 @@ TEST_CASE("initial administrator is not an automatic payroll employee; real cash
  ServiceFixture f;pos::handlers::registerGuests(f.contextPtr());
  auto list=call(f,"customers.list",{{"kind","employee"}}).at("customers");REQUIRE(list.empty());
  f.db().exec("UPDATE customers SET salary_minor=50000 WHERE user_id='usr-admin'");
- list=call(f,"customers.list",{{"kind","employee"}}).at("customers");REQUIRE(list.size()==1);REQUIRE(list[0].at("salaryMinor")==50000);
+ list=call(f,"customers.list",{{"kind","employee"}}).at("customers");REQUIRE(list.empty());
+ auto saved=f.db().prepare("SELECT salary_minor FROM customers WHERE user_id='usr-admin'");REQUIRE(saved.step());REQUIRE(saved.columnInt(0)==50000);
  auto identity=f.db().prepare("SELECT primary_role_id FROM users WHERE id='usr-admin'");REQUIRE(identity.step());REQUIRE(identity.columnText(0)=="role-administrator");
  f.db().exec("INSERT INTO users(id,code,full_name,pin_hash,primary_role_id,created_at,updated_at) SELECT 'test-cashier','9912','Aysel',pin_hash,'role-cashier',0,0 FROM users WHERE id='usr-admin'");
  list=call(f,"customers.list",{{"kind","employee"}}).at("customers");bool found=false;for(const auto& row:list)if(row.at("name")=="Aysel"){found=true;REQUIRE(row.at("userRole")=="role-cashier");}REQUIRE(found);

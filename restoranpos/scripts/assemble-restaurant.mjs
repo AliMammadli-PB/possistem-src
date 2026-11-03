@@ -139,6 +139,9 @@ export const PATCH_ORDER = [
   'apply-restaurant-1930.mjs',
   'apply-restaurant-1933.mjs',
   'apply-restaurant-1934.mjs',
+  'apply-restaurant-local1935.mjs',
+  'apply-restaurant-local-staff.mjs',
+  'apply-restaurant-cloud-backup.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -183,6 +186,9 @@ function stageRenderer() {
 }
 
 function buildOut() {
+  copy('cloud-backup/client.cjs', path.join(OUT,'main/cloud-backup-client.cjs'));
+  fs.copyFileSync(path.join(ROOT,'../platform/packages/security/cloud-backup.cjs'),path.join(OUT,'main/cloud-backup-format.cjs'));
+
   fs.cpSync(path.join(ROOT,'integrations/sunmi'),path.join(OUT,'main/sunmi'),{recursive:true});
 
   copy('cloud-branches/object-selection.cjs', path.join(OUT,'main','object-selection.cjs'));

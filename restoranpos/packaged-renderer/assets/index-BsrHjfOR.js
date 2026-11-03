@@ -45,6 +45,22 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14961,7 +14977,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.34 · 4b35165";
+const _PS_BUILD = "1.9.35 · 7dc4ed7";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15573,6 +15589,7 @@ function AdminBackupPage() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "gold-rule mt-3 w-28 opacity-50" })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto w-full max-w-4xl space-y-6 overflow-auto p-6", children: [
+      jsxRuntimeExports.jsx(PsCloudBackupCard,{}),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass rounded-2xl p-5", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: t.backup.create }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "gold-rule mt-2 w-20 opacity-50" }),
@@ -16518,6 +16535,7 @@ function PsMenuCatalog() {
   const psCategoryName = reactExports.useRef(null);
   const [productCategoryId, setProductCategoryId] = reactExports.useState("");
   const [setMenu, setSetMenu] = reactExports.useState(null);
+  /* LOCAL_CATEGORY_PICKER */const [categoryPicker,setCategoryPicker]=reactExports.useState(null);
   const [sizeUnit, setSizeUnit] = reactExports.useState("sm");
   reactExports.useEffect(() => { setProductCategoryId(""); }, [editId, editorOpen, categoryId]);
   const loadCategories = reactExports.useCallback(async () => {
@@ -17069,7 +17087,7 @@ function PsMenuCatalog() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void saveCategory(), children: "+" })
         ] }),
         newParentId ? jsxRuntimeExports.jsxs("p", { className: "ps-catalog-sub-hint", children: [localizedName(categories2.find((c) => c.id === newParentId) || { nameAz: "" }, lang) + psAdminText(" içində alt kateqoriya", " içinde alt kategori", ": new sub-category"), jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setNewParentId(""), children: psAdminText("Ləğv et", "İptal", "Cancel") })] }) : null,
-        jsxRuntimeExports.jsx(PsCategoryPick, { categories: categories2, value: newParentId, onChange: setNewParentId, blank: psAdminText("Ana kateqoriya kimi", "Ana kategori olarak", "As a top-level category"), topOnly: true, className: "ps-catalog-parent-pick", label: psAdminText("Hansı kateqoriyanın içində", "Hangi kategorinin içinde", "Inside which category") }),
+        /* Sub-categories are created in the picker with existing dishes. */
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-catalog-cat-list", children: categories2.map((cat, index) => {
           const selected = categoryId === cat.id;
           const menuOn = openMenu === "c:" + cat.id;
@@ -17087,7 +17105,7 @@ function PsMenuCatalog() {
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving || index === 0, onClick: () => { setOpenMenu(null); void moveCategory(index, -1); }, children: t.catalog.moveUp }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving || index === categories2.length - 1, onClick: () => { setOpenMenu(null); void moveCategory(index, 1); }, children: t.catalog.moveDown }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setEditingCategoryId(cat.id); setEditingCategoryName(localizedName(cat, lang)); }, children: t.catalog.renameCategory }),
-                !cat.parentId ? jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setNewParentId(cat.id); setTimeout(() => psCategoryName.current?.focus(), 0); }, children: psAdminText("+ Alt kateqoriya", "+ Alt kategori", "+ Sub-category") }) : null,
+                !cat.parentId ? jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setCategoryPicker({parent:cat}); }, children: psAdminText("+ Alt kateqoriya", "+ Alt kategori", "+ Sub-category") }) : null,
                 jsxRuntimeExports.jsx(PsCategoryMove, { cat, categories: categories2, onMove: (c, parentId) => { setOpenMenu(null); void moveCategoryInto(c, parentId); } }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "is-danger", onClick: () => { setOpenMenu(null); void removeCategory(cat.id); }, children: t.staff.delete })
               ] }) : null
@@ -17099,7 +17117,8 @@ function PsMenuCatalog() {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-toolbar", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: t.catalog.products }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: productQuery, onChange: (e) => setProductQuery(e.target.value), placeholder: t.catalog.search, className: "ps-catalog-search" }),
-          jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-menu-btn", onClick: () => setSetMenu({}), children: psAdminText("+ Menyu yarat", "+ Menü oluştur", "+ Create menu") }),
+          categoryId ? jsxRuntimeExports.jsx("button",{type:"button",className:"ps-catalog-existing-btn",disabled:saving,onClick:()=>setCategoryPicker({category:categories2.find(c=>c.id===categoryId)}),children:"+ Hazır məhsul əlavə et"}):null,
+        jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-menu-btn", onClick: () => setSetMenu({}), children: psAdminText("+ Menyu yarat", "+ Menü oluştur", "+ Create menu") }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-new-btn", onClick: () => { setShowLocales(false); startCreate(); }, children: "+ " + t.catalog.newProduct })
         ] }),
         visibleProducts.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-bulk", children: [
@@ -17172,6 +17191,7 @@ function PsMenuCatalog() {
         ] })
       ] })
     ] }),
+    categoryPicker ? jsxRuntimeExports.jsx(PsCategoryProductsDialog,{...categoryPicker,categories:categories2,onClose:()=>{setCategoryPicker(null);void loadCategories();if(categoryId)void loadProducts(categoryId);},onSaved:async target=>{setCategoryPicker(null);setBulkIds([]);await loadCategories();setCategoryId(target);await loadProducts(target);window.dispatchEvent(new Event("possistem-catalog-changed"));}}):null,
     setMenu ? jsxRuntimeExports.jsx(PsSetMenuDialog, { menu: setMenu.id ? setMenu : null, categories: categories2, onClose: () => setSetMenu(null), onSaved: async (target) => { setSetMenu(null); await loadCategories(); setCategoryId(target); await loadProducts(target); } }) : null,
     editorOpen ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-editor-backdrop", "aria-label": t.catalog.closeEditor, onClick: () => setEditorOpen(false) }),
@@ -17818,9 +17838,7 @@ const _PS_ROLE_AZ = {
   administrator: "Administrator",
   courier: "Kuryer"
 };
-function _psRoleAz(name) {
-  return _PS_ROLE_AZ[name] || name;
-}
+function _psRoleAz(name){return name==="manager"?"Müdir":_PS_ROLE_AZ[name]||name;}
 
 function PsStaffPage() {
   const { t } = useI18n();
@@ -17851,7 +17869,7 @@ function PsStaffPage() {
       return;
     }
     const data = res.data;
-    setUsers(data.users ?? []);
+    /* LOCAL_STAFF_DIRECTORY */setUsers((data.users ?? []).filter(u=>u.id!=="usr-admin"&&u.id!=="possistem-admin"));
   }, []);
   reactExports.useEffect(() => {
     void load();
@@ -17891,10 +17909,10 @@ function PsStaffPage() {
     await load();
   };
   const active = users.filter((u) => u.active === 1 || u.active === true);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto max-w-4xl p-6", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: t.staff.title }),
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-staff-directory", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: "Giriş hesabı və vəzifə" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-muted", children: psAdminText("Heyəti, vəzifələri və giriş səlahiyyətlərini idarə edin.", "Ekibi, görevleri ve erişim izinlerini yönetin.", "Manage your team, roles and access permissions.") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 grid gap-6 md:grid-cols-2", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-staff-columns", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "form",
         {
@@ -17906,7 +17924,7 @@ function PsStaffPage() {
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { className: "flex items-center gap-2 font-display text-lg text-cream", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { className: "h-4 w-4 text-gold" }),
-              t.staff.addWaiter
+              "Yeni işçi"
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "mt-4 block text-sm", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: t.staff.fullName }),
@@ -17949,7 +17967,7 @@ function PsStaffPage() {
                   )
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 block text-xs text-faint", children: "Vəzifənin nə edə biləcəyi aşağıdakı «Rollar və səlahiyyətlər» bölməsində təyin olunur." })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 block text-xs text-faint", children: "Vəzifənin icazələri «Səlahiyyətlər» vərəqində təyin olunur." })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
@@ -17995,7 +18013,7 @@ function PsStaffPage() {
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(RolePermissionsPanel, {}),
+    /* @__PURE__ */ null /* Permissions have their own staff tab. */,
     confirmDialog
   ] });
 }
@@ -21311,10 +21329,7 @@ function PsOriginalOrderPage() {
   const categoryPages = Math.max(1, Math.ceil(psTopCats(categories2).length / categoryPageSize));
   const productPages = Math.max(1, Math.ceil(orderProducts.length / productPageSize));
   const cartPages = Math.max(1, Math.ceil(cartItems.length / cartPageSize));
-  const visibleCategories = psTopCats(categories2).slice(
-    categoryPage * categoryPageSize,
-    categoryPage * categoryPageSize + categoryPageSize
-  );
+  /* LOCAL_ALL_CATEGORY_CHIPS */const visibleCategories=psTopCats(categories2);
   const visibleProducts = orderProducts.slice(
     productPage * productPageSize,
     productPage * productPageSize + productPageSize
@@ -21401,6 +21416,7 @@ function PsOriginalOrderPage() {
           {
             type: "button",
             onClick: () => setCategoryId(cat.id),
+            /* LOCAL_SHORT_CATEGORIES */title:localizedName(cat,lang),"aria-pressed":categoryId===cat.id||psParentOf(categories2,categoryId)===cat.id,
             className: `group relative touch-target h-full min-h-0 w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-sm transition ${categoryId === cat.id || psParentOf(categories2, categoryId) === cat.id ? "border-gold/55 text-cream shadow-[inset_3px_0_0_#c4a66a]" : "border-gold/10 text-muted hover:border-gold/35 hover:text-cream"}`,
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveCategoryVisual(cat.id, cat.image), alt: "", className: "absolute inset-0 h-full w-full object-cover opacity-36 grayscale transition duration-500 group-hover:scale-105 group-hover:opacity-56 group-hover:grayscale-0" }),
@@ -21410,7 +21426,7 @@ function PsOriginalOrderPage() {
           },
           cat.id
         )) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(PageControls, { page: categoryPage, pages: categoryPages, onChange: setCategoryPage })
+        /* @__PURE__ */ null /* all categories are in the wrapping list */
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "flex min-h-0 flex-col overflow-hidden p-3", children: [
         productsLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingState, { label: t.common.loading, compact: true }) : /* POSSISTEM_1934 */orderProducts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted", children: t.common.noResults }) : (
@@ -23182,6 +23198,7 @@ function SettingsBackupCompact() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "cardbody", children: t.common.loading }) });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "workspace", children: [
+      jsxRuntimeExports.jsx(PsCloudBackupCard,{}),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "cardhead", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -25852,7 +25869,7 @@ function OpsPartners() {
   const [confirmAsk, confirmDialog] = useConfirm();
   const reload = reactExports.useCallback(async () => {
     const [p, s] = await Promise.all([canPeople ? window.pos.guests.list("") : null, canSuppliers ? window.pos.suppliers.list() : null]);
-    if (p?.success) setPeople(p.data.customers ?? []);
+    if (p?.success) /* LOCAL_PARTNERS_ONLY */setPeople((p.data.customers ?? []).filter(p=>p.kind!=="employee"));
     if (s?.success) setSuppliers(s.data.suppliers ?? []);
   }, [canPeople, canSuppliers]);
   reactExports.useEffect(() => { void reload(); }, [reload]);
@@ -25899,10 +25916,9 @@ function OpsPartners() {
     h("div", { className: "ps-stock-metrics" },
       psMetric("Partnyor", String(shown.length), type === "all" ? "hamısı" : PS_PARTNER_TYPES[type]),
       psMetric("Bizə borclu", formatMoney(sum("owesUs")), shown.filter((r) => r.owesUs > 0).length + " partnyor", sum("owesUs") > 0 ? "var(--ps-danger)" : null),
-      psMetric("Təchizatçılara borcumuz", formatMoney(sum("weOwe")), shown.filter((r) => r.weOwe > 0).length + " təchizatçı", sum("weOwe") > 0 ? "var(--ps-danger)" : null),
-      psMetric("Aylıq maaş fondu", formatMoney(sum("salaryMinor")), shown.filter((r) => r.type === "employee").length + " işçi")),
+      psMetric("Təchizatçılara borcumuz", formatMoney(sum("weOwe")), shown.filter((r) => r.weOwe > 0).length + " təchizatçı", sum("weOwe") > 0 ? "var(--ps-danger)" : null)),
     h("div", { className: "flex flex-wrap items-center gap-2" },
-      [["all", "Hamısı"], ["supplier", "Təchizatçı"], ["employee", "İşçi"], ["customer", "Müştəri"]].map(([k, l]) =>
+      [["all", "Hamısı"], ["supplier", "Təchizatçı"], ["customer", "Müştəri"]].map(([k, l]) =>
         h("button", { key: k, type: "button", "aria-pressed": type === k, className: "ps-period-chip" + (type === k ? " is-on" : ""), onClick: () => setType(k) }, l + " (" + count(k) + ")")),
       psObjectFilter(objects, objectId, setObjectId),
       h("input", { value: query, placeholder: "Axtar: ad / telefon", onChange: (e) => setQuery(e.target.value), className: "min-h-10 rounded-xl border border-hairline bg-elevated px-3 text-sm text-cream" }),
@@ -25910,14 +25926,13 @@ function OpsPartners() {
       jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ type: type === "all" ? "customer" : type, name: "", phone: "", contact: "", salary: "", objectId }), children: "+ Yeni partnyor" })),
 
     jsxRuntimeExports.jsx(OpsTable, {
-      head: ["Partnyor", "Tip", "Obyekt", "Telefon", "Aylıq maaş", "Borc", ""],
+      head: ["Partnyor", "Tip", "Obyekt", "Telefon", "Borc", ""],
       empty: "Bu seçimdə partnyor yoxdur",
       rows: shown.map((r) => [
         h("span", { className: "font-medium text-cream" }, r.name, r.contact ? h("small", { className: "ml-1 text-muted" }, "· " + r.contact) : null),
-        r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):r.type==='employee'&&r.raw.userRole?({'role-cashier':'Kassir','role-head-cashier':'Baş kassir','role-waiter':'Ofisiant','role-manager':'Müdir','role-administrator':'Administrator','role-warehouse':'Anbardar','role-kitchen':'Mətbəx işçisi'}[r.raw.userRole]||'İşçi'):PS_PARTNER_TYPES[r.type],
+        PS_PARTNER_TYPES[r.type],
         objectName(r.objectId) || "—",
         r.phone || "—",
-        r.type === "employee" ? formatMoney(r.salaryMinor) : "—",
         r.weOwe > 0 ? h("span", { style: { color: "var(--ps-danger)", fontWeight: 600 } }, "Borcumuz " + formatMoney(r.weOwe))
           : r.owesUs > 0 ? h("span", { style: { color: "var(--ps-danger)", fontWeight: 600 } }, "Bizə borc " + formatMoney(r.owesUs))
           : r.weOwe < 0 ? h("span", { style: { color: "var(--ps-ok)" } }, "Avans " + formatMoney(-r.weOwe)) : formatMoney(0),
@@ -25944,7 +25959,7 @@ function OpsPartners() {
       h("label", { className: "block text-sm" },
         h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Partnyorun tipi"),
         h("select", { value: form.type, disabled: Boolean(form.id), className: field, onChange: (e) => setForm({ ...form, type: e.target.value }) },
-          Object.entries(PS_PARTNER_TYPES).filter(([k]) => (k === "supplier" ? canSuppliers : canPeople)).map(([k, l]) => h("option", { key: k, value: k }, l)))),
+          Object.entries(PS_PARTNER_TYPES).filter(([k]) => k!=="employee" && (k === "supplier" ? canSuppliers : canPeople)).map(([k, l]) => h("option", { key: k, value: k }, l)))),
       h("div", { className: "grid gap-2 sm:grid-cols-2" },
         jsxRuntimeExports.jsx(OpsField, { label: "Ad", value: form.name, onChange: (v) => setForm({ ...form, name: v }) }),
         jsxRuntimeExports.jsx(OpsField, { label: "Telefon", value: form.phone, onChange: (v) => setForm({ ...form, phone: v }) }),
@@ -26035,7 +26050,7 @@ function PsOriginalSalary() {
       h("small", { className: "text-muted" }, "Yeni ay başlayanda hər işçinin qarşısında yenə tam maaş görünür.")),
     jsxRuntimeExports.jsx(OpsTable, {
       head: ["İşçi", "Obyekt", "Aylıq maaş", "Ödənilib", "Yeməklər", "Qalıq", ""],
-      empty: "İşçi yoxdur — Partnyorlar bölməsində İşçi tipli partnyor yaradın",
+      empty: "İşçi yoxdur — İşçi siyahısı vərəqində əməkdaş yaradın.",
       rows: shownRows.map((r) => [
         h("span", { className: "font-medium text-cream" }, r.name, r.settled ? h("span", { className: "ml-2 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", style: { background: "#e7f5ee", color: "var(--ps-ok)" } }, "Ödənilib") : null),
         (salaryObjects.find((o) => o.id === r.objectId) || {}).name || "—",
@@ -27549,7 +27564,7 @@ function PsStaffScope(){
  const h=psH,{lang}=useI18n(),has=useAuthStore(s=>s.hasPermission);const [data,setData]=reactExports.useState(null),[warehouses,setWarehouses]=reactExports.useState([]),[unlinked,setUnlinked]=reactExports.useState([]),[form,setForm]=reactExports.useState(null),[busy,setBusy]=reactExports.useState(false);const acc=usePsAccounts();
  const reload=reactExports.useCallback(async()=>{const [s,w]=await Promise.all([psBusinessCall("staff"),window.pos.inventory.warehouses()]);if(s.success){setData(s.data.staff||[]);setUnlinked(s.data.unlinked||[]);}else toast(s.error.message,"danger");if(w.success)setWarehouses(w.data.warehouses||[]);},[]);reactExports.useEffect(()=>{if(has("users.manage"))void reload();},[reload,has]);
  if(!has("users.manage"))return null;
- return h("section",{className:"space-y-3 ps-business-section"},h("h2",null,psBizText(lang,"İşçi, maaş və anbar girişi","Personel, maaş ve depo erişimi","Staff, salary and warehouse access")),h("p",{className:"text-sm text-muted"},psBizText(lang,"İşçi hesabı və anbarın maaş kartı bir-birinə bağlıdır. Müdir bütün anbarları, anbarçı yalnız seçilmiş anbarı görür.","Personel hesabı ile maaş kartı bağlantılıdır. Müdür tüm depoları, depocu yalnız atanmış depoyu görür.","Staff accounts and payroll cards are linked. Managers see all warehouses; warehouse staff see only assigned warehouses.")),data===null?null:jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"İşçi","Personel","Staff"),psBizText(lang,"Maaş","Maaş","Salary"),psBizText(lang,"Anbarlar","Depolar","Warehouses"),""],rows:data.map(u=>[u.name,formatMoney(u.salaryMinor||0),(u.warehouses||[]).map(id=>warehouses.find(w=>w.id===id)?.name||id).join(", ")||"—",jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setForm({...u,value:((u.salaryMinor||0)/100).toFixed(2)}),children:psBizText(lang,"Düzəliş","Düzenle","Edit")})])}),form?jsxRuntimeExports.jsx(PsAdminDialog,{title:form.name,onClose:()=>setForm(null),busy,children:h("div",{className:"space-y-3"},unlinked.length?h("label",null,psBizText(lang,"Mövcud anbar işçisi ilə birləşdir","Mevcut depo personeliyle birleştir","Merge with an existing warehouse employee"),h("select",{className:psSelectCls,value:form.linkCustomerId||"",onChange:e=>setForm({...form,linkCustomerId:e.target.value})},h("option",{value:""},"—"),unlinked.map(u=>h("option",{key:u.id,value:u.id},u.name)))):null,jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Aylıq maaş (₼)","Aylık maaş (₼)","Monthly salary (₼)"),value:form.value,onChange:v=>setForm({...form,value:v})}),psObjectFilter(acc?.objects||[],form.objectId||"",v=>setForm({...form,objectId:v}),psBizText(lang,"Obyektsiz","Şubesiz","No branch")),warehouses.map(w=>h("label",{key:w.id,className:"ps-business-check"},h("input",{type:"checkbox",checked:form.warehouses.includes(w.id),onChange:e=>setForm({...form,warehouses:e.target.checked?[...form.warehouses,w.id]:form.warehouses.filter(id=>id!==w.id)})}),w.name)),jsxRuntimeExports.jsx(OpsButton,{disabled:busy,onClick:async()=>{const salary=psMoneyIn(form.value);if(!Number.isSafeInteger(salary)||salary<0)return toast(psBizText(lang,"Maaşı düzgün yazın","Maaşı doğru girin","Enter a valid salary"),"danger");setBusy(true);try{if(form.linkCustomerId){const merge=await psBusinessCall("staff.link",{userId:form.id,customerId:form.linkCustomerId});if(!merge.success)return toast(merge.error.message,"danger");}const r=await psBusinessCall("staff.save",{userId:form.id,warehouses:form.warehouses,objectId:form.objectId,salaryMinor:salary});if(!r.success)return toast(r.error.message,"danger");setForm(null);await reload();}finally{setBusy(false);}},children:psBizText(lang,"Yadda saxla","Kaydet","Save")}))}):null);
+ return h("section",{className:"space-y-3 ps-business-section"},h("h2",null,psBizText(lang,"Obyekt, maaş və anbar təyinatı","Personel, maaş ve depo erişimi","Staff, salary and warehouse access")),h("p",{className:"text-sm text-muted"},psBizText(lang,"İşçiyə obyekt, aylıq maaş və anbar girişi təyin edin. Müdir bütün anbarları, anbarçı yalnız seçilmiş anbarı görür.","Personel hesabı ile maaş kartı bağlantılıdır. Müdür tüm depoları, depocu yalnız atanmış depoyu görür.","Staff accounts and payroll cards are linked. Managers see all warehouses; warehouse staff see only assigned warehouses.")),data===null?null:jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"İşçi","Personel","Staff"),psBizText(lang,"Maaş","Maaş","Salary"),psBizText(lang,"Anbarlar","Depolar","Warehouses"),""],rows:data.map(u=>[u.name,formatMoney(u.salaryMinor||0),(u.warehouses||[]).map(id=>warehouses.find(w=>w.id===id)?.name||id).join(", ")||"—",jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setForm({...u,value:((u.salaryMinor||0)/100).toFixed(2)}),children:psBizText(lang,"Düzəliş","Düzenle","Edit")})])}),form?jsxRuntimeExports.jsx(PsAdminDialog,{title:form.name,onClose:()=>setForm(null),busy,children:h("div",{className:"space-y-3"},unlinked.length?h("label",null,psBizText(lang,"Mövcud anbar işçisi ilə birləşdir","Mevcut depo personeliyle birleştir","Merge with an existing warehouse employee"),h("select",{className:psSelectCls,value:form.linkCustomerId||"",onChange:e=>setForm({...form,linkCustomerId:e.target.value})},h("option",{value:""},"—"),unlinked.map(u=>h("option",{key:u.id,value:u.id},u.name)))):null,jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Aylıq maaş (₼)","Aylık maaş (₼)","Monthly salary (₼)"),value:form.value,onChange:v=>setForm({...form,value:v})}),psObjectFilter(acc?.objects||[],form.objectId||"",v=>setForm({...form,objectId:v}),psBizText(lang,"Obyektsiz","Şubesiz","No branch")),warehouses.map(w=>h("label",{key:w.id,className:"ps-business-check"},h("input",{type:"checkbox",checked:form.warehouses.includes(w.id),onChange:e=>setForm({...form,warehouses:e.target.checked?[...form.warehouses,w.id]:form.warehouses.filter(id=>id!==w.id)})}),w.name)),jsxRuntimeExports.jsx(OpsButton,{disabled:busy,onClick:async()=>{const salary=psMoneyIn(form.value);if(!Number.isSafeInteger(salary)||salary<0)return toast(psBizText(lang,"Maaşı düzgün yazın","Maaşı doğru girin","Enter a valid salary"),"danger");setBusy(true);try{if(form.linkCustomerId){const merge=await psBusinessCall("staff.link",{userId:form.id,customerId:form.linkCustomerId});if(!merge.success)return toast(merge.error.message,"danger");}const r=await psBusinessCall("staff.save",{userId:form.id,warehouses:form.warehouses,objectId:form.objectId,salaryMinor:salary});if(!r.success)return toast(r.error.message,"danger");setForm(null);await reload();}finally{setBusy(false);}},children:psBizText(lang,"Yadda saxla","Kaydet","Save")}))}):null);
 }
 function PsBranchNetwork(){
  const h=psH,{lang}=useI18n(),has=useAuthStore(s=>s.hasPermission);const [data,setData]=reactExports.useState(null),[error,setError]=reactExports.useState(""),[selected,setSelected]=reactExports.useState(""),[query,setQuery]=reactExports.useState("");
@@ -27587,7 +27602,7 @@ function OperationsPage() {
     { id: "vendors", label: "Partnyorlar", show: (hasPermission("suppliers.view") || hasPermission("customers.view")) && _psArea("/operations?tab=vendors"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsPartners, {}) },
     { id: "objects", label: "Obyektlər", show: hasPermission("cash.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(PsObjectsEntry, {}) },
     { id: "kassa", label: "Kassalar", show: hasPermission("cash.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsKassalar, {}) },
-    { id: "salary", label: "Maaşlar", show: hasPermission("salary.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsSalary, {}) },
+    /* LOCAL_STAFF_ENTRY */{ id: "staff", label: "İşçilər", show: hasPermission("users.manage") || hasPermission("salary.manage"), render: () => jsxRuntimeExports.jsx(PsUnifiedStaff,{}) },
     { id: "expenses", label: "Xərclər", show: hasPermission("cash.manage"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsExpenses, {}) },
     { id: "documents", label: psAdminText("Ödəniş qaimələri","Ödeme belgeleri","Payment documents"), show: (!psMarketMode() || window.__psCloudBranchMode || useAuthStore.getState().session?.canPaymentDocuments === true) && ["cash.manage","customers.view","customers.credit","suppliers.view","suppliers.pay","salary.manage"].some(p=>hasPermission(p)), render: () => jsxRuntimeExports.jsx(PsDocuments,{}) },
     { id: "income", label: "Qazanc", show: hasPermission("cash.manage"), render: () => jsxRuntimeExports.jsx(OpsIncome, {}) },
@@ -27606,7 +27621,7 @@ function OperationsPage() {
     const fromHash = hash.includes("?")
       ? new URLSearchParams(hash.slice(hash.indexOf("?"))).get("tab")
       : null;
-    return fromSearch || fromHash;
+    const tab=fromSearch||fromHash;return tab==="salary"?"staff":tab;
   })();
 
   const [picked, setPicked] = reactExports.useState("");
@@ -27681,10 +27696,10 @@ function PsAdminFrame({ children }) {
   const { t } = useI18n();
   const { pathname, search } = useLocation();
   const pages = { "/branches": psAdminText("Obyektl\u0259r", "\u0130\u015Fletmeler", "Locations"), "/refund": psAdminText("Geri qaytarma", "\u0130ade", "Returns"), "/settings": t.nav.settings, "/admin/catalog": t.nav.catalog, "/admin/staff": t.nav.staff, "/admin/tables": t.nav.adminTables, "/admin/reports": t.nav.reports, "/admin/cash": t.nav.cash, "/admin/backup": psAdminText("Ehtiyat n\xFCsx\u0259", "Yedekleme", "Backup"), "/admin/gifts": t.nav.gifts, "/dashboard": t.nav.dashboard, "/reconcile": t.nav.reconcile, "/audit": t.nav.audit, "/diagnostics": t.nav.diagnostics, "/settings/license": t.nav.license, "/support": t.nav.support };
-  const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["Partnyorlar", "Partnerler", "Partners"], sales: ["Satışlar", "Satışlar", "Sales"], purchases: ["Alışlar", "Alımlar", "Purchases"], objects: ["Obyektlər", "Şubeler", "Branches"], kassa: ["Kassalar", "Kasalar", "Tills"], salary: ["Maaşlar", "Maaşlar", "Salaries"], expenses: ["Xərclər", "Giderler", "Expenses"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
+  const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["Partnyorlar", "Partnerler", "Partners"], sales: ["Satışlar", "Satışlar", "Sales"], purchases: ["Alışlar", "Alımlar", "Purchases"], objects: ["Obyektlər", "Şubeler", "Branches"], kassa: ["Kassalar", "Kasalar", "Tills"], staff: ["İşçilər","Personel","Staff"], salary: ["Maaşlar", "Maaşlar", "Salaries"], expenses: ["Xərclər", "Giderler", "Expenses"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
   const title = pathname === "/operations" ? psAdminText(...ops[new URLSearchParams(search).get("tab")] || ops.stock) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
-  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, jsxRuntimeExports.jsx(PsWorkspaceNav,{}), pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
+  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, /* LOCAL_NO_WORKSPACE_TABS */ pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
 }
 function PsAdminHub({ links }) {
   const [query, setQuery] = reactExports.useState("");
@@ -27753,11 +27768,12 @@ function psOpsSubtitle(id) {
     stock: ["Stok qal\u0131\u011F\u0131n\u0131 izl\u0259yin, m\u0259hsul \u0259lav\u0259 edin v\u0259 h\u0259r\u0259k\u0259tl\u0259ri idar\u0259 edin.", "Stoklar\u0131 takip edin, \xFCr\xFCn ekleyin ve hareketleri y\xF6netin.", "Track stock, add products and manage adjustments."],
     costing: ["Yem\u0259yin t\u0259rkibini yaz\u0131n \u2014 maya v\u0259 qazanc avtomatik hesablan\u0131r.", "Yeme\u011Fin i\xE7eri\u011Fini yaz\u0131n \u2014 maliyet otomatik hesaplan\u0131r.", "Write what is in the dish \u2014 cost is calculated automatically."],
     suppliers: ["Al\u0131\u015F sifari\u015Fl\u0259rini haz\u0131rlay\u0131n v\u0259 g\u0259l\u0259n mallar\u0131 q\u0259bul edin.", "Sat\u0131n alma sipari\u015Flerini haz\u0131rlay\u0131n ve \xFCr\xFCnleri teslim al\u0131n.", "Prepare purchase orders and receive incoming goods."],
-    vendors: ["Təchizatçılar, işçilər və müştərilər — borcları bir yerdə.", "Tedarikçiler, çalışanlar ve müşteriler — borçlar tek yerde.", "Suppliers, staff and guests — their tabs in one place."],
+    vendors: ["Təchizatçılar və müştərilər — borcları bir yerdə.", "Tedarikçiler ve müşteriler — borçlar tek yerde.", "Suppliers and guests — their tabs in one place."],
     sales: ["Satış qaimələri — obyekt, kassa, ofisiant, endirim, borc; qaytarma və hesabat.", "Satış faturaları ve iadeler.", "Sales invoices, returns and report."],
     purchases: ["Alış qaimələri və qaytarma, obyektə görə. Borc — Partnyorlarda.", "Alım faturaları, iadeler ve tedarikçi borçları.", "Purchase invoices, returns and supplier debt."],
     objects: ["Filiallar — hər birinin kassaları, balansı və bugünkü satışı.", "Şubeler ve kasaları.", "Branches and their tills."],
     kassa: ["Kassalar, xəzinə və bank — balans, gündəlik satış və transferlər.", "Kasalar, hazine ve banka.", "Tills, treasury and bank."],
+    staff: ["İşçi hesabları, obyekt təyinatı və maaş ödənişləri.", "Personel hesapları, şube ataması ve maaş ödemeleri.", "Staff accounts, branch assignment and payroll."],
     salary: ["İşçilərin aylıq maaşı, avans və yeməklərin tutulması.", "Çalışan maaşları, avanslar ve kesintiler.", "Monthly salaries, advances and deductions."],
     expenses: ["Kassadan çıxan xərclər — bazarlıq, kommunal və s.", "Kasadan çıkan giderler.", "Money paid out of the till."],
     guests: ["M\xFC\u015Ft\u0259ri m\u0259lumatlar\u0131, borclar v\u0259 loyall\u0131q balanslar\u0131.", "M\xFC\u015Fteri bilgileri, bor\xE7lar ve sadakat bakiyeleri.", "Customer details, credit and loyalty balances."],
@@ -27786,7 +27802,7 @@ function psRoleLabel(role) {
     cashier: ["Kassir", "Kasiyer", "Cashier"],
     storekeeper: ["Anbardar", "Depo sorumlusu", "Storekeeper"],
     supervisor: ["N\u0259zar\u0259t\xE7i", "S\xFCperviz\xF6r", "Supervisor"],
-    manager: ["Menecer", "M\xFCd\xFCr", "Manager"],
+    manager: ["Müdir", "M\xFCd\xFCr", "Manager"],
     administrator: ["Administrator", "Y\xF6netici", "Administrator"]
   };
   return labels[role] ? psAdminText(...labels[role]) : role;
@@ -30600,7 +30616,7 @@ try {
   document.documentElement.lang = "az";
 }
 
-function PsUnifiedStaff(){return psH("div",{className:"ps-business-staff"},jsxRuntimeExports.jsx(PsStaffPage,{}),jsxRuntimeExports.jsx(PsStaffScope,{}));}
+function PsUnifiedStaff(){return jsxRuntimeExports.jsx(PsStaffHub,{});}
 
 function TablesPage(){return psH("div",{className:"ps-business-pos"},jsxRuntimeExports.jsx(PsBranchBanner,{}),psH("div",{className:"ps-business-pos-body"},jsxRuntimeExports.jsx(PsOriginalTablesPage,{})));}
 
@@ -30914,6 +30930,174 @@ function PsStaffEdit({user,roles,onDone}){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* LOCAL_CATEGORY_PRODUCTS_START */
+/** Existing dishes are selected here; category changes preserve the native product/recipe record. */
+function PsCategoryProductsDialog({parent,category,categories,onClose,onSaved}){
+ const R=reactExports,h=psH,{lang}=useI18n();
+ const [name,setName]=R.useState(''),[products,setProducts]=R.useState([]),[chosen,setChosen]=R.useState([]),[query,setQuery]=R.useState(''),[source,setSource]=R.useState(''),[busy,setBusy]=R.useState(false),[loading,setLoading]=R.useState(true),[error,setError]=R.useState('');
+ const target=R.useRef(category?.id||newIdempotencyKey()),locked=R.useRef(false),created=R.useRef(false);
+ const catName=id=>{const c=categories.find(c=>c.id===id);if(!c)return '';const p=categories.find(p=>p.id===c.parentId);return (p?localizedName(p,lang)+' / ':'')+localizedName(c,lang)};
+ const load=R.useCallback(async()=>{const r=await window.pos.products.list({includeDrafts:true});if(!r.success)throw Error(r.error?.message||'Məhsullar alınmadı');return r.data.products||[];},[]);
+ R.useEffect(()=>{let live=true;load().then(rows=>{if(live)setProducts(rows)}).catch(e=>{if(live)setError(String(e?.message||e))}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[load]);
+ const needle=query.trim().toLocaleLowerCase('az');
+ const rows=products.filter(p=>(!source||p.categoryId===source)&&(!needle||(localizedName(p,lang)+' '+(p.sku||'')+' '+(p.barcode||'')).toLocaleLowerCase('az').includes(needle)));
+ const available=rows.filter(p=>p.categoryId!==target.current),allChosen=available.length>0&&available.every(p=>chosen.includes(p.id));
+ const toggle=id=>setChosen(prev=>prev.includes(id)?prev.filter(v=>v!==id):[...prev,id]);
+ async function save(){
+  if(locked.current||loading)return;
+  if(parent&&!name.trim())return setError('Alt kateqoriyanın adını yazın.');
+  if(!parent&&!chosen.length)return;
+  locked.current=true;setBusy(true);setError('');
+  try{
+   // Re-read before moving so a stale picker cannot overwrite a renamed or archived dish.
+   const fresh=await load();
+   if(parent&&!created.current){const r=await window.pos.catalogAdmin.upsertCategory({id:target.current,nameAz:name.trim(),nameTr:name.trim(),nameEn:name.trim(),parentId:parent.id,sortOrder:Math.max(0,...categories.map(c=>c.sortOrder||0))+1},{idempotencyKey:newIdempotencyKey()});if(!r.success)throw Error(r.error?.message||'Alt kateqoriya yaradılmadı');created.current=true;}
+   const failed=[];let lastError='';
+   for(const id of chosen){
+    const p=fresh.find(p=>p.id===id);if(!p){failed.push(id);lastError='Məhsul silinib və ya arxivlənib.';continue;}
+    if(p.categoryId===target.current)continue;
+    try{const r=await window.pos.catalogAdmin.upsertProduct({id:p.id,categoryId:target.current,nameAz:p.nameAz},{idempotencyKey:newIdempotencyKey()});if(!r.success){failed.push(id);lastError=r.error?.message||'Məhsul köçürülmədi';}}catch(e){failed.push(id);lastError=String(e?.message||e);}
+   }
+   if(failed.length){setChosen(failed);setProducts(await load());setError(failed.length+' məhsul əlavə edilmədi. '+lastError+' Yenidən sınaya bilərsiniz.');return;}
+   await onSaved(target.current);
+  }catch(e){setError(String(e?.message||e));}finally{locked.current=false;setBusy(false);}
+ }
+ return jsxRuntimeExports.jsx(PsAdminDialog,{title:parent?'Alt kateqoriya yarat':catName(category.id)+' — hazır məhsullar',busy,onClose:()=>{if(!locked.current)onClose()},children:h('div',{className:'ps-category-products'},
+  parent?h('label',{className:'ps-category-products-name'},h('span',null,'Alt kateqoriyanın adı'),h('input',{autoFocus:true,value:name,disabled:busy||created.current,maxLength:160,onChange:e=>setName(e.target.value),placeholder:'Məsələn: Spirtsiz içkilər'})):null,
+  h('p',{className:'ps-category-products-note'},parent?localizedName(parent,lang)+' içində yaradılacaq. Hazır məhsulları indi seçə bilərsiniz.':'Seçilmiş məhsullar bu kateqoriyaya köçürüləcək.'),
+  h('div',{className:'ps-category-products-filters'},h('input',{type:'search',autoFocus:!parent,value:query,disabled:busy,onChange:e=>setQuery(e.target.value),'aria-label':'Hazır məhsul axtar',placeholder:'Ad, barkod və ya SKU ilə axtar…'}),h(PsCategoryPick,{categories,value:source,onChange:setSource,blank:'Bütün kateqoriyalar',label:'Mənbə kateqoriya'})),
+  h('label',{className:'ps-category-products-all'},h('input',{type:'checkbox',disabled:busy||loading||!available.length,checked:allChosen,onChange:e=>setChosen(prev=>e.target.checked?[...new Set([...prev,...available.map(p=>p.id)])]:prev.filter(id=>!available.some(p=>p.id===id)))}),'Görünənləri seç',h('span',null,chosen.length+' seçildi')),
+  h('div',{className:'ps-category-products-list'},loading?h('p',null,'Məhsullar yüklənir…'):rows.length?rows.map(p=>h('label',{key:p.id,className:'ps-category-products-row'+(chosen.includes(p.id)?' is-picked':'')},h('input',{type:'checkbox',checked:chosen.includes(p.id),disabled:busy||p.categoryId===target.current,onChange:()=>toggle(p.id),'aria-label':localizedName(p,lang)}),h('span',null,h('strong',null,localizedName(p,lang)),h('small',null,catName(p.categoryId)+(p.active?'':' · Qaralama')+(p.categoryId===target.current?' · Artıq buradadır':''))),h('b',null,formatMoney(p.priceMinor||0)))):h('p',null,'Bu axtarışa uyğun məhsul yoxdur.')),
+  h('p',{className:'ps-category-products-note'},'Ölçü variantları birlikdə köçürülür. Qiymət, anbar qalığı və kalkulyasiya saxlanılır.'),
+  error?h('p',{role:'alert',className:'ps-category-products-error'},error):null,
+  h('div',{className:'ps-category-products-actions'},h('button',{type:'button',disabled:busy,onClick:onClose},'Ləğv et'),h('button',{type:'button',className:'is-primary',disabled:busy||loading||(parent?!name.trim():!chosen.length),onClick:save},busy?'Saxlanılır…':parent?'Yarat və seçilənləri əlavə et':'Seçilənləri əlavə et ('+chosen.length+')')))});
+}
+
+/* LOCAL_CATEGORY_PRODUCTS_END */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* LOCAL_STAFF_HUB_START */
+function PsStaffHub(){
+ const h=psH,has=useAuthStore(s=>s.hasPermission),location=useLocation();
+ const tabs=[
+  {id:'people',label:'İşçi siyahısı',allowed:has('users.manage'),component:PsStaffPage},
+  {id:'scope',label:'Obyekt və maaş təyinatı',allowed:has('users.manage'),component:PsStaffScope},
+  {id:'salary',label:'Maaş ödənişləri',allowed:has('salary.manage'),component:OpsSalary},
+  {id:'roles',label:'Səlahiyyətlər',allowed:has('roles.manage'),component:RolePermissionsPanel}
+ ].filter(t=>t.allowed);
+ const [picked,setPicked]=reactExports.useState(()=>new URLSearchParams(location.search).get('tab')==='salary'?'salary':'people');
+ const current=tabs.find(t=>t.id===picked)||tabs[0];
+ if(!current)return h('p',{role:'alert'},'İşçilər bölməsi üçün səlahiyyətiniz yoxdur.');
+ return h('div',{className:'ps-staff-hub'},
+  location.pathname==='/admin/staff'?h('header',null,h('h1',null,'İşçilər'),h('p',null,'Giriş hesabı, obyekt təyinatı və maaşları buradan idarə edin.')):null,
+  h('nav',{'aria-label':'İşçilər bölmələri',className:'ps-staff-tabs'},tabs.map(t=>h('button',{key:t.id,type:'button','aria-pressed':t.id===current.id,onClick:()=>setPicked(t.id)},t.label))),
+  jsxRuntimeExports.jsx(current.component,{},current.id));
+}
+
+/* LOCAL_STAFF_HUB_END */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* FULL_CLOUD_BACKUP_UI_START */
+function PsCloudBackupCard(){
+ const h=psH,[state,setState]=reactExports.useState({status:'waiting'}),[busy,setBusy]=reactExports.useState(false);
+ reactExports.useEffect(()=>{let live=true;const read=async()=>{const r=await window.pos.backup.cloudStatus?.();if(live&&r?.success)setState(r.data)};void read();const timer=setInterval(()=>void read(),10000);return()=>{live=false;clearInterval(timer)}},[]);
+ const message={waiting:'Bulud yedəyi hələ yoxlanmayıb.',current:'Son nüsxə serverdə yoxlanıb saxlanılıb.',disabled:'Bu hesabda tam bulud yedəyi bağlıdır.',not_activated:'Bulud yedəyi üçün kassa aktivləşdirilməlidir.',terminal:'Bu kompüter əlavə kassadır. Bulud yedəyini əsas kassa alır.',uploading:'Baza və şəkillər təhlükəsiz yedəklənir…',error:'Son bulud yedəyi uğursuzdur. Əvvəlki uğurlu nüsxə saxlanılır.'};
+ return h('section',{className:'ps-full-cloud-backup',style:{padding:16,border:'1px solid #c8d9ed',borderRadius:8,background:'#fff',marginBottom:16}},h('h2',{style:{margin:'0 0 8px',fontSize:18}},'Tam bulud yedəyi'),h('p',{role:'status'},message[state.status]||message.waiting),state.lastSuccessAt?h('p',null,'Son uğurlu nüsxə: '+new Date(state.lastSuccessAt).toLocaleString('az-AZ')):null,state.error?h('small',null,'Xəta kodu: '+state.error):null,h('p',{style:{fontSize:13,color:'#5b708d'}},'Bütün POS bazası və məhsul şəkilləri. Proqram açıq və internetə qoşulu olduqda hər 6 saatda. Son 8 nüsxə və 30 gün üçün gündə bir nüsxə saxlanılır. Bərpa üçün saytdan .posbackup faylını yükləyib «Fayldan yüklə» seçin.'),h('button',{type:'button',disabled:busy||state.status==='uploading'||state.status==='terminal',className:'touch-target mt-2 rounded-xl bg-gold/20 px-4 py-3 text-sm text-gold hover:bg-gold/30 disabled:opacity-50',onClick:async()=>{setBusy(true);try{const r=await window.pos.backup.cloudNow?.();if(r?.success)setState(r.data);else setState({status:'error',error:r?.error?.code||'BACKUP_UNAVAILABLE'});}finally{setBusy(false)}}},busy?'Yoxlanır…':'Yoxla və yedəklə'));
+}
+
+/* FULL_CLOUD_BACKUP_UI_END */
 
 
 

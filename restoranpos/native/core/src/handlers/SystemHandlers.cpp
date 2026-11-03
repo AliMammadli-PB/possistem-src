@@ -23,6 +23,7 @@
 #include "pos/services/RefundService.hpp"
 #include "pos/services/ReportService.hpp"
 #include "pos/db/Database.hpp"
+#include "pos/db/Migrator.hpp"
 
 namespace pos::handlers {
 namespace {
@@ -1178,6 +1179,16 @@ void registerSystem(const ContextPtr& ctx) {
                            });
 
     // ----------------------------------------------------------------- backup
+    // Internal background snapshot: no orphan entries in the manual backup list.
+    // Uses SQLite's consistent backup API; it is never a live pos.db/WAL file copy.
+    server.registerHandler("backup.cloudSnapshot", [ctx](const ipc::Request&) {
+        ctx->requirePermission("backup.manage");
+        const auto dir = std::filesystem::path(ctx->db().path()).parent_path() / "backups";
+        const auto id = crypto::uuid4();
+        const auto file = dir / ("pos-cloud-" + id + ".db");
+        ctx->db().backupTo(file.string());
+        return Json{{"id", id}, {"path", file.string()}, {"temporary", true}};
+    });
     server.registerHandler(
         std::string(protocol::method::kBackupCreate), [ctx](const ipc::Request& request) {
             ctx->requirePermission("backup.manage");
@@ -1338,7 +1349,29 @@ void registerSystem(const ContextPtr& ctx) {
             ctx->auditRequired("backup.restore.begin", "backup", backupId,
                                Json{{"path", path}, {"safetyCopy", safety.string()}}, approver);
 
-            ctx->db().restoreFrom(path);
+            // The backup may come from a computer that died: its licence and identity
+            // belong to that machine, so this till keeps its own and stays activated.
+            // Works on a copy, so a backup that cannot be read leaves the till as it was.
+            const auto prepared = source.parent_path() / (source.stem().string() + "-restore-" +
+                                                          std::to_string(nowMs()) + ".db");
+            const auto removePrepared = [&prepared] {
+                std::error_code ec;
+                for (const char* suffix : {"", "-wal", "-shm"})
+                    std::filesystem::remove(std::filesystem::path(prepared.string() + suffix), ec);
+            };
+            try {
+                std::filesystem::copy_file(path, prepared);
+                db::Database target;
+                target.open(prepared.string());
+                db::Migrator(target).migrate({});
+                services::DataWipe::carryIdentity(target, safety.string());
+                target.close();
+                ctx->db().restoreFrom(prepared.string());
+            } catch (...) {
+                removePrepared();
+                throw;
+            }
+            removePrepared();
 
             // The restored file carries its own audit log, so this entry lands
             // in the restored history - which is where it has to be findable.

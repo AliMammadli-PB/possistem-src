@@ -268,7 +268,7 @@ TEST_CASE("a till left on the diverged 1.9.25 history starts and keeps its data"
     database.exec("PRAGMA user_version=66");
 
     pos::db::Migrator upgraded(database);
-    REQUIRE(upgraded.migrate({}) == 2);
+    REQUIRE(upgraded.migrate({}) == static_cast<int>(pos::db::kSchemaVersion) - 64);
     const auto target = static_cast<std::int64_t>(pos::db::kMigrations.back().version);
     REQUIRE(upgraded.currentVersion() == target);
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM database_migrations WHERE name LIKE "
@@ -292,10 +292,51 @@ TEST_CASE("a normal till moves from schema 65 to sub-categories and set menus", 
     database.exec("INSERT INTO menu_categories (id, name_az) VALUES ('kept', 'Pizza')");
 
     pos::db::Migrator upgraded(database);
-    REQUIRE(upgraded.migrate({}) == 1);
+    REQUIRE(upgraded.migrate({}) == static_cast<int>(pos::db::kSchemaVersion) - 65);
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_categories WHERE id = 'kept' AND parent_id IS NULL") == 1);
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_item_components") == 0);
     REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_item_recipe_expanded") == 0);
+}
+
+TEST_CASE("existing menu categories backfill into stock with no financial or recipe changes", "[database][migration][shared_categories]") {
+    MigrationTestDatabase test;
+    auto& database = test.database();
+    pos::db::Migrator older(database, embeddedUpTo(66));
+    static_cast<void>(older.migrate({}));
+    database.exec("INSERT INTO menu_categories(id,name_az) VALUES('root','1'),('other','2')");
+    database.exec("INSERT INTO menu_categories(id,name_az,parent_id) VALUES('child','2','root')");
+    database.exec("INSERT INTO stock_categories(id,name,created_at) VALUES('raw','Xammal',1)");
+    database.exec("INSERT INTO ingredients(id,sku,name,cost_minor,sale_price_minor,category_id,created_at,updated_at) "
+                  "VALUES('good','G','Döner',250,500,NULL,1,1),('raw-good','R','Ət',900,0,'raw',1,1)");
+    database.exec("INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,created_at,updated_at) "
+                  "VALUES('dish','child','D','Döner',500,1,1)");
+    database.exec("INSERT INTO catalog_goods_links(menu_id,ingredient_id) VALUES('dish','good')");
+    database.exec("INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES('dish','raw-good',150)");
+    database.exec("INSERT INTO warehouses(id,name,created_at,updated_at) VALUES('wh','Keçid sınağı anbarı',1,1)");
+    database.exec("INSERT INTO stock_levels(ingredient_id,warehouse_id,qty_milli,updated_at) VALUES('good','wh',7500,1)");
+
+    pos::db::Migrator upgrade(database);
+    REQUIRE(upgrade.migrate({}) == static_cast<int>(pos::db::kSchemaVersion) - 66);
+    const auto childStock = scalarText(database, "SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id='child'");
+    const auto rootStock = scalarText(database, "SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id='root'");
+    REQUIRE(scalarText(database, "SELECT parent_id FROM stock_categories WHERE id='" + childStock + "'") == rootStock);
+    REQUIRE(scalarText(database, "SELECT name FROM stock_categories WHERE id='" + childStock + "'") == "2");
+    REQUIRE(scalarText(database, "SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id='other'") != childStock);
+    REQUIRE(scalarText(database, "SELECT category_id FROM ingredients WHERE id='good'") == childStock);
+    REQUIRE(scalarInt(database, "SELECT cost_minor FROM ingredients WHERE id='good'") == 250);
+    REQUIRE(scalarInt(database, "SELECT sale_price_minor FROM ingredients WHERE id='good'") == 500);
+    REQUIRE(scalarInt(database, "SELECT price_minor FROM menu_items WHERE id='dish'") == 500);
+    REQUIRE(scalarInt(database, "SELECT qty_milli FROM stock_levels WHERE ingredient_id='good'") == 7500);
+    REQUIRE(scalarInt(database, "SELECT qty_milli FROM menu_item_ingredients WHERE menu_item_id='dish' AND ingredient_id='raw-good'") == 150);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM menu_items") == 1);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
+    REQUIRE(backupFiles(test).size() == 1);
+    ReadOnlySqlite before(backupFiles(test).front());
+    REQUIRE(before.scalarInt("PRAGMA user_version") == 66);
+    REQUIRE(before.scalarInt("SELECT qty_milli FROM stock_levels WHERE ingredient_id='good'") == 7500);
+    REQUIRE(upgrade.migrate({}) == 0);
+    REQUIRE(scalarText(database, "SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id='child'") == childStock);
+    REQUIRE(scalarInt(database, "SELECT COUNT(*) FROM catalog_category_links") == 4);
 }
 
 TEST_CASE("pre-migration backup is only required for a real version upgrade",

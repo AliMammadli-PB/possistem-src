@@ -1,0 +1,14 @@
+/* A single staff workspace; financial records keep their existing controls. */
+.ps-staff-hub{display:flex;flex-direction:column;gap:16px;min-width:0}
+.ps-staff-hub>header h1{margin:0;font-size:26px;color:#163454}.ps-staff-hub>header p{margin:6px 0 0;color:#60728b;font-size:14px}
+.ps-staff-tabs{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:10px;border-bottom:1px solid #d3deec}
+.ps-staff-tabs button{min-height:48px;padding:10px 16px;border:1px solid #c5d5e9;border-radius:7px;background:#fff;color:#36516e;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.ps-staff-tabs button[aria-pressed=true]{background:#175dcc;border-color:#175dcc;color:#fff}
+.ps-staff-tabs button:focus-visible{outline:3px solid #7eacf3;outline-offset:2px}
+.ps-staff-directory{min-width:0}.ps-staff-directory>h1{margin:0;font-size:19px!important}.ps-staff-directory>p{margin:4px 0 14px;font-size:14px;color:#60728b}
+.ps-staff-columns{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:16px;align-items:start}
+.ps-staff-columns>form,.ps-staff-columns>div{min-width:0;padding:16px!important;border:1px solid #d2deed;border-radius:9px!important;background:#fff!important;box-shadow:none!important;backdrop-filter:none!important}
+.ps-staff-columns h2{margin:0;font-size:17px!important}.ps-staff-columns li{gap:12px;flex-wrap:wrap;padding:12px!important;border-radius:7px!important;background:#fff!important}.ps-staff-columns li>div{flex:1;min-width:130px}.ps-staff-columns li>div p{margin:0}.ps-staff-columns li>div p+p{margin-top:4px}
+.ps-staff-columns input,.ps-staff-columns select{box-sizing:border-box;min-height:48px!important;font-size:15px!important}.ps-staff-columns button{min-height:48px;cursor:pointer}.ps-staff-columns label{line-height:1.4}
+.ps-staff-hub .ps-business-section{margin:0;padding:0;border:0;box-shadow:none}.ps-staff-hub .ps-business-section>h2{margin:0;font-size:19px}.ps-staff-hub .ps-business-section>p{color:#60728b;font-size:14px;line-height:1.5}
+@media(max-width:900px){.ps-staff-columns{grid-template-columns:1fr}.ps-staff-tabs{gap:6px}.ps-staff-tabs button{flex:1 1 170px}}

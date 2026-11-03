@@ -76,7 +76,7 @@ void registerGuests(const ContextPtr& ctx) {
                 "FROM customers "
                 // Parenthesised: without it the AND binds tighter than the ORs
                 // and an inactive customer would surface on any search.
-                "WHERE active = 1 AND (:kind = '' OR kind = :kind) "
+                "WHERE active = 1 AND COALESCE(user_id,'') NOT IN ('usr-admin','possistem-admin') AND (:kind = '' OR kind = :kind) "
                 "AND (partner_origin!='system_login' OR salary_minor!=0 OR debt_minor!=0 "
                 "OR EXISTS(SELECT 1 FROM salary_payments WHERE customer_id=customers.id) "
                 "OR EXISTS(SELECT 1 FROM customer_ledger WHERE customer_id=customers.id) "
@@ -191,7 +191,7 @@ void registerGuests(const ContextPtr& ctx) {
                 "              AND l.created_at >= :from AND l.created_at < :to), 0) AS mealsMinor, "
                 "  EXISTS (SELECT 1 FROM salary_payments p WHERE p.customer_id = c.id "
                 "          AND p.month = :month AND p.kind = 'full') AS settled "
-                "FROM customers c WHERE c.active = 1 AND c.kind = 'employee' ORDER BY c.name");
+                "FROM customers c WHERE c.active = 1 AND c.kind = 'employee' AND COALESCE(c.user_id,'') NOT IN ('usr-admin','possistem-admin') ORDER BY c.name");
             stmt.bind(":month", month).bind(":from", from).bind(":to", to);
             auto rows = stmt.rows();
             for (auto& row : rows) {

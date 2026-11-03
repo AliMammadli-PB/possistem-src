@@ -24,6 +24,9 @@ public:
     /** Returns the file name of the copy kept in `backups/`. */
     static std::string run(db::Database& db);
 
+    /** Moves this till's licence and identity from the database at `fromPath` into `target`. */
+    static void carryIdentity(db::Database& target, const std::string& fromPath);
+
     /** Removes kept copies older than 30 days. Never throws: called on every start. */
     static void purgeExpiredCopies(const std::string& dbPath, std::int64_t now);
 };

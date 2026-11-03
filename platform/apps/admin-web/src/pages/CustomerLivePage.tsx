@@ -1,3 +1,4 @@
+import {CustomerCloudBackups} from '../components/CustomerCloudBackups';
 import { useLiveEffect } from '../lib/live';
 import {useProduct} from '../lib/product';
 import {useSearchParams} from 'react-router-dom';
@@ -617,6 +618,7 @@ export function CustomerLivePage() {
         </section>
       </div>
 
+      {selectedProduct==='restaurant' && <CustomerCloudBackups customerId={customerId} />}
       {selectedProduct==='restaurant' && <CustomerDataWipe customerId={customerId} />}
 
       <p className="muted" style={{ marginTop: '1rem' }}>

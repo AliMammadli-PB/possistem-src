@@ -10,12 +10,27 @@ function fromCommit(dir,commit){const names=git('ls-tree','--name-only',commit,'
 const value=(db,sql)=>Object.values(db.prepare(sql).get()??{})[0];
 const scene=async(name,fn)=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pos-core-'));try{await fn(dir);console.log('PASS',name)}finally{fs.rmSync(dir,{recursive:true,force:true})}};
 const timer=setTimeout(()=>{console.log('TIMEOUT');process.exit(2)},240000);
-for(const [name,commit,version] of [['till on the diverged 1.9.25 (schema 66)','01066c2',66],['till on live 1.9.32 (schema 65)','280f90e',65]])await scene(name,async dir=>{
+for(const [name,commit,version] of [['till on the diverged 1.9.25 (schema 66)','01066c2',66],['till on live 1.9.32 (schema 65)','280f90e',65],['till on live 1.9.34 (schema 66)','5a05cef',66]])await scene(name,async dir=>{
  const db=fromCommit(dir,commit);assert.equal(value(db,'PRAGMA user_version'),version);
  db.exec(`INSERT INTO menu_categories(id,name_az,active,sort_order) VALUES('c1','Pizza',1,1)`);db.close();
  const a=start(dir);await a.ready;await a.stop();
- const d=new DatabaseSync(path.join(dir,'pos.db'));assert.equal(value(d,'PRAGMA user_version'),66);assert.equal(value(d,"SELECT name FROM database_migrations WHERE version=66"),'066_menu_subcategories_components.sql');assert.equal(value(d,"SELECT COUNT(*) FROM menu_categories WHERE id='c1' AND parent_id IS NULL"),1);assert.equal(value(d,"SELECT COUNT(*) FROM menu_item_recipe_expanded"),0);d.close();
+ const d=new DatabaseSync(path.join(dir,'pos.db'));assert.equal(value(d,'PRAGMA user_version'),67);assert.equal(value(d,"SELECT name FROM database_migrations WHERE version=66"),'066_menu_subcategories_components.sql');assert.equal(value(d,"SELECT COUNT(*) FROM catalog_category_links WHERE menu_category_id='c1'"),1);assert.equal(value(d,"SELECT COUNT(*) FROM menu_categories WHERE id='c1' AND parent_id IS NULL"),1);assert.equal(value(d,"SELECT COUNT(*) FROM menu_item_recipe_expanded"),0);d.close();
  assert.ok(fs.readdirSync(path.join(dir,'backups')).some(f=>f.includes('pre-migration')),'a backup was taken');
+});
+// 067 runs on every till. A shop's real mix: same names on both sides, a sub-category, a deep warehouse tree, goods on sale, goods not on sale, a recipe.
+await scene('067 on a shop with real data leaves money, stock and recipes alone',async dir=>{
+ const db=fromCommit(dir,'5a05cef');db.exec(`INSERT INTO menu_categories(id,name_az,active,sort_order) VALUES('drinks','İçkilər',1,1),('food','Yemək',1,2),('old','Köhnə',0,3);INSERT INTO menu_categories(id,name_az,parent_id,active,sort_order) VALUES('soft','Spirtsiz','drinks',1,1);
+ INSERT INTO stock_categories(id,name,created_at) VALUES('s-drinks','İçkilər',1),('s-raw','Xammal',1);INSERT INTO stock_categories(id,parent_id,name,created_at) VALUES('s-meat','s-raw','Ət',1),('s-beef','s-meat','Mal əti',1);
+ INSERT INTO ingredients(id,sku,name,cost_minor,sale_price_minor,category_id,created_at,updated_at) VALUES('cola','C','Kola',100,200,'s-drinks',1,1),('beef','B','Mal əti',900,0,'s-beef',1,1);
+ INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,created_at,updated_at) VALUES('m-cola','soft','MC','Kola',200,1,1),('m-burger','food','MB','Burger',800,1,1);
+ INSERT INTO catalog_goods_links(menu_id,ingredient_id) VALUES('m-cola','cola');INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES('m-burger','beef',150);`);db.close();
+ const a=start(dir);await a.ready;await a.stop();
+ const d=new DatabaseSync(path.join(dir,'pos.db'));assert.equal(value(d,'PRAGMA user_version'),67);
+ assert.equal(value(d,"SELECT price_minor FROM menu_items WHERE id='m-cola'"),200);assert.equal(value(d,"SELECT category_id FROM menu_items WHERE id='m-cola'"),'soft');assert.equal(value(d,"SELECT cost_minor FROM ingredients WHERE id='beef'"),900);assert.equal(value(d,"SELECT qty_milli FROM menu_item_ingredients WHERE menu_item_id='m-burger'"),150);
+ assert.equal(value(d,"SELECT category_id FROM ingredients WHERE id='beef'"),'s-beef','a deep warehouse category stays');
+ assert.equal(value(d,"SELECT category_id FROM ingredients WHERE id='cola'"),value(d,"SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id='soft'"),'a good on sale files under its dish');
+ assert.equal(value(d,"SELECT COUNT(*) FROM menu_categories m LEFT JOIN catalog_category_links l ON l.menu_category_id=m.id WHERE l.menu_category_id IS NULL"),0,'every menu category is linked');
+ assert.ok(fs.readdirSync(path.join(dir,'backups')).some(f=>f.includes('pre-migration')),'a backup was taken');d.close();
 });
 await scene('wiping a till keeps its licence and a copy',async dir=>{
  let a=start(dir);await a.ready;await a.stop();

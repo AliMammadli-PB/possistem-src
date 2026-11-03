@@ -1,3 +1,4 @@
+import {CloudBackups} from '../components/CloudBackups';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -30,7 +31,7 @@ export default function SettingsPage() {
     <div className="page-stack">
       <PageHeader eyebrow="Hesab" title="Parametrlər" description="Biznes məlumatları, giriş təhlükəsizliyi və bildiriş seçimləri." />
       <Tabs items={tabs} />
-      {tab === 'security' ? <SecuritySettings /> : tab === 'notifications' ? <NotificationSettings /> : <ProfileSettings />}
+      {tab === 'security' ? <SecuritySettings /> : tab === 'notifications' ? <NotificationSettings /> : <><ProfileSettings /><CloudBackups /></>}
     </div>
   );
 }

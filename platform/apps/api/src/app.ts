@@ -1,3 +1,4 @@
+import {cloudBackupRoutes} from './routes/cloud-backups.js';
 import {qrOrderRoutes} from './routes/qr-orders.js';
 import {withinBudget} from './lib/request-budget.js';
 import Fastify from 'fastify';
@@ -148,6 +149,7 @@ export async function buildApp() {
       await api.register(supportCustomerRoutes);
       await api.register(activationRoutes);
       await api.register(deviceRoutes);
+      await api.register(cloudBackupRoutes);
       await api.register(marketRoutes);
       await api.register(inventoryRoutes);
       await api.register(accessRoutes);

@@ -387,7 +387,7 @@ void registerAuth(const ContextPtr& ctx) {
                 "SELECT u.id, u.code, u.full_name AS fullName, u.color, r.name AS role, "
                 "       u.active, u.created_at AS createdAt "
                 "FROM users u JOIN roles r ON r.id = u.primary_role_id "
-                "WHERE u.id <> 'possistem-admin' "
+                "WHERE u.id NOT IN ('possistem-admin','usr-admin') "
                 "ORDER BY u.active DESC, r.rank DESC, u.full_name");
             return Json{{"users", stmt.rows()}};
         });
