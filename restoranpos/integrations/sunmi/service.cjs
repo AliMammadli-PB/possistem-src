@@ -4,7 +4,7 @@ const {SunmiClient,SunmiError,endpoint,documentUuid,DOCUMENTS,VAT_TYPES,READ_ONL
 const {buildReceipt}=require('./receipt.cjs');
 const {createJournalStore}=require('./journal.cjs');
 function atomic(file,value){fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});const tmp=file+'.tmp';const fd=fs.openSync(tmp,'w',0o600);try{fs.writeFileSync(fd,JSON.stringify(value));fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.renameSync(tmp,file);}
-function read(file,fallback){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(e){if(e.code==='ENOENT')return fallback;throw new SunmiError('SUNMI_STORAGE','SUNMI faylı oxunmadı. Faylı silməyin; ehtiyat nüsxədən bərpa edin.');}}
+function read(file,fallback){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(e){if(e.code==='ENOENT')return fallback;throw new SunmiError('SUNMI_STORAGE','E-kassa faylı oxunmadı. Faylı silməyin; ehtiyat nüsxədən bərpa edin.');}}
 function serial(info){return String(info.cashregister_factory_number||info.cashbox_factory_number||'');}
 function createSunmiService({getRoot,secretBox,source,clientFactory=c=>new SunmiClient(c),clock=Date.now,beforeSave=async()=>{}}){
  let running=null,processing=null,processingRoot=null;
@@ -12,7 +12,7 @@ function createSunmiService({getRoot,secretBox,source,clientFactory=c=>new Sunmi
  const config=()=>read(path.join(scope(),'config.json'),{enabled:false,endpoint:'',username:'',vatType:null,printLocalCopy:false,openCashDrawer:false,activatedAt:0});
  const journal=(root=scope())=>createJournalStore(root,{read,atomic});
  const putJournal=j=>j.flush();
- const credentials=c=>{if(!c.secret)throw new SunmiError('SUNMI_CONFIG','SUNMI şifrəsi saxlanmayıb.');return {...c,password:secretBox.decrypt(c.secret)};};
+ const credentials=c=>{if(!c.secret)throw new SunmiError('SUNMI_CONFIG','E-kassa şifrəsi saxlanmayıb.');return {...c,password:secretBox.decrypt(c.secret)};};
  const publicConfig=c=>{const {secret,...safe}=c;return {...safe,hasPassword:!!secret};};
  const client=c=>clientFactory(credentials(c));
  const exclusive=fn=>{const requestedRoot=scope();const result=(running||Promise.resolve()).catch(()=>{}).then(()=>{if(requestedRoot!==scope())throw new SunmiError('SUNMI_SCOPE','Filial dəyişdi. Əməliyyatı həmin filialda yenidən açın.');return fn();});running=result;result.finally(()=>{if(running===result)running=null;}).catch(()=>{});return result;};
@@ -33,7 +33,7 @@ function createSunmiService({getRoot,secretBox,source,clientFactory=c=>new Sunmi
   if(input.enabled===true){
    if(!next.verifiedAt||!next.deviceId||identityChanged)throw new SunmiError('SUNMI_CONFIG','Əvvəl saxlayın və bağlantını yoxlayın.');
    if(!VAT_TYPES.includes(next.vatType))throw new SunmiError('SUNMI_CONFIG','Vergi növünü seçin.');
-   if(c.activatedAt&&next.deviceId!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','Gözləyən sənədlər başqa SUNMI-yə avtomatik köçürülmür.');
+   if(c.activatedAt&&next.deviceId!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','Gözləyən sənədlər başqa e-kassaya avtomatik köçürülmür.');
    next.enabled=true;if(!next.activatedAt)next.activatedAt=clock();
   }else if(input.enabled===false)next.enabled=false;
   try{await beforeSave(publicConfig(next));atomic(path.join(scope(),'config.json'),next);}catch(error){await beforeSave(publicConfig(c)).catch(()=>{});throw error;}return publicConfig(next);
@@ -41,12 +41,12 @@ function createSunmiService({getRoot,secretBox,source,clientFactory=c=>new Sunmi
  const connect=()=>exclusive(async()=>{
   const root=scope(),c=config(),api=client(c);await api.call('toLogin');const info=(await api.call('getInfo')).data;
   const id=serial(info);if(!id)throw new SunmiError('SUNMI_DEVICE','Cihaz seriya nömrəsini qaytarmadı.');
-  if(c.activatedAt&&c.deviceId&&id!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','Bu IP-də əvvəl bağlanmış SUNMI deyil. Seriya nömrəsini yoxlayın.');
+  if(c.activatedAt&&c.deviceId&&id!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','Bu IP-də əvvəl bağlanmış e-kassa deyil. Seriya nömrəsini yoxlayın.');
   if(root!==scope())throw new SunmiError('SUNMI_SCOPE','Hesab dəyişdi. Bağlantını yenidən yoxlayın.');
   const next={...c,deviceId:id,verifiedAt:clock(),info,connectionBlocked:false,lastConnectionError:null};
   await api.call('isConnectedPrinter');const shift=(await api.call('getShiftStatus')).data;atomic(path.join(root,'config.json'),next);return {config:publicConfig(next),info,shift};
  });
- const safeError=error=>({code:error?.code||'SUNMI_ERROR',message:error instanceof SunmiError?error.message:'SUNMI əməliyyatı saxlanmadı. Bağlantını və yerli yaddaşı yoxlayın.',uncertain:!!error?.uncertain});
+ const safeError=error=>({code:error?.code||'SUNMI_ERROR',message:error instanceof SunmiError?error.message:'E-kassa əməliyyatı saxlanmadı. Bağlantını və yerli yaddaşı yoxlayın.',uncertain:!!error?.uncertain});
  function resultOf(out,totalMinor,info){
   const d=out.data;if(!d?.document_id)throw new SunmiError('SUNMI_UNKNOWN','Fiskal ID alınmadı.',{uncertain:true});
   if(totalMinor!==undefined&&Math.round(Number(d.totalSum)*100)!==totalMinor)throw new SunmiError('SUNMI_TOTAL','Cihazdakı yekun POS məbləğindən fərqlidir. Çeki yoxlayın.',{uncertain:true});
@@ -69,9 +69,9 @@ function createSunmiService({getRoot,secretBox,source,clientFactory=c=>new Sunmi
  }
  const process=()=>{const requestedRoot=scope();if(processing&&processingRoot===requestedRoot)return processing;processingRoot=requestedRoot;const result=exclusive(async()=>{
   const root=scope(),c=config();if(!c.enabled)return {enabled:false,results:[]};
-  if(c.connectionBlocked)throw new SunmiError('SUNMI_CONNECTION_BLOCKED',c.lastConnectionError?.message||'SUNMI bağlantısını yenidən yoxlayın.');
+  if(c.connectionBlocked)throw new SunmiError('SUNMI_CONNECTION_BLOCKED',c.lastConnectionError?.message||'E-kassa bağlantısını yenidən yoxlayın.');
   const rows=await source.pending(c.activatedAt),results=[];if(!rows.length)return {enabled:true,results};
-  const api=client(c);let info;try{info=(await api.call('getInfo')).data;const shift=(await api.call('getShiftStatus')).data;if(shift.shift_open!==true)throw new SunmiError('SUNMI_503','SUNMI növbəsi bağlıdır. Əvvəl növbəni açın.');}catch(error){if(['SUNMI_401','SUNMI_403','SUNMI_404','SUNMI_405'].includes(error.code))atomic(path.join(root,'config.json'),{...c,connectionBlocked:true,lastConnectionError:safeError(error)});throw error;}if(serial(info)!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','SUNMI seriya nömrəsi dəyişib. Göndəriş dayandırıldı.');
+  const api=client(c);let info;try{info=(await api.call('getInfo')).data;const shift=(await api.call('getShiftStatus')).data;if(shift.shift_open!==true)throw new SunmiError('SUNMI_503','E-kassa növbəsi bağlıdır. Əvvəl növbəni açın.');}catch(error){if(['SUNMI_401','SUNMI_403','SUNMI_404','SUNMI_405'].includes(error.code))atomic(path.join(root,'config.json'),{...c,connectionBlocked:true,lastConnectionError:safeError(error)});throw error;}if(serial(info)!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','E-kassa seriya nömrəsi dəyişib. Göndəriş dayandırıldı.');
   for(const snapshot of rows){
    if(root!==scope())break;
    const j=journal(root);let job=j.jobs[snapshot.id];
@@ -80,7 +80,7 @@ function createSunmiService({getRoot,secretBox,source,clientFactory=c=>new Sunmi
    if(job&&['rejected','review'].includes(job.state)){results.push({id:job.id,state:job.state,error:job.error});continue;}
    try{
     if(!job?.request){const built=buildReceipt(snapshot,c,j.jobs[snapshot.parentId]);ensureRefundLimit(snapshot,built.data,j);job={id:snapshot.id,parentId:snapshot.parentId,deviceId:c.deviceId,operation:built.operation,request:built.data,totalMinor:built.totalMinor,state:'ready',createdAt:clock(),attempts:0};j.jobs[job.id]=job;putJournal(j,root);}
-    if(job.deviceId!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','Bu qaimə başqa SUNMI cihazına bağlıdır.');
+    if(job.deviceId!==c.deviceId)throw new SunmiError('SUNMI_DEVICE','Bu qaimə başqa e-kassa cihazına bağlıdır.');
     // Frozen request and UUID are fsynced before the first byte can reach a fiscal device.
     job.state='sending';job.attempts++;job.updatedAt=clock();putJournal(j,root);
     const out=await api.call(job.operation,job.request);

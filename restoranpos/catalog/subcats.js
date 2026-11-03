@@ -23,10 +23,16 @@ function PsCategoryPick({categories,value,onChange,blank,exclude,topOnly,classNa
   blank==null?null:h('option',{value:''},blank),
   rows.map(c=>h('option',{key:c.id,value:c.id},(c.parentId?'   └ ':'')+localizedName(c,lang))));
 }
+// Two steps: the category, then its sub-category if it has any.
 function PsDishCategory({categories,value,onChange}){
- const h=psH;
- return h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Kateqoriya','Kategori','Category')),
-  h(PsCategoryPick,{categories,value,onChange,className:'mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream',label:psAdminText('Kateqoriya','Kategori','Category')}));
+ const h=psH,field='mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream';
+ const parent=psParentOf(categories,value)||value,kids=(categories||[]).filter(c=>c.parentId===parent).map(c=>({...c,parentId:null}));
+ const parentName=localizedName((categories||[]).find(c=>c.id===parent)||{nameAz:''},useI18n().lang);
+ return h('div',{className:'ps-dish-category'},
+  h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Kateqoriya','Kategori','Category')),
+   h(PsCategoryPick,{categories,value:parent,onChange,topOnly:true,className:field,label:psAdminText('Kateqoriya','Kategori','Category')})),
+  kids.length?h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Alt kateqoriya','Alt kategori','Sub-category')),
+   h(PsCategoryPick,{categories:kids,value:value===parent?'':value,onChange:v=>onChange(v||parent),blank:psAdminText('Birbaşa '+parentName+' içində','Doğrudan '+parentName+' içinde','Directly in '+parentName),className:field,label:psAdminText('Alt kateqoriya','Alt kategori','Sub-category')})):null);
 }
 function PsCategoryMove({cat,categories,onMove}){
  const h=psH,hasChildren=(categories||[]).some(c=>c.parentId===cat.id);

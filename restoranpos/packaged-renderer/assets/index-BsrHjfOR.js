@@ -43,6 +43,8 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14959,7 +14961,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.33 · bf402a2";
+const _PS_BUILD = "1.9.34 · 4b35165";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -16513,6 +16515,7 @@ function PsMenuCatalog() {
   const [openMenu, setOpenMenu] = reactExports.useState(null);
   const [dragId, setDragId] = reactExports.useState(null);
   const [newParentId, setNewParentId] = reactExports.useState("");
+  const psCategoryName = reactExports.useRef(null);
   const [productCategoryId, setProductCategoryId] = reactExports.useState("");
   const [setMenu, setSetMenu] = reactExports.useState(null);
   const [sizeUnit, setSizeUnit] = reactExports.useState("sm");
@@ -16637,7 +16640,7 @@ function PsMenuCatalog() {
     setStation("kitchen");
     setPrinterStation("");
     setCourse("main");
-    setPublished(false);
+    setPublished(true);
     setProductSortOrder(Math.max(0, ...products2.map((product) => product.sortOrder ?? 0)) + 1);
     setProductGroupIds([]);
   };
@@ -16664,6 +16667,7 @@ function PsMenuCatalog() {
     }
     toast(t.common.save, "success");
     setCategoryName("");
+    setNewParentId("");
     await loadCategories();
   };
   const categoryPayload = (category, sortOrder = category.sortOrder ?? 0) => ({
@@ -17061,9 +17065,10 @@ function PsMenuCatalog() {
       /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "ps-catalog-cats", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-catalog-cats-head", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t.catalog.categories }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-add", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: categoryName, onChange: (e) => setCategoryName(e.target.value), placeholder: t.catalog.newCategory, className: "ps-catalog-search" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ref: psCategoryName, value: categoryName, onChange: (e) => setCategoryName(e.target.value), placeholder: newParentId ? psAdminText("Adını yazın", "Adını yazın", "Type its name") : t.catalog.newCategory, className: "ps-catalog-search" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void saveCategory(), children: "+" })
         ] }),
+        newParentId ? jsxRuntimeExports.jsxs("p", { className: "ps-catalog-sub-hint", children: [localizedName(categories2.find((c) => c.id === newParentId) || { nameAz: "" }, lang) + psAdminText(" içində alt kateqoriya", " içinde alt kategori", ": new sub-category"), jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setNewParentId(""), children: psAdminText("Ləğv et", "İptal", "Cancel") })] }) : null,
         jsxRuntimeExports.jsx(PsCategoryPick, { categories: categories2, value: newParentId, onChange: setNewParentId, blank: psAdminText("Ana kateqoriya kimi", "Ana kategori olarak", "As a top-level category"), topOnly: true, className: "ps-catalog-parent-pick", label: psAdminText("Hansı kateqoriyanın içində", "Hangi kategorinin içinde", "Inside which category") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-catalog-cat-list", children: categories2.map((cat, index) => {
           const selected = categoryId === cat.id;
@@ -17082,7 +17087,7 @@ function PsMenuCatalog() {
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving || index === 0, onClick: () => { setOpenMenu(null); void moveCategory(index, -1); }, children: t.catalog.moveUp }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving || index === categories2.length - 1, onClick: () => { setOpenMenu(null); void moveCategory(index, 1); }, children: t.catalog.moveDown }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setEditingCategoryId(cat.id); setEditingCategoryName(localizedName(cat, lang)); }, children: t.catalog.renameCategory }),
-                !cat.parentId ? jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setNewParentId(cat.id); }, children: psAdminText("+ Alt kateqoriya", "+ Alt kategori", "+ Sub-category") }) : null,
+                !cat.parentId ? jsxRuntimeExports.jsx("button", { type: "button", onClick: () => { setOpenMenu(null); setNewParentId(cat.id); setTimeout(() => psCategoryName.current?.focus(), 0); }, children: psAdminText("+ Alt kateqoriya", "+ Alt kategori", "+ Sub-category") }) : null,
                 jsxRuntimeExports.jsx(PsCategoryMove, { cat, categories: categories2, onMove: (c, parentId) => { setOpenMenu(null); void moveCategoryInto(c, parentId); } }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "is-danger", onClick: () => { setOpenMenu(null); void removeCategory(cat.id); }, children: t.staff.delete })
               ] }) : null
@@ -21408,7 +21413,7 @@ function PsOriginalOrderPage() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(PageControls, { page: categoryPage, pages: categoryPages, onChange: setCategoryPage })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "flex min-h-0 flex-col overflow-hidden p-3", children: [
-        productsLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingState, { label: t.common.loading, compact: true }) : products2.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted", children: t.common.noResults }) : (
+        productsLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingState, { label: t.common.loading, compact: true }) : /* POSSISTEM_1934 */orderProducts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted", children: t.common.noResults }) : (
           /* Denser than before, and rectangular: a text card needs width for
              the name to sit on one or two lines rather than being clipped. */
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid min-h-0 flex-1 ps-sale-products", children: visibleProducts.map((product) => {
@@ -23264,7 +23269,7 @@ function PsQrInbox(){
 function settingsSections(t) {
   return [
     ...(!window.__psMarketMode?[{id:"qr-orders",label:psAdminText("QR sifariş","QR sipariş","QR orders"),hint:psAdminText("Menyu və masa kodları","Menü ve masa kodları","Menu and table codes"),icon:ReceiptText,tone:"blue"}]:[]),
-    {id:"sunmi",label:"SUNMI",hint:psAdminText("Fiskal kassa","Mali kasa","Fiscal register"),icon:ReceiptText,tone:"blue"},
+    {id:"sunmi",label:psAdminText("İnteqrasiyalar","Entegrasyonlar","Integrations"),hint:psAdminText("E-kassa və bonus","E-kassa ve bonus","E-kassa and bonus"),icon:ReceiptText,tone:"blue"},
     { id: "restaurant", label: "Restoran", hint: "Hesab və məlumat", icon: Store, tone: "blue" },
     { id: "screen", label: "Ekran və dil", hint: "Görünüş və touch", icon: SlidersHorizontal, tone: "purple" },
     { id: "printer", label: "Printer", hint: "Cihazları qoşun", icon: ReceiptText, tone: "green" },
@@ -30783,10 +30788,16 @@ function PsCategoryPick({categories,value,onChange,blank,exclude,topOnly,classNa
   blank==null?null:h('option',{value:''},blank),
   rows.map(c=>h('option',{key:c.id,value:c.id},(c.parentId?'   └ ':'')+localizedName(c,lang))));
 }
+// Two steps: the category, then its sub-category if it has any.
 function PsDishCategory({categories,value,onChange}){
- const h=psH;
- return h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Kateqoriya','Kategori','Category')),
-  h(PsCategoryPick,{categories,value,onChange,className:'mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream',label:psAdminText('Kateqoriya','Kategori','Category')}));
+ const h=psH,field='mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream';
+ const parent=psParentOf(categories,value)||value,kids=(categories||[]).filter(c=>c.parentId===parent).map(c=>({...c,parentId:null}));
+ const parentName=localizedName((categories||[]).find(c=>c.id===parent)||{nameAz:''},useI18n().lang);
+ return h('div',{className:'ps-dish-category'},
+  h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Kateqoriya','Kategori','Category')),
+   h(PsCategoryPick,{categories,value:parent,onChange,topOnly:true,className:field,label:psAdminText('Kateqoriya','Kategori','Category')})),
+  kids.length?h('label',{className:'block text-sm'},h('span',{className:'text-faint'},psAdminText('Alt kateqoriya','Alt kategori','Sub-category')),
+   h(PsCategoryPick,{categories:kids,value:value===parent?'':value,onChange:v=>onChange(v||parent),blank:psAdminText('Birbaşa '+parentName+' içində','Doğrudan '+parentName+' içinde','Directly in '+parentName),className:field,label:psAdminText('Alt kateqoriya','Alt kategori','Sub-category')})):null);
 }
 function PsCategoryMove({cat,categories,onMove}){
  const h=psH,hasChildren=(categories||[]).some(c=>c.parentId===cat.id);
@@ -30897,6 +30908,18 @@ function PsStaffEdit({user,roles,onDone}){
    h('button',{type:'button',className:'ps-staff-edit-cancel',onClick:()=>onDone(false)},psAdminText('Ləğv et','İptal','Cancel'))));
 }
 /* END_POSSISTEM_STAFF_EDIT_1926 */
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

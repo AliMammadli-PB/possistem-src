@@ -16,7 +16,7 @@ function quantityType(unit){const x=String(unit||'').toLowerCase().trim();if(['k
 function buildReceipt(snapshot,config,parent){
  if(!snapshot||!['sale','refund'].includes(snapshot.kind))invalid('Fiskal sənəd növü tanınmır.');
  if(snapshot.kind==='refund'&&!parent?.result?.fiscalReceiptId)throw new SunmiError('SUNMI_PARENT_PENDING','İlkin satışın fiskal nəticəsi gözlənilir.',{retryable:true});
- if(!VAT_TYPES.includes(config.vatType))invalid('SUNMI üçün vergi növünü seçin.');
+ if(!VAT_TYPES.includes(config.vatType))invalid('E-kassa üçün vergi növünü seçin.');
  const total=minor(snapshot.totalMinor,'Çek');if(!total)invalid('Sıfır məbləğli fiskal çek göndərilmir.');
  let rows=(snapshot.items||[]).filter(x=>x.quantityMilli>0&&x.lineTotalMinor>0).map(x=>({...x}));
  if(snapshot.serviceMinor>0)rows.push({lineId:'service',name:'Xidmət haqqı',barcode:'service',isService:true,unit:'ədəd',quantityMilli:1000,lineTotalMinor:snapshot.serviceMinor});
