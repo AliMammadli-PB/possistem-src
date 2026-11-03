@@ -18,3 +18,28 @@
 - Device id and fingerprint authenticate the upload, as the sales sync does. No owner login needed. A LAN station does not upload.
 - Bundles cap at 60 MB (nginx takes 64m). Pictures past 36 MB are left out and counted in `missingAssets`. A lost picture is counted, never a refusal.
 - Not in a backup: receipt logo file, e-kassa journal, display preferences. Market, Geyim, Aptek and Topdan do not have it.
+
+## Checks
+
+- Full native suite under Wine: 377 cases pass. `verify-restaurant-package.mjs` passes.
+- `scripts/qa-core-1933.mjs`, packaged core: tills on the diverged 1.9.25, live 1.9.32 and live 1.9.34 all reach schema 67 with a backup; 067 on a shop with same-named categories, a sub-category, a deep warehouse tree, goods and a recipe leaves prices, stock and recipes alone.
+- `scripts/qa-cloud-backup.mjs`, real core: snapshot on the real schema, restored on a second computer, core starts again, data and picture present, its own licence kept.
+- `platform/apps/api/scripts/cloud-backup.integration.mjs`: real route and till client on PGlite. `cloud-backup.test.cjs`: format, encryption, limits.
+- `qa-real-1934.mjs` (updated for the new dialog), `qa-1933.mjs`, `qa-1934.mjs`, `qa-local-shared-categories1936.mjs`, `qa-local-staff.mjs`, signed updates and `sunmi-integration.test.cjs` pass.
+
+## Not tested
+
+A physical till, the installer on real Windows, an upload to the live API (no licence has it on yet, so its tables and folder appear on first use), the admin section with a real login, a slow shop connection.
+
+## Not included
+
+The owner portal is not rebuilt ([portal source not reproducible]), so owners do not see downloads yet; the superadmin can download. Market and the other tills. Copies sit on the same server as the site.
+
+## Publication (2026-11-03)
+
+Published at the owner's request through `artifacts/release-1935/publish.sh`. EXE SHA-256 `5cbd41516fee13211cb5e8f050db4fca41c57b3188afcf063c4ec503514156c4`; a full download from the public URL matched the signed manifest.
+
+Rollback:
+- API: remove `/etc/systemd/system/possistem-pos-control.service.d/zzzzzzz-workspace-1935.conf`, `systemctl daemon-reload`, restart the service.
+- Admin panel: `apps/admin-web/dist-before-backup-1935`.
+- Website: `/var/www/possistem/.next-before-release-1935-20261103`, then `pm2 restart possistem`.
