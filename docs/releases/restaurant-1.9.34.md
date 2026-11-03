@@ -29,3 +29,7 @@ A physical till, or the installer on real Windows.
 ## Not included
 
 Market is not built: its label and renderer are changed in code and go out with its next build. The owner portal's catalogue stays flat.
+
+## Publication (2026-11-03)
+
+Published at the owner's request: update feed via `artifacts/release-1934/publish.sh`, verified ZIP, download page (EXE SHA-256 `e1d68b2001a6993c65dd2a2d14db04e134b822a90174139ba2c7fc70d3f3e0f4`). Website rollback: `/var/www/possistem/.next-before-release-1934-20261103`, then `pm2 restart possistem`.
