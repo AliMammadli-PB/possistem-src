@@ -577,7 +577,9 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
         }
 
         const std::string note = getOr<std::string>(item, "note", "");
-        if (!note.empty()) out << "     ! " << note << "\n";
+        if (!note.empty()) {
+            for (const auto& line : layout::wrapText("QEYD: " + note, width - 5)) out << "     " << line << "\n";
+        }
 
         if (!item.value("seat", Json()).is_null()) {
             out << "     Yer: " << item.value("seat", 0) << "\n";

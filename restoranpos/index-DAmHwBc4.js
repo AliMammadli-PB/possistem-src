@@ -61,6 +61,8 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14977,7 +14979,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.9.35 · 7dc4ed7";
+const _PS_BUILD = "1.9.36 · 7a11a24";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -21032,6 +21034,9 @@ function PageControls({
   ] });
 }
 function PsOriginalOrderPage() {
+  /* POSSISTEM_1936 */
+  const [psNote, setPsNote] = reactExports.useState(null);
+  const psNotePending = reactExports.useRef(null);
   /* POS_ORDER_MAYA_v1 */
   const refreshDishCost = reactExports.useCallback(() => {
     void (async () => {
@@ -21267,6 +21272,19 @@ function PsOriginalOrderPage() {
     const ids = Object.values(selectedMods).flat();
     await addProduct(pending.product, ids);
   };
+  const savePsNote = () => {
+    if (!psNote || !order) return;
+    const { id, text } = psNote, note = text.trim();
+    setPsNote(null);
+    if ((order.items ?? []).find((i) => i.id === id)?.note === note) return;
+    // Remembered, because a tap on "send" blurs this field first: the ticket must wait for the note.
+    psNotePending.current = (async () => {
+      const res = await window.pos.orders.setItemNote(order.id, id, note);
+      if (!res.success) toast(res.error.message, "danger");
+      else await loadOrder(order.id);
+      psNotePending.current = null;
+    })();
+  };
   const updateQty = async (item, quantity) => {
     if (!order) return;
     if (quantity < 1) return;
@@ -21306,6 +21324,7 @@ function PsOriginalOrderPage() {
   const submitKitchen = async () => {
     if (!order || submitting) return;
     setSubmitting(true);
+    if (psNotePending.current) await psNotePending.current;
     const res = await window.pos.orders.submit(order.id, {
       idempotencyKey: ensureSubmitKey(order.id)
     });
@@ -21487,7 +21506,8 @@ function PsOriginalOrderPage() {
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-sm text-cream", children: item.name }),
                 item.modifiers && item.modifiers.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-[11px] text-faint", children: item.modifiers.map((m) => m.name).join(", ") }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted", children: /* POS_I18N_STATUS_v1 */({ draft: "qaralama", held: "gözləmədə", open: "açıq", sent: "mətbəxə göndərilib", preparing: "hazırlanır", ready: "hazırdır", served: "verilib", paid: "ödənilib", closed: "bağlanıb", voided: "ləğv edilib" })[item.status] ?? item.status })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted", children: /* POS_I18N_STATUS_v1 */({ draft: "qaralama", held: "gözləmədə", open: "açıq", sent: "mətbəxə göndərilib", preparing: "hazırlanır", ready: "hazırdır", served: "verilib", paid: "ödənilib", closed: "bağlanıb", voided: "ləğv edilib" })[item.status] ?? item.status }),
+                item.note ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 whitespace-normal break-words text-xs font-semibold text-gold", children: t.order.note + ": " + item.note }) : null
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-right", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: item.lineTotalMinor, className: "text-sm text-gold" }),
@@ -21519,6 +21539,7 @@ function PsOriginalOrderPage() {
                     children: "+"
                   }
                 ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: busy, onClick: () => setPsNote({ id: item.id, text: item.note || "" }), className: "touch-target rounded-lg border border-gold/35 px-2 text-xs text-gold", children: (item.note ? "✎ " : "+ ") + t.order.note }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
                   {
@@ -21540,7 +21561,8 @@ function PsOriginalOrderPage() {
                   children: t.order.void
                 }
               )
-            ] })
+            ] }),
+            psNote?.id === item.id ? /* @__PURE__ */ jsxRuntimeExports.jsx("input", { autoFocus: true, maxLength: 200, value: psNote.text, "aria-label": t.order.note, placeholder: psAdminText("məs. göyərtisiz, mayonezi bol", "örn. yeşilliksiz, bol mayonez", "e.g. no herbs, extra mayo"), onChange: (e) => setPsNote({ id: item.id, text: e.target.value }), onBlur: savePsNote, onKeyDown: (e) => { if (e.key === "Enter") e.currentTarget.blur(); }, className: "mt-2 w-full rounded-lg border border-gold/35 bg-transparent px-3 py-2 text-sm text-cream" }) : null
           ] }, item.id);
         }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PageControls, { page: cartPage, pages: cartPages, onChange: setCartPage }) }),
@@ -31098,6 +31120,18 @@ function PsCloudBackupCard(){
 }
 
 /* FULL_CLOUD_BACKUP_UI_END */
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
