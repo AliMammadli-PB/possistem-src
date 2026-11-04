@@ -144,6 +144,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-cloud-backup.mjs',
   'apply-restaurant-1936.mjs',
   'apply-restaurant-1100.mjs',
+  'apply-restaurant-1102.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -183,6 +184,8 @@ function stageRenderer() {
   copy('possistem-system.css', path.join(STAGE, 'possistem-system.css'));
   copy('index-DAmHwBc4.js', path.join(STAGE, 'assets', 'index-BsrHjfOR.js'));
   copy('assets/brands/logo.png', path.join(STAGE, 'assets', 'brands', 'logo.png'));
+  copy('../website/public/assets/brand-ribbon/possistem-pattern-20261023.webp',
+    path.join(STAGE, 'assets', 'brands', 'possistem-pattern.webp'));
   copy('assets/backgrounds/login-bg.png', path.join(STAGE, 'assets', 'backgrounds', 'login-bg.png'));
   copy('assets/backgrounds/login-bg.png', path.join(STAGE, 'assets', 'login-bg-Dobpt4ta.png'));
 }

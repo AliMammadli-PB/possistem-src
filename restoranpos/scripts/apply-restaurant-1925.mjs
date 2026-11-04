@@ -12,6 +12,9 @@ edit('PsMenuCatalog',s=>s.replace('onSaved:()=>loadProducts(categoryId)','onSave
 edit('PsMenuCatalog',s=>s.includes('PsStockMenuPicker,{categories:categories2,categoryId,')?s:once(s,'PsStockMenuPicker,{onClose:', 'PsStockMenuPicker,{categories:categories2,categoryId,onClose:'));
 edit('PsAdminFrame',s=>s.includes('PsWorkspaceNav')?s:once(s,'className: "ps-admin-workspace", "data-page": pathname },','className: "ps-admin-workspace", "data-page": pathname }, jsxRuntimeExports.jsx(PsWorkspaceNav,{}),'));
 edit('PaymentPage',s=>s.replace('className: \"flex h-full flex-col overflow-auto\"','className: \"ps-payment-workspace flex h-full flex-col overflow-auto\"'));
+edit('AppShell',s=>s.includes('" ps-restaurant-brand"')?s:once(s,
+ 'className: "ps-shell flex h-full flex-col overflow-hidden bg-ink"',
+ 'className: "ps-shell flex h-full flex-col overflow-hidden bg-ink" + (psMarketMode() ? "" : " ps-restaurant-brand")'));
 edit('AppShell',s=>s.replace('jsxRuntimeExports.jsx(PsTouchNavIcon, { to, Icon: Icon2 })','jsxRuntimeExports.jsx(Icon2, { size:22, "aria-hidden":true })'));
 edit('OperationsPage',s=>s.replace('jsxRuntimeExports.jsx(OpsStock, {})','jsxRuntimeExports.jsx(PsStockBranches, {})'));
 // Keep helper declarations ahead of bootstrapping; isolated renderers and remote screens reuse this prefix.

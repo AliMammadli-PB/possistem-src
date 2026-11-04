@@ -75,6 +75,9 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14991,7 +14994,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.1 · a9c5767";
+const _PS_BUILD = "1.10.2 · c9fad15";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15302,7 +15305,7 @@ function AppShell() {
   // till with no way out of the current screen is worse than one extra link.
   /* POS_LOCKED_PAGES_v1 */void visible;
   const links = [...serviceLinks, ...adminLinksNav];
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-shell flex h-full flex-col overflow-hidden bg-ink", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-shell flex h-full flex-col overflow-hidden bg-ink" + (psMarketMode() ? "" : " ps-restaurant-brand"), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(CoreBanner, {}),
     /* QR_SIDEBAR_1927 */
     /* @__PURE__ */ jsxRuntimeExports.jsx(UpdateBanner, {}),
@@ -23875,6 +23878,8 @@ function OpsCosting() {
   const [rows, setRows] = reactExports.useState([]);
   const [summary, setSummary] = reactExports.useState(null);
   const [ingredients, setIngredients] = reactExports.useState([]);
+  /* COSTING_VIEWS_1102 */ const [view, setView] = reactExports.useState("recipes");
+  const [onlyMissing, setOnlyMissing] = reactExports.useState(false);
   const [query, setQuery] = reactExports.useState("");
   const [filter, setFilter] = reactExports.useState("all");
   const [sort, setSort] = reactExports.useState("worst");
@@ -24136,7 +24141,34 @@ function OpsCosting() {
       });
   };
 
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+
+  const recipeRows = rows
+    .filter(row => (!onlyMissing || !row.hasRecipe) &&
+      (!needle || String(row.name ?? "").toLocaleLowerCase("az").includes(needle) ||
+       String(row.category ?? "").toLocaleLowerCase("az").includes(needle)))
+    .sort((left, right) => String(left.name ?? "").localeCompare(String(right.name ?? ""), "az"));
+  const recipePanel = () => psH("div", {className:"ps-costing-recipes"},
+    psH("div", {className:"ps-costing-toolbar"},
+      psH("input", {type:"search", value:query, "aria-label":"Yemək axtar",
+        placeholder:"Yemək və ya kateqoriya axtar…", onChange:event=>setQuery(event.target.value)}),
+      psH("label", null,
+        psH("input", {type:"checkbox", checked:onlyMissing, onChange:event=>setOnlyMissing(event.target.checked)}),
+        "Yalnız reseptsiz")),
+    psH(OpsTable, {head:["Yemək","Resept",""], empty:"Uyğun yemək tapılmadı.",
+      rows:recipeRows.map(row=>[
+        psH("div", {className:"ps-costing-dish"}, psH("strong",null,row.name),
+          row.category ? psH("small",null,row.category) : null),
+        psH("span", {className:"ps-costing-status" + (row.hasRecipe ? " is-ready" : "")},
+          row.active === false || row.active === 0 ? "Qaralama" : row.hasRecipe ? "Hazırdır" : "Yazılmayıb"),
+        psH(OpsButton,{disabled:busy||!canEdit,onClick:()=>void openRecipe(row),tone:row.hasRecipe?"quiet":"gold"},
+          row.hasRecipe?"Reseptə bax":"Resept yaz")
+      ])}));
+  const views = [["recipes","Reseptlər"],["report","Maya və qazanc"]];
+  return psH("section", {className:"ps-costing-workspace"},
+    psH("div", {className:"ps-costing-switch",role:"group","aria-label":"Kalkulyasiya görünüşü"},
+      views.map(([key,label])=>psH("button",{key,type:"button","aria-pressed":view===key,onClick:()=>setView(key)},label))),
+    view==="recipes" ? recipePanel() : jsxRuntimeExports.jsxs("div",{className:"space-y-4 ps-costing-report",children:[
+
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid gap-3 sm:grid-cols-2 lg:grid-cols-4", children: [
       card("Menyu mayası", summary ? pct(summary.foodCostBp) : "—", "Satış qiymətinin faizi kimi", null),
       card("Kalkulyasiyası olan", summary ? summary.withRecipe + " / " + summary.dishes : "—", "Resepti yazılmış yeməklər", null),
@@ -24229,10 +24261,12 @@ function OpsCosting() {
       })
     }),
 
-    editor && psH(psRecipeEditor, { editor, setEditor, ingredients, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }),
-    confirmDialog
-  ] });
+
+    ]}),
+    editor && psH(psRecipeEditor, {editor,setEditor,ingredients,busy,pickQuery,setPickQuery,lineCostMinor,editorCost,setLine,saveRecipe,unitLabel}),
+    confirmDialog);
 }
+
 
 function OpsSuppliers() {
   const [suppliers, setSuppliers] = reactExports.useState([]);
@@ -31293,6 +31327,24 @@ function psReadSizeName(name) {
   if (!Number.isFinite(size) || size <= 0 || size > (unit === 'sm' ? 300 : 100000)) return null;
   return { base: match[1].trim(), size, unit };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

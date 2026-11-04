@@ -2967,6 +2967,135 @@ html body .ps-pin-layout-1930 .ps-staff-pin-error,html body .ps-pin-layout-1930 
 .ps-stock-menu-open{align-self:flex-start;flex:0 0 auto;width:auto!important;margin:8px 16px}.ps-order-sizes button:focus-visible{outline:3px solid #7aa7f7;outline-offset:2px}
 @media(max-width:600px){.ps-sale-columns{display:flex;flex-direction:column;overflow:auto}.ps-sale-columns>aside:first-child{min-height:80px;flex:0 0 auto}.ps-sale-columns>section{min-height:400px;flex:0 0 auto}.ps-sale-columns>aside:last-child{min-height:480px;flex:0 0 auto}.ps-sale-products{min-height:300px;grid-auto-rows:142px}}
 
+/* Use the website's Possistem pattern on the restaurant workspace chrome. */
+.ps-restaurant-brand {
+  --ps-restaurant-pattern: url("./assets/brands/possistem-pattern.webp");
+  --ps-restaurant-rail: #253c77;
+  --ps-restaurant-rail-wash: rgb(17 33 73 / 47%);
+  --ps-restaurant-rail-text: #fff;
+  --ps-restaurant-rail-muted: #e4edff;
+}
+
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar {
+  background: linear-gradient(var(--ps-restaurant-rail-wash), var(--ps-restaurant-rail-wash)),
+    var(--ps-restaurant-pattern) center top / 510px auto repeat var(--ps-restaurant-rail) !important;
+  border-right-color: #314a80 !important;
+  color: var(--ps-restaurant-rail-text);
+  scrollbar-color: #91a6d7 transparent;
+}
+
+.ps-restaurant-brand .ps-touch-sidebar .ps-brand-logo--nav {
+  filter: brightness(0) invert(1);
+}
+
+.ps-restaurant-brand .ps-touch-sidebar .brand-wordmark,
+.ps-restaurant-brand .ps-touch-sidebar > div:last-child .text-cream {
+  color: var(--ps-restaurant-rail-text) !important;
+}
+
+.ps-restaurant-brand .ps-touch-sidebar .brand-kicker,
+.ps-restaurant-brand .ps-touch-sidebar > div:last-child p:not(.text-cream) {
+  color: var(--ps-restaurant-rail-muted) !important;
+}
+
+.ps-restaurant-brand .ps-touch-sidebar > div:nth-child(2) {
+  background: #c9daff58 !important;
+}
+
+.ps-restaurant-brand .ps-touch-sidebar > div:last-child {
+  border-color: #c9daff58 !important;
+}
+
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar .ps-nav-off,
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar > div:last-child > button {
+  color: var(--ps-restaurant-rail-text) !important;
+  background: transparent !important;
+}
+
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar .ps-nav-off:hover,
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar > div:last-child > button:hover {
+  background: #15295091 !important;
+}
+
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar .ps-nav-on {
+  background: #f0f5ff !important;
+  color: #17356b !important;
+  box-shadow: none !important;
+}
+
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar :is(a, button):focus-visible {
+  outline: 2px solid white !important;
+  outline-offset: -3px;
+}
+
+.ps-shell.ps-restaurant-brand .ps-touch-sidebar .ps-nav-on:focus-visible {
+  outline-color: #24477f !important;
+}
+
+.ps-restaurant-brand .ps-admin-hub .ps-hub-header {
+  padding: clamp(16px, 2vw, 26px);
+  border: 1px solid #d4e0f1;
+  border-radius: 10px;
+  background: linear-gradient(105deg, #f8fbff 38%, #f2f7ffdf),
+    var(--ps-restaurant-pattern) right center / 680px auto repeat #f8fbff;
+}
+
+.ps-restaurant-brand .ps-sale-categories > button[aria-pressed=true] {
+  background: linear-gradient(#162e67a8, #162e67a8),
+    var(--ps-restaurant-pattern) center / 430px auto repeat var(--ps-restaurant-rail) !important;
+  border-color: #365489 !important;
+}
+
+/* Costing opens on the recipe list. Reports and method settings share a second view. */
+.ps-costing-workspace { min-width: 0; }
+.ps-costing-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid #c9d7e9;
+  border-radius: 9px;
+  background: #e9f0fa;
+}
+.ps-costing-switch button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 16px;
+  color: #304a6e;
+  font-weight: 650;
+}
+.ps-costing-switch button[aria-pressed=true] {
+  border-color: #b6cbed;
+  background: #fff;
+  color: #164c9c;
+}
+.ps-costing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+.ps-costing-toolbar input[type=search] {
+  flex: 1 1 240px;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid #c9d7e9;
+  border-radius: 7px;
+  padding: 8px 12px;
+  background: #fff;
+}
+.ps-costing-toolbar label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+.ps-costing-dish { display: grid; gap: 3px; }
+.ps-costing-dish small { font-size: .78rem; color: #536782; }
+.ps-costing-status { font-size: .82rem; color: #63738a; }
+.ps-costing-status.is-ready { color: #166643; }
+
 /* WORKSPACE_1925_END */
 /* LOCAL_COMPACT_CATALOG_START */
 /* Local catalog iteration: short category controls and a bounded product picker. */
