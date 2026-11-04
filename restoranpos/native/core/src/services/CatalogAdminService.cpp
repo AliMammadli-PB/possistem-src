@@ -195,19 +195,65 @@ Json CatalogAdminService::upsertSizedProducts(const Json& payload) {
     const auto unit=payload.value("sizeUnit",std::string("sm"));
     require(unit=="sm"||unit=="qr"||unit=="kq"||unit=="ml"||unit=="l","Ölçü vahidi düzgün deyil");
     const double maxSize=unit=="sm"?300:100000;
+    const bool existing = variants.front().is_object() && variants.front().contains("productId");
+    require(!existing || variants.size() >= 2, "Birləşdirmək üçün ən azı iki məhsul seçin");
+    std::set<std::string> productIds;
     std::set<long long> seen;
     Json normalized=Json::array();
     for(const auto& row:variants){
-        require(row.is_object()&&row.contains("sizeCm")&&row["sizeCm"].is_number()&&row.contains("priceMinor")&&row["priceMinor"].is_number_integer(),"Ölçünü və qiyməti düzgün yazın");
+        require(row.is_object() && row.contains("sizeCm") && row["sizeCm"].is_number() &&
+                row.contains("productId") == existing, "Ölçünü düzgün yazın");
+        require(existing ? row["productId"].is_string() : row.contains("priceMinor") && row["priceMinor"].is_number_integer(),
+                "Ölçünü və məhsulu düzgün seçin");
         const double cm=row["sizeCm"].get<double>();
         require(std::isfinite(cm)&&cm>0&&cm<=maxSize,"Ölçü 0-dan böyük, ən çox "+std::to_string(static_cast<int>(maxSize))+" "+unit+" olmalıdır");
         const auto hundredths=std::llround(cm*100);
         require(std::abs(cm*100-hundredths)<0.000001&&seen.insert(hundredths).second,"Ölçülər təkrarlanmamalı, ən çox iki onluq rəqəm olmalıdır");
-        const auto price=row["priceMinor"].get<Money>();
-        require(price>=0&&price<=100000000&&(!payload.value("active",false)||price>0),"Variantın qiyməti düzgün deyil");
+        const auto price=existing ? Money{0} : row["priceMinor"].get<Money>();
+        require(existing || (price>=0&&price<=100000000&&(!payload.value("active",false)||price>0)),"Variantın qiyməti düzgün deyil");
         std::string label=std::to_string(hundredths/100);
         if(hundredths%100){label+="."+std::to_string(100+hundredths%100).substr(1);while(label.back()=='0')label.pop_back();}
-        normalized.push_back(Json{{"label",label},{"sizeCm",cm},{"priceMinor",price}});
+        const auto productId = existing ? row["productId"].get<std::string>() : std::string{};
+        require(!existing || (!productId.empty() && productIds.insert(productId).second),
+                "Eyni məhsulu iki dəfə seçmək olmaz");
+        normalized.push_back(Json{{"label",label},{"sizeCm",cm},{"priceMinor",price},{"productId",productId}});
+    }
+    if (existing) {
+        const auto base = requireNonEmpty(payload, "nameAz");
+        const auto category = requireNonEmpty(payload, "categoryId");
+        require(base.size() <= 160, "Qrupun adı çox uzundur");
+        auto items = Json::array();
+        for (const auto& row : normalized) {
+            const auto id = row.at("productId").get<std::string>();
+            auto current = ctx_.db().prepare(
+                "SELECT price_minor FROM menu_items WHERE id=:id AND archived=0 AND category_id=:category");
+            current.bind(":id", id).bind(":category", category);
+            require(current.step(), "Məhsullar eyni kateqoriyada olmalıdır");
+            const auto suffix = " · " + row.at("label").get<std::string>() + " ";
+            const auto name = base + suffix + unit;
+            auto conflict = ctx_.db().prepare(
+                "SELECT id FROM menu_items WHERE category_id=:category AND archived=0 AND lower(name_az)=lower(:name)");
+            conflict.bind(":category", category).bind(":name", name);
+            while (conflict.step()) {
+                require(productIds.contains(conflict.columnText(0)), "Bu qrupda həmin ölçü artıq mövcuddur");
+            }
+            items.push_back(Json{{"id", id}, {"nameAz", name}, {"nameOther", base + suffix + (unit == "sm" ? "cm" : unit)},
+                                 {"priceMinor", current.columnInt(0)}, {"sizeCm", row.at("sizeCm")}});
+        }
+        for (const auto& item : items) {
+            const auto id = item.at("id").get<std::string>();
+            const auto name = item.at("nameAz").get<std::string>();
+            auto rename = ctx_.db().prepare(
+                "UPDATE menu_items SET name_az=:name,name_tr=:other,name_en=:other,updated_at=:now WHERE id=:id");
+            rename.bind(":name", name).bind(":other", item.at("nameOther").get<std::string>())
+                .bind(":now", nowMs()).bind(":id", id).exec();
+            auto stock = ctx_.db().prepare(
+                "UPDATE ingredients SET name=:name,updated_at=:now WHERE id="
+                "(SELECT ingredient_id FROM catalog_goods_links WHERE menu_id=:id)");
+            stock.bind(":name", name).bind(":now", nowMs()).bind(":id", id).exec();
+        }
+        ctx_.auditRequired("catalog.groupSizes", "menu_category", category, payload);
+        return Json{{"id", items.front().at("id")}, {"variants", items}};
     }
     Json result,rows=Json::array();int index=0;
     for(const auto& row:normalized){

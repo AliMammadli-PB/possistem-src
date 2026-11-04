@@ -62,3 +62,48 @@ TEST_CASE("invalid or duplicate sizes never create partial catalog products", "[
  CatalogStockFixture x;for(const auto& variants:{pos::Json::array({{{"sizeCm",28},{"priceMinor",800}},{{"sizeCm",28.0},{"priceMinor",900}}}),pos::Json::array({{{"sizeCm",28},{"priceMinor",800}},{{"sizeCm",0},{"priceMinor",900}}}),pos::Json::array({{{"sizeCm",28},{"priceMinor",800}},{{"sizeCm",29},{"priceMinor",-1}}})})REQUIRE_THROWS_AS(x.call("catalog.upsertProduct",{{"nameAz","Pizza"},{"categoryId",x.category},{"sizeVariants",variants}}),pos::PosError);
  auto count=x.f.db().prepare("SELECT COUNT(*) FROM menu_items WHERE category_id=:cat");count.bind(":cat",x.category);REQUIRE(count.step());REQUIRE(count.columnInt(0)==0);
 }
+
+TEST_CASE("grouping existing pizzas preserves each recipe and deducts only the paid size", "[catalog][sizes][stock-sync]") {
+    CatalogStockFixture x;
+    pos::handlers::registerOrders(x.f.contextPtr());
+    pos::handlers::registerPayments(x.f.contextPtr());
+    x.f.openTill();
+    const auto small = pos::crypto::uuid4();
+    const auto large = pos::crypto::uuid4();
+    x.product(small, "Marqarit pizza 28 cm", 800);
+    x.product(large, "Pizza 32", 1200);
+    const auto flour = x.call("ingredients.save", {{"name","Un"},{"unit","kg"}}).at("id").get<std::string>();
+    pos::services::InventoryService inventory(x.f.ctx());
+    inventory.move(flour, "wh-main", 1000, "adjustment", "", "Sınaq");
+    const auto stockCard = x.card(small);
+    x.call("recipes.save", {{"menuItemId",small},{"lines",pos::Json::array({{{"ingredientId",flour},{"qtyMilli",200}}})}});
+    x.call("recipes.save", {{"menuItemId",large},{"lines",pos::Json::array({{{"ingredientId",flour},{"qtyMilli",300}}})}});
+    pos::Json group = {{"nameAz","Marqarit pizza"},{"categoryId",x.category},
+        {"sizeVariants",pos::Json::array({{{"productId",small},{"sizeCm",28}},{{"productId",large},{"sizeCm",32}}})}};
+    auto invalid = group;
+    invalid["sizeVariants"][1]["productId"] = "missing";
+    REQUIRE_THROWS_AS(x.call("catalog.upsertProduct", invalid), pos::PosError);
+    REQUIRE(x.call("catalog.product", {{"productId",small}}).at("nameAz") == "Marqarit pizza 28 cm");
+    auto grouped = x.call("catalog.upsertProduct", group).at("variants");
+    REQUIRE(grouped[0].at("id") == small);
+    REQUIRE(grouped[0].at("priceMinor") == 800);
+    REQUIRE(grouped[1].at("priceMinor") == 1200);
+    REQUIRE(x.card(small) == stockCard);
+    const auto qty = [&]() {
+        auto balance = x.f.db().prepare("SELECT qty_milli FROM stock_levels WHERE ingredient_id=:id AND warehouse_id='wh-main'");
+        balance.bind(":id", flour);
+        REQUIRE(balance.step());
+        return balance.columnInt(0);
+    };
+    const auto sell = [&](const char* table, const std::string& product, int price) {
+        const auto order = x.call("orders.create", {{"tableId",table}}).at("id");
+        const auto before = qty();
+        x.call("orders.addItem", {{"orderId",order},{"productId",product},{"quantity",1}});
+        REQUIRE(qty() == before);
+        x.call("payments.createCash", {{"orderId",order},{"amountMinor",price},{"tenderedMinor",price}});
+    };
+    sell("tbl-01", small, 800);
+    REQUIRE(qty() == 800);
+    sell("tbl-02", large, 1200);
+    REQUIRE(qty() == 500);
+}

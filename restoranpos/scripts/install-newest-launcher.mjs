@@ -12,5 +12,5 @@ try{fs.unlinkSync(current)}catch(e){if(e.code!=='ENOENT')throw e;}
 fs.symlinkSync(root,current,'dir');
 fs.writeFileSync(path.join(launcher,'launch.sh'),`#!/usr/bin/env bash\nset -euo pipefail\nHERE="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"\nexport POS_REBUILD_ON_LAUNCH=0\nexec "$HERE/current/scripts/launch-linux.sh" "$@"\n`,{mode:0o755});
 fs.writeFileSync(path.join(launcher,'version.txt'),pkg.version+'\n');
-fs.writeFileSync(path.join(desktop,'Possistem-Newest.desktop'),`[Desktop Entry]\nVersion=1.0\nType=Application\nName=possistem NEWEST\nComment=Restoran POS ${pkg.version}\nExec="${path.join(launcher,'launch.sh')}"\nIcon=${path.join(current,'packaged-renderer/assets/brands/logo.png')}\nTerminal=false\nCategories=Office;Finance;\nStartupNotify=true\n`,{mode:0o755});
+fs.writeFileSync(path.join(desktop,'Possistem-Newest.desktop'),`[Desktop Entry]\nVersion=1.0\nType=Application\nName=possistem NEWEST\nComment=Restoran POS ${pkg.version}\nExec="${path.join(launcher,'launch.sh')}"\nIcon=${path.join(current,'build/icon.png')}\nTerminal=false\nCategories=Office;Finance;\nStartupNotify=true\n`,{mode:0o755});
 console.log('possistem NEWEST now opens Restaurant POS '+pkg.version);

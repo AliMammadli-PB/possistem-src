@@ -143,6 +143,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-local-staff.mjs',
   'apply-restaurant-cloud-backup.mjs',
   'apply-restaurant-1936.mjs',
+  'apply-restaurant-1100.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');

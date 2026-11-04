@@ -18,7 +18,7 @@ const source=phase==='before'?execFileSync('git',['show','00ee954:restoranpos/in
 let pre=source.slice(0,source.indexOf('const container = document.getElementById("root");'));const tail=source.slice(source.indexOf('function usePsCatalogRefresh('));if(!pre.includes('function usePsCatalogRefresh('))pre+='\n'+tail;
 const ast=ts.createSourceFile('ui.js',source,99,true);for(const n of ast.statements.filter(n=>ts.isFunctionDeclaration(n)&&n.getStart(ast)>source.indexOf('const container = document.getElementById(\"root\");'))){if(!pre.includes('function '+n.name.text+'('))pre+='\n'+n.getText(ast);}
 pre=pre.replace('jsxRuntimeExports.jsx(PsGate, {})','psH(QA)');
-const fixture=pre+`\nuseAuthStore.setState({session:{userId:'usr-admin',role:'administrator',authenticated:true,permissions:['inventory.view','inventory.manage','catalog.manage','settings.manage','cash.manage','cash.accounts','users.manage','order.create','order.send','payment.take']},ready:true});const qp=new URLSearchParams(location.search);function QA(){return qp.get('page')==='order'?psH(PsOriginalOrderPage):psH(PsUnifiedCatalog);}clientExports.createRoot(document.getElementById('root')).render(psH(HashRouter,null,psH(Routes,null,psH(Route,{path:qp.get('page')==='order'?'/order/:tableId':'*',element:psH(AppShell)}))));`;
+const fixture=pre+`\nuseAuthStore.setState({session:{userId:'usr-admin',role:'administrator',authenticated:true,permissions:['inventory.view','inventory.manage','catalog.manage','recipes.manage','settings.manage','cash.manage','cash.accounts','users.manage','order.create','order.send','payment.take']},ready:true});const qp=new URLSearchParams(location.search);function QA(){return qp.get('page')==='order'?psH(PsOriginalOrderPage):qp.get('page')==='costing'?psH(OpsCosting):psH(PsUnifiedCatalog);}clientExports.createRoot(document.getElementById('root')).render(psH(HashRouter,null,psH(Routes,null,psH(Route,{path:qp.get('page')==='order'?'/order/:tableId':'*',element:psH(AppShell)}))));`;
 const preload=`(()=>{const fakeElectron={contextBridge:{exposeInMainWorld:(k,v)=>{window[k]=v}},ipcRenderer:{invoke:(ch,req)=>ch==='pos:invoke'?window.coreCall(req.method,req.payload??{},req.options??{}):Promise.resolve({success:false,error:{code:'E_QA',message:'not in this test: '+ch}}),on(){},removeListener(){},removeAllListeners(){},send(){}},webFrame:{setZoomFactor(){},setVisualZoomLevelLimits(){}}};const require=n=>{if(n==='electron')return fakeElectron;throw Error('preload require '+n)};const exports={},module={exports};\n${fs.readFileSync(root+'/out/preload/index.js','utf8')}\n})();`;
 const server=http.createServer((req,res)=>{const u=req.url.split('?')[0];if(u==='/qa'){res.setHeader('content-type','text/html');return res.end(`<html lang="az"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/base.css"><link rel="stylesheet" href="/system.css"><style>html,body,#root{margin:0;height:100%}</style></head><body><div id="root"></div><script src="/preload.js"></script><script type="module" src="/assets/qa.js"></script></body></html>`)}if(u==='/preload.js'){res.setHeader('content-type','text/javascript');return res.end(preload)}if(u==='/assets/qa.js'){res.setHeader('content-type','text/javascript');return res.end(fixture)}const f=u==='/base.css'?root+'/packaged-renderer/assets/index-DFpMFaZu.css':u==='/system.css'?root+'/possistem-system.css':root+'/packaged-renderer'+u;if(fs.existsSync(f)&&fs.statSync(f).isFile()){res.setHeader('content-type',f.endsWith('.css')?'text/css':f.endsWith('.js')?'text/javascript':'application/octet-stream');return res.end(fs.readFileSync(f))}res.statusCode=404;res.end()});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const b=await chromium.launch({executablePath:'/home/panda/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome',headless:true,args:['--no-sandbox']});
@@ -96,5 +96,59 @@ try{
  const longButton=orderPage.locator('.ps-sale-categories>button',{hasText:'Çox uzun kateqoriya adı'});await longButton.scrollIntoViewIfNeeded();assert.ok((await longButton.boundingBox()).height>40,'Long names expand naturally');await longButton.click();assert.equal(await longButton.getAttribute('aria-pressed'),'true');assert.ok(await orderPage.locator('.ps-sale-categories').evaluate(e=>e.scrollHeight>e.clientHeight&&e.scrollTop>0),'Every category remains reachable by scrolling');
  await orderPage.setViewportSize({width:1366,height:735});assert.ok(await orderPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await orderPage.screenshot({path:out+'/sale-1366.png'});await orderPage.close();
  console.log('PASS real core/preload/UI: existing single/multiple products, sub-category creation, partial failure/retry, no duplicate category, size family and metadata preservation, actual sale; 1536×816; all categories in a compact left rail without paging; both category stores and finished goods agree.');
+ const pizzas=must(await core.call('catalog.upsertCategory',{nameAz:'Pizzalar'},key())).id;
+ const pizza=async(name,priceMinor)=>must(await core.call('catalog.upsertProduct',{categoryId:pizzas,nameAz:name,priceMinor,active:true},key())).id;
+ const pizza28=await pizza('Marqarit pizza 28 cm',800),pizza32=await pizza('Pizza 32',1200);
+ const catalogPage=await open('page=catalog','admin/catalog');
+ await catalogPage.locator('.ps-catalog-cat-main',{hasText:'Pizzalar'}).click();
+ for(const name of ['Marqarit pizza 28 cm','Pizza 32'])await catalogPage.locator('.ps-catalog-row',{hasText:name}).getByRole('checkbox').check();
+ await catalogPage.getByRole('button',{name:'Ölçüləri birləşdir'}).click();
+ d=catalogPage.getByRole('dialog',{name:'Ölçüləri birləşdir'});
+ await d.getByLabel('Satışda görünən ad').fill('Marqarit pizza');
+ await d.getByLabel('Pizza 32 · ölçü (sm)',{exact:true}).fill('28');
+ await d.getByRole('button',{name:'Birləşdir',exact:true}).click();
+ await d.getByRole('alert').waitFor();
+ await d.getByLabel('Pizza 32 · ölçü (sm)',{exact:true}).fill('32');
+ await d.getByRole('button',{name:'Birləşdir',exact:true}).click();
+ await d.waitFor({state:'detached'});
+ for(const [id,size,price]of[[pizza28,28,800],[pizza32,32,1200]]){
+   const item=must(await core.call('catalog.product',{productId:id}));
+   assert.equal(item.nameAz,'Marqarit pizza · '+size+' sm');
+   assert.equal(item.priceMinor,price);
+ }
+ await catalogPage.getByRole('button',{name:'Mallar və xammal',exact:true}).click();
+ await catalogPage.getByRole('button',{name:'+ Yeni mal',exact:true}).click();
+ d=catalogPage.getByRole('dialog',{name:'Yeni mal'});
+ await d.getByLabel('Malın adı').fill('Un');
+ assert.equal(await d.getByLabel('Satış qiyməti (₼)').count(),0);
+ assert.equal(await d.getByLabel('Satışda göstər').isChecked(),false);
+ await d.getByRole('button',{name:'Yadda saxla',exact:true}).click();
+ await d.waitFor({state:'detached'});
+ assert.ok(must(await core.call('goods.list',{})).goods.some(g=>g.name==='Un'));
+ assert.deepEqual(catalogPage.errors,[]);
+ await catalogPage.close();
+ const pizzaPage=await open('page=order','order/tbl-qa');
+ await pizzaPage.locator('.ps-sale-categories button',{hasText:'Pizzalar'}).click();
+ for(const size of [28,32]){
+   await pizzaPage.getByRole('button',{name:/Marqarit pizza.*Ölçü seçin/}).click();
+   await pizzaPage.getByRole('dialog').getByRole('button',{name:new RegExp(size+' sm')}).click();
+   await pizzaPage.locator('li',{hasText:'Marqarit pizza · '+size+' sm'}).waitFor();
+ }
+ assert.deepEqual(pizzaPage.errors,[]);
+ await pizzaPage.close();
+ const costingPage=await open('page=costing','admin/inventory');
+ await costingPage.getByRole('row',{name:/Marqarit pizza · 28 sm/}).getByRole('button',{name:/Resept/}).click();
+ d=costingPage.getByRole('dialog',{name:/Resept.*28 sm/});
+ await d.getByRole('button',{name:'+ Anbarda olmayan məhsul'}).click();
+ await d.getByPlaceholder('Ad (məs. Pomidor)').fill('Pizza unu');
+ await d.getByLabel('Miqdar',{exact:true}).fill('200');
+ assert.equal(await d.getByLabel(/Alış:.*istəyə bağlı/).inputValue(),'');
+ await d.getByRole('button',{name:'Saxla',exact:true}).click();
+ await d.waitFor({state:'detached'});
+ const recipe=must(await core.call('recipes.get',{menuItemId:pizza28}));
+ assert.ok(recipe.lines.some(line=>line.qtyMilli===200));
+ assert.deepEqual(costingPage.errors,[]);
+ await costingPage.close();
+ console.log('PASS 1.10.0 UI: merge existing pizzas; select 28/32 sm in sale; save flour without sale price.');
 }finally{await b.close();server.close();await core.stop();fs.rmSync(dir,{recursive:true,force:true});}
 console.log('screens:',out);

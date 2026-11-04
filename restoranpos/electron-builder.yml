@@ -1,6 +1,6 @@
 appId: com.cyberplus.maisonaurelia.pos
 productName: possistem
-buildVersion: 1.9.37
+buildVersion: 1.10.0
 executableName: possistem
 copyright: Copyright © 2026 Ali Mammadli / possistem
 electronVersion: 43.8.3
@@ -10,6 +10,7 @@ directories:
   buildResources: build
 files:
   - out/**/*
+  - build/icon.png
   - package.json
   # Explicit updater dependency closure: node_modules may be a worktree symlink.
   - { from: node_modules/electron-updater, to: node_modules/electron-updater }

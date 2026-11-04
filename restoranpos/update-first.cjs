@@ -3,6 +3,7 @@
 // tills, because they install it before they start the broken part. A till is never locked out: no
 // network, a stalled download or installs that keep failing all fall through to a normal start.
 const fs=require('node:fs');
+const path=require('node:path');
 const CHECK_MS=12e3,STALL_MS=60e3,TOTAL_MS=600e3,INSTALL_WAIT_MS=30e3,RECHECK_MS=120e3,MAX_TRIES=3;
 const BAD_CORE=new Set(['crash_loop','core_missing','incompatible']);
 
@@ -17,7 +18,7 @@ function progressWindow(BrowserWindow){
  return{
   show(percent){
    if(!win||win.isDestroyed()){
-    win=new BrowserWindow({width:620,height:420,frame:false,resizable:false,center:true,alwaysOnTop:true,backgroundColor:'#0c0907',title:'possistem',webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});
+    win=new BrowserWindow({width:620,height:420,frame:false,resizable:false,center:true,alwaysOnTop:true,backgroundColor:'#0c0907',title:'possistem',icon:path.join(__dirname,'../../build/icon.png'),webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});
     win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(PAGE)).catch(()=>{});
    }
    const n=Math.min(100,Math.max(0,Math.round(Number(percent))||0));
