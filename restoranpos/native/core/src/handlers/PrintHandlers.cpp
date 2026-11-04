@@ -107,6 +107,7 @@ struct RenderedPayload {
     int fontHeightPx = 32, fontWidthPx = 14, sideMarginPx = 2;
     printing::RenderMode renderMode = printing::RenderMode::Auto;
     bool openCashDrawer = false;
+    bool showBrand = false;
     int itemCount = 0;
     Money subtotalMinor = 0;
     Money taxMinor = 0;
@@ -137,7 +138,6 @@ struct DeliveryReport {
 
 printing::EscPosOptions escPosOptionsFor(Context& ctx, const RenderedPayload& payload) {
     printing::EscPosOptions opts;
-    opts.density = static_cast<int>(ctx.settingInt("printer.density", 5));
     opts.cut = ctx.settingInt("printer.cut", 1) != 0;
     opts.beep = ctx.settingInt("printer.beep", 0) != 0;
     opts.openCashDrawer = payload.openCashDrawer && ctx.settingInt("printer.openCashDrawer", 1) != 0;
@@ -149,9 +149,11 @@ printing::EscPosOptions escPosOptionsFor(Context& ctx, const RenderedPayload& pa
     opts.fontHeightPx = payload.fontHeightPx;
     opts.fontWidthPx = payload.fontWidthPx;
     opts.sideMarginPx = payload.sideMarginPx;
-    opts.qr = !payload.qrPayload.empty();
-    opts.qrPayload = payload.qrPayload;
-    opts.logo = printing::ReceiptBuilder(ctx).logoBitmap();
+    if (payload.showBrand) {
+        opts.qr = !payload.qrPayload.empty();
+        opts.qrPayload = payload.qrPayload;
+        opts.logo = printing::ReceiptBuilder(ctx).logoBitmap();
+    }
     return opts;
 }
 
@@ -556,6 +558,7 @@ int drainQueue(Context& ctx) {
 
         const bool isReprint = overrides.value("reprint", false);
         payload.openCashDrawer = printing::receiptOpensCashDrawer(job.kind, isReprint);
+        payload.showBrand = printing::receiptShowsBrand(job.kind);
 
         try {
             const auto config = settingsForJob(ctx, overrides);
@@ -841,7 +844,6 @@ std::vector<std::uint8_t> buildProbePage(Context& ctx, const std::string& label)
     text += label + "\n";
 
     printing::EscPosOptions opts;
-    opts.density = static_cast<int>(ctx.settingInt("printer.density", 5));
     opts.cut = ctx.settingInt("printer.cut", 1) != 0;
     opts.beep = false;  // probing several devices should not sound like an alarm
     opts.openCashDrawer = false;
@@ -1478,6 +1480,7 @@ void registerPrinting(const ContextPtr& ctx) {
 
             RenderedPayload payload;
             payload.openCashDrawer = printing::receiptOpensCashDrawer("customer_receipt", reprint);
+            payload.showBrand = true;
             payload.paperWidth = config.paperWidth;
             payload.charsPerLine = config.charsPerLine;
             payload.renderMode = config.renderMode;

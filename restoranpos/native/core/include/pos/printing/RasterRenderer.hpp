@@ -55,7 +55,11 @@ inline MonoBitmap renderLinesToBitmap(const std::vector<ReceiptLine>& lines, Pap
     return renderLinesToBitmap(lines, paper, RasterOptions{charsPerLine, 0, 0, 0}, errorOut);
 }
 
-/** ESC/POS `GS v 0` blocks for a bitmap, banded so cheap firmware keeps up. */
-std::vector<std::uint8_t> encodeRaster(const MonoBitmap& bitmap, int bandRows = 128);
+/**
+ * ESC/POS `GS v 0` blocks for a bitmap, banded so cheap firmware keeps up.
+ * An Aclass printer (firmware 1.027) printed 128-row bands as garbage text and
+ * "command is not supported" lines, at any send speed; 24-row bands print clean.
+ */
+std::vector<std::uint8_t> encodeRaster(const MonoBitmap& bitmap, int bandRows = 24);
 
 }  // namespace pos::printing

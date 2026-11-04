@@ -241,14 +241,12 @@ void appendQr(std::vector<std::uint8_t>& out, const std::string& payload, PaperW
     out.push_back('\n');
 }
 
-/** Shared preamble: reset, alignment, code page, font and density. */
+/** Shared preamble: reset, alignment, code page and font. */
 void appendHeader(std::vector<std::uint8_t>& out, const EscPosOptions& options) {
     append(out, {0x1B, 0x40});  // ESC @ — initialize
     append(out, {0x1B, 0x61, 0x00});  // ESC a 0 — left align
     append(out, {0x1B, 0x74, static_cast<std::uint8_t>(std::clamp(options.codePage, 0, 255))});
     append(out, {0x1B, 0x4D, 0x00});  // ESC M 0 — Font A
-    const int density = std::clamp(options.density, 0, 8);
-    append(out, {0x1B, 0x37, static_cast<std::uint8_t>(density)});
 }
 
 /** Center the MR brand mark on the paper width and emit GS v 0. */

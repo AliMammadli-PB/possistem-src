@@ -311,3 +311,14 @@ TEST_CASE("legacy dish-mapping saves preserve the separately configured receipt 
     f.call("settings.set",{{"key","kitchen.stations"},{"value","[]"}});
     REQUIRE(f.setting("printer.receipt")=="auto");
 }
+
+TEST_CASE("logo and QR go only on the guest's paper", "[printing][roles]") {
+    using pos::printing::receiptShowsBrand;
+    for (const auto* kind : {"customer_receipt", "customer_bill", "refund_receipt", "test_page"}) {
+        CHECK(receiptShowsBrand(kind));
+    }
+    for (const auto* kind : {"kitchen_ticket", "warehouse_slip", "x_report", "z_report", "shift_report",
+                             "period_report"}) {
+        CHECK_FALSE(receiptShowsBrand(kind));
+    }
+}
