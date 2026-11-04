@@ -212,7 +212,9 @@ TEST_CASE("cross-device transfer survives repeated delivery and binds signed sen
  REQUIRE(bi.levelOf(localGood,"wh-main")==0);
  const auto response=b.biz("transfer.outbox").at("events")[0].at("payload");a.biz("transfer.sync",{{"event",response},{"cloudSourceDeviceId","B"},{"cloudTargetDeviceId","A"}});
  REQUIRE(ai.levelOf(good,"wh-main")==0);a.biz("transfer.returnConfirm",{{"id",doc.at("id")}});REQUIRE(ai.levelOf(good,"wh-main")==5000);
- const auto events=a.biz("transfer.outbox").at("events");const auto returned=events[events.size()-1].at("payload");
+ const auto pending=a.biz("transfer.outbox").at("events");REQUIRE(pending.size()==1);REQUIRE(pending[0].at("id")==event.at("id"));
+ a.biz("transfer.ack",{{"eventId",event.at("id")}});
+ const auto events=a.biz("transfer.outbox").at("events");REQUIRE(events.size()==1);const auto returned=events[0].at("payload");
  b.biz("transfer.sync",{{"event",returned},{"cloudSourceDeviceId","A"},{"cloudTargetDeviceId","B"}});REQUIRE(b.biz("transfer.get",{{"id",doc.at("id")}}).at("status")=="closed");
 }
 TEST_CASE("soft-cancelled customer and payroll payments retain evidence and reverse balances once","[market1529][documents]"){

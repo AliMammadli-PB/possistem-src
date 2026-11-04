@@ -71,6 +71,10 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14987,7 +14991,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.0 · 45f03d7";
+const _PS_BUILD = "1.10.1 · a9c5767";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -16932,7 +16936,7 @@ function PsMenuCatalog() {
     await loadProducts(categoryId);
     }catch(error){toast(error.message||String(error),"danger");}finally{setSaving(false);}
   };
-  const stockPickerDialog=stockPicker?jsxRuntimeExports.jsx(PsStockMenuPicker,{onClose:()=>setStockPicker(false),onSaved:async menu=>{await loadCategories();const next=menu?.categoryId||categoryId;setCategoryId(next);await loadProducts(next);}}):null;
+  const stockPickerDialog=stockPicker?jsxRuntimeExports.jsx(PsStockMenuPicker,{categories:categories2,categoryId,onClose:()=>setStockPicker(false),onSaved:async menu=>{await loadCategories();const next=menu?.categoryId||categoryId;setCategoryId(next);await loadProducts(next);}}):null;
   const [showGallery, setShowGallery] = reactExports.useState(false);
   reactExports.useEffect(() => { if (!editorOpen) setShowGallery(false); }, [editorOpen]);
   reactExports.useEffect(() => {
@@ -23790,7 +23794,8 @@ function psRecipeUnits(stockUnit) {
   return [stockUnit || "ədəd"];
 }
 function psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }) {
-  const h = psH;
+  /* SIMPLE_RECIPE_1101 */ const h = psH;
+  const [showCosts, setShowCosts] = reactExports.useState(false);
   const label = (u) => (u === "ml" ? "ml" : unitLabel(u));
   const cost = editorCost();
   const margin = editor.priceMinor - cost;
@@ -23814,30 +23819,32 @@ function psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPi
   const fact = (k, v, tone) => h("div", { className: "ps-recipe-fact" }, h("span", null, k), h("b", tone ? { style: { color: tone } } : null, v));
 
   return jsxRuntimeExports.jsx(PsAdminDialog, { title: "Resept — " + editor.name, busy, onClose: () => setEditor(null), children: h("div", { className: "ps-recipe" },
-    h("div", { className: "ps-recipe-facts" },
+    showCosts ? h("div", { className: "ps-recipe-facts" },
       fact("Satış", formatMoney(editor.priceMinor)),
       fact("Maya", formatMoney(cost)),
       fact("Qazanc", formatMoney(margin), margin < 0 ? "var(--ps-danger)" : "var(--ps-ok)"),
-      fact("Maya %", pct)),
+      fact("Maya %", pct)) : null,
     editor.selfId && !editor.lines.length
       ? h("p", { className: "ps-recipe-note" }, "İndi bu məhsul anbarda hazır məhsul kimi izlənir: hər satışda anbardan 1 ədəd çıxır (kola, su kimi). Tərkib seçsəniz, satışda tərkibi anbardan çıxacaq.")
       : null,
 
     h("h3", { className: "ps-recipe-step" }, "1. Anbardan tərkibi seçin"),
-    stock.length > 8 ? h("input", { type: "search", className: "ps-recipe-search", placeholder: "Axtar: pomidor, yumurta…", value: pickQuery, onChange: (e) => setPickQuery(e.target.value) }) : null,
+    stock.length ? h("input", { type: "search", className: "ps-recipe-search", "aria-label": "Xammal axtar", placeholder: "Xammalın adını yazın", value: pickQuery, onChange: (e) => setPickQuery(e.target.value) }) : null,
     stock.length
-      ? h("div", { className: "ps-recipe-chips" }, shown.map((ing) => h("button", {
+      ? h("div", { className: "ps-recipe-chips" }, shown.slice(0, 16).map((ing) => h("button", {
           key: ing.id, type: "button", "aria-pressed": picked.has(ing.id),
           className: "ps-recipe-chip" + (picked.has(ing.id) ? " is-on" : ""),
           onClick: () => toggle(ing)
         }, (picked.has(ing.id) ? "✓ " : "+ ") + ing.name, h("small", null, label(ing.unit)))))
       : h("p", { className: "ps-recipe-note" }, "Anbarda hələ məhsul yoxdur. Anbar bölməsində əlavə edin və ya aşağıda yenisini yazın."),
 
-    h("h3", { className: "ps-recipe-step" }, "2. Bir porsiyaya nə qədər gedir"),
+    stock.length && !shown.length ? h("p", {role:"status"}, "Bu adda xammal tapılmadı.") : null,
+    shown.length > 16 ? h("small", null, "Başqa xammal üçün adını axtarın.") : null,
+    h("h3", { className: "ps-recipe-step" }, "2. Bir porsiyanın miqdarı"),
     editor.lines.length
       ? h("div", { className: "ps-recipe-rows" }, editor.lines.map((line, i) => {
           const units = line.mode === "pick" ? psRecipeUnits(stockUnitOf(line)) : ["q", "kg", "ml", "l", "ədəd"];
-          return h("div", { key: (line.ingredientId || "new") + i, className: "ps-recipe-row" },
+          return h("div", { key: (line.ingredientId || "new") + i, className: "ps-recipe-row" + (showCosts ? "" : " ps-recipe-simple-row") },
             line.mode === "pick"
               ? h("span", { className: "ps-recipe-name" }, line.name)
               : h("input", { className: "ps-recipe-name-input", placeholder: "Ad (məs. Pomidor)", value: line.name, onChange: (e) => setLine(i, { name: e.target.value }) }),
@@ -23846,13 +23853,14 @@ function psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPi
               units.length > 1
                 ? h("select", { value: line.unit, onChange: (e) => setLine(i, { unit: e.target.value }), "aria-label": "Vahid" }, units.map((u) => h("option", { key: u, value: u }, label(u))))
                 : h("em", null, label(units[0]))),
-            h("label", { className: "ps-recipe-price" }, h("span", null, /* OPTIONAL_COST_1100 */ "Alış: " + priceLabel(line.unit) + (line.mode === "new" ? " · istəyə bağlı" : "")),
-              h("input", { inputMode: "decimal", placeholder: "0.00", value: line.unitCost, onChange: (e) => setLine(i, { unitCost: e.target.value }) })),
-            h("b", { className: "ps-recipe-cost" }, formatMoney(lineCostMinor(line))),
+            showCosts ? h("label", { className: "ps-recipe-price" }, h("span", null, /* OPTIONAL_COST_1100 */ "Alış: " + priceLabel(line.unit) + (line.mode === "new" ? " · istəyə bağlı" : "")),
+              h("input", { inputMode: "decimal", placeholder: "0.00", value: line.unitCost, onChange: (e) => setLine(i, { unitCost: e.target.value }) })) : null,
+            showCosts ? h("b", { className: "ps-recipe-cost" }, formatMoney(lineCostMinor(line))) : null,
             h("button", { type: "button", className: "ps-recipe-remove", "aria-label": "Sil", onClick: () => removeAt(i) }, "×"));
         }))
       : h("p", { className: "ps-recipe-note" }, "Yuxarıdan tərkibi seçin."),
-    h("button", { type: "button", className: "ps-recipe-add", onClick: () => setEditor((prev) => prev ? { ...prev, lines: [...prev.lines, { mode: "new", ingredientId: "", name: "", unit: "q", qty: "", unitCost: "", unitCostMinor: 0 }] } : prev) }, "+ Anbarda olmayan məhsul"),
+    h("button", { type: "button", className: "ps-recipe-add", onClick: () => setEditor((prev) => prev ? { ...prev, lines: [...prev.lines, { mode: "new", ingredientId: "", name: "", unit: "q", qty: "", unitCost: "", unitCostMinor: 0 }] } : prev) }, "+ Yeni xammal"),
+    h("button", {type:"button", className:"ps-recipe-add", "aria-expanded":showCosts, onClick:()=>setShowCosts(v=>!v)}, showCosts ? "Maya qiymətlərini gizlət" : "Maya qiymətlərini göstər"),
 
     h("div", { className: "ps-recipe-actions" },
       jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void saveRecipe(), children: "Saxla" }),
@@ -24221,7 +24229,7 @@ function OpsCosting() {
       })
     }),
 
-    editor && psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }),
+    editor && psH(psRecipeEditor, { editor, setEditor, ingredients, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }),
     confirmDialog
   ] });
 }
@@ -31291,6 +31299,30 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -31320,7 +31352,84 @@ function psGroupOrderSizes(products, lang) {
   });
 }
 function PsOrderSizes({family,onPick,onClose,busy,error}){const h=psH,out=row=>!!row.product.soldOut||row.product.available===false||row.product.available===0;return jsxRuntimeExports.jsx(PsAdminDialog,{title:localizedName(family,useI18n().lang)+' — ölçü seçin',onClose,busy,children:h('div',{className:'ps-order-sizes'},h('p',null,'İstədiyiniz ölçünü seçin. Hər ölçünün qiyməti və kalkulyasiyası ayrıdır.'),error?h('p',{className:'ps-order-sizes-error',role:'alert'},error):null,...family.__psSizeVariants.map(row=>h('button',{key:row.product.id,type:'button',disabled:busy||out(row),onClick:()=>onPick(row.product)},h('strong',null,row.size+' '+(row.unit||'sm')),h('span',null,formatMoney(row.product.priceMinor),out(row)?h('small',null,'Bitib'):null))))});}
-function PsStockMenuPicker({onClose,onSaved}){const h=psH,[goods,setGoods]=reactExports.useState([]),[query,setQuery]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false),[loading,setLoading]=reactExports.useState(true),[error,setError]=reactExports.useState(''),lock=reactExports.useRef(false);reactExports.useEffect(()=>{let live=true;void window.pos.erp.call('goods.list',{}).then(r=>{if(!r.success)throw Error(r.error?.message||'Mallar alınmadı');if(live)setGoods(r.data.goods||[])}).catch(e=>{if(live)setError(e.message)}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[]);return jsxRuntimeExports.jsx(PsAdminDialog,{title:'Anbardan menyuya əlavə et',onClose,busy,children:h('div',{className:'ps-stock-menu-picker'},h('p',null,'Satılan hazır malı seçin. Xammal və resept üçün istifadə edilən malları menyuya çıxarmayın.'),h('label',null,'Mal axtarışı',h('input',{value:query,onChange:e=>setQuery(e.target.value),placeholder:'Ad və ya barkod'})),loading&&h('p',{role:'status'},'Mallar alınır…'),error&&h('p',{role:'alert'},error),...goods.filter(g=>!g.menuActive&&[g.name,g.barcode].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0,80).map(g=>h('button',{type:'button',key:g.id,disabled:busy||g.basePriceMinor<=0,onClick:async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const r=await psBusinessCall('catalog.publish',{ingredientId:g.id});if(!r.success)throw Error(r.error?.message||'Əlavə edilmədi');window.dispatchEvent(new Event('possistem-catalog-changed'));await onSaved(r.data);onClose();}catch(e){setError(e.message)}finally{lock.current=false;setBusy(false)}}},h('strong',null,g.name),h('span',null,g.basePriceMinor>0?formatMoney(g.basePriceMinor):'Əvvəlcə satış qiyməti yazın'))))});}
+function PsStockMenuPicker({ onClose, onSaved, categories, categoryId }) {
+  const h = psH;
+  const [goods, setGoods] = reactExports.useState([]);
+  const [query, setQuery] = reactExports.useState('');
+  const [selected, setSelected] = reactExports.useState(null);
+  const [price, setPrice] = reactExports.useState('');
+  const [category, setCategory] = reactExports.useState(categoryId);
+  const [busy, setBusy] = reactExports.useState(false);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [error, setError] = reactExports.useState('');
+  const lock = reactExports.useRef(false);
+
+  reactExports.useEffect(() => {
+    let live = true;
+    void window.pos.erp.call('goods.list', {}).then(result => {
+      if (!result.success) throw Error(result.error?.message || 'Mallar alınmadı');
+      if (live) setGoods((result.data.goods || []).filter(good => !good.menuActive));
+    }).catch(cause => { if (live) setError(cause.message); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, []);
+
+  async function publish() {
+    if (lock.current || !selected) return;
+    const salePriceMinor = psMoneyIn(price);
+    if (!psStockInputValid(price) || !Number.isSafeInteger(salePriceMinor) || salePriceMinor <= 0) {
+      setError('Satış qiymətini 0 ₼-dən böyük yazın.');
+      return;
+    }
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await psBusinessCall('catalog.stockEdit', {
+        ingredientId: selected.id, name: selected.name, salePriceMinor,
+        categoryId: category || '', publish: true
+      }, newIdempotencyKey());
+      if (!result.success) throw Error(result.error?.message || 'Mal menyuya əlavə edilmədi');
+      window.dispatchEvent(new Event('possistem-catalog-changed'));
+      await onSaved(result.data.menu);
+      onClose();
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  const term = query.trim().toLocaleLowerCase('az');
+  const matches = goods.filter(good => [good.name, good.barcode].some(
+    value => String(value || '').toLocaleLowerCase('az').includes(term)));
+  return jsxRuntimeExports.jsx(PsAdminDialog, {title: 'Menyuya mal əlavə et', busy, onClose: () => { if (!lock.current) onClose(); },
+    children: h('div', {className: 'ps-stock-menu-picker'},
+      selected ? h(reactExports.Fragment, null,
+        h('div', {className: 'ps-menu-pick-selection'},
+          h('strong', null, selected.name),
+          h(OpsButton, {tone: 'quiet', disabled: busy, onClick: () => { setSelected(null); setError(''); }}, 'Malı dəyiş')),
+        h('label', null, 'Menyu kateqoriyası',
+          h(PsCategoryPick, {categories, value: category, onChange: setCategory, blank: 'Mallar', label: 'Menyu kateqoriyası'})),
+        h(OpsField, {label: 'Satış qiyməti (₼)', value: price, onChange: setPrice, placeholder: '0.00'}),
+        error ? h('p', {role: 'alert', className: 'ps-order-sizes-error'}, error) : null,
+        h(OpsButton, {disabled: busy, onClick: publish}, busy ? 'Göndərilir…' : 'Menyuya əlavə et')
+      ) : h(reactExports.Fragment, null,
+        h('label', null, 'Anbar malı', h('input', {type: 'search', value: query,
+          onChange: event => setQuery(event.target.value), placeholder: 'Ad və ya barkod'})),
+        loading ? h('p', {role: 'status'}, 'Mallar alınır…') : null,
+        error ? h('p', {role: 'alert', className: 'ps-order-sizes-error'}, error) : null,
+        !loading && !error && !matches.length ? h('p', null, 'Uyğun anbar malı tapılmadı.') : null,
+        h('div', {className: 'ps-menu-pick-results'}, matches.slice(0, 40).map(good =>
+          h('button', {type: 'button', key: good.id, onClick: () => {
+            setSelected(good);
+            setPrice(good.basePriceMinor > 0 ? (good.basePriceMinor / 100).toFixed(2) : '');
+            setError('');
+          }}, h('strong', null, good.name), h('span', null, good.barcode || good.unit)))),
+        matches.length > 40 ? h('small', null, 'Digər malları tapmaq üçün axtarışdan istifadə edin.') : null))
+  });
+}
 function PsWorkspaceNav(){const h=psH,{pathname,search}=useLocation(),has=useAuthStore(s=>s.hasPermission);const links=[['/operations?tab=sales','Satışlar',['sales.view']],['/operations?tab=stock','Anbar',['inventory.view']],['/admin/catalog','Kateqoriyalar',['catalog.manage']],['/operations?tab=delivery','Çatdırılma',['delivery.view']],['/admin/staff','İstifadəçilər',['users.manage']],['/admin/reports','Hesabatlar',['reports.view']],['/settings','Parametrlər',['settings.manage']]];return h('nav',{className:'ps-workspace-nav','aria-label':'İş sahəsi'},...links.filter(([, ,permissions])=>permissions.some(has)).map(([to,label])=>{const match=to.includes('?')?pathname+search===to:pathname===to;return h(Link,{to,key:to,'aria-current':match?'page':undefined},label)}));}
 function PsStockBranches(){
  const h=psH,has=useAuthStore(s=>s.hasPermission),role=useAuthStore(s=>s.session?.role),{search}=useLocation(),[tab,setTab]=reactExports.useState('local');

@@ -299,6 +299,49 @@ let _psCloudClient=null;
 function _psCloudInit(){if(!_psCloudClient)_psCloudClient=require("./cloud-branches.cjs").createCloudBranches({credentials:async()=>{const tenant=ft(),device=await J();if(!tenant||!device||tenant.customerId!==device.customerId)throw Error("Sahibkar hesabı aktiv kassaya uyğun deyil");return{token:tenant.token,deviceId:device.deviceId,baseUrl:device.baseUrl};}});return _psCloudClient;}
 async function _psCloudRefresh(){try{if(!ft()||!et)return;const data=await _psCloudInit().list(),device=await J(),own=data.branches?.find(b=>b.deviceId===device?.deviceId);if(!own)return;const current=await b("settings.getAll",{},8000);const name=own.branchId?own.name:"";if(current.data?.settings?.["branch.cloudName"]!==name){const actor=await _psPortalActor();if(actor)await et.invoke("settings.set",{key:"branch.cloudName",value:name},{actor:{userId:actor.id},timeoutMs:8000});}}catch{}}
 setInterval(()=>void _psCloudRefresh(),30000).unref();
+let _psTransferSyncBusy=false;
+const _psTransferRetry=new Map();
+async function _psSyncTransfers(){
+  if(_psTransferSyncBusy||!et||!ft()||globalThis.__psLanRoute)return;
+  _psTransferSyncBusy=true;
+  try{
+    const actor=await _psPortalActor();
+    if(!actor)return;
+    const opts={actor:{userId:actor.id},terminal:_psTerminal(),timeoutMs:8000};
+    const invoke=(action,payload={})=>et.invoke("business.call",{action,...payload},opts);
+    const outbox=await invoke("transfer.outbox");
+    if(!outbox.success)return;
+    const events=outbox.data?.events||[];
+    const pending=new Set(events.map(event=>event.id));
+    for(const id of _psTransferRetry.keys())if(!pending.has(id))_psTransferRetry.delete(id);
+    const blocked=new Set();
+    for(const event of events){
+      if(blocked.has(event.transferId)||(_psTransferRetry.get(event.id)||0)>Date.now()){
+        blocked.add(event.transferId);
+        continue;
+      }
+      try{
+        const reply=await _psCloudInit().rpc(event.deviceId,[{
+          method:"business.call",payload:{action:"transfer.sync",event:event.payload},
+          idempotencyKey:event.id
+        }]);
+        const result=reply.results?.[0];
+        if(!result?.success)throw Object.assign(Error(result?.error?.message||"Filial qaiməni qəbul etmədi"),{rejected:result?.error?.code==="E_VALIDATION"});
+        const ack=await invoke("transfer.ack",{eventId:event.id});
+        if(!ack.success)throw Error(ack.error?.message||"Göndərişin təsdiqi saxlanılmadı");
+        _psTransferRetry.delete(event.id);
+      }catch(cause){
+        blocked.add(event.transferId);
+        _psTransferRetry.set(event.id,Date.now()+Math.min(600000,15000*2**Math.min(Number(event.attempts)||0,6)));
+        await invoke("transfer.failure",{eventId:event.id,error:String(cause.message||cause),rejected:Boolean(cause.rejected)}).catch(()=>{});
+      }
+    }
+  }catch(cause){
+    v.warn("transfer_sync_failed",{message:String(cause.message||cause)});
+  }finally{_psTransferSyncBusy=false;}
+}
+setInterval(()=>void _psSyncTransfers(),15000).unref();
+
 async function _psCloudBranchCall(action,payload){
  const auth=await b("business.call",{action:"context"},8000);if(!auth.success||!auth.data?.manager)return d("E_FORBIDDEN","Filialları yalnız müdir idarə edə bilər");
  if(!_psCloudClient)_psCloudClient=require("./cloud-branches.cjs").createCloudBranches({credentials:async()=>{const tenant=ft(),device=await J();if(!tenant||!device||tenant.customerId!==device.customerId)throw Error("Sahibkar hesabı aktiv kassaya uyğun deyil");return{token:tenant.token,deviceId:device.deviceId,baseUrl:device.baseUrl};}});

@@ -37,4 +37,81 @@ function psGroupOrderSizes(products, lang) {
   });
 }
 function PsOrderSizes({family,onPick,onClose,busy,error}){const h=psH,out=row=>!!row.product.soldOut||row.product.available===false||row.product.available===0;return jsxRuntimeExports.jsx(PsAdminDialog,{title:localizedName(family,useI18n().lang)+' — ölçü seçin',onClose,busy,children:h('div',{className:'ps-order-sizes'},h('p',null,'İstədiyiniz ölçünü seçin. Hər ölçünün qiyməti və kalkulyasiyası ayrıdır.'),error?h('p',{className:'ps-order-sizes-error',role:'alert'},error):null,...family.__psSizeVariants.map(row=>h('button',{key:row.product.id,type:'button',disabled:busy||out(row),onClick:()=>onPick(row.product)},h('strong',null,row.size+' '+(row.unit||'sm')),h('span',null,formatMoney(row.product.priceMinor),out(row)?h('small',null,'Bitib'):null))))});}
-function PsStockMenuPicker({onClose,onSaved}){const h=psH,[goods,setGoods]=reactExports.useState([]),[query,setQuery]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false),[loading,setLoading]=reactExports.useState(true),[error,setError]=reactExports.useState(''),lock=reactExports.useRef(false);reactExports.useEffect(()=>{let live=true;void window.pos.erp.call('goods.list',{}).then(r=>{if(!r.success)throw Error(r.error?.message||'Mallar alınmadı');if(live)setGoods(r.data.goods||[])}).catch(e=>{if(live)setError(e.message)}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[]);return jsxRuntimeExports.jsx(PsAdminDialog,{title:'Anbardan menyuya əlavə et',onClose,busy,children:h('div',{className:'ps-stock-menu-picker'},h('p',null,'Satılan hazır malı seçin. Xammal və resept üçün istifadə edilən malları menyuya çıxarmayın.'),h('label',null,'Mal axtarışı',h('input',{value:query,onChange:e=>setQuery(e.target.value),placeholder:'Ad və ya barkod'})),loading&&h('p',{role:'status'},'Mallar alınır…'),error&&h('p',{role:'alert'},error),...goods.filter(g=>!g.menuActive&&[g.name,g.barcode].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0,80).map(g=>h('button',{type:'button',key:g.id,disabled:busy||g.basePriceMinor<=0,onClick:async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const r=await psBusinessCall('catalog.publish',{ingredientId:g.id});if(!r.success)throw Error(r.error?.message||'Əlavə edilmədi');window.dispatchEvent(new Event('possistem-catalog-changed'));await onSaved(r.data);onClose();}catch(e){setError(e.message)}finally{lock.current=false;setBusy(false)}}},h('strong',null,g.name),h('span',null,g.basePriceMinor>0?formatMoney(g.basePriceMinor):'Əvvəlcə satış qiyməti yazın'))))});}
+function PsStockMenuPicker({ onClose, onSaved, categories, categoryId }) {
+  const h = psH;
+  const [goods, setGoods] = reactExports.useState([]);
+  const [query, setQuery] = reactExports.useState('');
+  const [selected, setSelected] = reactExports.useState(null);
+  const [price, setPrice] = reactExports.useState('');
+  const [category, setCategory] = reactExports.useState(categoryId);
+  const [busy, setBusy] = reactExports.useState(false);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [error, setError] = reactExports.useState('');
+  const lock = reactExports.useRef(false);
+
+  reactExports.useEffect(() => {
+    let live = true;
+    void window.pos.erp.call('goods.list', {}).then(result => {
+      if (!result.success) throw Error(result.error?.message || 'Mallar alınmadı');
+      if (live) setGoods((result.data.goods || []).filter(good => !good.menuActive));
+    }).catch(cause => { if (live) setError(cause.message); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, []);
+
+  async function publish() {
+    if (lock.current || !selected) return;
+    const salePriceMinor = psMoneyIn(price);
+    if (!psStockInputValid(price) || !Number.isSafeInteger(salePriceMinor) || salePriceMinor <= 0) {
+      setError('Satış qiymətini 0 ₼-dən böyük yazın.');
+      return;
+    }
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await psBusinessCall('catalog.stockEdit', {
+        ingredientId: selected.id, name: selected.name, salePriceMinor,
+        categoryId: category || '', publish: true
+      }, newIdempotencyKey());
+      if (!result.success) throw Error(result.error?.message || 'Mal menyuya əlavə edilmədi');
+      window.dispatchEvent(new Event('possistem-catalog-changed'));
+      await onSaved(result.data.menu);
+      onClose();
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  const term = query.trim().toLocaleLowerCase('az');
+  const matches = goods.filter(good => [good.name, good.barcode].some(
+    value => String(value || '').toLocaleLowerCase('az').includes(term)));
+  return jsxRuntimeExports.jsx(PsAdminDialog, {title: 'Menyuya mal əlavə et', busy, onClose: () => { if (!lock.current) onClose(); },
+    children: h('div', {className: 'ps-stock-menu-picker'},
+      selected ? h(reactExports.Fragment, null,
+        h('div', {className: 'ps-menu-pick-selection'},
+          h('strong', null, selected.name),
+          h(OpsButton, {tone: 'quiet', disabled: busy, onClick: () => { setSelected(null); setError(''); }}, 'Malı dəyiş')),
+        h('label', null, 'Menyu kateqoriyası',
+          h(PsCategoryPick, {categories, value: category, onChange: setCategory, blank: 'Mallar', label: 'Menyu kateqoriyası'})),
+        h(OpsField, {label: 'Satış qiyməti (₼)', value: price, onChange: setPrice, placeholder: '0.00'}),
+        error ? h('p', {role: 'alert', className: 'ps-order-sizes-error'}, error) : null,
+        h(OpsButton, {disabled: busy, onClick: publish}, busy ? 'Göndərilir…' : 'Menyuya əlavə et')
+      ) : h(reactExports.Fragment, null,
+        h('label', null, 'Anbar malı', h('input', {type: 'search', value: query,
+          onChange: event => setQuery(event.target.value), placeholder: 'Ad və ya barkod'})),
+        loading ? h('p', {role: 'status'}, 'Mallar alınır…') : null,
+        error ? h('p', {role: 'alert', className: 'ps-order-sizes-error'}, error) : null,
+        !loading && !error && !matches.length ? h('p', null, 'Uyğun anbar malı tapılmadı.') : null,
+        h('div', {className: 'ps-menu-pick-results'}, matches.slice(0, 40).map(good =>
+          h('button', {type: 'button', key: good.id, onClick: () => {
+            setSelected(good);
+            setPrice(good.basePriceMinor > 0 ? (good.basePriceMinor / 100).toFixed(2) : '');
+            setError('');
+          }}, h('strong', null, good.name), h('span', null, good.barcode || good.unit)))),
+        matches.length > 40 ? h('small', null, 'Digər malları tapmaq üçün axtarışdan istifadə edin.') : null))
+  });
+}

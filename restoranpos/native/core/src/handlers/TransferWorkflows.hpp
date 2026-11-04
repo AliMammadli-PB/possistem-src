@@ -332,8 +332,10 @@ inline std::optional<Json> run(Context &c, const ipc::Request &r) {
         // Failing events go behind fresh ones: one refusal never holds up the rest.
         c.db().prepare("SELECT id,transfer_id AS transferId,to_device_id AS "
                        "deviceId,attempts,payload_json AS payload FROM "
-                       "transfer_outbox WHERE delivered_at IS NULL ORDER BY "
-                       "attempts,rowid LIMIT 50");
+                       "transfer_outbox o WHERE delivered_at IS NULL AND NOT EXISTS "
+                       "(SELECT 1 FROM transfer_outbox earlier WHERE earlier.transfer_id=o.transfer_id "
+                       "AND earlier.delivered_at IS NULL AND earlier.rowid<o.rowid) "
+                       "ORDER BY attempts,rowid LIMIT 50");
     auto rows = q.rows();
     for (auto &x : rows)
       x["payload"] = Json::parse(x.at("payload").get<std::string>());

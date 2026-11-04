@@ -2407,6 +2407,25 @@ html body .ps-pin-layout-1930 .ps-staff-pin-error,html body .ps-pin-layout-1930 
 
 
 
+
+/* Menu publishing and the portion editor */
+.ps-stock-menu-picker>label{display:grid;gap:5px;font-weight:650}
+.ps-stock-menu-picker input,.ps-stock-menu-picker select{width:100%;min-height:42px;border:1px solid var(--ps-line,#bdcfe8);border-radius:7px;padding:6px 10px;background:var(--ps-surface,#fff);color:inherit}
+.ps-menu-pick-results{display:grid;max-height:42vh;overflow:auto;border-block:1px solid var(--ps-line,#bdcfe8)}
+.ps-menu-pick-results>button,.ps-menu-pick-selection{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:8px 10px;text-align:start}
+.ps-menu-pick-results>button+button{border-top:1px solid var(--ps-line,#bdcfe8)}
+.ps-menu-pick-results>button:hover,.ps-menu-pick-results>button:focus-visible{background:var(--ps-soft,#eef5ff);color:#173c70}
+.ps-menu-pick-results span{font-size:.8rem}
+.ps-recipe-row.ps-recipe-simple-row{grid-template-columns:minmax(0,1fr) minmax(8rem,10rem) 2.5rem}
+.ps-recipe-chips{max-height:11rem;overflow:auto}
+@media(max-width:530px){.ps-recipe-row.ps-recipe-simple-row{grid-template-columns:minmax(0,1fr) 2.5rem}}
+
+
+
+
+
+
+
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

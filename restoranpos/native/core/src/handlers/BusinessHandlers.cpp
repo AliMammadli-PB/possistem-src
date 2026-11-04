@@ -247,7 +247,7 @@ void registerBusiness(const ContextPtr& ctx) {
                 auto u=ctx->db().prepare("UPDATE ingredients SET name=:n,sale_price_minor=:p,updated_at=:at WHERE id=:id");u.bind(":n",name).bind(":p",price).bind(":at",nowMs()).bind(":id",id);u.exec();
                 ctx->auditRequired("catalog.stockEdit","ingredient",id,Json{{"before",before},{"name",name},{"salePriceMinor",price}});
                 out=Json{{"id",id},{"name",name},{"salePriceMinor",price}};
-                if(r.payload.value("publish",false))out["menu"]=publishStock(*ctx,id);
+                if(r.payload.value("publish",false))out["menu"]=publishStock(*ctx,id,r.payload.value("categoryId",std::string{}));
             } else out=publishStock(*ctx,id,r.payload.value("categoryId",std::string{}));
             if(!key.empty())idem.complete(key,out,"ingredient",id);
             tx.commit();return out;

@@ -6,7 +6,7 @@ import {requireCustomer} from '../plugins/customer-auth.js';
 import {surfaceAccess} from './access.js';
 import {areaAllowed} from '../lib/access-areas.js';
 import {inventoryEnabled} from './inventory-access.js';
-import {ownerBranchDevices,branchOnline,branchVersionSupported,branchCallKind,branchRpc} from './cloud-branches.js';
+import {ownerBranchDevices,branchOnline,branchVersionSupported,branchTransferSupported,branchCallKind,branchRpc} from './cloud-branches.js';
 
 const Call=z.object({method:z.string().min(1).max(64),payload:z.record(z.unknown()).optional(),idempotencyKey:z.string().min(1).max(120).optional()});
 const Body=z.object({deviceId:z.string().uuid(),requestId:z.string().uuid(),calls:z.array(Call).min(1).max(16),defer:z.boolean().optional(),fresh:z.boolean().optional()});
@@ -26,6 +26,8 @@ export function warehouseArea(c:CallType):string[]{
   return ['transactions','cashes'];
  }
  if(/^(goods|ingredients|categories|catalog|recipes)\./.test(m))return ['product'];
+ if(m==='inventory.transfer')return ['move','anbar'];
+ if(m.startsWith('warehouses.'))return ['anbar','stock'];
  if(m.startsWith('inventory.'))return ['stock','enter','loss','inventory','anbar'];
  if(m.startsWith('stocktake.'))return ['inventory','anbar'];
  if(/^(suppliers|supplierItems|purchases|replenish)\./.test(m))return ['supply'];
@@ -104,13 +106,14 @@ WARM_CALLS.push({method:'inventory.movements',payload:{limit:1000}},{method:'sto
 type WarmProfile={dayFrom:number;dayTo:number;month:string;monthFrom:number;monthTo:number};
 const WarmQuery=z.object({dayFrom:z.coerce.number().int().min(0).max(8640000000000000),dayTo:z.coerce.number().int().min(0).max(8640000000000000),month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),monthFrom:z.coerce.number().int().min(0).max(8640000000000000),monthTo:z.coerce.number().int().min(0).max(8640000000000000)}).refine(q=>q.dayTo>q.dayFrom&&q.dayTo-q.dayFrom<=28*3600000&&q.monthTo>q.monthFrom&&q.monthTo-q.monthFrom<=32*86400000);
 const warmCalls=(profile?:WarmProfile)=>{const date=new Date(Date.now()+14400000),year=date.getUTCFullYear(),month=date.getUTCMonth();const defaults={month:date.toISOString().slice(0,7),from:Date.UTC(year,month,1)-14400000,to:Date.UTC(year,month+1,1)-14400000};const calls=WARM_CALLS.map(c=>c.method==='salary.list'?{...c,payload:profile?{month:profile.month,from:profile.monthFrom,to:profile.monthTo}:defaults}:c);if(profile)calls.push({method:'cashAccounts.list',payload:{from:profile.dayFrom,to:profile.dayTo}});return calls;};
-const entityId=(c:CallType)=>String(c.payload?.id||c.payload?.ingredientId||c.payload?.purchaseId||c.payload?.saleId||c.payload?.documentId||c.payload?.accountId||c.payload?.customerId||c.payload?.supplierId||'');
+const entityId=(c:CallType)=>String(c.payload?.id||c.payload?.ingredientId||c.payload?.menuItemId||c.payload?.purchaseId||c.payload?.saleId||c.payload?.documentId||c.payload?.accountId||c.payload?.customerId||c.payload?.supplierId||'');
 const guardRead=(c:CallType):CallType|null=>{
- const id=entityId(c);if(!id)return null;if(c.method==='business.call'&&c.payload?.action==='correct')return {method:'business.call',payload:{action:'document.get',kind:c.payload?.kind}};
+ const id=entityId(c);if(!id)return null;if(c.method==='recipes.save')return {method:'recipes.get',payload:{menuItemId:id}};
+ if(c.method==='business.call'&&c.payload?.action==='correct')return {method:'business.call',payload:{action:'document.get',kind:c.payload?.kind}};
  const method=({'ingredients.save':'goods.list','ingredients.deactivate':'goods.list','cashAccounts.save':'cashAccounts.list','cashAccounts.deactivate':'cashAccounts.list','customers.save':'customers.list','customers.deactivate':'customers.list','suppliers.save':'suppliers.list','sales.update':'sales.get','sales.delete':'sales.get','purchases.update':'purchases.get','purchases.delete':'purchases.get'} as Record<string,string>)[c.method];
  return method?{method,payload:method.endsWith('.get')?{id}: {}}:null;
 };
-const entityValue=(data:any,id:string):any=>{if(Array.isArray(data))return data.find(r=>String(r.id||r.ingredientId)===id);if(data&&typeof data==='object'){if(String(data.id||data.ingredientId)===id)return data;for(const value of Object.values(data)){const found=entityValue(value,id);if(found!==undefined)return found;}}};
+const entityValue=(data:any,id:string):any=>{if(Array.isArray(data))return data.find(r=>String(r.id||r.ingredientId)===id);if(data&&typeof data==='object'){if(String(data.id||data.ingredientId||data.menuItemId)===id)return data;for(const value of Object.values(data)){const found=entityValue(value,id);if(found!==undefined)return found;}}};
 export const warehouseDeps={requireCustomer,surfaceAccess,devices:ownerBranchDevices,rpc:branchRpc};
 /** Dependency ports keep tests isolated from merchant databases and till queues. */
 export async function registerWarehousePortal(app:FastifyInstance,deps=warehouseDeps){
@@ -166,9 +169,11 @@ export async function registerWarehousePortal(app:FastifyInstance,deps=warehouse
     const v=String(target.app_version||'0.0.0').split('.').map(Number);
     if(!((v[0]||0)>1||v[0]===1&&((v[1]||0)>9||v[1]===9&&(v[2]||0)>=24)))return deny(409,{error:'Menyu redaktəsi üçün kassada Restoran POS 1.9.24 və ya daha yeni versiyanı quraşdırın.',code:'CATALOG_UPDATE_REQUIRED'});
    }
+   if(target.product==='restaurant'&&c.method==='business.call'&&c.payload?.action==='catalog.stockEdit'&&c.payload.categoryId&&!branchTransferSupported(target))
+    return deny(409,{error:'Menyu kateqoriyasını seçmək üçün Restoran POS 1.10.1 lazımdır.',code:'WAREHOUSE_UPDATE_REQUIRED'});
    if(c.method==='business.call'&&c.payload?.action==='transfer.save'){
     const destination=c.payload.toDeviceId;
-    if(destination&&(!devices.some(d=>d.id===destination&&d.product==='market'&&inventoryEnabled(d.license_features))||target.product!=='market'))return deny(403,{error:'Qəbul edən filial bu sahibkara bağlı deyil'});
+    if(destination&&(!devices.some(d=>d.id===destination&&d.product===target.product&&branchTransferSupported(d)&&inventoryEnabled(d.license_features))))return deny(403,{error:'Qəbul edən filial bu sahibkara bağlı deyil'});
     c.payload={...c.payload,fromDeviceId:target.id};
    }
   }
@@ -246,19 +251,20 @@ export async function registerWarehousePortal(app:FastifyInstance,deps=warehouse
   const who=deps.requireCustomer(req,reply);if(!who)return;
   const parsed=Body.safeParse(req.body);if(!parsed.success)return reply.code(400).send({error:'Filial və ya əməliyyat düzgün deyil'});
   const body=parsed.data,devices=await deps.devices(app,who.id),target=devices.find(d=>d.id===body.deviceId);
-   body.calls=body.calls.map((c,i)=>['inventory.adjust','inventory.waste'].includes(c.method)?{...c,idempotencyKey:c.idempotencyKey||body.requestId+':'+i,payload:{...c.payload,idempotencyKey:c.payload?.idempotencyKey||c.idempotencyKey||body.requestId+':'+i}}:c);
+   body.calls=body.calls.map((c,i)=>['inventory.adjust','inventory.waste','inventory.transfer','warehouses.save'].includes(c.method)?{...c,idempotencyKey:c.idempotencyKey||body.requestId+':'+i,payload:{...c.payload,idempotencyKey:c.payload?.idempotencyKey||c.idempotencyKey||body.requestId+':'+i}}:c);
   if(!target)return reply.code(403).send({error:'Filial bu sahibkara bağlı deyil və ya lisenziya aktiv deyil'});
   if(!inventoryEnabled(target.license_features))return reply.code(403).send({error:'Bu filialın anbar modulu aktiv deyil'});
   const authorized=await authorize(req,reply,who.id,target,devices,body);if(!authorized)return;const {grants}=authorized;
   if(body.calls.some(c=>c.method==='business.call'&&c.payload?.action==='transfer.targets')){
-   if(body.calls.length!==1||target.product!=='market')return reply.code(400).send({error:'Transfer hədəfləri ayrıca sorğulanmalıdır'});
-   const id=String(body.calls[0]!.payload?.deviceId||target.id),destination=devices.find(d=>d.id===id&&d.product==='market'&&inventoryEnabled(d.license_features));
+   if(!branchTransferSupported(target))return reply.code(409).send({error:'Bu filialın POS proqramını yeniləyin.'});
+   if(body.calls.length!==1)return reply.code(400).send({error:'Transfer hədəfləri ayrıca sorğulanmalıdır'});
+   const id=String(body.calls[0]!.payload?.deviceId||target.id),destination=devices.find(d=>d.id===id&&d.product===target.product&&branchTransferSupported(d)&&inventoryEnabled(d.license_features));
    if(!destination)return reply.code(403).send({error:'Qəbul edən filial bu sahibkara bağlı deyil'});
    const call={method:'warehouses.list',payload:{}},cached=await offline.get(who.id,destination.id,call);
    const result:any=!branchOnline(destination)&&cached?{results:[cached.result_json]}:await deps.rpc(app,req,reply,{customerId:who.id,source:target,target:destination,body:{requestId:body.requestId,calls:[call]},auditAction:'owner.warehouse.rpc',timeoutMs:10000});
    if(reply.sent)return result;
    const r=result.results?.[0];if(!r?.success)return {results:[r],deviceId:target.id,requestId:body.requestId};
-   return {results:[{success:true,data:{deviceId:target.id,warehouses:r.data?.warehouses||[],devices:devices.filter(d=>d.product==='market').map(d=>({deviceId:d.id,name:d.name,branchName:d.name,terminalName:d.register_name||d.hostname,online:branchOnline(d),supported:branchVersionSupported(d)}))},error:null}],deviceId:target.id,requestId:body.requestId};
+   return {results:[{success:true,data:{deviceId:target.id,localDeviceId:target.id,defaultWarehouseId:(r.data?.warehouses||[]).find((w:any)=>w.active!==false&&w.active!==0)?.id||'',warehouses:r.data?.warehouses||[],devices:devices.filter(d=>d.product===target.product&&inventoryEnabled(d.license_features)).map(d=>({deviceId:d.id,name:d.name,branchName:d.name,terminalName:d.register_name||d.hostname,online:branchOnline(d),supported:branchTransferSupported(d)}))},error:null}],deviceId:target.id,requestId:body.requestId};
   }
 
   if(body.defer&&body.calls.some(c=>branchCallKind(c)==='w')){
