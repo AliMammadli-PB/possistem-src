@@ -22,6 +22,7 @@ public:
         pos::handlers::registerGuests(fixture_.contextPtr());
         pos::handlers::registerTables(fixture_.contextPtr());
         pos::handlers::registerDelivery(fixture_.contextPtr());
+        pos::handlers::registerBusiness(fixture_.contextPtr());
     }
 
     pos::Json call(const std::string& method, pos::Json payload) {
@@ -101,7 +102,17 @@ TEST_CASE("the guest pays the courier: the bill sits on the courier until handed
     f.call("delivery.settle", pos::Json{{"deliveryIds", pos::Json::array({deliveryId})}});
     row = f.delivery(deliveryId);
     REQUIRE(row.at("money") == "paid");
-    REQUIRE(row.at("status") == "delivered");
+    REQUIRE(row.at("status") == "picked_up");
+    const auto documents=f.call("business.call",{{"action","documents"}}).at("documents");
+    REQUIRE(documents.size()==1);
+    REQUIRE(documents[0].at("type")=="courier");
+    REQUIRE(documents[0].at("amountMinor")==700);
+    const auto detail=f.call("business.call",{{"action","document.get"},{"type","courier"},{"id",deliveryId}}).at("document");
+    REQUIRE(detail.at("courierName")=="Rauf");
+    REQUIRE(detail.at("order_id")==orderId);
+    REQUIRE(f.call("customers.list",{{"kind","customer"}}).at("customers").empty());
+    f.call("delivery.setStatus",{{"deliveryId",deliveryId},{"status","delivered"}});
+    REQUIRE(f.delivery(deliveryId).at("status")=="delivered");
     REQUIRE(f.call("customers.get", pos::Json{{"customerId", sent.at("partnerId")}}).at("debtMinor") == 0);
     REQUIRE_THROWS_AS(f.call("delivery.settle", pos::Json{{"deliveryIds", pos::Json::array({deliveryId})}}), pos::PosError);
 
@@ -117,7 +128,12 @@ TEST_CASE("paid at the till: closed by the payment, nothing owed by the courier"
     f.addDish(orderId);
     f.call("delivery.dispatch", pos::Json{{"orderId", orderId}, {"courierId", courier}, {"mode", "paid"}});
     REQUIRE(f.delivery(start.at("id")).at("money") == "open");
-    f.call("payments.createCash", pos::Json{{"orderId", orderId}, {"amountMinor", 700}, {"tenderedMinor", 700}});
+    f.call("payments.createCard", pos::Json{{"orderId", orderId}, {"amountMinor", 700}});
+    const auto courierStatus=f.call("couriers.list",pos::Json::object()).at("couriers")[0];
+    REQUIRE(courierStatus.at("openCount")==1);
+    REQUIRE(courierStatus.at("dueMinor")==0);
+    f.call("delivery.setStatus",{{"deliveryId",start.at("id")},{"status","delivered"}});
+    REQUIRE(f.call("couriers.list",pos::Json::object()).at("couriers")[0].at("openCount")==0);
     const auto row = f.delivery(start.at("id"));
     REQUIRE(row.at("money") == "paid");
     REQUIRE(row.at("dueMinor") == 0);

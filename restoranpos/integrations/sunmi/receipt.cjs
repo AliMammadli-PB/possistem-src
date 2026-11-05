@@ -21,7 +21,13 @@ function buildReceipt(snapshot,config,parent){
  let rows=(snapshot.items||[]).filter(x=>x.quantityMilli>0&&x.lineTotalMinor>0).map(x=>({...x}));
  if(snapshot.serviceMinor>0)rows.push({lineId:'service',name:'Xidmət haqqı',barcode:'service',isService:true,unit:'ədəd',quantityMilli:1000,lineTotalMinor:snapshot.serviceMinor});
  if(!rows.length)invalid('Fiskal çekin məhsulları yoxdur.');
- const amounts=allocate(total,rows.map(x=>minor(x.lineTotalMinor,'Sətir')));
+ const minimumRow=snapshot.kind==='sale'?rows.findIndex(row=>row.lineId==='table-minimum'&&row.isService):-1;
+ const minimum=minimumRow<0?0:minor(rows[minimumRow].lineTotalMinor,'Minimum masa fərqi');
+ if(minimum>total)invalid('Minimum masa fərqi yekun məbləği aşır.');
+ const variableRows=rows.filter((_,i)=>i!==minimumRow);
+ const amounts=variableRows.length?allocate(total-minimum,variableRows.map(x=>minor(x.lineTotalMinor,'Sətir'))):[];
+ if(!variableRows.length&&total!==minimum)invalid('Minimum masa fərqi çekin yekununa uyğun deyil.');
+ if(minimumRow>=0)amounts.splice(minimumRow,0,minimum);
  const payments=snapshot.payment||{};
  const cash=minor(payments.cashMinor||0,'Nağd'),card=minor(payments.cardMinor||0,'Kart'),credit=minor(payments.creditMinor||0,'Nisyə'),bonus=minor(payments.bonusMinor||0,'Bonus'),deposit=minor(payments.depositMinor||0,'Avans');
  if(cash+card+credit+bonus+deposit!==total)invalid('Nağd, kart, nisyə, bonus və avansın cəmi çekə uyğun deyil.');

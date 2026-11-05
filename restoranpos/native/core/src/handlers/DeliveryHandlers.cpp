@@ -84,7 +84,10 @@ void registerDelivery(const ContextPtr& ctx) {
                 "       c.user_id AS userId, u.full_name AS staffName, "
                 "       (SELECT COUNT(*) FROM delivery_orders d "
                 "         WHERE d.courier_id = c.id "
-                "           AND d.status IN ('assigned','picked_up')) AS openCount "
+                "           AND d.status IN ('assigned','picked_up')) AS openCount, "
+                "       (SELECT COALESCE(SUM(o.account_minor),0) FROM delivery_orders d JOIN orders o ON o.id=d.order_id "
+                "         WHERE d.courier_id=c.id AND d.pay_mode='courier' AND d.settled_at IS NULL "
+                "           AND o.status IN ('paid','closed')) AS dueMinor "
                 "FROM couriers c LEFT JOIN users u ON u.id = c.user_id "
                 "WHERE c.active = 1 ORDER BY c.name");
             return Json{{"couriers", stmt.rows()}};
@@ -376,6 +379,8 @@ void registerDelivery(const ContextPtr& ctx) {
             services::Idempotency idem(*ctx);
             const auto key = getOr<std::string>(request.payload, "idempotencyKey", request.idempotencyKey);
             if (auto replay = idem.begin(key, "delivery.settle", request.payload)) return *replay;
+            const auto destination = services::CashService(*ctx).resolveAccount(accountId);
+            require(!destination.empty(), "Pulu qəbul edən kassanı seçin");
             const auto now = nowMs();
             Money total = 0;
             std::int64_t settled = 0;
@@ -407,14 +412,13 @@ void registerDelivery(const ContextPtr& ctx) {
                         "  ELSE amount_minor END), 0) FROM customer_ledger WHERE customer_id = :id), updated_at = :now WHERE id = :id");
                     debt.bind(":id", partner).bind(":now", now);
                     debt.exec();
-                    services::CashService(*ctx).accountMove(accountId, amount, "debt_in", "delivery", raw.get<std::string>(),
+                    services::CashService(*ctx).accountMove(destination, amount, "debt_in", "delivery", raw.get<std::string>(),
                                                             "Kuryer: " + row.columnText(6) + " · #" + number);
                 }
                 auto done = ctx->db().prepare(
                     "UPDATE delivery_orders SET settled_at = :now, settled_account_id = :account, "
-                    "  status = CASE WHEN status IN ('pending','assigned','picked_up') THEN 'delivered' ELSE status END, "
-                    "  delivered_at = COALESCE(delivered_at, :now), updated_at = :now WHERE id = :id");
-                done.bind(":now", now).bind(":account", accountId).bind(":id", raw.get<std::string>());
+                    "  updated_at = :now WHERE id = :id");
+                done.bind(":now", now).bind(":account", destination).bind(":id", raw.get<std::string>());
                 done.exec();
                 total += amount;
                 settled += 1;

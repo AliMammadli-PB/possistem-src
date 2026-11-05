@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 67;
+inline constexpr int kSchemaVersion = 69;
 
 namespace detail {
 
@@ -4487,6 +4487,68 @@ END;
     return sql;
 }
 
+inline const std::string& migrationSql67() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1787);
+        s += R"MIGSQL(ALTER TABLE document_cash_links ADD COLUMN salary_adjustment_id TEXT REFERENCES customer_ledger(id);
+
+-- Backfill only when the original transaction identifies exactly one pair.
+UPDATE document_cash_links AS link
+SET salary_adjustment_id = (
+  SELECT CASE WHEN COUNT(*)=1 THEN MIN(l.id) END
+  FROM salary_payments p JOIN customer_ledger l
+    ON l.customer_id=p.customer_id AND l.created_at=p.created_at AND l.actor_user_id IS p.actor_user_id
+  WHERE p.id=link.doc_id AND p.kind='full' AND l.kind='adjustment' AND l.note='Maaşdan tutuldu'
+    AND NOT EXISTS (
+      SELECT 1 FROM salary_payments other WHERE other.id<>p.id AND other.kind='full'
+        AND other.customer_id=p.customer_id AND other.created_at=p.created_at AND other.actor_user_id IS p.actor_user_id
+    )
+)
+WHERE link.doc_type='salary';
+
+CREATE TABLE cash_transfer_documents (
+    id TEXT PRIMARY KEY,
+    from_id TEXT NOT NULL REFERENCES cash_accounts(id),
+    to_id TEXT NOT NULL REFERENCES cash_accounts(id),
+    amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+    note TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    actor_user_id TEXT,
+    CHECK (from_id <> to_id)
+);
+
+-- The original implementation stored each transfer as exactly two ledger legs.
+INSERT INTO cash_transfer_documents(id,from_id,to_id,amount_minor,note,created_at,actor_user_id)
+SELECT a.ref_id,a.account_id,b.account_id,b.amount_minor,a.note,a.created_at,a.actor_user_id
+FROM cash_account_moves a JOIN cash_account_moves b ON b.ref_id=a.ref_id AND b.ref_type='transfer'
+WHERE a.ref_type='transfer' AND a.ref_id<>'' AND a.amount_minor<0 AND b.amount_minor=-a.amount_minor
+  AND a.account_id<>b.account_id
+  AND (SELECT COUNT(*) FROM cash_account_moves m WHERE m.ref_type='transfer' AND m.ref_id=a.ref_id)=2;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql68() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(522);
+        s += R"MIGSQL(ALTER TABLE payments ADD COLUMN is_deposit INTEGER NOT NULL DEFAULT 0 CHECK (is_deposit IN (0,1));
+ALTER TABLE orders ADD COLUMN prepaid_deposit_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN minimum_table_minor INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX idx_payment_one_deposit ON payments(order_id)
+    WHERE is_deposit=1 AND status NOT IN ('declined','canceled','failed');
+CREATE UNIQUE INDEX idx_deposit_bank_rrn ON payments(bank_rrn) WHERE is_deposit=1 AND bank_rrn IS NOT NULL;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -5041,7 +5103,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 67> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 69> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -5109,6 +5171,8 @@ inline constexpr std::array<EmbeddedScript, 67> kMigrations{{
     {65, "065_system_login_partner.sql", "811695fd", &detail::migrationSql64},
     {66, "066_menu_subcategories_components.sql", "007fcba8", &detail::migrationSql65},
     {67, "067_shared_catalog_categories.sql", "94ea9518", &detail::migrationSql66},
+    {68, "068_financial_documents.sql", "117f904d", &detail::migrationSql67},
+    {69, "069_prepaid_deposits.sql", "76f1a7e5", &detail::migrationSql68},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

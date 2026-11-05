@@ -124,7 +124,7 @@ Json PaymentService::load(const std::string& paymentId) {
         "       p.seat, p.terminal_ref AS terminalRef, p.card_last4 AS cardLast4, "
         "       p.parent_payment_id AS parentPaymentId, p.attempt, "
         "       p.resolution_note AS resolutionNote, p.created_at AS createdAt, "
-        "       p.updated_at AS updatedAt, u.full_name AS cashierName "
+        "       p.updated_at AS updatedAt, u.full_name AS cashierName, p.is_deposit AS isDeposit "
         "FROM payments p LEFT JOIN users u ON u.id = p.user_id WHERE p.id = :paymentId");
     stmt.bind(":paymentId", paymentId);
 
@@ -191,14 +191,15 @@ void PaymentService::refreshOrderPaymentStatus(const std::string& orderId) {
     if (status == "closed" || status == "voided") return;
 
     auto paidCount = ctx_.db().prepare(
-        "SELECT COUNT(*) FROM payments WHERE order_id = :orderId AND status = 'approved'");
+        "SELECT COUNT(*), COUNT(CASE WHEN is_deposit=0 THEN 1 END) FROM payments WHERE order_id = :orderId AND status = 'approved'");
     paidCount.bind(":orderId", orderId);
     const bool anyPaid = paidCount.step() && paidCount.columnInt(0) > 0;
+    const bool hasFinalPayment = anyPaid && paidCount.columnInt(1) > 0;
 
     const auto now = nowMs();
 
     // Fully settled with no unresolved card rows → close immediately and free the table.
-    if (remaining == 0 && anyPaid && unresolvedCount(orderId) == 0) {
+    if (remaining == 0 && hasFinalPayment && unresolvedCount(orderId) == 0) {
         auto update = ctx_.db().prepare(
             "UPDATE orders SET status = 'closed', closed_at = :now, updated_at = :now, "
             "       closed_by = COALESCE(closed_by, :by) WHERE id = :orderId");
@@ -234,7 +235,7 @@ void PaymentService::refreshOrderPaymentStatus(const std::string& orderId) {
     }
 
     std::string next = status;
-    if (remaining == 0 && anyPaid) next = "paid";
+    if (remaining == 0 && hasFinalPayment) next = "paid";
     else if (anyPaid) next = "partially_paid";
 
     if (next != status) {

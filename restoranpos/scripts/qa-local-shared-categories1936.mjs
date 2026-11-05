@@ -148,6 +148,7 @@ try{
  }
  assert.deepEqual(pizzaPage.errors,[]);
  await pizzaPage.close();
+ const nested=await product('İç-içə resept sınağı',1200);
  const costingPage=await open('page=costing','admin/inventory');
  const recipesView=costingPage.getByRole('button',{name:'Reseptlər',exact:true});
  const reportView=costingPage.getByRole('button',{name:'Maya və qazanc',exact:true});
@@ -176,8 +177,41 @@ try{
  await d.waitFor({state:'detached'});
  const recipe=must(await core.call('recipes.get',{menuItemId:pizza28}));
  assert.ok(recipe.lines.some(line=>line.qtyMilli===200));
+ assert.ok(recipe.linkedIngredientId);
+ must(await core.call('recipes.save',{menuItemId:nested,lines:[{ingredientId:recipe.linkedIngredientId,qtyMilli:1000}]},key()));
  await costingPage.getByRole('checkbox',{name:'Yalnız reseptsiz'}).check();
  assert.equal(await costingPage.getByRole('row',{name:/Marqarit pizza · 28 sm/}).count(),0);
+ await costingPage.getByRole('checkbox',{name:'Yalnız reseptsiz'}).uncheck();
+ await costingPage.getByRole('searchbox',{name:'Yemək axtar'}).fill('İç-içə resept');
+ await costingPage.getByRole('row',{name:/İç-içə resept/}).getByRole('button',{name:/Resept/}).click();
+ d=costingPage.getByRole('dialog',{name:/Resept.*İç-içə/});
+ const search=d.getByRole('searchbox',{name:'Tərkib axtar'});
+ const save=d.getByRole('button',{name:'Saxla',exact:true});
+ for(const [width,height] of [[1536,816],[1000,650],[390,844]]) {
+  await costingPage.setViewportSize({width,height});
+  await search.fill('');
+  const before=await d.boundingBox(),button=await save.boundingBox();
+  for(const query of ['Pizza unu','nəticə-yoxdur-1103']) {
+   await search.fill(query);
+   const after=await d.boundingBox(),buttonAfter=await save.boundingBox();
+   assert.ok(Math.abs(before.width-after.width)<1);
+   assert.ok(Math.abs(button.y-buttonAfter.y)<1);
+  }
+ }
+ await d.getByRole('button',{name:'Hazır resept',exact:true}).click();
+ await search.fill('Marqarit pizza');
+ await d.getByRole('button',{name:/Marqarit pizza · 28 sm/}).click();
+ const conversion=d.getByRole('group',{name:'Anbar sətrini dəyiş'});
+ await conversion.getByRole('button',{name:'Əvəz et',exact:true}).click();
+ await d.getByLabel('Marqarit pizza · 28 sm porsiya sayı').fill('2');
+ await save.click();
+ await d.waitFor({state:'detached'});
+ const nestedRecipe=must(await core.call('recipes.get',{menuItemId:nested}));
+ assert.equal(nestedRecipe.lines.length,0);
+ assert.equal(nestedRecipe.components.length,1);
+ assert.equal(nestedRecipe.components[0].menuItemId,pizza28);
+ assert.equal(nestedRecipe.components[0].qtyMilli,2000);
+ console.log('PASS 1.10.3 UI: nested recipe and stable search at 1536, 1000 and 390 px.');
  await costingPage.setViewportSize({width:1000,height:650});
  assert.ok(await costingPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  assert.deepEqual(costingPage.errors,[]);

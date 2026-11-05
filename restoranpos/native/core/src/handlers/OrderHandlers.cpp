@@ -672,6 +672,7 @@ void registerOrders(const ContextPtr& ctx) {
             services::OrderService orders(*ctx);
             db::Transaction txn(ctx->db());
             const Json editable = orders.requireEditable(orderId);
+            require(editable.value("prepaidDepositMinor",Money{0})==0,"Ödənilmiş depozit bu üsulla dəyişdirilə bilməz");
 
             auto update = ctx->db().prepare(
                 "UPDATE orders SET deposit_minor = :deposit, updated_at = :now "
@@ -1051,6 +1052,14 @@ void registerOrders(const ContextPtr& ctx) {
                 }
 
                 services::queueSunmiSale(*ctx, orderId);
+                if (refreshed.value("prepaidDepositMinor",Money{0})>0 &&
+                    ctx->setting("sunmi.suppressLocalReceipt","0")!="1") {
+                    auto receipt=ctx->db().prepare(
+                        "INSERT INTO print_jobs(id,order_id,kind,target_printer,status,next_attempt_at,created_at,updated_at) "
+                        "VALUES(:id,:order,'customer_receipt',:printer,'queued',:now,:now,:now)");
+                    receipt.bind(":id",crypto::uuid4()).bind(":order",orderId)
+                        .bind(":printer",ctx->setting("printer.receipt","auto")).bind(":now",now).exec();
+                }
                 orders.logEvent(orderId, "order.closed", Json{{"totalMinor", totals.total}});
                 ctx->enqueueSync("order", orderId, "update", Json{{"status", "closed"}});
                 ctx->audit("order.close", "order", orderId, Json{{"totalMinor", totals.total}});
@@ -1063,6 +1072,10 @@ void registerOrders(const ContextPtr& ctx) {
             if (!tableId.empty()) {
                 ctx->server().emitEvent(protocol::event::kTablesUpdated,
                                         Json{{"tableIds", {tableId}}});
+            }
+            if(result.value("prepaidDepositMinor",Money{0})>0) {
+                drainPrintQueue(*ctx);
+                ctx->server().emitEvent(protocol::event::kPrintUpdated,Json{{"orderId",orderId}});
             }
             return result;
         });

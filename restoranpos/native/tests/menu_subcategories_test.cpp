@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "catch_amalgamated.hpp"
 
 #include "ServiceFixture.hpp"
@@ -225,4 +227,59 @@ TEST_CASE("staff can be renamed; a manager cannot make an administrator or chang
     session.role = "manager";
     x.call("users.setPin", {{"userId", user}, {"pin", "6041"}});  // manager manages staff
     REQUIRE_THROWS_AS(x.call("users.setPin", {{"userId", "usr-admin"}, {"pin", "8425"}}), pos::PosError);
+}
+
+TEST_CASE("recipe saves expand nested portions and rollback conflicting changes","[catalog][recipe][1103]") {
+    MenuFixture x;
+    const auto category=x.category("Test recipes");
+    const auto flour=x.call("ingredients.save",{{"name","Un"},{"unit","kg"}}).at("id").get<std::string>();
+    const auto base=x.product(category,"Xəmir",500);
+    const auto sized=x.product(category,"Pizza · 28 sm",800);
+    const auto large=x.product(category,"Pizza · 30 sm",1000);
+    const auto set=x.product(category,"Menyu",1200);
+    const auto parts=[](const std::string& child,int qty){
+        return pos::Json::array({{{"menuItemId",child},{"qtyMilli",qty}}});
+    };
+    x.call("recipes.save",{{"menuItemId",base},{"lines",pos::Json::array({{{"ingredientId",flour},{"qtyMilli",200}}})}});
+    const auto none=pos::Json::array();
+    x.call("recipes.save",{{"menuItemId",sized},{"lines",none},{"components",parts(base,1000)}});
+    x.call("recipes.save",{{"menuItemId",large},{"lines",none},{"components",parts(base,1500)}});
+    x.call("recipes.save",{{"menuItemId",set},{"lines",none},{"components",parts(large,2000)}});
+    REQUIRE(x.expanded(sized,flour)==200);
+    REQUIRE(x.expanded(large,flour)==300);
+    REQUIRE(x.expanded(set,flour)==600);
+    REQUIRE(x.expanded(set,x.cardOf(base))==0);
+    const auto costing=x.call("reports.costing",pos::Json::object()).at("items");
+    const auto row=std::find_if(costing.begin(),costing.end(),[&](const pos::Json& item){return item.at("id")==base;});
+    REQUIRE(row!=costing.end());
+    REQUIRE(row->at("hasPreparedRecipe")==1);
+    REQUIRE(row->at("linkedIngredientId")==x.cardOf(base));
+    REQUIRE(x.call("recipes.get",{{"menuItemId",set}}).at("components")[0].at("menuItemId")==large);
+
+    x.call("recipes.save",{{"menuItemId",large},{"lines",none}});
+    REQUIRE(x.expanded(set,flour)==600);
+    REQUIRE_THROWS_AS(x.call("recipes.save",{{"menuItemId",base},{"lines",none},{"components",parts(set,1000)}}),pos::PosError);
+    REQUIRE(x.expanded(set,flour)==600);
+    REQUIRE_THROWS_AS(x.call("recipes.save",{{"menuItemId",large},{"lines",pos::Json::array({{{"ingredientId",x.cardOf(base)},{"qtyMilli",1000}}})},{"components",parts(base,1500)}}),pos::PosError);
+    REQUIRE(x.expanded(large,flour)==300);
+
+    x.f.openTill();
+    pos::handlers::registerOrders(x.f.contextPtr());
+    pos::handlers::registerPayments(x.f.contextPtr());
+    pos::handlers::registerSales(x.f.contextPtr());
+    auto order=x.f.db().prepare(
+        "INSERT INTO orders(id,order_number,user_id,status,opened_at,updated_at) "
+        "VALUES('nested-sale','NESTED-1103','usr-admin','open',:at,:at)");
+    order.bind(":at",pos::nowMs()).exec();
+    auto line=x.f.db().prepare(
+        "INSERT INTO order_items(id,order_id,product_id,line_seq,name_snapshot,unit_price_minor,quantity,"
+        "line_total_minor,status,created_at,updated_at) VALUES('nested-line','nested-sale',:dish,1,'Menyu',1200,1,1200,'served',:at,:at)");
+    line.bind(":dish",set).bind(":at",pos::nowMs()).exec();
+    pos::services::InventoryService inventory(x.f.ctx());
+    inventory.move(flour,"wh-main",3000,"adjustment","","Test flour");
+    x.call("payments.createCash",{{"orderId","nested-sale"},{"amountMinor",1200}});
+    REQUIRE(inventory.levelOf(flour,"wh-main")==2400);
+    REQUIRE(inventory.levelOf(x.cardOf(base),"wh-main")==0);
+    x.call("sales.delete",{{"orderId","nested-sale"},{"reason","Sınaq satışı ləğv edildi"}});
+    REQUIRE(inventory.levelOf(flour,"wh-main")==3000);
 }

@@ -7,6 +7,8 @@ import './pos-downloads.css';
 type Product='market'|'restaurant';
 type Release={version:string;size:number;href:string};
 const QR_RELEASE:Release={version:'1.10.2',size:356247747,href:'/pos-updates/Possistem-Setup-1.10.2.exe'};
+const RESTAURANT_PILOT='/pos-updates/pilot/restaurant-1.10.3/Possistem-Setup-1.10.3.exe';
+const RESTAURANT_PILOT_SHA='c939960ae0d5530b0f0f92c8310a60a94b82cc84d1faa6ad5d0976eddce83146';
 const MARKET_RELEASE:Release={version:'1.5.78',size:381429701,href:'/marketpos/updates/MarketPos-Setup-1.5.78.exe'};
 const MARKET_ZIP='/marketpos/updates/MarketPos-Setup-1.5.78-verified.zip';
 const QR_ZIP='/pos-updates/Possistem-Setup-1.10.2-verified.zip';
@@ -27,10 +29,10 @@ export function PosDownloadsPage(){
         <h2>{restaurant?'Restoran POS':'Market POS'}</h2><p className="pos-download-description">{t[product]}</p>
         <dl><div><dt>{t.format}</dt><dd>{release?'v'+release.version:t.loading}</dd></div>{!!release?.size&&<div><dt>.exe</dt><dd>{(release.size/1048576).toFixed(1)} {t.size}</dd></div>}</dl>
         <a className="marketing-button primary pos-download-main" href={release.href} download aria-label={(restaurant?'Restoran POS':'Market POS')+' — '+t.download}>{t.download}<span aria-hidden="true">↓</span></a>
-        <a className="pos-download-zip" href={restaurant?QR_ZIP:MARKET_ZIP} download>{t.zip} <span aria-hidden="true">↗</span></a><p className="pos-download-notice">{t.unsigned}</p>
+        <a className="pos-download-zip" href={restaurant?QR_ZIP:MARKET_ZIP} download>{t.zip} <span aria-hidden="true">↗</span></a>{restaurant&&<a className="pos-download-zip" href={RESTAURANT_PILOT} download>1.10.3 · {t.pilot} <span aria-hidden="true">↓</span></a>}<p className="pos-download-notice">{t.unsigned}</p>
       </article>;
     })}</div>
-    <section className="pos-download-help"><h2>{t.helpTitle}</h2><p>{t.help}</p><details><summary>{t.verify}</summary><p>{t.hash}</p><code>{QR_SHA}</code><p>Market POS 1.5.78 · SHA-256</p><code>485dc36302f95490482f18c29a71a83ee506c8438bdc96ae04395c2f347e4d96</code></details></section>
+    <section className="pos-download-help"><h2>{t.helpTitle}</h2><p>{t.help}</p><details><summary>{t.verify}</summary><p>{t.hash}</p><code>{QR_SHA}</code><p>Restoran POS 1.10.3 · {t.pilot} · SHA-256</p><code>{RESTAURANT_PILOT_SHA}</code><p>Market POS 1.5.78 · SHA-256</p><code>485dc36302f95490482f18c29a71a83ee506c8438bdc96ae04395c2f347e4d96</code></details></section>
     <footer className="pos-download-next"><p>{t.account}</p><div><Link href="/qurasdirma/">{t.guide} <span aria-hidden="true">→</span></Link><Link href="/destek/">{t.support} <span aria-hidden="true">→</span></Link></div></footer>
   </div></section></MarketingLayout>;
 }

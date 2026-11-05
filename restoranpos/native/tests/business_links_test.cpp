@@ -291,3 +291,58 @@ TEST_CASE("system identities stay hidden while created managers and their payrol
  auto& session=x.f.ctx().session();session.role="waiter";session.permissions={"customers.view"};
  REQUIRE_THROWS_AS(x.call("users.list"),pos::PosError);REQUIRE_THROWS_AS(x.biz("staff"),pos::PosError);REQUIRE_THROWS_AS(x.call("salary.list",{{"month","2026-11"},{"from",1},{"to",2000000000000LL}}),pos::PosError);
 }
+
+TEST_CASE("salary, income and cash transfers each have one financial document","[business][documents][1103]") {
+    BusinessFixture x;
+    const auto source=x.till("Mərkəzi xəzinə"),target=x.till("Kassa 2");
+    const auto employee=x.call("customers.save",{{"name","İşçi"},{"kind","employee"},{"salaryMinor",10000}}).at("id");
+    x.call("customers.charge",{{"customerId",employee},{"amountMinor",1500}});
+    x.call("salary.pay",{{"customerId",employee},{"month","2026-11"},{"kind","full"},{"amountMinor",8500},{"accountId",source}});
+    auto docs=x.biz("documents").at("documents");
+    REQUIRE(docs.size()==1);
+    REQUIRE(docs[0].at("type")=="salary");
+    const auto salary=docs[0].at("id");
+    const pos::Json voidSalary{{"id",salary},{"type","salary"},{"cancel",true},{"note","Maaş səhv hesablanıb"}};
+    x.biz("correct",voidSalary,"void-salary");
+    x.biz("correct",voidSalary,"void-salary");
+    REQUIRE(x.balance(source)==0);
+    REQUIRE(x.call("customers.get",{{"customerId",employee}}).at("debtMinor")==1500);
+    const auto income=x.call("income.save",{{"accountId",source},{"amountMinor",9000},{"reason","Qazanc"}}).at("id");
+    REQUIRE(x.balance(source)==9000);
+    REQUIRE(x.biz("document.get",{{"type","income"},{"id",income}}).at("document").at("amount_minor")==9000);
+    const auto transfer=x.call("cashAccounts.transfer",{{"fromId",source},{"toId",target},{"amountMinor",4000}}).at("transferId");
+    REQUIRE(x.balance(source)==5000);
+    REQUIRE(x.balance(target)==4000);
+    const pos::Json edit{{"id",transfer},{"type","cash-transfer"},{"amountMinor",3000},{"accountId",source},{"toAccountId",target}};
+    x.biz("correct",edit,"transfer-edit");
+    x.biz("correct",edit,"transfer-edit");
+    REQUIRE(x.balance(source)==6000);
+    REQUIRE(x.balance(target)==3000);
+    const auto expense=x.call("cash.movement",{{"kind","expense"},{"amountMinor",1000},{"accountId",target},{"reason","Xərc"}}).at("movement").at("id");
+    const pos::Json cancel{{"id",transfer},{"type","cash-transfer"},{"cancel",true},{"note","Təkrar köçürmə"}};
+    REQUIRE_THROWS_AS(x.biz("correct",cancel),pos::PosError);
+    REQUIRE(x.balance(source)==6000);
+    REQUIRE(x.balance(target)==2000);
+    x.biz("correct",{{"id",expense},{"type","expense"},{"cancel",true},{"note","Səhv xərc"}});
+    x.biz("correct",cancel,"transfer-cancel");
+    x.biz("correct",cancel,"transfer-cancel");
+    REQUIRE(x.balance(source)==9000);
+    REQUIRE(x.balance(target)==0);
+    REQUIRE(x.biz("document.get",{{"type","cash-transfer"},{"id",transfer}}).at("document").at("cancelled")==true);
+}
+
+TEST_CASE("restaurant cloud renames preserve warehouse identity and reject duplicate names","[business][cloud][1103]") {
+    BusinessFixture x;
+    const auto original=x.call("cashObjects.save",{{"name","Ayna Sultanova"}});
+    const auto terminal=x.f.ctx().saleTerminalId();
+    x.call("cashAccounts.save",{{"name","Kassa"},{"kind","till"},{"terminalId",terminal},{"objectId",original.at("id")}});
+    const auto branch=pos::crypto::uuid4();
+    const auto renamed=x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Pizza Home Ayna Sultanova"}});
+    REQUIRE(renamed.at("id")==original.at("id"));
+    REQUIRE(renamed.at("warehouseId")==original.at("warehouseId"));
+    REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Pizza Home"}}).at("id")==original.at("id"));
+    REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_objects")==1);
+    x.call("cashObjects.save",{{"name","Ayrı filial"}});
+    REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Ayrı filial"}}).at("conflict")==true);
+    REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_objects WHERE active=1")==2);
+}

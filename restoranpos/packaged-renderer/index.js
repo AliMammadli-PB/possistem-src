@@ -297,7 +297,38 @@ try{const saved=JSON.parse(p.readFileSync(_psLanFile(),"utf8"));c.app.whenReady(
 /* POS_CLOUD_BRANCHES_v1 */
 let _psCloudClient=null;
 function _psCloudInit(){if(!_psCloudClient)_psCloudClient=require("./cloud-branches.cjs").createCloudBranches({credentials:async()=>{const tenant=ft(),device=await J();if(!tenant||!device||tenant.customerId!==device.customerId)throw Error("Sahibkar hesabı aktiv kassaya uyğun deyil");return{token:tenant.token,deviceId:device.deviceId,baseUrl:device.baseUrl};}});return _psCloudClient;}
-async function _psCloudRefresh(){try{if(!ft()||!et)return;const data=await _psCloudInit().list(),device=await J(),own=data.branches?.find(b=>b.deviceId===device?.deviceId);if(!own)return;const current=await b("settings.getAll",{},8000);const name=own.branchId?own.name:"";if(current.data?.settings?.["branch.cloudName"]!==name){const actor=await _psPortalActor();if(actor)await et.invoke("settings.set",{key:"branch.cloudName",value:name},{actor:{userId:actor.id},timeoutMs:8000});}}catch{}}
+let _psCloudRefreshBusy=false;
+let _psCloudBranchConflict="";
+async function _psCloudRefresh(){
+  if(_psCloudRefreshBusy||!ft()||!et||globalThis.__psLanRoute)return;
+  _psCloudRefreshBusy=true;
+  try{
+    const data=await _psCloudInit().list(),device=await J();
+    const own=data.branches?.find(b=>b.deviceId===device?.deviceId);
+    if(!own)return;
+    const actor=await _psPortalActor();
+    if(!actor)return;
+    const options={actor:{userId:actor.id},terminal:_psTerminal(),timeoutMs:8000};
+    const name=own.branchId?own.name:"";
+    if(own.branchId&&name){
+      const synced=await et.invoke("cashObjects.syncRestaurantBranch",{branchId:own.branchId,name},options);
+      if(!synced?.success||synced.data?.conflict){
+        const message=synced?.error?.message||synced?.data?.message||"Filial sinxronlaşdırılmadı";
+        if(message!==_psCloudBranchConflict)v.warn("restaurant_branch_sync_failed",{message});
+        _psCloudBranchConflict=message;
+        return;
+      }
+    }
+    _psCloudBranchConflict="";
+    const current=await et.invoke("settings.getAll",{},options);
+    if(current.success&&current.data?.settings?.["branch.cloudName"]!==name)
+      await et.invoke("settings.set",{key:"branch.cloudName",value:name},options);
+  }catch(error){
+    const message=String(error?.message||error);
+    if(message!==_psCloudBranchConflict)v.warn("restaurant_branch_sync_failed",{message});
+    _psCloudBranchConflict=message;
+  }finally{_psCloudRefreshBusy=false;}
+}
 setInterval(()=>void _psCloudRefresh(),30000).unref();
 let _psTransferSyncBusy=false;
 const _psTransferRetry=new Map();

@@ -2426,6 +2426,31 @@ html body .ps-pin-layout-1930 .ps-staff-pin-error,html body .ps-pin-layout-1930 
 
 
 
+/* Keep the recipe search and footer still when the result count changes. */
+.ps-recipe { min-width: 0; }
+.ps-recipe-picker-types { display: flex; gap: .5rem; flex-wrap: wrap; }
+.ps-recipe .ps-recipe-chips {
+  height: 9rem;
+  flex: none;
+  align-content: flex-start;
+  scrollbar-gutter: stable;
+}
+.ps-recipe .ps-recipe-chip { max-width: 100%; overflow-wrap: anywhere; }
+.ps-recipe .ps-recipe-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--ps-surface, #fff);
+  padding: .625rem 0;
+}
+.ps-admin-dialog:has(.ps-recipe) { width: min(44rem, calc(100vw - 2rem)); max-width: calc(100vw - 2rem); }
+
+
+
+
+
+
+
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

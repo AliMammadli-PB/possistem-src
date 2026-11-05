@@ -302,6 +302,10 @@ ReceiptDocument ReceiptBuilder::customerDocument(const std::string& orderId,
     doc.serviceCharge = order.value("serviceMinor", Money{0});
     doc.depositTotal = order.value("depositMinor", Money{0});
     doc.depositLabel = "Depozit";
+    if (order.value("prepaidDepositMinor",Money{0})>0) {
+        doc.depositTotal = order.value("minimumTableMinor",Money{0});
+        doc.depositLabel = "Minimum masa fərqi";
+    }
     doc.grandTotal = order.value("totalMinor", Money{0});
     doc.amountPaid = order.value("paidMinor", Money{0});
     doc.tipTotal = order.value("tipMinor", Money{0});
@@ -335,7 +339,7 @@ ReceiptDocument ReceiptBuilder::customerDocument(const std::string& orderId,
 
         ReceiptPayment entry;
         entry.method = getOr<std::string>(payment, "method", "");
-        entry.label = paymentLabel(payment);
+        entry.label = (payment.value("isDeposit",0)!=0 ? "Depozit · " : "") + paymentLabel(payment);
         entry.amount = payment.value("amountMinor", Money{0});
         entry.tendered = payment.value("tenderedMinor", Money{0});
         entry.change = payment.value("changeMinor", Money{0});

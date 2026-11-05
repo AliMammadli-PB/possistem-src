@@ -18,6 +18,7 @@
 #include "pos/protocol_generated.hpp"
 #include "pos/services/InventoryService.hpp"
 #include "pos/services/CashService.hpp"
+#include "pos/services/CatalogAdminService.hpp"
 #include "pos/services/Idempotency.hpp"
 
 namespace pos::handlers {
@@ -954,7 +955,10 @@ void registerInventory(const ContextPtr& ctx) {
                 "WHERE r.menu_item_id = :item");
             total.bind(":item", menuItemId);
             total.step();
-            return Json{{"menuItemId", menuItemId}, {"lines", lines}, {"components", components},
+            auto link = ctx->db().prepare("SELECT ingredient_id FROM catalog_goods_links WHERE menu_id=:item");
+            link.bind(":item", menuItemId);
+            const auto linkedIngredientId = link.step() ? link.columnText(0) : std::string{};
+            return Json{{"menuItemId", menuItemId}, {"linkedIngredientId", linkedIngredientId}, {"lines", lines}, {"components", components},
                         {"costMinor", total.columnInt(0)}};
         });
 
@@ -981,6 +985,10 @@ void registerInventory(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT m.id, m.name_az AS name, c.name_az AS category, m.active, "
                 "       m.price_minor AS priceMinor, "
+                "       COALESCE((SELECT l.ingredient_id FROM catalog_goods_links l WHERE l.menu_id=m.id),'') AS linkedIngredientId, "
+                "       (EXISTS(SELECT 1 FROM menu_item_components c WHERE c.menu_item_id=m.id) OR "
+                "        EXISTS(SELECT 1 FROM menu_item_ingredients raw WHERE raw.menu_item_id=m.id AND NOT EXISTS("
+                "          SELECT 1 FROM catalog_goods_links l WHERE l.menu_id=m.id AND l.ingredient_id=raw.ingredient_id))) AS hasPreparedRecipe, "
                 "       COALESCE(SUM(r.qty_milli * " + services::InventoryService::unitCostSql(method, ":warehouse") +
                 "       / 1000), 0) AS costMinor, "
                 "       COUNT(r.ingredient_id) AS lineCount, "
@@ -1112,7 +1120,18 @@ void registerInventory(const ContextPtr& ctx) {
                 insert.exec();
                 saved += 1;
             }
-            ctx->audit("recipe.save", "menu_item", menuItemId, Json{{"lines", saved}});
+            if (request.payload.contains("components")) {
+                services::saveRecipeComponents(*ctx, menuItemId, request.payload["components"]);
+            } else {
+                auto duplicate = ctx->db().prepare(
+                    "SELECT 1 FROM menu_item_components c JOIN catalog_goods_links l ON l.menu_id=c.component_menu_item_id "
+                    "JOIN menu_item_ingredients i ON i.ingredient_id=l.ingredient_id AND i.menu_item_id=c.menu_item_id "
+                    "WHERE c.menu_item_id=:item");
+                duplicate.bind(":item", menuItemId);
+                require(!duplicate.step(), "Hazır resept və ona bağlı anbar malı birlikdə saxlanıla bilməz");
+            }
+            ctx->audit("recipe.save", "menu_item", menuItemId,
+                       Json{{"lines", saved}, {"componentsChanged", request.payload.contains("components")}});
             txn.commit();
 
             return Json{{"menuItemId", menuItemId}, {"lines", saved}};

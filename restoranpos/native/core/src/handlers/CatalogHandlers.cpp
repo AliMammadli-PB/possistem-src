@@ -86,7 +86,7 @@ void registerCatalog(const ContextPtr& ctx) {
                                    "       name_en AS nameEn, icon, accent, image, "
                                    "       sort_order AS sortOrder, parent_id AS parentId, "
                                    "       (SELECT COUNT(*) FROM menu_items m JOIN menu_categories k ON k.id = m.category_id "
-                                   "        WHERE (k.id = c.id OR k.parent_id = c.id) AND m.active = 1) AS itemCount "
+                                   "        WHERE (k.id = c.id OR k.parent_id = c.id) AND m.active = 1 AND m.archived = 0) AS itemCount "
                                    "FROM menu_categories c WHERE active = 1 "
                                    "ORDER BY COALESCE((SELECT p.sort_order FROM menu_categories p WHERE p.id = c.parent_id), sort_order), "
                                    "COALESCE(c.parent_id, c.id), c.parent_id IS NOT NULL, sort_order");

@@ -81,28 +81,6 @@ void ensureCatalogStock(handlers::Context& ctx,const std::string& menuId,const s
     if(active&&!hasRecipe){auto recipe=ctx.db().prepare("INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES(:menu,:ingredient,1000)");recipe.bind(":menu",menuId).bind(":ingredient",ingredient).exec();}
 }
 
-// A set menu's parts. The parts' own recipes are what stock gives up when the menu is sold.
-void saveComponents(handlers::Context& ctx,const std::string& menuId,const Json& components) {
-    require(components.is_array()&&!components.empty()&&components.size()<=40,"Menyuya ən azı bir məhsul əlavə edin");
-    auto drop=ctx.db().prepare("DELETE FROM menu_item_components WHERE menu_item_id=:id");drop.bind(":id",menuId);drop.exec();
-    for(const auto& part:components){
-        require(part.is_object()&&part.contains("menuItemId")&&part["menuItemId"].is_string()&&part.contains("qtyMilli")&&part["qtyMilli"].is_number_integer(),"Menyu məhsulunu düzgün seçin");
-        const auto partId=part["menuItemId"].get<std::string>();const auto qty=part["qtyMilli"].get<std::int64_t>();
-        require(partId!=menuId,"Menyu öz içində ola bilməz");
-        require(qty>0&&qty<=100000,"Menyu məhsulunun sayı düzgün deyil");
-        auto exists=ctx.db().prepare("SELECT 1 FROM menu_items WHERE id=:id AND active=1 AND archived=0");exists.bind(":id",partId);require(exists.step(),"Menyu məhsulu tapılmadı");
-        auto loop=ctx.db().prepare(
-            "WITH RECURSIVE down(item,depth) AS (SELECT :part,0 UNION "
-            "SELECT c.component_menu_item_id,d.depth+1 FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item WHERE d.depth<16) "
-            "SELECT 1 FROM down WHERE item=:menu LIMIT 1");
-        loop.bind(":part",partId).bind(":menu",menuId);require(!loop.step(),"Bu məhsul artıq həmin menyunun içindədir");
-        auto insert=ctx.db().prepare(
-            "INSERT INTO menu_item_components(menu_item_id,component_menu_item_id,qty_milli) VALUES(:menu,:part,:qty) "
-            "ON CONFLICT(menu_item_id,component_menu_item_id) DO UPDATE SET qty_milli=excluded.qty_milli");
-        insert.bind(":menu",menuId).bind(":part",partId).bind(":qty",qty);insert.exec();
-    }
-}
-
 // Sizes live in the name ("Pizza · 28 sm"). The other sizes of a moved dish follow it, so one
 // pizza never sits in two categories.
 void moveSizeSiblings(handlers::Context& ctx,const std::string& id,const std::string& name,const std::string& fromCategory,const std::string& toCategory,Timestamp now) {
@@ -117,6 +95,43 @@ void moveSizeSiblings(handlers::Context& ctx,const std::string& id,const std::st
 }
 
 }  // namespace
+
+// A set menu's parts. The parts' own recipes are what stock gives up when the menu is sold.
+void saveRecipeComponents(handlers::Context& ctx,const std::string& menuId,const Json& components) {
+    require(components.is_array() && components.size() <= 40, "Ən çox 40 hazır resept seçilə bilər");
+    auto drop=ctx.db().prepare("DELETE FROM menu_item_components WHERE menu_item_id=:id");drop.bind(":id",menuId);drop.exec();
+    for(const auto& part:components){
+        require(part.is_object()&&part.contains("menuItemId")&&part["menuItemId"].is_string()&&part.contains("qtyMilli")&&part["qtyMilli"].is_number_integer(),"Menyu məhsulunu düzgün seçin");
+        const auto partId=part["menuItemId"].get<std::string>();const auto qty=part["qtyMilli"].get<std::int64_t>();
+        require(partId!=menuId,"Menyu öz içində ola bilməz");
+        require(qty>0&&qty<=100000,"Menyu məhsulunun sayı düzgün deyil");
+        auto exists=ctx.db().prepare("SELECT 1 FROM menu_items WHERE id=:id AND active=1 AND archived=0");exists.bind(":id",partId);require(exists.step(),"Menyu məhsulu tapılmadı");
+        auto loop = ctx.db().prepare(
+            "WITH RECURSIVE down(item) AS (SELECT :part UNION "
+            "SELECT c.component_menu_item_id FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item) "
+            "SELECT 1 FROM down WHERE item=:menu");
+        loop.bind(":part", partId).bind(":menu", menuId);
+        require(!loop.step(), "Hazır resept bağlantısı dövrə yaradır");
+        auto depth = ctx.db().prepare(
+            "WITH RECURSIVE up(item, n) AS (SELECT :menu,0 UNION "
+            "SELECT c.menu_item_id,u.n+1 FROM up u JOIN menu_item_components c ON c.component_menu_item_id=u.item WHERE u.n<8), "
+            "down(item,n) AS (SELECT :part,0 UNION "
+            "SELECT c.component_menu_item_id,d.n+1 FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item WHERE d.n<8) "
+            "SELECT (SELECT MAX(n) FROM up) + 1 + (SELECT MAX(n) FROM down)");
+        depth.bind(":menu", menuId).bind(":part", partId);
+        depth.step();
+        require(depth.columnInt(0) <= 8, "Hazır reseptlər ən çox 8 səviyyə ola bilər");
+        auto duplicate = ctx.db().prepare(
+            "SELECT 1 FROM catalog_goods_links l JOIN menu_item_ingredients i ON i.ingredient_id=l.ingredient_id "
+            "WHERE l.menu_id=:part AND i.menu_item_id=:menu");
+        duplicate.bind(":part", partId).bind(":menu", menuId);
+        require(!duplicate.step(), "Hazır resepti əlavə etməzdən əvvəl ona bağlı anbar malını tərkibdən çıxarın");
+        auto insert=ctx.db().prepare(
+            "INSERT INTO menu_item_components(menu_item_id,component_menu_item_id,qty_milli) VALUES(:menu,:part,:qty) "
+            "ON CONFLICT(menu_item_id,component_menu_item_id) DO UPDATE SET qty_milli=excluded.qty_milli");
+        insert.bind(":menu",menuId).bind(":part",partId).bind(":qty",qty);insert.exec();
+    }
+}
 
 Json CatalogAdminService::upsertCategory(const Json& payload) {
     const auto nameAz = requireNonEmpty(payload, "nameAz");
@@ -454,7 +469,10 @@ Json CatalogAdminService::upsertProduct(const Json& payload, const std::string& 
         ins.exec();
     }
 
-    if(payload.contains("components"))saveComponents(ctx_,id,payload["components"]);
+    if (payload.contains("components")) {
+        require(payload["components"].is_array() && !payload["components"].empty(), "Menyuya ən azı bir məhsul əlavə edin");
+        saveRecipeComponents(ctx_, id, payload["components"]);
+    }
     ensureCatalogStock(ctx_,id,nameAz,barcode,price,now,stockIngredientId);
     ctx_.auditRequired("catalog.upsertProduct", "menu_item", id,
                        Json{{"priceMinor", price}, {"sku", sku}});

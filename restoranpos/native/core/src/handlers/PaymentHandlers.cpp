@@ -28,13 +28,22 @@ using services::PaymentStatus;
 void captureSunmiRrn(Context& ctx,const std::string& orderId,const Json& payload){
  const auto rrn=getOr<std::string>(payload,"rrn","");if(rrn.empty())return;
  require(rrn.size()==12&&std::all_of(rrn.begin(),rrn.end(),[](unsigned char c){return c>='0'&&c<='9';}),"Bank RRN must have 12 digits");
- auto s=ctx.db().prepare("UPDATE payments SET bank_rrn=:rrn WHERE order_id=:id AND method='card' AND status='approved' AND bank_rrn IS NULL");s.bind(":rrn",rrn).bind(":id",orderId);s.exec();
+ auto s=ctx.db().prepare("UPDATE payments SET bank_rrn=:rrn WHERE order_id=:id AND method IN ('card','mixed') AND status='approved' AND bank_rrn IS NULL");s.bind(":rrn",rrn).bind(":id",orderId);s.exec();
+}
+
+void requireSingleFiscalCardReference(Context& ctx,const std::string& orderId) {
+    if(ctx.settingInt("sunmi.activatedAt",0)<=0) return;
+    auto prior=ctx.db().prepare(
+        "SELECT 1 FROM payments WHERE order_id=:id AND is_deposit=1 AND method='card' AND status='approved'");
+    prior.bind(":id",orderId);
+    require(!prior.step(),"Bu fiskal çekdə kart depozitinin RRN-i var. Qalan məbləği nağd və ya nisyə bağlayın.");
 }
 
 /** Queues the customer receipt once an order is fully settled. */
 void queueReceiptIfSettled(Context& ctx, const std::string& orderId) {
     services::PaymentService payments(ctx);
     if (payments.outstanding(orderId) > 0 || payments.unresolvedCount(orderId) > 0) return;
+    if (services::OrderService(ctx).load(orderId,false).value("status",std::string{})!="closed") return;
 
     services::queueSunmiSale(ctx, orderId);
     if (ctx.setting("sunmi.suppressLocalReceipt", "0") == "1") return;
@@ -99,11 +108,11 @@ std::string insertPayment(Context& ctx, const std::string& orderId, const std::s
     auto insert = ctx.db().prepare(
         "INSERT INTO payments (id, order_id, method, status, amount_minor, tip_minor, "
         "        tendered_minor, change_minor, seat, idempotency_key, user_id, shift_id, "
-        "        business_day_id, created_at, updated_at, expires_at, terminal_id) "
+        "        business_day_id, created_at, updated_at, expires_at, terminal_id, is_deposit) "
         "VALUES (:id, :orderId, :method, 'created', :amount, :tip, :tendered, :change, :seat, "
-        "        :key, :userId, :shiftId, :day, :now, :now, :expires, :terminal)");
+        "        :key, :userId, :shiftId, :day, :now, :now, :expires, :terminal, :deposit)");
     ctx.touchTerminal();
-    insert.bind(":terminal", ctx.saleTerminalId());
+    insert.bind(":terminal", ctx.saleTerminalId()).bind(":deposit",getOr<bool>(payload,"isDeposit",false)?1:0);
     insert.bind(":id", paymentId)
         .bind(":orderId", orderId)
         .bind(":method", method)
@@ -125,6 +134,66 @@ std::string insertPayment(Context& ctx, const std::string& orderId, const std::s
     return paymentId;
 }
 
+Json recordDeposit(Context& ctx, const ipc::Request& request, const std::string& method) {
+    services::LicenseService(ctx).requirePaidForSale();
+    const auto& input = request.payload;
+    const auto orderId = getOr<std::string>(input,"orderId","");
+    const auto amount = getOr<Money>(input,"amountMinor",0);
+    const auto rrn = getOr<std::string>(input,"rrn","");
+    require(amount>0 && amount<=100000000, "Depozitin məbləği düzgün deyil");
+    require(!request.idempotencyKey.empty(),"Əməliyyat açarı tələb olunur");
+    require(getOr<Money>(input,"tipMinor",0)==0 && getOr<std::string>(input,"splitPartId","").empty(),
+            "Depozitə bəxşiş və ya hesab bölgüsü əlavə edilə bilməz");
+    if(method=="card") {
+        require(rrn.size()==12 && std::all_of(rrn.begin(),rrn.end(),[](unsigned char c){return c>='0'&&c<='9';}),
+                "Təsdiqlənmiş bank çekinin 12 rəqəmli RRN nömrəsini yazın");
+    }
+    Json result;
+    {
+        db::Transaction txn(ctx.db());
+        services::Idempotency idem(ctx);
+        const auto operation = method=="card" ? std::string(protocol::method::kPaymentsCreateCard)
+                                              : std::string(protocol::method::kPaymentsCreateCash);
+        if(auto replay=idem.begin(request.idempotencyKey,operation,input)) return *replay;
+        services::OrderService orders(ctx);
+        const auto order=orders.requireEditable(orderId);
+        require(order.at("tableId").is_string() && !order.at("tableId").get<std::string>().empty(),
+                "Masa depoziti yalnız masa hesabında alınır");
+        require(order.value("accountMinor",Money{0})==0,"Bu hesaba artıq borc yazılıb");
+        auto prior=ctx.db().prepare("SELECT 1 FROM payments WHERE order_id=:id "
+            "AND status NOT IN ('declined','canceled','failed')");
+        prior.bind(":id",orderId);
+        require(!prior.step(),"Depozit yalnız hesabın ilk ödənişi kimi bir dəfə alınır");
+        auto split=ctx.db().prepare("SELECT 1 FROM bill_splits WHERE order_id=:id AND status IN ('open','partial')");
+        split.bind(":id",orderId);
+        require(!split.step(),"Depozit üçün əvvəl hesab bölgüsünü bağlayın");
+        if(method=="card") {
+            auto duplicate=ctx.db().prepare("SELECT 1 FROM payments WHERE bank_rrn=:rrn");
+            duplicate.bind(":rrn",rrn);
+            require(!duplicate.step(),"Bu bank RRN nömrəsi artıq istifadə edilib");
+        }
+        const auto day=resolveBusinessDay(ctx,orderId);
+        const auto id=insertPayment(ctx,orderId,method,amount,0,method=="cash"?amount:0,0,
+                                    request.idempotencyKey,input,day);
+        services::PaymentService payments(ctx);
+        payments.applyTransition(id,PaymentStatus::Approved,method=="card"?"Bank çeki ilə təsdiqlənmiş depozit":"Nağd depozit",rrn);
+        if(method=="card") {
+            auto proof=ctx.db().prepare("UPDATE payments SET bank_rrn=:rrn WHERE id=:id");
+            proof.bind(":rrn",rrn).bind(":id",id).exec();
+        }
+        auto legacy=ctx.db().prepare("UPDATE orders SET deposit_minor=0 WHERE id=:id");
+        legacy.bind(":id",orderId).exec();
+        orders.recalculate(orderId);
+        ctx.auditRequired("payment.deposit","payment",id,Json{{"orderId",orderId},{"method",method},{"amountMinor",amount}});
+        ctx.enqueueSync("payment",id,"create",Json{{"method",method},{"isDeposit",true}});
+        result=Json{{"payment",payments.load(id)},{"order",orders.load(orderId)},{"changeMinor",0}};
+        idem.complete(request.idempotencyKey,result,"payment",id);
+        txn.commit();
+    }
+    ctx.server().emitEvent(protocol::event::kOrdersUpdated,Json{{"orderIds",{orderId}}});
+    return result;
+}
+
 }  // namespace
 
 void registerPayments(const ContextPtr& ctx) {
@@ -138,7 +207,7 @@ void registerPayments(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT p.id, p.method, p.status, p.amount_minor AS amountMinor, "
                 "       p.tip_minor AS tipMinor, p.tendered_minor AS tenderedMinor, "
-                "       p.change_minor AS changeMinor, p.seat, p.card_last4 AS cardLast4, "
+                "       p.change_minor AS changeMinor, p.is_deposit AS isDeposit, p.seat, p.card_last4 AS cardLast4, "
                 "       p.created_at AS createdAt, u.full_name AS cashierName "
                 "FROM payments p LEFT JOIN users u ON u.id = p.user_id "
                 "WHERE p.order_id = :orderId ORDER BY p.created_at");
@@ -164,6 +233,7 @@ void registerPayments(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kPaymentsCreateCash), [ctx](const ipc::Request& request) {
             ctx->requirePermission("payment.take");
+            if(getOr<bool>(request.payload,"isDeposit",false)) return recordDeposit(*ctx,request,"cash");
 
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
             const auto amountMinor = getOr<Money>(request.payload, "amountMinor", 0);
@@ -237,6 +307,7 @@ void registerPayments(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kPaymentsCreateCard), [ctx](const ipc::Request& request) {
             ctx->requirePermission("payment.take");
+            if(getOr<bool>(request.payload,"isDeposit",false)) return recordDeposit(*ctx,request,"card");
 
             const auto orderId = getOr<std::string>(request.payload, "orderId", "");
             const auto amountMinor = getOr<Money>(request.payload, "amountMinor", 0);
@@ -262,6 +333,7 @@ void registerPayments(const ContextPtr& ctx) {
                 }
 
                 validateAmount(*ctx, orderId, amountMinor);
+                requireSingleFiscalCardReference(*ctx,orderId);
 
                 // Stamped in phase A only. Phase C runs after the terminal round
                 // trip and could land the other side of a Z close; re-resolving
@@ -519,6 +591,8 @@ void registerPayments(const ContextPtr& ctx) {
                     txn.commit();
                     return *replay;
                 }
+                if(std::any_of(tenders.begin(),tenders.end(),[](const auto& tender){return tender.method=="card";}))
+                    requireSingleFiscalCardReference(*ctx,orderId);
                 prepared = splits.prepareMixedPayment(orderId, tenders, request.idempotencyKey);
                 if (prepared.cardAmountMinor > 0) {
                     reference = "TX-" + crypto::shortCode(10);
@@ -671,7 +745,7 @@ void registerPayments(const ContextPtr& ctx) {
                 }
 
                 auto original = ctx->db().prepare(
-                    "SELECT order_id, method, status, terminal_ref "
+                    "SELECT order_id, method, status, terminal_ref, is_deposit "
                     "FROM payments WHERE id = :paymentId");
                 original.bind(":paymentId", paymentId);
                 if (!original.step()) throw PosError::of(protocol::err::kPaymentNotFound);
@@ -679,8 +753,14 @@ void registerPayments(const ContextPtr& ctx) {
                 orderId = original.columnText(0);
                 const std::string method = original.columnText(1);
                 const std::string reference = original.columnText(3);
+                const bool deposit = original.columnInt(4)!=0;
+                if (method=="card" && deposit) {
+                    const auto bankRrn=getOr<std::string>(request.payload,"rrn","");
+                    require(bankRrn.size()==12 && std::all_of(bankRrn.begin(),bankRrn.end(),[](unsigned char c){return c>='0'&&c<='9';}),
+                            "Bank qaytarma çekinin RRN nömrəsini yazın");
+                }
 
-                if (method == "card" && amountMinor > 0) {
+                if (method == "card" && amountMinor > 0 && !deposit) {
                     payments::MockTerminal::instance().refund(amountMinor, reference);
                 }
 

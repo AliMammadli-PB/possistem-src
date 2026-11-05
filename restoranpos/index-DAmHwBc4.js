@@ -78,6 +78,11 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14994,7 +14999,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.2 · c9fad15";
+const _PS_BUILD = "1.10.3 · 0c9894e";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -21147,7 +21152,7 @@ function PsOriginalOrderPage() {
         loaded = await loadOrder(orderId);
       }
       const catData = unwrap(await window.pos.products.categories());
-      const list = catData.categories ?? [];
+      const list = (catData.categories ?? []).filter(category => category.id !== "cat-goods" || Number(category.itemCount) > 0);
       setCategories(list);
       psOrderCats = list;
       setCategoryId((prev) => prev || psTopCats(list)[0]?.id || "");
@@ -21590,7 +21595,8 @@ function PsOriginalOrderPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(Row$1, { label: t.order.tax, minor: order.taxMinor }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Row$1, { label: t.order.service, minor: order.serviceMinor }),
           order.discountMinor > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$1, { label: t.order.discount, minor: -order.discountMinor }),
-          order.depositMinor > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Row$1, { label: t.payment.deposit, minor: order.depositMinor }),
+          order.depositMinor > 0 && jsxRuntimeExports.jsx(Row$1,{label:"Köhnə depozit əlavəsi",minor:order.depositMinor}),
+          order.minimumTableMinor > 0 && jsxRuntimeExports.jsx(Row$1,{label:"Minimum masa fərqi",minor:order.minimumTableMinor}),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between pt-2 font-medium text-cream", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t.order.total }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: order.totalMinor, className: "text-gold" })
@@ -21705,7 +21711,12 @@ function PaymentPage() {
   const [amountInput, setAmountInput] = reactExports.useState("");
   const [tenderedInput, setTenderedInput] = reactExports.useState("");
   const [tipInput, setTipInput] = reactExports.useState("0");
-  const [depositInput, setDepositInput] = reactExports.useState("0.00");
+  /* PREPAID_DEPOSIT_1103 */ const [depositInput, setDepositInput] = reactExports.useState("");
+  const [depositMode, setDepositMode] = reactExports.useState("cash");
+  const [depositRrn, setDepositRrn] = reactExports.useState("");
+  const [depositConfirmed, setDepositConfirmed] = reactExports.useState(false);
+  const depositLock = reactExports.useRef(false);
+  const depositAttempt = reactExports.useRef(null);
   const [splitMode, setSplitMode] = reactExports.useState(false);
   const [split, setSplit] = reactExports.useState(null);
   const [splitPartId, setSplitPartId] = reactExports.useState(null);
@@ -21757,7 +21768,6 @@ function PaymentPage() {
       if (remainingChanged || prev === "") return remStr;
       return prev;
     });
-    setDepositInput(((ord.depositMinor ?? 0) / 100).toFixed(2));
     setLoading(false);
   }, [orderId, splitMode]);
   reactExports.useEffect(() => {
@@ -21940,22 +21950,36 @@ function PaymentPage() {
     await refresh();
   };
   const saveDeposit = async () => {
-    if (!order || busy) return;
-    const depositMinor = parseMoneyInput(depositInput);
-    if (depositMinor == null || depositMinor < 0) {
-      toast(t.payment.depositInvalid, "warning");
+    if (!order || busy || depositLock.current || !depositConfirmed) return;
+    const amountMinor = parseMoneyInput(depositInput);
+    if (!amountMinor || amountMinor < 0 || (depositMode==="card"&&!/^\d{12}$/.test(depositRrn))) {
+      toast("Depozitin məbləğini və bank çekinin RRN nömrəsini yoxlayın.", "warning");
       return;
     }
+    const fingerprint = [order.id,depositMode,amountMinor,depositRrn].join("/");
+    if (depositAttempt.current?.fingerprint !== fingerprint)
+      depositAttempt.current = {fingerprint,key:newIdempotencyKey()};
+    depositLock.current=true;
     setBusy(true);
-    const res = await window.pos.orders.setDeposit(order.id, depositMinor);
-    setBusy(false);
-    if (!res.success) {
-      toast(res.error.message, "danger");
-      return;
+    try {
+      const payload={orderId:order.id,amountMinor,isDeposit:true};
+      const options={idempotencyKey:depositAttempt.current.key};
+      const res=depositMode==="cash"
+        ? await window.pos.payments.createCash({...payload,tenderedMinor:amountMinor},options)
+        : await window.pos.payments.createCard({...payload,rrn:depositRrn},options);
+      if (!res.success) { toast(res.error.message,"danger"); return; }
+      setDepositConfirmed(false);
+      setDepositInput("");
+      setDepositRrn("");
+      toast("Depozit alındı. Masa açıq qalır.", "success");
+      syncedRemainingRef.current=null;
+      await refresh();
+    } catch(error) {
+      toast(String(error?.message||error),"danger");
+    } finally {
+      depositLock.current=false;
+      setBusy(false);
     }
-    toast(t.payment.depositSaved, "success");
-    syncedRemainingRef.current = null;
-    await refresh();
   };
   const payCash = async () => {
     if (!order || busy) return;
@@ -22146,9 +22170,9 @@ function PaymentPage() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted", children: t.order.discount }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: -discountMinor, className: "text-success" }) })
           ] }) : null,
-          (order.depositMinor ?? 0) > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted", children: t.payment.deposit }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: order.depositMinor ?? 0, className: "text-gold" }) })
+          (order.minimumTableMinor || order.depositMinor || 0) > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted", children: order.minimumTableMinor ? "Minimum masa fərqi" : "Köhnə depozit əlavəsi" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: order.minimumTableMinor || order.depositMinor || 0, className: "text-gold" }) })
           ] }) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted", children: t.order.total }),
@@ -22290,33 +22314,27 @@ function PaymentPage() {
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 rounded-xl border border-gold/25 bg-gold/5 p-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs uppercase tracking-wide text-gold", children: t.payment.deposit }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted", children: t.payment.depositHint }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "mt-3 block text-sm text-muted", children: [
-            t.payment.depositAmount,
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                value: depositInput,
-                onChange: (e) => setDepositInput(e.target.value),
-                inputMode: "decimal",
-                autoComplete: "off",
-                className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream tabular-nums outline-none focus:border-gold/50"
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              disabled: busy,
-              onClick: () => void saveDeposit(),
-              className: "touch-target mt-3 rounded-xl bg-gold/20 px-4 py-2 text-sm text-gold disabled:opacity-40",
-              children: t.payment.saveDeposit
-            }
-          )
-        ] }),
+        order.tableId ? psH("section",{className:"mb-4 rounded-xl border border-hairline bg-elevated p-3 space-y-2"},
+          psH("strong",null,"Masa depoziti"),
+          order.prepaidDepositMinor>0
+            ? psH("p",{className:"text-sm text-muted"},"Əvvəlcədən alınıb · "+formatMoney(order.prepaidDepositMinor))
+            : order.status==="closed"||order.paidMinor>0||hasUnknown ? null
+            : psH(reactExports.Fragment,null,
+              order.depositMinor>0 ? psH("p",{className:"text-sm text-muted"},
+                "Köhnə hesab əlavəsi · "+formatMoney(order.depositMinor)+". Bu məbləğ ödənilmiş avans kimi qeydə alınmayıb.") : null,
+              psH("label",{className:"block text-sm"},"Alınan məbləğ (₼)",psH("input",{className:psField,inputMode:"decimal",
+                value:depositInput,placeholder:"0.00",onChange:e=>{setDepositInput(e.target.value);setDepositConfirmed(false);}})),
+              psH("label",{className:"block text-sm"},"Ödəniş üsulu",psH("select",{className:psField,value:depositMode,
+                onChange:e=>{setDepositMode(e.target.value);setDepositConfirmed(false);}},
+                psH("option",{value:"cash"},"Nağd"),psH("option",{value:"card"},"Bank terminalı ilə kart"))),
+              depositMode==="card"?psH("label",{className:"block text-sm"},
+                "Əvvəl bank terminalında ödənişi qəbul edin. Çekdəki 12 rəqəmli RRN-i yazın.",
+                psH("input",{className:psField,inputMode:"numeric",maxLength:12,autoComplete:"off",value:depositRrn,
+                  onChange:e=>{setDepositRrn(e.target.value.replace(/[^0-9]/g,""));setDepositConfirmed(false);}})):null,
+              psH("label",{className:"flex items-center gap-2 text-sm"},psH("input",{type:"checkbox",checked:depositConfirmed,
+                onChange:e=>setDepositConfirmed(e.target.checked)}),"Məbləği müştəridən aldım"),
+              psH("button",{type:"button",className:"ps-ops-button",disabled:busy||!depositConfirmed,
+                onClick:()=>void saveDeposit()},"Depoziti qeydə al"))) : null,
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "mb-3 block text-sm text-muted", children: [
           t.payment.amount,
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -23796,16 +23814,31 @@ function psRecipeUnits(stockUnit) {
   if (stockUnit === "l") return ["ml", "l"];
   return [stockUnit || "ədəd"];
 }
-function psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }) {
-  /* SIMPLE_RECIPE_1101 */ const h = psH;
+function psRecipeEditor({ editor, setEditor, ingredients, recipeChoices, busy, pickQuery, setPickQuery, lineCostMinor, editorCost, setLine, saveRecipe, unitLabel }) {
+  /* SIMPLE_RECIPE_1101 */ /* RECIPE_COMPONENTS_1103 */ const h = psH;
+  const [pickKind, setPickKind] = reactExports.useState("stock");
+  const [conversion, setConversion] = reactExports.useState(null);
+  const addComponent = (recipe, confirmed = false) => {
+    const oldLine = editor.lines.find(line => line.ingredientId === recipe.linkedIngredientId);
+    if (oldLine && !confirmed) { setConversion({ recipe, oldLine }); return; }
+    setConversion(null);
+    setEditor(prev => {
+      if (!prev || prev.components.some(part => part.menuItemId === recipe.id)) return prev;
+      return {
+        ...prev,
+        lines: oldLine ? prev.lines.filter(line => line.ingredientId !== oldLine.ingredientId) : prev.lines,
+        components: [...prev.components, { menuItemId: recipe.id, name: recipe.name, qty: oldLine?.qty || "1", costMinor: recipe.costMinor }]
+      };
+    });
+  };
   const [showCosts, setShowCosts] = reactExports.useState(false);
   const label = (u) => (u === "ml" ? "ml" : unitLabel(u));
   const cost = editorCost();
   const margin = editor.priceMinor - cost;
   const pct = editor.priceMinor > 0 ? (cost * 100 / editor.priceMinor).toFixed(1) + "%" : "—";
   const stock = ingredients.filter((i) => i.id !== editor.selfId);
-  const needle = pickQuery.trim().toLowerCase();
-  const shown = needle ? stock.filter((i) => String(i.name || "").toLowerCase().includes(needle)) : stock;
+  const needle = pickQuery.trim().toLocaleLowerCase("az");
+  const shown = needle ? stock.filter((i) => String(i.name || "").toLocaleLowerCase("az").includes(needle)) : stock;
   const picked = new Set(editor.lines.filter((l) => l.mode === "pick").map((l) => l.ingredientId));
   const toggle = (ing) => {
     if (picked.has(ing.id)) {
@@ -23827,23 +23860,44 @@ function psRecipeEditor({ editor, setEditor, ingredients, busy, pickQuery, setPi
       fact("Maya", formatMoney(cost)),
       fact("Qazanc", formatMoney(margin), margin < 0 ? "var(--ps-danger)" : "var(--ps-ok)"),
       fact("Maya %", pct)) : null,
-    editor.selfId && !editor.lines.length
+    editor.selfId && !editor.lines.length && !editor.components.length
       ? h("p", { className: "ps-recipe-note" }, "İndi bu məhsul anbarda hazır məhsul kimi izlənir: hər satışda anbardan 1 ədəd çıxır (kola, su kimi). Tərkib seçsəniz, satışda tərkibi anbardan çıxacaq.")
       : null,
 
-    h("h3", { className: "ps-recipe-step" }, "1. Anbardan tərkibi seçin"),
-    stock.length ? h("input", { type: "search", className: "ps-recipe-search", "aria-label": "Xammal axtar", placeholder: "Xammalın adını yazın", value: pickQuery, onChange: (e) => setPickQuery(e.target.value) }) : null,
-    stock.length
-      ? h("div", { className: "ps-recipe-chips" }, shown.slice(0, 16).map((ing) => h("button", {
-          key: ing.id, type: "button", "aria-pressed": picked.has(ing.id),
-          className: "ps-recipe-chip" + (picked.has(ing.id) ? " is-on" : ""),
-          onClick: () => toggle(ing)
-        }, (picked.has(ing.id) ? "✓ " : "+ ") + ing.name, h("small", null, label(ing.unit)))))
-      : h("p", { className: "ps-recipe-note" }, "Anbarda hələ məhsul yoxdur. Anbar bölməsində əlavə edin və ya aşağıda yenisini yazın."),
-
-    stock.length && !shown.length ? h("p", {role:"status"}, "Bu adda xammal tapılmadı.") : null,
-    shown.length > 16 ? h("small", null, "Başqa xammal üçün adını axtarın.") : null,
+    h("h3", { className: "ps-recipe-step" }, "1. Tərkibi seçin"),
+    h("div", { className: "ps-recipe-picker-types" }, [["stock", "Anbar xammalı"], ["recipe", "Hazır resept"]].map(([kind, title]) =>
+      h("button", { key: kind, type: "button", className: "ps-recipe-chip" + (pickKind === kind ? " is-on" : ""),
+        "aria-pressed": pickKind === kind, onClick: () => { setPickKind(kind); setPickQuery(""); } }, title))),
+    h("input", { type: "search", className: "ps-recipe-search", "aria-label": "Tərkib axtar",
+      placeholder: pickKind === "stock" ? "Xammalın adını yazın" : "Reseptin adını yazın", value: pickQuery,
+      onChange: (event) => setPickQuery(event.target.value) }),
+    h("div", { className: "ps-recipe-chips", tabIndex: 0, "aria-label": "Axtarış nəticələri" }, (() => {
+      const choices = pickKind === "stock" ? shown : recipeChoices.filter(recipe =>
+        recipe.id !== editor.id && String(recipe.name).toLocaleLowerCase("az").includes(needle));
+      return choices.length ? choices.map(choice => {
+        const selected = pickKind === "stock" ? picked.has(choice.id) : editor.components.some(part => part.menuItemId === choice.id);
+        return h("button", { key: choice.id, type: "button", "aria-pressed": selected,
+          className: "ps-recipe-chip" + (selected ? " is-on" : ""),
+          disabled: pickKind === "recipe" && selected,
+          onClick: () => pickKind === "stock" ? toggle(choice) : addComponent(choice) },
+          (selected ? "✓ " : "+ ") + choice.name, pickKind === "stock" ? h("small", null, label(choice.unit)) : null);
+      }) : h("p", { role: "status", className: "ps-recipe-note" }, "Nəticə tapılmadı.");
+    })()),
+    conversion ? h("div", { role: "group", "aria-label": "Anbar sətrini dəyiş", className: "ps-recipe-note" },
+      h("p", null, "“" + conversion.oldLine.name + "” anbar sətri hazır reseptlə əvəz edilsin?"),
+      h("button", { type: "button", className: "ps-recipe-chip", onClick: () => addComponent(conversion.recipe, true) }, "Əvəz et"),
+      h("button", { type: "button", className: "ps-recipe-chip", onClick: () => setConversion(null) }, "İmtina")) : null,
     h("h3", { className: "ps-recipe-step" }, "2. Bir porsiyanın miqdarı"),
+    editor.components.length ? h("div", { className: "ps-recipe-rows" }, editor.components.map(part =>
+      h("div", { key: part.menuItemId, className: "ps-recipe-row ps-recipe-simple-row" },
+        h("span", { className: "ps-recipe-name" }, part.name, h("small", null, " · Hazır resept")),
+        h("span", { className: "ps-recipe-qty" }, h("input", { inputMode: "decimal", value: part.qty,
+          "aria-label": part.name + " porsiya sayı", onChange: (event) => {
+            const qty = event.target.value;
+            setEditor(prev => prev ? { ...prev, components: prev.components.map(row => row.menuItemId === part.menuItemId ? { ...row, qty } : row) } : prev);
+          } }), h("em", null, "porsiya")),
+        h("button", { type: "button", className: "ps-recipe-remove", "aria-label": part.name + " reseptini sil",
+          onClick: () => setEditor(prev => prev ? { ...prev, components: prev.components.filter(row => row.menuItemId !== part.menuItemId) } : prev) }, "×")))) : null,
     editor.lines.length
       ? h("div", { className: "ps-recipe-rows" }, editor.lines.map((line, i) => {
           const units = line.mode === "pick" ? psRecipeUnits(stockUnitOf(line)) : ["q", "kg", "ml", "l", "ədəd"];
@@ -23966,7 +24020,7 @@ function OpsCosting() {
     const selfItem = ingList.find((i) => i.sku === "MENU-" + row.id);
     const byId = new Map(ingList.map((i) => [i.id, i]));
     setPickQuery("");
-    const lines = (res.data.lines ?? []).filter((line) => !selfItem || line.ingredientId !== selfItem.id).map((line) => {
+    const lines = (res.data.lines ?? []).filter((line) => line.ingredientId !== (res.data.linkedIngredientId || selfItem?.id)).map((line) => {
       const ing = byId.get(line.ingredientId);
       const stockUnit = ing?.unit ?? "kg";
       // kg stock is edited in grams so "150" means 150 q, not 150 kg.
@@ -23985,12 +24039,14 @@ function OpsCosting() {
       id: row.id,
       name: row.name,
       priceMinor: row.priceMinor ?? 0,
-      selfId: selfItem ? selfItem.id : "",
+      selfId: res.data.linkedIngredientId || selfItem?.id || "",
+      components: (res.data.components ?? []).map(part => ({ ...part, qty: opsQty(part.qtyMilli) })),
       lines
     });
   };
 
-  const editorCost = () => (editor ? editor.lines.reduce((sum, line) => sum + lineCostMinor(line), 0) : 0);
+  const editorCost = () => (editor ? editor.lines.reduce((sum, line) => sum + lineCostMinor(line), 0) +
+    editor.components.reduce((sum, part) => sum + Math.round((Number(part.costMinor) || 0) * opsNum(part.qty)), 0) : 0);
 
   const setLine = (index, patch) => {
     setEditor((prev) => {
@@ -24015,7 +24071,7 @@ function OpsCosting() {
     });
   };
 
-  const needle = query.trim().toLowerCase();
+  const needle = query.trim().toLocaleLowerCase("az");
   const shown = rows
     .filter((row) => {
       if (filter !== "all" && state(row).key !== filter) return false;
@@ -24060,6 +24116,11 @@ function OpsCosting() {
 
   const saveRecipe = async () => {
     if (!editor) return;
+    const components = editor.components.map(part => ({ menuItemId: part.menuItemId, qtyMilli: Math.round(opsNum(part.qty) * 1000) }));
+    if (components.some(part => !(part.qtyMilli > 0 && part.qtyMilli <= 100000))) {
+      toast("Hazır reseptin porsiya sayını düzgün yazın", "danger");
+      return;
+    }
     const prepared = [];
     for (const line of editor.lines) {
       const qtyMilli = lineQtyMilli(line);
@@ -24117,13 +24178,11 @@ function OpsCosting() {
         prepared.push({ ingredientId: line.ingredientId, qtyMilli });
       }
     }
-    const keepSelf = !prepared.length && editor.selfId;
+    const keepSelf = !prepared.length && !components.length && editor.selfId;
     if (keepSelf) prepared.push({ ingredientId: editor.selfId, qtyMilli: 1000 });
-    const dropSelf = !keepSelf && editor.selfId;
-    void run(window.pos.inventory.saveRecipe(editor.id, prepared), keepSelf ? "Saxlanıldı" : prepared.length ? "Resept saxlanıldı" : "Resept silindi")
+    void run(window.pos.inventory.saveRecipe(editor.id, prepared, components), keepSelf ? "Saxlanıldı" : (prepared.length || components.length) ? "Resept saxlanıldı" : "Resept silindi")
       .then((ok) => {
         if (ok) {
-          if (dropSelf) void window.pos.inventory.deactivateIngredient(editor.selfId).then(() => reload());
           setEditor(null);
           // Keep POS cart maya in sync if order screen already loaded costs.
           void (async () => {
@@ -24263,7 +24322,7 @@ function OpsCosting() {
 
 
     ]}),
-    editor && psH(psRecipeEditor, {editor,setEditor,ingredients,busy,pickQuery,setPickQuery,lineCostMinor,editorCost,setLine,saveRecipe,unitLabel}),
+    editor && psH(psRecipeEditor, {editor,setEditor,ingredients,recipeChoices:rows.filter(row => row.active && row.hasPreparedRecipe),busy,pickQuery,setPickQuery,lineCostMinor,editorCost,setLine,saveRecipe,unitLabel}),
     confirmDialog);
 }
 
@@ -25483,6 +25542,7 @@ function OpsKassalar() {
   const [objectId, setObjectId] = reactExports.useState(()=>new URLSearchParams(location.hash.split("?")[1]||location.search).get("objectId")||"all");
   const [form, setForm] = reactExports.useState(null);
   const [objForm, setObjForm] = reactExports.useState(null);
+  const [showTransferDocs, setShowTransferDocs] = reactExports.useState(false);
   const [transfer, setTransfer] = reactExports.useState(null);
   const [moves, setMoves] = reactExports.useState(null);
   const [confirmAsk, confirmDialog] = useConfirm();
@@ -25494,13 +25554,6 @@ function OpsKassalar() {
     if (r.success) { _psAccountsCache = r.data; setData(r.data); } else toast(r.error.message, "danger");
   }, []);
   reactExports.useEffect(() => { void reload(); }, [reload]);
-  const objectsLoaded = Boolean(data);
-  reactExports.useEffect(() => {
-    if (!objectsLoaded || !canManage || psMarketMode() || window.__psCloudBranchMode) return;
-    let live = true;
-    void psSyncCloudObjects(_psAccountsCache?.objects).then((added) => { if (live && added) void reload(); }).catch(() => {});
-    return () => { live = false; };
-  }, [objectsLoaded, canManage, reload]);
   const [busy, run] = useOpsAction(reload);
   if (!data) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
 
@@ -25538,6 +25591,8 @@ function OpsKassalar() {
     h("p", { className: "mt-1 text-[11px] text-muted" }, sub));
 
   return h("div", { className: "space-y-4" },
+    !psMarketMode()?h(OpsButton,{tone:"quiet",onClick:()=>setShowTransferDocs(!showTransferDocs),children:showTransferDocs?"Köçürmə qaimələrini gizlət":"Köçürmə qaimələri"}):null,
+    showTransferDocs?h(PsDocuments,{partyType:"cash-transfer",defaultType:"cash-transfer",onChanged:reload}):null,
     h("div", { className: "ps-stock-metrics" },
       metric("Ümumi balans", formatMoney(sum("balanceMinor")), accounts.length + " kassa"),
       metric("Bu gün nağd", formatMoney(sum("todayCashMinor")), "Kassalara düşən"),
@@ -26085,7 +26140,6 @@ function PsOriginalSalary() {
   const [month, setMonth] = reactExports.useState(() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); });
   const [rows, setRows] = reactExports.useState([]);
   const [ask, setAsk] = reactExports.useState(null);
-  const [open, setOpen] = reactExports.useState(null);
   const salaryAcc = usePsAccounts();
   const salaryObjects = salaryAcc?.objects ?? [];
   const [salaryObject, setSalaryObject] = reactExports.useState("");
@@ -26093,7 +26147,12 @@ function PsOriginalSalary() {
     const r = await window.pos.salary.list({ month, ...psMonthBounds(month) });
     if (r.success) setRows(r.data.employees ?? []); else toast(r.error.message, "danger");
   }, [month]);
-  reactExports.useEffect(() => { void reload(); }, [reload]);
+  reactExports.useEffect(() => {
+    void reload();
+    const refresh = () => void reload();
+    window.addEventListener("ps:salary-document-changed", refresh);
+    return () => window.removeEventListener("ps:salary-document-changed", refresh);
+  }, [reload]);
   const [busy, run] = useOpsAction(reload);
   const kindLabel = { advance: "Avans", full: "Tam ödəniş", note: "Qeyd" };
 
@@ -26102,7 +26161,7 @@ function PsOriginalSalary() {
     if (ask.kind !== "note" && (!psStockInputValid(ask.value) || amount <= 0)) { toast("Məbləği yazın", "danger"); return; }
     if (ask.kind === "note" && !ask.note.trim()) { toast("Qeydi yazın", "danger"); return; }
     void run(window.pos.salary.pay({ customerId: ask.row.id, month, kind: ask.kind, amountMinor: amount, note: ask.note.trim(), accountId: ask.kind !== "note" ? ask.accountId || "" : "" },
-      { idempotencyKey: newIdempotencyKey() }), "Saxlanıldı").then((ok) => { if (ok) setAsk(null); });
+      { idempotencyKey: newIdempotencyKey() }), "Saxlanıldı").then((ok) => { if (ok) { setAsk(null); window.dispatchEvent(new Event("ps:salary-document-changed")); } });
   };
   const saveSalary = (row) => {
     if (!psStockInputValid(ask.value) ) { toast("Maaşı düzgün yazın", "danger"); return; }
@@ -26135,19 +26194,9 @@ function PsOriginalSalary() {
         h("b", { style: { color: (r.remainingMinor ?? 0) > 0 ? "var(--ps-danger)" : "var(--ps-ok)" } }, formatMoney(r.remainingMinor ?? 0)),
         h("span", { className: "flex flex-wrap gap-1" },
           jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy || r.settled, onClick: () => setAsk({ row: r, kind: "advance", value: "", note: "", fromCash: true }), children: "Avans" }),
-          jsxRuntimeExports.jsx(OpsButton, { disabled: busy || r.settled, onClick: () => setAsk({ row: r, kind: "full", value: ((r.remainingMinor ?? 0) / 100).toFixed(2), note: "", fromCash: true }), children: "Tam ödəniş" }),
-          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => setAsk({ row: r, kind: "note", value: "", note: "", fromCash: false }), children: "Qeyd" }),
-          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setOpen(open === r.id ? null : r.id), children: "Tarixçə" }))
+          jsxRuntimeExports.jsx(OpsButton, { disabled: busy || r.settled, onClick: () => setAsk({ row: r, kind: "full", value: ((r.remainingMinor ?? 0) / 100).toFixed(2), note: "", fromCash: true }), children: "Tam ödəniş" }))
       ])
     }),
-    open ? (() => {
-      const r = rows.find((x) => x.id === open);
-      if (!r) return null;
-      return h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
-        h("p", { className: "text-sm font-semibold text-cream" }, r.name + " — " + month),
-        jsxRuntimeExports.jsx(OpsTable, { head: ["Tarix", "Növ", "Məbləğ", "Qeyd"], empty: "Bu ay hərəkət yoxdur",
-          rows: (r.history ?? []).map((e) => [opsWhen(e.createdAt), kindLabel[e.kind] || e.kind, e.kind === "note" ? "—" : formatMoney(e.amountMinor ?? 0), e.note || "—"]) }));
-    })() : null,
     ask ? jsxRuntimeExports.jsx(PsAdminDialog, {
       title: ask.row.name + " — " + (ask.kind === "salary" ? "aylıq maaş" : kindLabel[ask.kind]), onClose: () => setAsk(null), busy,
       children: h("div", { className: "space-y-3" },
@@ -26168,7 +26217,7 @@ const PS_EXPENSE_KINDS = ["Bazarlıq", "Kommunal", "Maaş", "Nəqliyyat", "Təmi
 function OpsExpenses() {
   const h = psH;
   const [docEdit,setDocEdit]=reactExports.useState(null);
-  const [expenseConfirm,expenseConfirmDialog]=useConfirm(); /* POS_EXPENSE_CANCEL_v1 */
+  const [voidExpense,setVoidExpense]=reactExports.useState(null); /* POS_EXPENSE_CANCEL_v1 */
   const [expenseAccount,setExpenseAccount]=reactExports.useState("");
   const [expenseKind,setExpenseKind]=reactExports.useState("");
   const [rows, setRows] = reactExports.useState([]);
@@ -26220,9 +26269,9 @@ function OpsExpenses() {
     jsxRuntimeExports.jsx(OpsTable, {
       head: ["Tarix", "Kateqoriya", "Kassa / obyekt", "Məbləğ", "Qeyd", ""],
       empty: "Bu dövrdə xərc yoxdur",
-      rows: shown.map((m) => [opsWhen(m.createdAt), m.reason || "—", [m.accountName, m.objectName].filter(Boolean).join(" · ") || "—", h("b", { style: { color: "var(--ps-danger)" } }, formatMoney(m.amountMinor ?? 0)), m.note || "—",jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setDocEdit({...m,type:"expense"}),children:psAdminText("Düzəliş","Düzenle","Edit")}),jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:async()=>{if(!await expenseConfirm(psAdminText("Xərc ləğv edilsin? Məbləğ kassaya qaytarılacaq.","Gider iptal edilsin mi? Tutar kasaya geri döner.","Cancel this expense? The amount returns to the till."),{danger:true}))return;void run(psBusinessCall("correct",{type:"expense",id:m.id,amountMinor:0,cancel:true,accountId:m.accountId||""},newIdempotencyKey()),psAdminText("Ləğv edildi","İptal edildi","Cancelled"));},children:psAdminText("Sil","Sil","Delete")})])
+      rows: shown.map((m) => [opsWhen(m.createdAt), m.reason || "—", [m.accountName, m.objectName].filter(Boolean).join(" · ") || "—", h("b", { style: { color: "var(--ps-danger)" } }, formatMoney(m.amountMinor ?? 0)), m.note || "—",jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setDocEdit({...m,type:"expense"}),children:psAdminText("Düzəliş","Düzenle","Edit")}),jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:()=>setVoidExpense({...m,type:"expense"}),children:"Ləğv et"})])
     }),
-    expenseConfirmDialog,
+    voidExpense ? psH(PsDocumentVoid1103,{row:voidExpense,onClose:()=>setVoidExpense(null),onSaved:reload}) : null,
     docEdit ? jsxRuntimeExports.jsx(PsDocumentEdit,{row:docEdit,onClose:()=>setDocEdit(null),onSaved:reload}) : null,
     form ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Yeni xərc", onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
       h("div", { className: "flex flex-wrap gap-2" }, PS_EXPENSE_KINDS.map((k) =>
@@ -26471,7 +26520,6 @@ function PsDeliveryDispatch({ order, onClose }) {
   const [info, setInfo] = reactExports.useState(null);
   const [courierId, setCourierId] = reactExports.useState("");
   const [mode, setMode] = reactExports.useState("courier");
-  const [newName, setNewName] = reactExports.useState("");
   const [busy, setBusy] = reactExports.useState(false);
   const load = reactExports.useCallback(async () => {
     const [c, l] = await Promise.all([window.pos.delivery.couriers(), window.pos.delivery.listRange({ from: 0 })]);
@@ -26483,14 +26531,6 @@ function PsDeliveryDispatch({ order, onClose }) {
     }
   }, [order.id]);
   reactExports.useEffect(() => { void load(); }, [load]);
-  const addCourier = async () => {
-    if (!newName.trim()) return;
-    const r = await window.pos.delivery.saveCourier({ name: newName.trim() });
-    if (!r.success) { toast(r.error.message, "danger"); return; }
-    setNewName("");
-    await load();
-    setCourierId(r.data.id);
-  };
   const go = async () => {
     if (!courierId) { toast("Kuryeri seçin", "danger"); return; }
     if (!(order.items ?? []).some((i) => i.status !== "voided")) { toast("Əvvəlcə məhsulları vurun", "danger"); return; }
@@ -26521,17 +26561,14 @@ function PsDeliveryDispatch({ order, onClose }) {
     info ? h("p", { className: "text-sm text-muted" }, [info.customerName, info.phone, info.address].filter(Boolean).join(" · ")) : null,
     h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Kuryer"),
       h("select", { value: courierId, className: field, onChange: (e) => setCourierId(e.target.value) },
-        h("option", { value: "" }, couriers.length ? "Seçin…" : "Kuryer yoxdur — aşağıda əlavə edin"),
-        couriers.map((c) => h("option", { key: c.id, value: c.id }, c.name + (c.openCount ? " · " + c.openCount + " yolda" : ""))))),
-    h("div", { className: "flex items-end gap-2" },
-      jsxRuntimeExports.jsx(OpsField, { label: "Yeni kuryer", value: newName, onChange: setNewName, placeholder: "Ad" }),
-      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy || !newName.trim(), onClick: () => void addCourier(), children: "Əlavə et" })),
+        h("option", { value: "" }, couriers.length ? "Seçin…" : "Aktiv kuryer yoxdur. Çatdırılma → Kuryerlər bölməsindən əlavə edin."),
+        couriers.map((c) => h("option", { key: c.id, value: c.id }, c.name + " · " + (c.openCount || 0) + " yolda · " + formatMoney(c.dueMinor || 0) + " borc")))),
     h("div", { className: "ps-delivery-modes" },
       [["paid", "Müştəri ödəyib", "Ödənişi indi kassada qəbul edin, hesab bağlanır."],
        ["courier", "Müştəri kuryerə ödəyəcək", formatMoney(order.totalMinor - (order.paidMinor ?? 0)) + " kuryerin adına borc yazılır; axşam Çatdırılma bölməsində kuryerdən alınır."]].map(([k, l, d]) =>
         h("button", { key: k, type: "button", "aria-pressed": mode === k, className: "ps-delivery-mode" + (mode === k ? " is-on" : ""), onClick: () => setMode(k) }, h("b", null, l), h("small", null, d)))),
     h("div", { className: "flex gap-2" },
-      jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => void go(), children: mode === "courier" ? "Kuryerə ver və bağla" : "Kuryerə ver və ödənişə keç" }),
+      jsxRuntimeExports.jsx(OpsButton, { disabled: busy || !courierId, onClick: () => void go(), children: mode === "courier" ? "Kuryerə ver və bağla" : "Kuryerə ver və ödənişə keç" }),
       jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: onClose, children: "İmtina" }))) });
 }
 
@@ -27619,21 +27656,85 @@ function PsBranchBanner(){
  return h("div",{className:"ps-business-branch",role:"status"},h("span",null,psBizText(lang,"Obyekt","İşletme","Location")),h("strong",null,data.branchName||psBizText(lang,"Obyekt təyin edilməyib","İşletme atanmamış","Location not assigned")),h("span",null,"·"),h("strong",null,data.accountName||psBizText(lang,"Kassa obyektə bağlanmayıb","Kasa şubeye bağlı değil","Till is not linked to a branch")));
 }
 function PsDocumentEdit({row,onClose,onSaved}){
- const h=psH,{lang}=useI18n();const [form,setForm]=reactExports.useState(()=>({value:((row.amountMinor||0)/100).toFixed(2),accountId:row.accountId||"",note:row.note||"",reason:row.reason||row.name||"",date:psBizDate(row.createdAt),key:newIdempotencyKey()}));
+ const h=psH,{lang}=useI18n();const [form,setForm]=reactExports.useState(()=>({value:((row.amountMinor||0)/100).toFixed(2),accountId:row.accountId||"",toAccountId:row.toAccountId||"",note:row.note||"",reason:row.reason||row.name||"",date:psBizDate(row.createdAt),key:newIdempotencyKey()}));
  const [busy,setBusy]=reactExports.useState(false),lock=reactExports.useRef(false),[error,setError]=reactExports.useState("");
- const save=async()=>{if(lock.current)return;const amount=psMoneyIn(form.value);if(!Number.isSafeInteger(amount)||amount<=0){setError(psBizText(lang,"Məbləği düzgün yazın","Tutarı doğru girin","Enter a valid amount"));return;}const at=new Date(form.date).getTime();if(!Number.isFinite(at)){setError(psBizText(lang,"Tarixi seçin","Tarih seçin","Choose a date"));return;}lock.current=true;setBusy(true);setError("");try{const r=await psBusinessCall("correct",{type:row.type,id:row.id,amountMinor:amount,accountId:form.accountId,note:form.note,reason:form.reason,docAt:at},form.key);if(!r.success){setError(r.error.message);return;}await onSaved();onClose();}catch(e){setError(String(e.message||e));}finally{lock.current=false;setBusy(false);}};
- return jsxRuntimeExports.jsx(PsAdminDialog,{title:psBizText(lang,"Ödəniş qaiməsinə düzəliş","Ödeme belgesini düzenle","Edit payment document"),onClose:busy?()=>{}:onClose,busy,children:h("div",{className:"space-y-3"},h("p",{className:"text-sm text-muted"},row.name||row.id),jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Məbləğ (₼)","Tutar (₼)","Amount (₼)"),value:form.value,onChange:v=>setForm({...form,value:v})}),h("label",null,psBizText(lang,"Tarix və saat","Tarih ve saat","Date and time"),h("input",{type:"datetime-local",className:psField,value:form.date,onChange:e=>setForm({...form,date:e.target.value})})),(row.type==="expense"||row.type==="cash")?jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Səbəb","Sebep","Reason"),value:form.reason,onChange:v=>setForm({...form,reason:v})}):null,jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Qeyd","Not","Note"),value:form.note,onChange:v=>setForm({...form,note:v})}),jsxRuntimeExports.jsx(PsAccountSelect,{value:form.accountId,onChange:v=>setForm({...form,accountId:v||""}),label:psBizText(lang,"Kassa / xəzinə","Kasa / hazine","Till / treasury")}),h("p",{className:"text-xs text-muted"},psBizText(lang,"Düzəliş borcu və kassa qalığını birlikdə yeniləyir; əvvəlki əməliyyat auditdə saxlanır.","Düzeltme borcu ve kasa bakiyesini birlikte günceller; önceki işlem denetim kaydında kalır.","The correction updates debt and cash together and preserves the previous transaction in the audit log.")),error?h("p",{role:"alert",className:"text-danger"},error):null,jsxRuntimeExports.jsx(OpsButton,{disabled:busy,onClick:()=>void save(),children:psBizText(lang,"Düzəlişi saxla","Düzeltmeyi kaydet","Save correction")}))});
+ const save=async()=>{if(lock.current)return;const amount=psMoneyIn(form.value);if(!Number.isSafeInteger(amount)||amount<=0){setError(psBizText(lang,"Məbləği düzgün yazın","Tutarı doğru girin","Enter a valid amount"));return;}const at=new Date(form.date).getTime();if(!Number.isFinite(at)){setError(psBizText(lang,"Tarixi seçin","Tarih seçin","Choose a date"));return;}lock.current=true;setBusy(true);setError("");try{const r=await psBusinessCall("correct",{type:row.type,id:row.id,amountMinor:amount,accountId:form.accountId,toAccountId:form.toAccountId,note:form.note,reason:form.reason,docAt:at},form.key);if(!r.success){setError(r.error.message);return;}await onSaved();onClose();}catch(e){setError(String(e.message||e));}finally{lock.current=false;setBusy(false);}};
+ return jsxRuntimeExports.jsx(PsAdminDialog,{title:psBizText(lang,"Ödəniş qaiməsinə düzəliş","Ödeme belgesini düzenle","Edit payment document"),onClose:busy?()=>{}:onClose,busy,children:h("div",{className:"space-y-3"},h("p",{className:"text-sm text-muted"},row.name||row.id),jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Məbləğ (₼)","Tutar (₼)","Amount (₼)"),value:form.value,onChange:v=>setForm({...form,value:v})}),row.type==="cash-transfer"?null:h("label",null,psBizText(lang,"Tarix və saat","Tarih ve saat","Date and time"),h("input",{type:"datetime-local",className:psField,value:form.date,onChange:e=>setForm({...form,date:e.target.value})})),(row.type==="expense"||row.type==="cash")?jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Səbəb","Sebep","Reason"),value:form.reason,onChange:v=>setForm({...form,reason:v})}):null,jsxRuntimeExports.jsx(OpsField,{label:psBizText(lang,"Qeyd","Not","Note"),value:form.note,onChange:v=>setForm({...form,note:v})}),jsxRuntimeExports.jsx(PsAccountSelect,{value:form.accountId,onChange:v=>setForm({...form,accountId:v||""}),label:row.type==="cash-transfer"?"Göndərən kassa":psBizText(lang,"Kassa / xəzinə","Kasa / hazine","Till / treasury")}),
+    row.type==="cash-transfer"?h(PsAccountSelect,{value:form.toAccountId,onChange:v=>setForm({...form,toAccountId:v||""}),label:"Qəbul edən kassa"}):null,h("p",{className:"text-xs text-muted"},psBizText(lang,"Düzəliş borcu və kassa qalığını birlikdə yeniləyir; əvvəlki əməliyyat auditdə saxlanır.","Düzeltme borcu ve kasa bakiyesini birlikte günceller; önceki işlem denetim kaydında kalır.","The correction updates debt and cash together and preserves the previous transaction in the audit log.")),error?h("p",{role:"alert",className:"text-danger"},error):null,jsxRuntimeExports.jsx(OpsButton,{disabled:busy,onClick:()=>void save(),children:psBizText(lang,"Düzəlişi saxla","Düzeltmeyi kaydet","Save correction")}))});
 }
+function PsDocumentDetail1103({row,onClose}) {
+  const h=psH;
+  const [detail,setDetail]=reactExports.useState(null),[error,setError]=reactExports.useState("");
+  reactExports.useEffect(()=>{
+    let live=true;
+    void psBusinessCall("document.get",{type:row.type,id:row.id}).then(r=>{
+      if(live) r.success?setDetail(r.data.document):setError(r.error.message);
+    }).catch(e=>{if(live)setError(String(e.message||e));});
+    return()=>{live=false;};
+  },[row.type,row.id]);
+  const pairs=detail?[
+    ["Nömrə",detail.number||detail.id],["Ad / səbəb",detail.courierName||detail.reason||row.name],
+    ["Tarix və saat",opsWhen(detail.doc_at||detail.created_at||row.createdAt)],
+    ["Məbləğ",formatMoney(detail.cancellation?.originalAmountMinor??detail.amount_minor??row.amountMinor)],
+    ["Kassa",detail.accountName],["Qəbul edən kassa",detail.toAccountName],["İşçi",detail.userName],["Qeyd",detail.note],
+    ["Ləğv səbəbi",detail.cancellation?.reason],["Ləğv vaxtı",detail.cancellation?.voidedAt?opsWhen(detail.cancellation.voidedAt):null]
+  ].filter(([,value])=>value!=null&&value!==""):[];
+  return h(PsAdminDialog,{title:"Qaimə",onClose,children:error?h("p",{role:"alert"},error):
+    detail?h("dl",{className:"ps-business-invoice"},pairs.map(([key,value])=>h(reactExports.Fragment,{key},h("dt",null,key),h("dd",null,value)))):
+    h("p",{role:"status"},"Yüklənir…")});
+}
+
+function PsDocumentVoid1103({row,onClose,onSaved}) {
+  const h=psH;
+  const [reason,setReason]=reactExports.useState(""),[error,setError]=reactExports.useState(""),[busy,setBusy]=reactExports.useState(false);
+  const lock=reactExports.useRef(false),key=reactExports.useRef(null);
+  const cancel=async(event)=>{
+    event.preventDefault();
+    if(lock.current||!reason.trim())return;
+    if(!key.current)key.current=newIdempotencyKey();
+    lock.current=true;setBusy(true);setError("");
+    try{
+      const r=await psBusinessCall("correct",{type:row.type,id:row.id,cancel:true,note:reason.trim()},key.current);
+      if(!r.success){setError(r.error.message);return;}
+      await onSaved();onClose();
+    }catch(e){setError(String(e.message||e));}
+    finally{lock.current=false;setBusy(false);}
+  };
+  return h(PsAdminDialog,{title:"Qaiməni ləğv et",onClose,busy,children:h("form",{className:"space-y-3",onSubmit:cancel},
+    h("p",null,[row.name||row.id,formatMoney(row.amountMinor)].join(" · ")),
+    h("label",{className:"block"},"Ləğv səbəbi",h("textarea",{className:psField,required:true,maxLength:1000,value:reason,
+      disabled:busy,onChange:e=>{key.current=null;setReason(e.target.value);}})),
+    error?h("p",{role:"alert",className:"text-danger"},error):null,
+    h("button",{type:"submit",className:"ps-ops-button",disabled:busy||!reason.trim()},busy?"Ləğv edilir…":"Ləğvi təsdiqlə"))});
+}
+
 function psBizDate(ms){const d=new Date(Number(ms)||Date.now());return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
-function PsDocuments({partyId,partyType}){
- const h=psH,{lang}=useI18n(),rg=usePsRange("day"),has=useAuthStore(s=>s.hasPermission);const [rows,setRows]=reactExports.useState(null),[error,setError]=reactExports.useState(""),[loading,setLoading]=reactExports.useState(true),[edit,setEdit]=reactExports.useState(null),[query,setQuery]=reactExports.useState(""),[type,setType]=reactExports.useState(""),[account,setAccount]=reactExports.useState("");const acc=usePsAccounts();
- const reload=reactExports.useCallback(async()=>{setLoading(true);setError("");try{const r=await psBusinessCall("documents");if(!r.success)throw Error(r.error?.message||"Qaimələr alınmadı");setRows(r.data.documents||[]);}catch(e){setRows([]);setError(String(e?.message||e));}finally{setLoading(false);}},[]);reactExports.useEffect(()=>{void reload();},[reload]);
- const kinds=[["expense","Xərc / kassa","Gider / kasa","Expense / cash"],["customer","Müştəri ödənişi","Müşteri ödemesi","Customer payment"],["supplier","Təchizatçı ödənişi","Tedarikçi ödemesi","Supplier payment"],["salary","Maaş","Maaş","Salary"]];
- const needle=query.toLocaleLowerCase("az");const shown=(rows||[]).filter(r=>Number(r.createdAt)>=rg.from&&Number(r.createdAt)<rg.to&&(!partyId||r.partyId===partyId)&&(!partyType||r.type===partyType)&&(!type||r.type===type)&&(!account||r.accountId===account)&&(!needle||[r.name,r.note,r.id].join(" ").toLocaleLowerCase("az").includes(needle)));
- const canEdit=r=>has(r.type==="customer"?"customers.credit":r.type==="supplier"?"suppliers.pay":r.type==="salary"?"salary.manage":"cash.manage");
+function PsDocuments({partyId,partyType,onChanged,defaultType=""}){
+ /* FINANCIAL_DOCUMENTS_1103 */ const h=psH,{lang}=useI18n(),rg=usePsRange(partyType==="salary"?"month":"day"),has=useAuthStore(s=>s.hasPermission);const [rows,setRows]=reactExports.useState(null),[error,setError]=reactExports.useState(""),[loading,setLoading]=reactExports.useState(true),[edit,setEdit]=reactExports.useState(null),[query,setQuery]=reactExports.useState(""),[type,setType]=reactExports.useState(defaultType),[detail,setDetail]=reactExports.useState(null),[voidRow,setVoidRow]=reactExports.useState(null),[account,setAccount]=reactExports.useState("");const acc=usePsAccounts();
+ const reload=reactExports.useCallback(async()=>{setLoading(true);setError("");try{const r=await psBusinessCall("documents");if(!r.success)throw Error(r.error?.message||"Qaimələr alınmadı");setRows(r.data.documents||[]);}catch(e){setRows([]);setError(String(e?.message||e));}finally{setLoading(false);}},[]);reactExports.useEffect(()=>{
+    void reload();
+    const refresh = () => void reload();
+    if (partyType==="salary") window.addEventListener("ps:salary-document-changed", refresh);
+    return () => window.removeEventListener("ps:salary-document-changed", refresh);
+  },[reload,partyType]);
+  const saved = async () => {
+    if (partyType==="salary") window.dispatchEvent(new Event("ps:salary-document-changed"));
+    else await reload();
+    if(onChanged) await onChanged();
+  };
+ const kinds=[["expense","Xərc / kassa","Gider / kasa","Expense / cash"],["customer","Müştəri ödənişi","Müşteri ödemesi","Customer payment"],["supplier","Təchizatçı ödənişi","Tedarikçi ödemesi","Supplier payment"],["salary","Maaş","Maaş","Salary"],["income","Qazanc","Gelir","Income"],["courier","Kuryer ödənişi","Kurye ödemesi","Courier remittance"],["cash-transfer","Kassa köçürməsi","Kasa transferi","Cash transfer"]];
+ const needle=query.toLocaleLowerCase("az");const shown=(rows||[]).filter(r=>Number(r.createdAt)>=rg.from&&Number(r.createdAt)<rg.to&&(!partyId||r.partyId===partyId)&&(!partyType||r.type===partyType)&&(!type||r.type===type)&&(!account||r.accountId===account||r.toAccountId===account)&&(!needle||[r.name,r.note,r.id,r.number].join(" ").toLocaleLowerCase("az").includes(needle)));
+ const canEdit=r=>!r.cancelled&&!["income","courier"].includes(r.type)&&has(r.type==="cash-transfer"?"cash.accounts":r.type==="customer"?"customers.credit":r.type==="supplier"?"suppliers.pay":r.type==="salary"?"salary.manage":"cash.manage");
  return h("section",{className:"space-y-4 ps-business-documents"},h("div",{className:"flex flex-wrap gap-2"},psRangeBar(rg),psSearchBox(query,setQuery,psBizText(lang,"Qaimə / ad / qeyd","Belge / ad / not","Document / name / note")),h("select",{className:psSelectCls,value:type,onChange:e=>setType(e.target.value)},h("option",{value:""},psBizText(lang,"Bütün ödənişlər","Tüm ödemeler","All payments")),kinds.map(([k,a,t,e])=>h("option",{key:k,value:k},psBizText(lang,a,t,e)))),h("select",{className:psSelectCls,value:account,onChange:e=>setAccount(e.target.value)},h("option",{value:""},psBizText(lang,"Bütün kassalar","Tüm kasalar","All tills")),(acc?.accounts||[]).map(a=>h("option",{key:a.id,value:a.id},a.name)))),
- error?h("div",{role:"alert",className:"ps-business-section"},h("p",null,error),jsxRuntimeExports.jsx(OpsButton,{disabled:loading,onClick:()=>void reload(),children:psBizText(lang,"Yenidən yoxla","Yeniden dene","Retry")})):loading&&rows===null?h("p",null,psBizText(lang,"Yüklənir…","Yükleniyor…","Loading…")):jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Qaimə","Belge","Document"),psBizText(lang,"Tarix","Tarih","Date"),psBizText(lang,"Ad / səbəb","Ad / sebep","Name / reason"),psBizText(lang,"Məbləğ","Tutar","Amount"),psBizText(lang,"Qeyd","Not","Note"),""],empty:psBizText(lang,"Bu dövrdə qaimə yoxdur","Bu dönemde belge yok","No documents in this period"),rows:(error?[]:shown).map(r=>[h("span",null,(kinds.find(k=>k[0]===r.type)||[])[lang==="tr"?2:lang==="en"?3:1]||r.kind,h("small",{className:"block text-muted"},r.id.slice(0,12))),opsWhen(r.createdAt),r.name,formatMoney(r.amountMinor),r.note||"—",canEdit(r)?jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setEdit(r),children:psBizText(lang,"Düzəliş","Düzenle","Edit")}):null])}),
- jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>void psExcel("odenis-qaimeleri",psBizText(lang,"Ödənişlər","Ödemeler","Payments"),[["ID","Tarix","Növ","Ad","AZN","Qeyd"],...shown.map(r=>[r.id,opsWhen(r.createdAt),r.type,r.name,psAzn(r.amountMinor),r.note])]),children:"Excel"}),edit?jsxRuntimeExports.jsx(PsDocumentEdit,{row:edit,onClose:()=>setEdit(null),onSaved:reload}):null);
+ error?h("div",{role:"alert",className:"ps-business-section"},h("p",null,error),jsxRuntimeExports.jsx(OpsButton,{disabled:loading,onClick:()=>void reload(),children:psBizText(lang,"Yenidən yoxla","Yeniden dene","Retry")})):loading&&rows===null?h("p",null,psBizText(lang,"Yüklənir…","Yükleniyor…","Loading…")):jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Qaimə","Belge","Document"),psBizText(lang,"Tarix","Tarih","Date"),psBizText(lang,"Ad / səbəb","Ad / sebep","Name / reason"),psBizText(lang,"Məbləğ","Tutar","Amount"),psBizText(lang,"Qeyd","Not","Note"),""],empty:psBizText(lang,"Bu dövrdə qaimə yoxdur","Bu dönemde belge yok","No documents in this period"),rows:(error?[]:shown).map(r=>[h("span",null,(kinds.find(k=>k[0]===r.type)||[])[lang==="tr"?2:lang==="en"?3:1]||r.kind,h("small",{className:"block text-muted"},r.id.slice(0,12))),opsWhen(r.createdAt),r.name,formatMoney(r.cancelled?r.originalAmountMinor:r.amountMinor),
+    r.cancelled ? "Ləğv edilib · " + (r.cancelReason || "") : r.note||"—",
+    h("div",{className:"flex flex-wrap gap-1"},
+      h(OpsButton,{tone:"quiet",onClick:()=>setDetail(r),children:"Bax"}),
+      canEdit(r)?h(OpsButton,{tone:"quiet",onClick:()=>setEdit(r),children:"Düzəliş et"}):null,
+      canEdit(r)?h(OpsButton,{tone:"danger",onClick:()=>setVoidRow(r),children:"Ləğv et"}):null)])}),
+ jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>void psExcel("odenis-qaimeleri",psBizText(lang,"Ödənişlər","Ödemeler","Payments"),[["ID","Tarix","Növ","Ad","AZN","Qeyd"],...shown.map(r=>[r.id,opsWhen(r.createdAt),r.type,r.name,psAzn(r.amountMinor),r.note])]),children:"Excel"}),edit?jsxRuntimeExports.jsx(PsDocumentEdit,{row:edit,onClose:()=>setEdit(null),onSaved:saved}):null,
+    detail?h(PsDocumentDetail1103,{row:detail,onClose:()=>setDetail(null)}):null,
+    voidRow?h(PsDocumentVoid1103,{row:voidRow,onClose:()=>setVoidRow(null),onSaved:saved}):null);
 }
 function PsStaffScope(){
  const h=psH,{lang}=useI18n(),has=useAuthStore(s=>s.hasPermission);const [data,setData]=reactExports.useState(null),[warehouses,setWarehouses]=reactExports.useState([]),[unlinked,setUnlinked]=reactExports.useState([]),[form,setForm]=reactExports.useState(null),[busy,setBusy]=reactExports.useState(false);const acc=usePsAccounts();
@@ -31327,6 +31428,36 @@ function psReadSizeName(name) {
   if (!Number.isFinite(size) || size <= 0 || size > (unit === 'sm' ? 300 : 100000)) return null;
   return { base: match[1].trim(), size, unit };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
