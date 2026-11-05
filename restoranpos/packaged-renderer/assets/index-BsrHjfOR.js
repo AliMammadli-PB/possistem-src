@@ -95,6 +95,7 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -15011,7 +15012,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.8 · f827494";
+const _PS_BUILD = "1.10.9 · f827494";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -31466,6 +31467,12 @@ function psReadSizeName(name) {
   if (!Number.isFinite(size) || size <= 0 || size > (unit === 'sm' ? 300 : 100000)) return null;
   return { base: match[1].trim(), size, unit };
 }
+
+
+
+
+
+
 
 
 

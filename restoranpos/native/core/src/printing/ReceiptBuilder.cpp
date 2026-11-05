@@ -536,6 +536,20 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
                                 width)
         << "\n";
     out << layout::renderSeparator('=', width) << "\n";
+    // A delivery is packed, not served: the kitchen sees whose it is and what the guest asked.
+    std::string deliveryNote;
+    {
+        auto delivery = ctx_.db().prepare(
+            "SELECT COALESCE(NULLIF(d.customer_name, ''), c.name, ''), d.note FROM delivery_orders d "
+            "LEFT JOIN customers c ON c.id = d.customer_id WHERE d.order_id = :order");
+        delivery.bind(":order", orderId);
+        if (delivery.step()) {
+            out << layout::centerColumn("*** ÇATDIRILMA ***", width) << "\n";
+            if (!delivery.columnText(0).empty())
+                for (const auto& line : layout::wrapText("Müştəri: " + delivery.columnText(0), width)) out << line << "\n";
+            deliveryNote = delivery.columnText(1);
+        }
+    }
     out << layout::renderKeyValue(
                "Masa: " + getOr<std::string>(order, "tableLabel", "-"),
                getOr<std::string>(order, "orderNumber", ""), width)
@@ -544,6 +558,8 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
                "Ofisiant: " + getOr<std::string>(order, "waiterName", "-"),
                                   formatTimestamp(nowMs()), width)
         << "\n";
+    if (!deliveryNote.empty())
+        for (const auto& line : layout::wrapText("Qeyd: " + deliveryNote, width)) out << line << "\n";
     out << layout::renderSeparator('=', width) << "\n";
 
     for (const auto& item : order["items"]) {
