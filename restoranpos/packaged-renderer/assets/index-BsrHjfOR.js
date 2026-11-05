@@ -85,6 +85,8 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -15001,7 +15003,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.4 · 7c9615d";
+const _PS_BUILD = "1.10.5 · b64a9cd";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -22885,7 +22887,8 @@ function ReceiptPage() {
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-cream", children: job.kind }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-faint", children: job.status }),
-                job.lastError && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-danger", children: job.lastError })
+                job.lastError && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-danger", children: job.lastError }),
+                job.status === "failed" && jsxRuntimeExports.jsx("button", { type: "button", className: "mt-1 underline text-cream", onClick: () => void window.pos.print.retry(job.id).then(() => loadJobs()), children: "Yenidən çap et" })
               ]
             },
             job.id
@@ -23724,6 +23727,7 @@ async function opsPrintWarehouseSlip(purchaseId) {
 function psH(tag, props, ...children) {
   const { key, ...rest } = props || {};
   const kids = children.flat().filter((c) => c !== null && c !== undefined && c !== false);
+  /* POS_1105 */ if (!kids.length) return jsxRuntimeExports.jsx(tag, rest, key);
   return kids.length > 1 ? jsxRuntimeExports.jsxs(tag, { ...rest, children: kids }, key) : jsxRuntimeExports.jsx(tag, { ...rest, children: kids[0] }, key);
 }
 /** The units a recipe row can use for an Anbar item of this stock unit. */
@@ -24328,7 +24332,7 @@ function OpsCosting() {
 
 
     ]}),
-    editor && psH(psRecipeEditor, {editor,setEditor,ingredients,recipeChoices:rows.filter(row => row.active && row.hasPreparedRecipe),busy,pickQuery,setPickQuery,lineCostMinor,editorCost,setLine,saveRecipe,unitLabel}),
+    editor && psH(psRecipeEditor, {editor,setEditor,ingredients,recipeChoices:rows.filter(row => row.hasPreparedRecipe),busy,pickQuery,setPickQuery,lineCostMinor,editorCost,setLine,saveRecipe,unitLabel}),
     confirmDialog);
 }
 
@@ -26226,7 +26230,7 @@ function PsOriginalSalary() {
     }) : null);
 }
 
-const PS_EXPENSE_KINDS = ["Bazarlıq", "Kommunal", "Maaş", "Nəqliyyat", "Təmir", "Digər"];
+const PS_EXPENSE_KINDS = ["Bazarlıq", "Kommunal", "Nəqliyyat", "Təmir", "Digər"];
 function OpsExpenses() {
   const h = psH;
   const [docEdit,setDocEdit]=reactExports.useState(null);
@@ -26242,7 +26246,7 @@ function OpsExpenses() {
   const [expenseObject, setExpenseObject] = reactExports.useState("");
   const reload = reactExports.useCallback(async () => {
     const r = await window.pos.cash.list("");
-    if (r.success) setRows((r.data.movements ?? []).filter((m) => m.kind === "expense"));
+    if (r.success) setRows((r.data.movements ?? []).filter((m) => m.kind === "expense" && !m.linkedSalaryDocumentId)); /* SALARY_ONE_PLACE_1105 */
   }, []);
   reactExports.useEffect(() => { void reload(); }, [reload]);
   const [busy, run] = useOpsAction(reload);
@@ -26282,7 +26286,7 @@ function OpsExpenses() {
     jsxRuntimeExports.jsx(OpsTable, {
       head: ["Tarix", "Kateqoriya", "Kassa / obyekt", "Məbləğ", "Qeyd", ""],
       empty: "Bu dövrdə xərc yoxdur",
-      rows: shown.map((m) => [opsWhen(m.createdAt), m.reason || "—", [m.accountName, m.objectName].filter(Boolean).join(" · ") || "—", h("b", { style: { color: "var(--ps-danger)" } }, formatMoney(m.amountMinor ?? 0)), m.note || "—",m.linkedSalaryDocumentId?"Maaşlar bölməsindən":jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setDocEdit({...m,type:"expense"}),children:psAdminText("Düzəliş","Düzenle","Edit")}),m.linkedSalaryDocumentId?null:jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:()=>setVoidExpense({...m,type:"expense"}),children:"Ləğv et"})])
+      rows: shown.map((m) => [opsWhen(m.createdAt), m.reason || "—", [m.accountName, m.objectName].filter(Boolean).join(" · ") || "—", h("b", { style: { color: "var(--ps-danger)" } }, formatMoney(m.amountMinor ?? 0)), m.note || "—",jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setDocEdit({...m,type:"expense"}),children:psAdminText("Düzəliş","Düzenle","Edit")}),jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:()=>setVoidExpense({...m,type:"expense"}),children:"Ləğv et"})])
     }),
     voidExpense ? psH(PsDocumentVoid1103,{row:voidExpense,onClose:()=>setVoidExpense(null),onSaved:reload}) : null,
     docEdit ? jsxRuntimeExports.jsx(PsDocumentEdit,{row:docEdit,onClose:()=>setDocEdit(null),onSaved:reload}) : null,
@@ -31441,6 +31445,18 @@ function psReadSizeName(name) {
   if (!Number.isFinite(size) || size <= 0 || size > (unit === 'sm' ? 300 : 100000)) return null;
   return { base: match[1].trim(), size, unit };
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

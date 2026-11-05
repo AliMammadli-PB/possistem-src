@@ -322,3 +322,28 @@ TEST_CASE("logo and QR go only on the guest's paper", "[printing][roles]") {
         CHECK_FALSE(receiptShowsBrand(kind));
     }
 }
+
+TEST_CASE("a paper waits for its printer and does not give up after five tries", "[printer][queue1105]") {
+    PrinterRoleFixture f;
+    f.call("print.setPrinter",{{"target","receipt"},{"printerName","tcp:127.0.0.1:9"}});
+    const auto order=f.call("orders.create",{{"tableId","tbl-01"},{"guestCount",1}});
+    const auto job=f.call("print.enqueue",{{"kind","customer_receipt"},{"orderId",order.at("id")}});
+    const auto id=job.at("id").get<std::string>();
+    const auto status=[&]{auto q=f.fixture().db().prepare("SELECT status FROM print_jobs WHERE id=:id");q.bind(":id",id);q.step();return q.columnText(0);};
+    const auto rewind=[&](int attempts,pos::Timestamp age){
+        auto q=f.fixture().db().prepare("UPDATE print_jobs SET attempts=:a,next_attempt_at=0,created_at=:at WHERE id=:id");
+        q.bind(":a",attempts).bind(":at",pos::nowMs()-age).bind(":id",id).exec();};
+    rewind(40,60*60*1000);
+    REQUIRE(f.call("print.drain",pos::Json::object()).at("processed")==1);
+    REQUIRE(status()=="retrying");
+    rewind(40,2*60*60*1000);
+    f.call("print.drain",pos::Json::object());
+    REQUIRE(status()=="failed");
+    REQUIRE(f.call("print.drain",pos::Json::object()).at("processed")==0);
+
+    const auto page=f.call("print.enqueue",{{"kind","test_page"}});
+    auto q=f.fixture().db().prepare("UPDATE print_jobs SET attempts=9,next_attempt_at=0 WHERE id=:id");q.bind(":id",page.at("id").get<std::string>()).exec();
+    f.call("print.drain",pos::Json::object());
+    auto t=f.fixture().db().prepare("SELECT status FROM print_jobs WHERE id=:id");t.bind(":id",page.at("id").get<std::string>());t.step();
+    REQUIRE(t.columnText(0)=="failed");
+}

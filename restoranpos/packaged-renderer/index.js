@@ -418,3 +418,11 @@ require('./secure-updater.cjs').attach(require('electron-updater').autoUpdater,{
 let _psFullBackupClient=null;
 function _psFullBackup(){if(!_psFullBackupClient)_psFullBackupClient=require("./cloud-backup-client.cjs").createClient({credentials:async()=>{const device=await J();return device&&{...device,appVersion:c.app.getVersion()};},isTerminal:()=>Boolean(globalThis.__psLanRoute),assetsDir:()=>Ht(),snapshot:async()=>{const actor=await _psPortalActor();if(!actor||!et)throw Error("CORE_UNAVAILABLE");const r=await et.invoke("backup.cloudSnapshot",{},{actor:{userId:actor.id},timeoutMs:120000});if(!r.success)throw Error("SNAPSHOT_FAILED");return r.data;}});return _psFullBackupClient;}
 setInterval(()=>void _psFullBackup().tick(),60000).unref();setTimeout(()=>void _psFullBackup().tick(),15000).unref();
+
+/* POS_PRINT_TICK */
+let _psPrintTickBusy=false;
+setInterval(async()=>{
+  if(_psPrintTickBusy||!ft()||!et||globalThis.__psLanRoute)return;
+  _psPrintTickBusy=true;
+  try{await et.invoke("print.drain",{},{timeoutMs:30000});}catch{}finally{_psPrintTickBusy=false;}
+},15000).unref();

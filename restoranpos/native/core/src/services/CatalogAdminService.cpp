@@ -105,7 +105,8 @@ void saveRecipeComponents(handlers::Context& ctx,const std::string& menuId,const
         const auto partId=part["menuItemId"].get<std::string>();const auto qty=part["qtyMilli"].get<std::int64_t>();
         require(partId!=menuId,"Menyu öz içində ola bilməz");
         require(qty>0&&qty<=100000,"Menyu məhsulunun sayı düzgün deyil");
-        auto exists=ctx.db().prepare("SELECT 1 FROM menu_items WHERE id=:id AND active=1 AND archived=0");exists.bind(":id",partId);require(exists.step(),"Menyu məhsulu tapılmadı");
+        // A part may be hidden from the sale screen: a sauce or a dough usually is.
+        auto exists=ctx.db().prepare("SELECT 1 FROM menu_items WHERE id=:id AND archived=0");exists.bind(":id",partId);require(exists.step(),"Menyu məhsulu tapılmadı");
         auto loop = ctx.db().prepare(
             "WITH RECURSIVE down(item) AS (SELECT :part UNION "
             "SELECT c.component_menu_item_id FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item) "
@@ -130,6 +131,36 @@ void saveRecipeComponents(handlers::Context& ctx,const std::string& menuId,const
             "INSERT INTO menu_item_components(menu_item_id,component_menu_item_id,qty_milli) VALUES(:menu,:part,:qty) "
             "ON CONFLICT(menu_item_id,component_menu_item_id) DO UPDATE SET qty_milli=excluded.qty_milli");
         insert.bind(":menu",menuId).bind(":part",partId).bind(":qty",qty);insert.exec();
+    }
+}
+
+// A dish that has just got a recipe may already sit in other recipes through its stock card.
+void adoptPreparedRecipe(handlers::Context& ctx,const std::string& menuId) {
+    auto prepared=ctx.db().prepare(
+        "SELECT l.ingredient_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id "
+        "WHERE l.menu_id=:id AND m.archived=0 AND (EXISTS(SELECT 1 FROM menu_item_components c WHERE c.menu_item_id=l.menu_id) "
+        " OR EXISTS(SELECT 1 FROM menu_item_ingredients r WHERE r.menu_item_id=l.menu_id AND r.ingredient_id<>l.ingredient_id))");
+    prepared.bind(":id",menuId);
+    if(!prepared.step())return;
+    const auto card=prepared.columnText(0);
+    auto parents=ctx.db().prepare("SELECT menu_item_id,qty_milli FROM menu_item_ingredients WHERE ingredient_id=:card AND menu_item_id<>:id AND qty_milli<=100000");
+    parents.bind(":card",card).bind(":id",menuId);
+    for(const auto& row:parents.rows()){
+        const auto parent=row.at("menu_item_id").get<std::string>();
+        // Same limits as saving a part by hand; a line that breaks them stays a stock line.
+        auto reach=ctx.db().prepare(
+            "WITH RECURSIVE up(item,n) AS (SELECT :parent,0 UNION SELECT c.menu_item_id,u.n+1 FROM up u JOIN menu_item_components c ON c.component_menu_item_id=u.item WHERE u.n<9), "
+            "down(item,n) AS (SELECT :part,0 UNION SELECT c.component_menu_item_id,d.n+1 FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item WHERE d.n<9) "
+            "SELECT EXISTS(SELECT 1 FROM down WHERE item=:parent),(SELECT MAX(n) FROM up)+1+(SELECT MAX(n) FROM down)");
+        reach.bind(":parent",parent).bind(":part",menuId);
+        reach.step();
+        if(reach.columnInt(0)!=0||reach.columnInt(1)>8)continue;
+        auto add=ctx.db().prepare(
+            "INSERT INTO menu_item_components(menu_item_id,component_menu_item_id,qty_milli) VALUES(:parent,:part,:qty) "
+            "ON CONFLICT(menu_item_id,component_menu_item_id) DO NOTHING");
+        add.bind(":parent",parent).bind(":part",menuId).bind(":qty",row.at("qty_milli").get<std::int64_t>()).exec();
+        auto drop=ctx.db().prepare("DELETE FROM menu_item_ingredients WHERE menu_item_id=:parent AND ingredient_id=:card");
+        drop.bind(":parent",parent).bind(":card",card).exec();
     }
 }
 

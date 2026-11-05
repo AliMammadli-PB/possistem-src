@@ -16,10 +16,6 @@ replace('onClick: () => pickKind === "stock" ? toggle(choice) : addComponent(cho
             return prepared && !selected ? addComponent(prepared, true) : toggle(choice);
           } },`);
 
-// The cash row of a salary belongs to its salary document; the core refuses it here.
-replace('jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setDocEdit({...m,type:"expense"}),', 'm.linkedSalaryDocumentId?"Maaşlar bölməsindən":jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setDocEdit({...m,type:"expense"}),');
-replace('jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:()=>setVoidExpense({...m,type:"expense"}),', 'm.linkedSalaryDocumentId?null:jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:()=>setVoidExpense({...m,type:"expense"}),');
-
 // A branch name that could not be applied says so where the objects are.
 replace('  const [showTransferDocs, setShowTransferDocs] = reactExports.useState(false);\n', `  const [showTransferDocs, setShowTransferDocs] = reactExports.useState(false);
   const [branchWarning, setBranchWarning] = reactExports.useState("");

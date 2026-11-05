@@ -81,9 +81,15 @@ std::string printerRoleKey(std::string_view target) {
     return "printer.receipt";
 }
 
+/**
+ * How long a paper keeps waiting for its printer. A kitchen ticket hours late would only confuse.
+ * After this it is `failed`, with its button on the print screen.
+ */
+constexpr Timestamp kPrintWaitsMs = 2 * 60 * 60 * 1000;
+
 /** Exponential backoff between print attempts. */
 Timestamp backoffFor(int attempts) {
-    static constexpr Timestamp kDelays[] = {2000, 5000, 15000, 60000, 300000};
+    static constexpr Timestamp kDelays[] = {2000, 5000, 15000, 60000, 60000};
     const int index = std::min(attempts, 4);
     return kDelays[index];
 }
@@ -521,7 +527,7 @@ int drainQueue(Context& ctx) {
     const auto now = nowMs();
 
     auto due = ctx.db().prepare(
-        "SELECT id, order_id, kind, target_printer, attempts, max_attempts, receipt_id, payload "
+        "SELECT id, order_id, kind, target_printer, attempts, max_attempts, receipt_id, payload, created_at "
         "FROM print_jobs "
         "WHERE status IN ('queued','retrying') AND (next_attempt_at IS NULL OR next_attempt_at <= :now) "
         "ORDER BY created_at LIMIT 20");
@@ -530,12 +536,13 @@ int drainQueue(Context& ctx) {
     struct Pending {
         std::string id, orderId, kind, printer, receiptId, options;
         int attempts, maxAttempts;
+        Timestamp createdAt;
     };
     std::vector<Pending> jobs;
     while (due.step()) {
         jobs.push_back({due.columnText(0), due.columnText(1), due.columnText(2), due.columnText(3),
                         due.columnText(6), due.columnText(7), static_cast<int>(due.columnInt(4)),
-                        static_cast<int>(due.columnInt(5))});
+                        static_cast<int>(due.columnInt(5)), due.columnInt(8)});
     }
 
     int processed = 0;
@@ -753,7 +760,9 @@ int drainQueue(Context& ctx) {
             // Exhausted retries become `failed`, which surfaces in the UI. The
             // order itself is never lost - the job row keeps everything needed
             // to reprint once the printer is back.
-            const bool giveUp = attempts >= job.maxAttempts;
+            // A test page is for now; anything else waits for paper or a printer back on.
+            const bool giveUp = job.kind == "test_page" ? attempts >= job.maxAttempts
+                                                        : nowMs() - job.createdAt >= kPrintWaitsMs;
             auto update = ctx.db().prepare(
                 "UPDATE print_jobs SET status = :status, attempts = :attempts, "
                 "       last_error = :error, next_attempt_at = :next, updated_at = :now "
@@ -1305,6 +1314,13 @@ void registerPrinting(const ContextPtr& ctx) {
                         {"pendingCount", pendingCount},
                         {"failedCount", failedCount}};
         });
+
+    // Called by the app on a timer: without it a waiting paper only moved when the next one was printed.
+    server.registerHandler("print.drain", [ctx](const ipc::Request&) {
+        const int processed = drainQueue(*ctx);
+        if (processed > 0) ctx->server().emitEvent(protocol::event::kPrintUpdated, Json::object());
+        return Json{{"processed", processed}};
+    });
 
     server.registerHandler(
         std::string(protocol::method::kPrintRetry), [ctx](const ipc::Request& request) {

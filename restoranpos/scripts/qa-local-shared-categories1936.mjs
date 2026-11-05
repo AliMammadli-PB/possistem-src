@@ -18,7 +18,7 @@ const source=phase==='before'?execFileSync('git',['show','00ee954:restoranpos/in
 let pre=source.slice(0,source.indexOf('const container = document.getElementById("root");'));const tail=source.slice(source.indexOf('function usePsCatalogRefresh('));if(!pre.includes('function usePsCatalogRefresh('))pre+='\n'+tail;
 const ast=ts.createSourceFile('ui.js',source,99,true);for(const n of ast.statements.filter(n=>ts.isFunctionDeclaration(n)&&n.getStart(ast)>source.indexOf('const container = document.getElementById(\"root\");'))){if(!pre.includes('function '+n.name.text+'('))pre+='\n'+n.getText(ast);}
 pre=pre.replace('jsxRuntimeExports.jsx(PsGate, {})','psH(QA)');
-const fixture=pre+`\nuseAuthStore.setState({session:{userId:'usr-admin',role:'administrator',authenticated:true,permissions:['inventory.view','inventory.manage','catalog.manage','recipes.manage','settings.manage','cash.manage','cash.accounts','users.manage','order.create','order.send','payment.take']},ready:true});const qp=new URLSearchParams(location.search);function QA(){return qp.get('page')==='order'?psH(PsOriginalOrderPage):qp.get('page')==='costing'?psH(OpsCosting):psH(PsUnifiedCatalog);}clientExports.createRoot(document.getElementById('root')).render(psH(HashRouter,null,psH(Routes,null,psH(Route,{path:qp.get('page')==='order'?'/order/:tableId':'*',element:psH(AppShell)}))));`;
+const fixture=pre+`\nuseAuthStore.setState({session:{userId:'usr-admin',role:'administrator',authenticated:true,permissions:['inventory.view','inventory.manage','catalog.manage','recipes.manage','settings.manage','cash.manage','cash.accounts','salary.manage','users.manage','order.create','order.send','payment.take']},ready:true});const qp=new URLSearchParams(location.search);function QA(){return qp.get('page')==='order'?psH(PsOriginalOrderPage):qp.get('page')==='costing'?psH(OpsCosting):qp.get('page')==='expenses'?psH(OpsExpenses):qp.get('page')==='salary'?psH(OpsSalary):psH(PsUnifiedCatalog);}clientExports.createRoot(document.getElementById('root')).render(psH(HashRouter,null,psH(Routes,null,psH(Route,{path:qp.get('page')==='order'?'/order/:tableId':'*',element:psH(AppShell)}))));`;
 const preload=`(()=>{const fakeElectron={contextBridge:{exposeInMainWorld:(k,v)=>{window[k]=v}},ipcRenderer:{invoke:(ch,req)=>ch==='pos:invoke'?window.coreCall(req.method,req.payload??{},req.options??{}):Promise.resolve({success:false,error:{code:'E_QA',message:'not in this test: '+ch}}),on(){},removeListener(){},removeAllListeners(){},send(){}},webFrame:{setZoomFactor(){},setVisualZoomLevelLimits(){}}};const require=n=>{if(n==='electron')return fakeElectron;throw Error('preload require '+n)};const exports={},module={exports};\n${fs.readFileSync(root+'/out/preload/index.js','utf8')}\n})();`;
 const server=http.createServer((req,res)=>{const u=req.url.split('?')[0];if(u==='/qa'){res.setHeader('content-type','text/html');return res.end(`<html lang="az"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/base.css"><link rel="stylesheet" href="/system.css"><style>html,body,#root{margin:0;height:100%}</style></head><body><div id="root"></div><script src="/preload.js"></script><script type="module" src="/assets/qa.js"></script></body></html>`)}if(u==='/preload.js'){res.setHeader('content-type','text/javascript');return res.end(preload)}if(u==='/assets/qa.js'){res.setHeader('content-type','text/javascript');return res.end(fixture)}const f=u==='/base.css'?root+'/packaged-renderer/assets/index-DFpMFaZu.css':u==='/system.css'?root+'/possistem-system.css':root+'/packaged-renderer'+u;if(fs.existsSync(f)&&fs.statSync(f).isFile()){res.setHeader('content-type',f.endsWith('.css')?'text/css':f.endsWith('.js')?'text/javascript':'application/octet-stream');return res.end(fs.readFileSync(f))}res.statusCode=404;res.end()});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const b=await chromium.launch({executablePath:'/home/panda/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome',headless:true,args:['--no-sandbox']});
@@ -199,6 +199,8 @@ try{
    const after=await d.boundingBox(),buttonAfter=await save.boundingBox();
    assert.ok(Math.abs(before.width-after.width)<1);
    assert.ok(Math.abs(button.y-buttonAfter.y)<1);
+   const fills=await d.locator('.ps-recipe').evaluate(n=>{const a=n.getBoundingClientRect(),b=n.parentElement.getBoundingClientRect(),c=n.querySelector('.ps-recipe-search').getBoundingClientRect(),padding=parseFloat(getComputedStyle(n.parentElement).paddingLeft);return Math.abs(a.left-b.left-padding)<1&&Math.abs(c.width-a.width)<1;});
+   assert.ok(fills,'the recipe keeps its full width and left edge at any result count: '+query+' '+width);
   }
  }
  await d.getByRole('button',{name:'Marqarit pizza · 28 sm reseptini sil'}).click();
@@ -213,6 +215,34 @@ try{
  assert.equal(nestedRecipe.components[0].menuItemId,pizza28);
  assert.equal(nestedRecipe.components[0].qtyMilli,2000);
  console.log('PASS 1.10.4 UI: a prepared dish picked from the stock list is a recipe part; stable search at 1536, 1000 and 390 px.');
+ const month=new Date().toISOString().slice(0,7);
+ const accountId=must(await core.call('cashAccounts.list',{})).accounts.find(x=>x.kind==='till').id;
+ const worker=must(await core.call('customers.save',{name:'QA İşçi',kind:'employee',salaryMinor:100000},key())).id;
+ must(await core.call('salary.pay',{customerId:worker,month,kind:'advance',amountMinor:2000,accountId,note:''},key()));
+ must(await core.call('cash.movement',{kind:'expense',amountMinor:500,reason:'Bazarlıq',note:'QA xərc',accountId},key()));
+ const expensesPage=await open('page=expenses','admin/inventory');
+ const expenseRow=expensesPage.getByRole('row',{name:/QA xərc/});
+ await expenseRow.waitFor();
+ assert.equal(await expensesPage.getByRole('row',{name:/QA İşçi/}).count(),0,'an advance is not listed under Xərclər');
+ assert.equal(await expensesPage.getByRole('button',{name:'Maaş',exact:true}).count(),0);
+ await expenseRow.getByRole('button',{name:'Ləğv et'}).click();
+ const voidDialog=expensesPage.getByRole('dialog',{name:'Qaiməni ləğv et'});
+ const confirm=voidDialog.getByRole('button',{name:'Ləğvi təsdiqlə'});
+ assert.equal(await confirm.isDisabled(),true,'a reason comes first');
+ await voidDialog.getByLabel('Ləğv səbəbi').fill('QA səhv yazılıb');
+ await confirm.click();
+ await voidDialog.waitFor({state:'detached'});
+ await expenseRow.waitFor({state:'detached'});
+ const staffPage=await open('page=salary','admin/inventory');
+ const salaryRow=staffPage.getByRole('row',{name:/^Maaş .*QA İşçi/});
+ await salaryRow.waitFor();
+ await salaryRow.getByRole('button',{name:'Bax',exact:true}).click();
+ const detail=staffPage.getByRole('dialog',{name:'Qaimə'});
+ await detail.getByText('QA İşçi · avans').first().waitFor().catch(()=>{});
+ assert.ok((await detail.innerText()).includes('Məbləğ'),'the view dialog has its content');
+ assert.deepEqual([...expensesPage.errors,...staffPage.errors],[]);
+ const cashLeft=must(await core.call('cashAccounts.list',{})).accounts.find(x=>x.id===accountId);
+ console.log('PASS 1.10.5 UI: cancel and view dialogs have content, an advance is only under İşçilər. Till balance',cashLeft.balanceMinor);
  await costingPage.setViewportSize({width:1000,height:650});
  assert.ok(await costingPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  assert.deepEqual(costingPage.errors,[]);

@@ -14,7 +14,7 @@ for(const [name,commit,version] of [['till on the diverged 1.9.25 (schema 66)','
  const db=fromCommit(dir,commit);assert.equal(value(db,'PRAGMA user_version'),version);
  db.exec(`INSERT INTO menu_categories(id,name_az,active,sort_order) VALUES('c1','Pizza',1,1)`);db.close();
  const a=start(dir);await a.ready;await a.stop();
- const d=new DatabaseSync(path.join(dir,'pos.db'));assert.equal(value(d,'PRAGMA user_version'),70);assert.equal(value(d,"SELECT name FROM database_migrations WHERE version=66"),'066_menu_subcategories_components.sql');assert.equal(value(d,"SELECT COUNT(*) FROM catalog_category_links WHERE menu_category_id='c1'"),1);assert.equal(value(d,"SELECT COUNT(*) FROM menu_categories WHERE id='c1' AND parent_id IS NULL"),1);assert.equal(value(d,"SELECT COUNT(*) FROM menu_item_recipe_expanded"),0);d.close();
+ const d=new DatabaseSync(path.join(dir,'pos.db'));assert.equal(value(d,'PRAGMA user_version'),71);assert.equal(value(d,"SELECT name FROM database_migrations WHERE version=66"),'066_menu_subcategories_components.sql');assert.equal(value(d,"SELECT COUNT(*) FROM catalog_category_links WHERE menu_category_id='c1'"),1);assert.equal(value(d,"SELECT COUNT(*) FROM menu_categories WHERE id='c1' AND parent_id IS NULL"),1);assert.equal(value(d,"SELECT COUNT(*) FROM menu_item_recipe_expanded"),0);d.close();
  assert.ok(fs.readdirSync(path.join(dir,'backups')).some(f=>f.includes('pre-migration')),'a backup was taken');
 });
 // 067 runs on every till. A shop's real mix: same names on both sides, a sub-category, a deep warehouse tree, goods on sale, goods not on sale, a recipe.
@@ -25,7 +25,7 @@ await scene('067 on a shop with real data leaves money, stock and recipes alone'
  INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,created_at,updated_at) VALUES('m-cola','soft','MC','Kola',200,1,1),('m-burger','food','MB','Burger',800,1,1);
  INSERT INTO catalog_goods_links(menu_id,ingredient_id) VALUES('m-cola','cola');INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES('m-burger','beef',150);`);db.close();
  const a=start(dir);await a.ready;await a.stop();
- const d=new DatabaseSync(path.join(dir,'pos.db'));assert.equal(value(d,'PRAGMA user_version'),70);
+ const d=new DatabaseSync(path.join(dir,'pos.db'));assert.equal(value(d,'PRAGMA user_version'),71);
  assert.equal(value(d,"SELECT price_minor FROM menu_items WHERE id='m-cola'"),200);assert.equal(value(d,"SELECT category_id FROM menu_items WHERE id='m-cola'"),'soft');assert.equal(value(d,"SELECT cost_minor FROM ingredients WHERE id='beef'"),900);assert.equal(value(d,"SELECT qty_milli FROM menu_item_ingredients WHERE menu_item_id='m-burger'"),150);
  assert.equal(value(d,"SELECT category_id FROM ingredients WHERE id='beef'"),'s-beef','a deep warehouse category stays');
  assert.equal(value(d,"SELECT category_id FROM ingredients WHERE id='cola'"),value(d,"SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id='soft'"),'a good on sale files under its dish');
@@ -40,7 +40,9 @@ await scene('1.10.2 with real data: documents appear, prepared dishes become par
  const dish=(id,name)=>{fill('menu_items',{id,category_id:'c',sku:id,name_az:name,price_minor:500});fill('ingredients',{id:'card-'+id,sku:'MENU-'+id,name:name})};
  for(const [id,name] of [['dough','Xəmir'],['pizza','Pizza'],['kola','Kola'],['ring1','Halqa 1'],['ring2','Halqa 2']])dish(id,name);
  fill('ingredients',{id:'flour',sku:'FLOUR',name:'Un'});
+ dish('sauce','Sous');dish('doner','Dönər');db.exec("UPDATE menu_items SET active=0 WHERE id='sauce'");
  const line=db.prepare('INSERT OR REPLACE INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES(?,?,?)');
+ line.run('sauce','flour',30);line.run('doner','card-sauce',1000);
  line.run('dough','flour',200);line.run('pizza','card-dough',2000);line.run('pizza','card-kola',1000);
  line.run('ring1','flour',1);line.run('ring2','flour',1);line.run('ring1','card-ring2',1000);line.run('ring2','card-ring1',1000);
  fill('customers',{id:'emp',name:'İşçi',kind:'employee'});
@@ -56,7 +58,7 @@ await scene('1.10.2 with real data: documents appear, prepared dishes become par
  const before=value(db,sums);db.close();
  const a=start(dir);await a.ready;await a.stop();
  const d=new DatabaseSync(path.join(dir,'pos.db'));
- assert.equal(value(d,'PRAGMA user_version'),70);
+ assert.equal(value(d,'PRAGMA user_version'),71);
  assert.equal(value(d,sums),before,'no money moved');
  assert.equal(value(d,"SELECT total_minor FROM orders WHERE id='o1'"),1500);
  assert.equal(value(d,"SELECT is_deposit FROM payments WHERE id='p1'"),0);
@@ -68,7 +70,8 @@ await scene('1.10.2 with real data: documents appear, prepared dishes become par
  assert.equal(value(d,"SELECT qty_milli FROM menu_item_ingredients WHERE menu_item_id='pizza' AND ingredient_id='card-kola'"),1000,'a good with no recipe stays a line');
  assert.equal(value(d,"SELECT COUNT(*) FROM menu_item_components WHERE menu_item_id LIKE 'ring%'"),0,'a cycle is left alone');
  assert.equal(value(d,"SELECT COUNT(*) FROM menu_item_ingredients WHERE ingredient_id LIKE 'card-ring%'"),2);
- assert.equal(value(d,"SELECT COUNT(*) FROM sqlite_master WHERE name='_m070_lines'"),0);
+ assert.equal(value(d,"SELECT qty_milli FROM menu_item_recipe_expanded WHERE menu_item_id='doner' AND ingredient_id='flour'"),30,'a sauce hidden from the sale screen counts');
+ assert.equal(value(d,"SELECT COUNT(*) FROM sqlite_master WHERE name IN ('_m070_lines','_m071_lines')"),0);
  assert.deepEqual(d.prepare('PRAGMA quick_check').all().map(r=>Object.values(r)[0]),['ok']);
  assert.ok(fs.readdirSync(path.join(dir,'backups')).some(f=>f.includes('pre-migration')),'a backup was taken');d.close();
 });

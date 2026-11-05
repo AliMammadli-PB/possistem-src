@@ -1118,7 +1118,7 @@ void registerInventory(const ContextPtr& ctx) {
                 // raw materials go out of stock, not the card (migration 070 did the old lines).
                 auto prepared = ctx->db().prepare(
                     "SELECT l.menu_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id "
-                    "WHERE l.ingredient_id=:ingredient AND l.menu_id<>:item AND m.active=1 AND m.archived=0 "
+                    "WHERE l.ingredient_id=:ingredient AND l.menu_id<>:item AND m.archived=0 "
                     "AND (EXISTS(SELECT 1 FROM menu_item_components c WHERE c.menu_item_id=l.menu_id) "
                     "  OR EXISTS(SELECT 1 FROM menu_item_ingredients r WHERE r.menu_item_id=l.menu_id AND r.ingredient_id<>l.ingredient_id))");
                 prepared.bind(":ingredient", ingredientId).bind(":item", menuItemId);
@@ -1161,6 +1161,7 @@ void registerInventory(const ContextPtr& ctx) {
                 duplicate.bind(":item", menuItemId);
                 require(!duplicate.step(), "Hazır resept və ona bağlı anbar malı birlikdə saxlanıla bilməz");
             }
+            services::adoptPreparedRecipe(*ctx, menuItemId);
             ctx->audit("recipe.save", "menu_item", menuItemId,
                        Json{{"lines", saved}, {"componentsChanged", request.payload.contains("components")}});
             txn.commit();

@@ -315,3 +315,45 @@ TEST_CASE("a prepared dish saved through its stock card becomes a recipe part","
     REQUIRE_THROWS_AS(x.call("recipes.save",{{"menuItemId",dough},{"lines",pos::Json::array({{{"ingredientId",x.cardOf(pizza)},{"qtyMilli",1000}}})}}),pos::PosError);
     REQUIRE(x.expanded(pizza,flour)==400);
 }
+
+TEST_CASE("selling a doner takes the meat and what is inside its sauce","[catalog][recipe][1105]") {
+    MenuFixture x;
+    const auto category=x.category("Doner");
+    const auto meat=x.call("ingredients.save",{{"name","Ət"},{"unit","kg"}}).at("id").get<std::string>();
+    const auto garlic=x.call("ingredients.save",{{"name","Sarımsaq"},{"unit","kg"}}).at("id").get<std::string>();
+    const auto oil=x.call("ingredients.save",{{"name","Yağ"},{"unit","l"}}).at("id").get<std::string>();
+    const auto line=[](const std::string& id,int qty){return pos::Json{{"ingredientId",id},{"qtyMilli",qty}};};
+
+    // The sauce is off the sale screen, and the doner got it before it had a recipe.
+    const auto sauce=x.product(category,"Sous",100);
+    const auto doner=x.product(category,"Dönər",800);
+    auto hide=x.f.db().prepare("UPDATE menu_items SET active=0 WHERE id=:id");hide.bind(":id",sauce).exec();
+    x.call("recipes.save",{{"menuItemId",doner},{"lines",pos::Json::array({line(meat,150),line(x.cardOf(sauce),2000)})}});
+    REQUIRE(x.expanded(doner,x.cardOf(sauce))==2000);
+    x.call("recipes.save",{{"menuItemId",sauce},{"lines",pos::Json::array({line(garlic,10),line(oil,20)})}});
+    REQUIRE(x.expanded(doner,x.cardOf(sauce))==0);
+    REQUIRE(x.expanded(doner,meat)==150);
+    REQUIRE(x.expanded(doner,garlic)==20);
+    REQUIRE(x.expanded(doner,oil)==40);
+
+    // Picked again later, by card, while still hidden.
+    x.call("recipes.save",{{"menuItemId",doner},{"lines",pos::Json::array({line(meat,150),line(x.cardOf(sauce),1000)})},{"components",pos::Json::array()}});
+    REQUIRE(x.expanded(doner,garlic)==10);
+
+    x.f.openTill();
+    pos::handlers::registerOrders(x.f.contextPtr());
+    pos::handlers::registerPayments(x.f.contextPtr());
+    pos::handlers::registerSales(x.f.contextPtr());
+    auto order=x.f.db().prepare("INSERT INTO orders(id,order_number,user_id,status,opened_at,updated_at) VALUES('doner-sale','DONER-1','usr-admin','open',:at,:at)");
+    order.bind(":at",pos::nowMs()).exec();
+    auto item=x.f.db().prepare("INSERT INTO order_items(id,order_id,product_id,line_seq,name_snapshot,unit_price_minor,quantity,line_total_minor,status,created_at,updated_at) "
+        "VALUES('doner-line','doner-sale',:dish,1,'Dönər',800,1,800,'served',:at,:at)");
+    item.bind(":dish",doner).bind(":at",pos::nowMs()).exec();
+    pos::services::InventoryService inventory(x.f.ctx());
+    for(const auto& id:{meat,garlic,oil})inventory.move(id,"wh-main",1000,"adjustment","","Test");
+    x.call("payments.createCash",{{"orderId","doner-sale"},{"amountMinor",800}});
+    REQUIRE(inventory.levelOf(meat,"wh-main")==850);
+    REQUIRE(inventory.levelOf(garlic,"wh-main")==990);
+    REQUIRE(inventory.levelOf(oil,"wh-main")==980);
+    REQUIRE(inventory.levelOf(x.cardOf(sauce),"wh-main")==0);
+}

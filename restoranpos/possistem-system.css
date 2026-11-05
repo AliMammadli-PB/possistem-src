@@ -2427,7 +2427,8 @@ html body .ps-pin-layout-1930 .ps-staff-pin-error,html body .ps-pin-layout-1930 
 
 
 /* Keep the recipe search and footer still when the result count changes. */
-.ps-recipe { min-width: 0; }
+/* The dialog's last child gets justify-content:flex-end; on this grid it pushed a narrow track right. */
+.ps-recipe { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .ps-recipe-picker-types { display: flex; gap: .5rem; flex-wrap: wrap; }
 .ps-recipe .ps-recipe-chips {
   height: 9rem;
