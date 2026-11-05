@@ -43,3 +43,7 @@ Found on a real customer database, from its cloud backup with the owner's permis
 
 - Past sales are not recalculated, so stock already wrong stays as it is. Dishes with no recipe still take their own card, which is why they can show a negative balance.
 - A dish with two live versions of the same name needs a person to choose.
+
+## Publication (2026-11-05)
+
+Through `artifacts/release-1106/publish.sh`: API delta workspace `.workspace-20261105-1106`, admin panel, feed, verified ZIP, download page. EXE SHA-256 `fc1e9b6c89ee614a8224a6b3819945aa905098967e0c0b5a6e84c39e547ecc87`, 356300487 bytes. Site build `DFBZBmdfkVdoNxZme2QQ7`. Rollbacks: website `/var/www/possistem/.next-before-release-1106-20261105` then `pm2 restart possistem`; API remove `zzzzzzzz-workspace-1106.conf`, `systemctl daemon-reload`, restart; admin `dist-before-1106`. Older backups disappear on each till's next upload. A till that has updated cannot go back: migrations are forward-only.
