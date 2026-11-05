@@ -37,3 +37,11 @@ Includes 1.10.3. Fixes the gaps found checking 1.10.3 against the customer's lis
 - The owner portal: `warehouse-portal.ts` and `WarehouseDocuments.tsx` are committed, not deployed, so new document types there are unchanged.
 - Goods already on sale stay in "Mallar" until unticked.
 - Market and the other tills.
+
+## Unit tests
+
+`tests/unit` reports 24 failures, the same number as on the 1.10.2 commit: Market bridge tests and suites that need assembled files such as `branch-presence.cjs`. No failure comes from this release. The run was read only after the publish had gone out, because both were sent in one command; the comparison was made straight after.
+
+## Publication (2026-11-05)
+
+Through `artifacts/release-1104/publish.sh`. EXE SHA-256 `44d1fadaa7fc996ca57bae335280093d494eaf5cec784b4adf0ee7925cf715b4`, 356285900 bytes. Site build `3f6G9U32OWiumTr5ibjOc`. Website rollback: `/var/www/possistem/.next-before-release-1104-20261105`, then `pm2 restart possistem`. A till that has updated cannot go back: migrations are forward-only, so a bad build means a new version.
