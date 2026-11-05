@@ -33,7 +33,10 @@ constexpr const char* kTableQuery =
     // counts, queued included - the waiter pressing the button is the event,
     // not the paper coming out.
     "       EXISTS (SELECT 1 FROM print_jobs pj WHERE pj.order_id = o.id "
-    "               AND pj.kind = 'customer_bill') AS billPrinted "
+    "               AND pj.kind = 'customer_bill') AS billPrinted, "
+    // A delivery table goes by the guest's name, read from the open delivery so
+    // the reused table's label (and old sales showing it) stays as it was.
+    "       (SELECT NULLIF(d.customer_name, '') FROM delivery_orders d WHERE d.order_id = o.id) AS deliveryName "
     "FROM restaurant_tables t "
     "JOIN restaurant_areas a ON a.id = t.area_id "
     "LEFT JOIN orders o ON o.table_id = t.id "

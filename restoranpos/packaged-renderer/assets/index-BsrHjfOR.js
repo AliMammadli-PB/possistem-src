@@ -89,6 +89,7 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -15005,7 +15006,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.6 · c37130d";
+const _PS_BUILD = "1.10.7 · 0bb60a3";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -21423,7 +21424,7 @@ function PsOriginalOrderPage() {
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "brand-kicker text-gold-dim", children: "Aktiv sifariş" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: table?.label ?? order?.tableLabel ?? t.order.title }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: table?.deliveryName || (table?.label ?? order?.tableLabel ?? t.order.title) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-faint", children: [
             order ? `#${order.orderNumber}` : "—",
             " · ",
@@ -29692,7 +29693,8 @@ const SETTABLE_STATUSES = ["available", "reserved", "waiting", "cleaning"];
 const FLOOR_PANEL = "border border-white/15 bg-white/10 text-white/90";
 const FLOOR_PANEL_HOVER = "hover:border-white/35 hover:bg-white/16 hover:text-white";
 const FLOOR_TEXT_DIM = "text-white/70";
-function tableNumber(table) {
+/* DELIVERY_NAMES_1107 */ function tableNumber(table) {
+  if (table.deliveryName) return table.deliveryName;
   const fromLabel = table.label.match(/\d+/)?.[0];
   return fromLabel ?? String(table.sortOrder ?? 1);
 }
@@ -29749,7 +29751,7 @@ function FloorTableTile({
       className: `table-tile table-tile--${tone} touch-target flex min-w-0 ${compact ? "min-h-[110px] p-2.5 max-[1280px]:min-h-[100px]" : "min-h-[128px] p-3.5 max-[1280px]:min-h-[118px] max-[1280px]:p-3"} flex-col justify-between gap-1 text-left disabled:cursor-not-allowed ${selected ? "is-selected" : ""}`,
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-[1] flex items-start justify-between gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `table-tile__num ${compact ? "text-[2rem]" : "text-[2.75rem]"}`, children: number }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: table.deliveryName ? "table-tile__num table-tile__name" : `table-tile__num ${compact ? "text-[2rem]" : "text-[2.75rem]"}`, children: number }),
           table.orderId ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "table-tile__pulse mt-1.5", "aria-hidden": true }) : null
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-[1] mt-auto flex items-end justify-between gap-1.5", children: [
@@ -30143,7 +30145,7 @@ function PsOriginalTablesPage() {
       motion.header,
       {
         initial: false,
-        className: "relative z-[1] flex items-center justify-between gap-4 border-b border-white/12 bg-white/6 px-5 py-3.5 backdrop-blur-[2px]",
+        className: "relative z-[1] flex flex-wrap items-center gap-4 border-b border-white/12 bg-white/6 px-5 py-3.5 backdrop-blur-[2px]",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "brand-kicker text-gold", children: t.brand }),
@@ -30169,7 +30171,7 @@ function PsOriginalTablesPage() {
               ] })
             ] })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap justify-end gap-2", children: areas.map((area) => {
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap items-center gap-2", children: [...areas.map((area) => {
             const active = areaFilter === area.id;
             return /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
@@ -30181,8 +30183,7 @@ function PsOriginalTablesPage() {
               },
               area.id
             );
-          }) }),
-          jsxRuntimeExports.jsx(PsDeliveryStartButton, {})
+          }), jsxRuntimeExports.jsx(PsDeliveryStartButton, {}, "ps-delivery-start")] }),
         ]
       }
     ),
@@ -31447,6 +31448,12 @@ function psReadSizeName(name) {
   if (!Number.isFinite(size) || size <= 0 || size > (unit === 'sm' ? 300 : 100000)) return null;
   return { base: match[1].trim(), size, unit };
 }
+
+
+
+
+
+
 
 
 
