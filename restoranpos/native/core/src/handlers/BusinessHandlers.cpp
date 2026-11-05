@@ -91,8 +91,56 @@ Json context(Context& ctx) {
     out["terminalId"]=ctx.saleTerminalId();out["manager"]=manager(ctx);
     return out;
 }
+void archiveDocument(Context& ctx, const Json& p, const std::string& type, const std::string& id,
+                     const Json& before, const std::string& reason) {
+    auto archive = ctx.db().prepare(
+        "INSERT INTO document_voids(doc_type,doc_id,before_json,original_amount_minor,reason,actor_id,voided_at) "
+        "VALUES(:t,:id,:b,:amount,:reason,:actor,:at)");
+    archive.bind(":t",type).bind(":id",id).bind(":b",before.dump()).bind(":amount",before.value("amount_minor",Money{0}))
+        .bind(":reason",reason).bind(":actor",transfer_workflows::actor(ctx,p)).bind(":at",nowMs()).exec();
+}
+
+Json correctCashTransfer(Context& ctx, const Json& p, const std::string& id) {
+    ctx.requirePermission("cash.accounts");
+    auto old = ctx.db().prepare("SELECT * FROM cash_transfer_documents WHERE id=:id");
+    old.bind(":id",id);
+    require(old.step(),"Köçürmə qaiməsi tapılmadı");
+    const auto before = old.row();
+    auto voided = ctx.db().prepare("SELECT 1 FROM document_voids WHERE doc_type='cash-transfer' AND doc_id=:id");
+    voided.bind(":id",id);
+    require(!voided.step(),"Qaimə artıq ləğv edilib");
+    const auto originalFrom = before.at("from_id").get<std::string>();
+    const auto originalTo = before.at("to_id").get<std::string>();
+    const auto originalAmount = before.at("amount_minor").get<Money>();
+    const bool cancel = p.value("cancel",false);
+    const auto note = p.value("note",before.value("note",std::string{}));
+    if (cancel) require(note.find_first_not_of(" \t\r\n")!=std::string::npos,"Ləğv səbəbini yazın");
+    services::CashService cash(ctx);
+    require(cash.accountBalance(originalTo)>=originalAmount,"Qəbul edən kassada geri qaytarmaq üçün vəsait çatmır");
+    cash.accountMove(originalTo,-originalAmount,"correction","transfer",id,"Köçürmənin əks yazılışı");
+    cash.accountMove(originalFrom,originalAmount,"correction","transfer",id,"Köçürmənin əks yazılışı");
+    if (cancel) {
+        archiveDocument(ctx,p,"cash-transfer",id,before,note);
+    } else {
+        const auto from = p.value("accountId",originalFrom);
+        const auto to = p.value("toAccountId",originalTo);
+        const auto amount = getOr<Money>(p,"amountMinor",0);
+        require(!from.empty()&&!to.empty()&&from!=to,"İki fərqli kassa seçin");
+        require(amount>0&&amount<=1000000000000LL,"Məbləğ düzgün deyil");
+        require(cash.accountBalance(from)>=amount,"Göndərən kassada vəsait çatmır");
+        cash.accountMove(from,-amount,"correction","transfer",id,note);
+        cash.accountMove(to,amount,"correction","transfer",id,note);
+        auto update = ctx.db().prepare(
+            "UPDATE cash_transfer_documents SET from_id=:from,to_id=:to,amount_minor=:amount,note=:note WHERE id=:id");
+        update.bind(":from",from).bind(":to",to).bind(":amount",amount).bind(":note",note).bind(":id",id).exec();
+    }
+    ctx.auditRequired("document.correct","cash-transfer",id,Json{{"before",before},{"after",p}});
+    return Json{{"id",id},{"cancelled",cancel}};
+}
+
 Json correct(Context& ctx,const Json& p) {
     auto type=p.value("type",std::string{});if(type=="cash")type="expense";const auto id=p.value("id",std::string{});
+    if(type=="cash-transfer") return correctCashTransfer(ctx,p,id);
     const bool cash=type=="expense" || type=="cash", customer=type=="customer",supplier=type=="supplier",salary=type=="salary";
     require(cash||customer||supplier||salary,"Qaimə növü tanınmadı");
     ctx.requirePermission(cash?"cash.manage":customer?"customers.credit":supplier?"suppliers.pay":"salary.manage");
@@ -108,11 +156,11 @@ Json correct(Context& ctx,const Json& p) {
     require(!cash || !before.contains("deleted_at") || before["deleted_at"].is_null(),"Qaimə artıq ləğv edilib");
     require(!cash || before.value("kind",std::string{})!="drawer_open","Kassa açılması ödəniş deyil");
     require(!salary || before.value("kind",std::string{})!="note","Bu sənəd qeyddir");
-    auto link=ctx.db().prepare("SELECT account_id,cash_movement_id FROM document_cash_links WHERE doc_type=:t AND doc_id=:id");
+    auto link=ctx.db().prepare("SELECT account_id,cash_movement_id,COALESCE(salary_adjustment_id,'') FROM document_cash_links WHERE doc_type=:t AND doc_id=:id");
     link.bind(":t",type).bind(":id",id);
-    std::string oldAccount, linkedCash;
+    std::string oldAccount, linkedCash, salaryAdjustment;
     bool known=link.step();
-    if(known){oldAccount=link.columnText(0);linkedCash=link.columnText(1);}
+    if(known){oldAccount=link.columnText(0);linkedCash=link.columnText(1);salaryAdjustment=link.columnText(2);}
     if(cash) {
         auto a=ctx.db().prepare("SELECT account_id FROM cash_account_moves WHERE ref_type='cash_movement' AND ref_id=:id ORDER BY created_at DESC,rowid DESC LIMIT 1");
         a.bind(":id",id);if(a.step()) oldAccount=a.columnText(0);known=true;
@@ -139,8 +187,7 @@ Json correct(Context& ctx,const Json& p) {
     auto u=ctx.db().prepare("UPDATE "+std::string(table)+" SET amount_minor=:a,note=:n,created_at=:at"+(cash?",reason=:r":std::string{})+" WHERE id=:id");
     u.bind(":a",amount).bind(":n",note).bind(":at",at).bind(":id",id);if(cash)u.bind(":r",reason);u.exec();
     if(cancel) {
-        auto archive=ctx.db().prepare("INSERT INTO document_voids(doc_type,doc_id,before_json,original_amount_minor,reason,actor_id,voided_at) VALUES(:t,:id,:b,:amount,:reason,:actor,:at)");
-        archive.bind(":t",type).bind(":id",id).bind(":b",before.dump()).bind(":amount",before.value("amount_minor",Money{0})).bind(":reason",note).bind(":actor",transfer_workflows::actor(ctx,p)).bind(":at",nowMs());archive.exec();
+        archiveDocument(ctx,p,type,id,before,note);
         if(cash || !linkedCash.empty()){auto mark=ctx.db().prepare("UPDATE cash_movements SET deleted_at=:at WHERE id=:id");mark.bind(":at",nowMs()).bind(":id",cash?id:linkedCash);mark.exec();}
     }
     auto save=ctx.db().prepare("INSERT INTO document_cash_links(doc_type,doc_id,account_id,cash_movement_id) VALUES(:t,:id,:a,:c) ON CONFLICT(doc_type,doc_id) DO UPDATE SET account_id=excluded.account_id");
@@ -152,6 +199,17 @@ Json correct(Context& ctx,const Json& p) {
     if(supplier && before.contains("purchase_id") && before["purchase_id"].is_string()) {
         refreshPurchase(ctx,before["purchase_id"].get<std::string>());
     }
+    if(salary && cancel && !salaryAdjustment.empty()) {
+        auto reverse = ctx.db().prepare(
+            "INSERT INTO customer_ledger(id,customer_id,amount_minor,kind,note,actor_user_id,created_at) "
+            "SELECT :new,customer_id,-amount_minor,'adjustment',:note,:actor,:at FROM customer_ledger WHERE id=:id");
+        reverse.bind(":new",crypto::uuid4()).bind(":note","Maaş qaiməsi ləğv edildi: "+id)
+            .bindOptional(":actor",ctx.session().userId).bind(":at",nowMs()).bind(":id",salaryAdjustment).exec();
+        auto debt = ctx.db().prepare(
+            "UPDATE customers SET debt_minor=(SELECT COALESCE(SUM(CASE WHEN kind='payment' THEN -amount_minor ELSE amount_minor END),0) "
+            "FROM customer_ledger WHERE customer_id=customers.id),updated_at=:at WHERE id=:id");
+        debt.bind(":at",nowMs()).bind(":id",before.at("customer_id").get<std::string>()).exec();
+    }
     if(salary && !linkedCash.empty()) {
         auto expense=ctx.db().prepare("UPDATE cash_movements SET amount_minor=:a,note=:n,created_at=:at WHERE id=:id");
         expense.bind(":a",amount).bind(":n",note).bind(":at",at).bind(":id",linkedCash);expense.exec();
@@ -160,11 +218,12 @@ Json correct(Context& ctx,const Json& p) {
     return Json{{"id",id},{"amountMinor",amount}};
 }
 // Called inside the caller's transaction: keep stock identity and existing recipes.
-Json publishStock(Context& ctx,const std::string& id) {
+Json publishStock(Context& ctx,const std::string& id,const std::string& wantedCategory={}) {
  auto q=ctx.db().prepare("SELECT * FROM ingredients WHERE id=:id AND active=1");q.bind(":id",id);require(q.step(),"Mal tapılmadı");const auto good=q.row();
  require(good.value("sale_price_minor",Money{0})>0,"Əvvəlcə malın satış qiymətini yazın");
  auto link=ctx.db().prepare("SELECT m.id,m.category_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id WHERE l.ingredient_id=:id");link.bind(":id",id);
- const bool linked=link.step();const auto menuId=linked?link.columnText(0):"goods-"+id;const auto categoryId=linked?link.columnText(1):"cat-goods";
+ const bool linked=link.step();const auto menuId=linked?link.columnText(0):"goods-"+id;const auto categoryId=!wantedCategory.empty()?wantedCategory:linked?link.columnText(1):"cat-goods";
+ if(!wantedCategory.empty()){auto known=ctx.db().prepare("SELECT 1 FROM menu_categories WHERE id=:id AND active=1");known.bind(":id",wantedCategory);require(known.step(),"Satış kateqoriyası tapılmadı");}
  auto category=ctx.db().prepare("INSERT OR IGNORE INTO menu_categories(id,name_az,name_tr,name_en,sort_order) VALUES('cat-goods','Mallar','Ürünler','Goods',999)");category.exec();
  const auto menu=services::CatalogAdminService(ctx).upsertProduct(Json{{"id",menuId},{"nameAz",good.at("name")},{"categoryId",categoryId},{"priceMinor",good.at("sale_price_minor")},{"barcode",good.at("barcode")},{"active",true}},id);
  ctx.auditRequired("catalog.link","ingredient",id,menu);return menu;
@@ -199,13 +258,30 @@ void registerBusiness(const ContextPtr& ctx) {
         }
         if(action=="document.get") {
             const auto type=r.payload.value("type",std::string{}),id=r.payload.value("id",std::string{});
-            const bool customer=type=="customer",supplier=type=="supplier",salary=type=="salary",income=type=="income",cash=type=="expense"||type=="cash";
-            require(customer||supplier||salary||income||cash,"Qaimə növü tanınmadı");
-            ctx->requirePermission(customer?"customers.view":supplier?"suppliers.view":salary?"salary.manage":"cash.manage");
-            const auto table=customer?"customer_ledger":supplier?"supplier_ledger":salary?"salary_payments":income?"income_docs":"cash_movements";
+            const bool customer=type=="customer",supplier=type=="supplier",salary=type=="salary",income=type=="income",
+                       courier=type=="courier", transfer=type=="cash-transfer",cash=type=="expense"||type=="cash";
+            require(customer||supplier||salary||income||cash||courier||transfer,"Qaimə növü tanınmadı");
+            ctx->requirePermission(customer?"customers.view":supplier?"suppliers.view":salary?"salary.manage":courier && !ctx->session().permissions.contains("cash.manage")?"delivery.view":"cash.manage");
+            if(courier) {
+                auto q=ctx->db().prepare(
+                    "SELECT d.id,d.order_id,o.order_number AS number,c.name AS courierName,m.amount_minor,"
+                    "m.created_at,a.name AS accountName,m.note,u.full_name AS userName "
+                    "FROM delivery_orders d JOIN orders o ON o.id=d.order_id LEFT JOIN couriers c ON c.id=d.courier_id "
+                    "JOIN cash_account_moves m ON m.ref_type='delivery' AND m.ref_id=d.id AND m.kind='debt_in' "
+                    "JOIN cash_accounts a ON a.id=m.account_id LEFT JOIN users u ON u.id=m.actor_user_id "
+                    "WHERE d.id=:id AND d.settled_at IS NOT NULL");
+                q.bind(":id",id);require(q.step(),"Qaimə tapılmadı");auto doc=q.row();doc["type"]=type;
+                return Json{{"document",doc}};
+            }
+            const auto table=customer?"customer_ledger":supplier?"supplier_ledger":salary?"salary_payments":income?"income_docs":transfer?"cash_transfer_documents":"cash_movements";
             auto q=ctx->db().prepare("SELECT * FROM "+std::string(table)+" WHERE id=:id");q.bind(":id",id);require(q.step(),"Qaimə tapılmadı");auto doc=q.row();doc["type"]=type;
             auto user=ctx->db().prepare("SELECT full_name FROM users WHERE id=:id");user.bind(":id",doc.contains("actor_user_id")&&!doc["actor_user_id"].is_null()?doc["actor_user_id"].get<std::string>():std::string{});if(user.step())doc["userName"]=user.columnText(0);
             if(cash){auto a=ctx->db().prepare("SELECT a.id AS accountId,a.name AS accountName,COALESCE(o.name,'') AS objectName FROM cash_account_moves m JOIN cash_accounts a ON a.id=m.account_id LEFT JOIN cash_objects o ON o.id=a.object_id WHERE m.ref_type='cash_movement' AND m.ref_id=:id ORDER BY m.created_at DESC,m.rowid DESC LIMIT 1");a.bind(":id",id);if(a.step())doc.merge_patch(a.row());}
+            if(transfer) {
+                auto a=ctx->db().prepare("SELECT a.name AS accountName,b.name AS toAccountName FROM cash_transfer_documents t "
+                    "JOIN cash_accounts a ON a.id=t.from_id JOIN cash_accounts b ON b.id=t.to_id WHERE t.id=:id");
+                a.bind(":id",id);if(a.step())doc.merge_patch(a.row());
+            }
             if(income){auto a=ctx->db().prepare("SELECT a.name AS accountName,COALESCE(o.name,'') AS objectName FROM income_docs d LEFT JOIN cash_accounts a ON a.id=d.account_id LEFT JOIN cash_objects o ON o.id=a.object_id WHERE d.id=:id");a.bind(":id",id);if(a.step())doc.merge_patch(a.row());}
             auto link=ctx->db().prepare("SELECT l.account_id AS accountId,a.name AS accountName,COALESCE(o.name,'') AS objectName FROM document_cash_links l LEFT JOIN cash_accounts a ON a.id=l.account_id LEFT JOIN cash_objects o ON o.id=a.object_id WHERE l.doc_type=:t AND l.doc_id=:id");link.bind(":t",type).bind(":id",id);if(link.step())doc.merge_patch(link.row());
             auto v=ctx->db().prepare("SELECT original_amount_minor AS originalAmountMinor,reason,voided_at AS voidedAt,actor_id AS voidedBy FROM document_voids WHERE doc_type=:t AND doc_id=:id");v.bind(":t",type).bind(":id",id);doc["cancelled"]=v.step();if(doc["cancelled"]==true)doc["cancellation"]=v.row();
@@ -246,18 +322,33 @@ void registerBusiness(const ContextPtr& ctx) {
                 auto u=ctx->db().prepare("UPDATE ingredients SET name=:n,sale_price_minor=:p,updated_at=:at WHERE id=:id");u.bind(":n",name).bind(":p",price).bind(":at",nowMs()).bind(":id",id);u.exec();
                 ctx->auditRequired("catalog.stockEdit","ingredient",id,Json{{"before",before},{"name",name},{"salePriceMinor",price}});
                 out=Json{{"id",id},{"name",name},{"salePriceMinor",price}};
-                if(r.payload.value("publish",false))out["menu"]=publishStock(*ctx,id);
-            } else out=publishStock(*ctx,id);
+                if(r.payload.value("publish",false))out["menu"]=publishStock(*ctx,id,r.payload.value("categoryId",std::string{}));
+            } else out=publishStock(*ctx,id,r.payload.value("categoryId",std::string{}));
             if(!key.empty())idem.complete(key,out,"ingredient",id);
             tx.commit();return out;
         }
         if(action=="documents") {
             Json rows=Json::array();
             const auto has=[&](const char* permission){return ctx->session().permissions.contains(permission);};
-            if(!has("cash.manage")&&!has("customers.view")&&!has("customers.credit")&&!has("suppliers.view")&&!has("suppliers.pay")&&!has("salary.manage")) throw PosError(std::string(protocol::err::kForbidden),"Ödəniş qaimələrini görmək icazəniz yoxdur");
+            if(!has("cash.manage")&&!has("customers.view")&&!has("customers.credit")&&!has("suppliers.view")&&!has("suppliers.pay")&&!has("salary.manage")&&!has("delivery.view")) throw PosError(std::string(protocol::err::kForbidden),"Ödəniş qaimələrini görmək icazəniz yoxdur");
             const auto append=[&](const std::string& sql){auto q=ctx->db().prepare(sql);for(auto& row:q.rows()) rows.push_back(row);};
-            if(has("cash.manage")) append("SELECT 'expense' AS type,id,kind,reason AS name,amount_minor AS amountMinor,note,created_at AS createdAt FROM cash_movements WHERE kind!='drawer_open' AND (deleted_at IS NULL OR id IN(SELECT doc_id FROM document_voids WHERE doc_type='expense'))");
-            if(has("customers.view")||has("customers.credit")) append("SELECT 'customer' AS type,l.id,l.kind,l.customer_id AS partyId,c.name,l.amount_minor AS amountMinor,l.note,l.created_at AS createdAt FROM customer_ledger l JOIN customers c ON c.id=l.customer_id WHERE l.kind='payment'");
+            if(has("cash.manage")) {
+                append("SELECT 'expense' AS type,id,kind,reason AS name,amount_minor AS amountMinor,note,created_at AS createdAt "
+                    "FROM cash_movements WHERE kind!='drawer_open' AND (deleted_at IS NULL OR id IN(SELECT doc_id FROM document_voids WHERE doc_type='expense')) "
+                    "AND NOT EXISTS(SELECT 1 FROM document_cash_links l WHERE l.doc_type='salary' AND l.cash_movement_id=cash_movements.id)");
+                append("SELECT 'income' AS type,id,kind,CASE WHEN reason='' THEN number ELSE reason END AS name,number,"
+                    "amount_minor AS amountMinor,note,doc_at AS createdAt,account_id AS accountId FROM income_docs WHERE deleted_at IS NULL");
+                append("SELECT 'cash-transfer' AS type,t.id,'transfer' AS kind,a.name || ' → ' || b.name AS name,t.amount_minor AS amountMinor,"
+                    "t.note,t.created_at AS createdAt,t.from_id AS accountId,t.to_id AS toAccountId FROM cash_transfer_documents t "
+                    "JOIN cash_accounts a ON a.id=t.from_id JOIN cash_accounts b ON b.id=t.to_id");
+            }
+            if(has("cash.manage")||has("delivery.view")) append(
+                "SELECT 'courier' AS type,d.id,'remittance' AS kind,COALESCE(c.name,'') AS name,o.order_number AS number,"
+                "m.amount_minor AS amountMinor,m.note,m.created_at AS createdAt,m.account_id AS accountId "
+                "FROM delivery_orders d JOIN orders o ON o.id=d.order_id LEFT JOIN couriers c ON c.id=d.courier_id "
+                "JOIN cash_account_moves m ON m.ref_type='delivery' AND m.ref_id=d.id AND m.kind='debt_in' "
+                "WHERE d.settled_at IS NOT NULL");
+            if(has("customers.view")||has("customers.credit")) append("SELECT 'customer' AS type,l.id,l.kind,l.customer_id AS partyId,c.name,l.amount_minor AS amountMinor,l.note,l.created_at AS createdAt FROM customer_ledger l JOIN customers c ON c.id=l.customer_id WHERE l.kind='payment' AND NOT EXISTS(SELECT 1 FROM couriers k WHERE k.customer_id=l.customer_id)");
             if(has("suppliers.view")||has("suppliers.pay")) append("SELECT 'supplier' AS type,l.id,l.kind,l.supplier_id AS partyId,c.name,l.amount_minor AS amountMinor,l.note,l.created_at AS createdAt FROM supplier_ledger l JOIN suppliers c ON c.id=l.supplier_id WHERE l.kind='payment'");
             if(has("salary.manage")) append("SELECT 'salary' AS type,l.id,l.kind,l.customer_id AS partyId,c.name,l.amount_minor AS amountMinor,l.note,l.created_at AS createdAt FROM salary_payments l JOIN customers c ON c.id=l.customer_id WHERE l.kind!='note'");
             for(auto& row:rows){auto q=ctx->db().prepare("SELECT account_id AS accountId FROM document_cash_links WHERE doc_type=:t AND doc_id=:id");q.bind(":t",row.at("type").get<std::string>()).bind(":id",row.at("id").get<std::string>());if(q.step())row["accountId"]=q.columnText(0);else if(row.at("type")=="expense"){auto a=ctx->db().prepare("SELECT account_id FROM cash_account_moves WHERE ref_type='cash_movement' AND ref_id=:id ORDER BY created_at DESC,rowid DESC LIMIT 1");a.bind(":id",row.at("id").get<std::string>());if(a.step())row["accountId"]=a.columnText(0);}}
@@ -291,7 +382,7 @@ void registerBusiness(const ContextPtr& ctx) {
             bind.bind(":u",user).bind(":id",target).bind(":at",nowMs());bind.exec();ctx->auditRequired("staff.link","user",user,Json{{"sourceCustomerId",source},{"targetCustomerId",target}});tx.commit();return Json{{"ok",true}};
         }
         if(action=="staff") {
-            auto q=ctx->db().prepare("SELECT u.id,u.full_name AS name,u.active,c.id AS customerId,c.salary_minor AS salaryMinor,COALESCE(c.object_id,'') AS objectId FROM users u LEFT JOIN customers c ON c.user_id=u.id WHERE u.id<>'possistem-admin' ORDER BY u.active DESC,u.full_name");
+            auto q=ctx->db().prepare("SELECT u.id,u.full_name AS name,u.active,c.id AS customerId,c.salary_minor AS salaryMinor,COALESCE(c.object_id,'') AS objectId FROM users u LEFT JOIN customers c ON c.user_id=u.id WHERE u.id NOT IN ('possistem-admin','usr-admin') ORDER BY u.active DESC,u.full_name");
             Json rows=q.rows();for(auto& row:rows){auto a=ctx->db().prepare("SELECT warehouse_id FROM user_warehouse_access WHERE user_id=:u");a.bind(":u",row.at("id").get<std::string>());row["warehouses"]=Json::array();while(a.step())row["warehouses"].push_back(a.columnText(0));}
             auto loose=ctx->db().prepare("SELECT id,name FROM customers WHERE kind='employee' AND active=1 AND user_id IS NULL ORDER BY name");
             return Json{{"staff",rows},{"unlinked",loose.rows()}};

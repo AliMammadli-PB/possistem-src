@@ -66,10 +66,11 @@ describe('the costing screen', () => {
     expect(bundle).toContain('window.pos.inventory.recipe');
     expect(bundle).toContain('Resept yaz');
     expect(bundle).toContain('hasPermission("recipes.manage")');
-    // The chip editor (1.7.21): pick goods from the store, then how much a portion takes.
+    // One portion can include either stock ingredients or another recipe.
     expect(bundle).toContain('function psRecipeEditor(');
-    expect(bundle).toContain('1. Anbardan tərkibi seçin');
-    expect(bundle).toContain('2. Bir porsiyaya nə qədər gedir');
+    expect(bundle).toContain('Anbar xammalı');
+    expect(bundle).toContain('Hazır resept');
+    expect(bundle).toContain('2. Bir porsiyanın miqdarı');
     expect(bundle).toContain('unit: "q"');
     expect(bundle).toContain('"Maya %"');
     expect(bundle).toContain('totalProfitMinor');

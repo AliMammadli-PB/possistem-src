@@ -41,6 +41,14 @@ function PsBranchPages({tabs,active}){
  // Fail packaging rather than silently shipping one page that never refreshes.
  for(const name of ['OpsSales','OpsStock','OpsGoods','OpsStocktake','OpsPurchases','OpsPartners','OpsKassalar','PsOriginalSalary','OpsExpenses','OpsIncome','PsDocuments']){
   const a=source.indexOf('function '+name+'('),b=source.indexOf('\nfunction ',a+1),part=source.slice(a,b);
+  if(a>=0&&!part.includes('usePsBranchReload(reload)')&&part.includes('ps:salary-document-changed')){
+   const at=part.indexOf('    const refresh = () => void reload();');
+   if(at>=0){
+    const effect=part.lastIndexOf('reactExports.useEffect(',at);
+    source=source.slice(0,a+effect)+'usePsBranchReload(reload); '+source.slice(a+effect);
+    continue;
+   }
+  }
   if(a<0||!part.includes('usePsBranchReload(reload)'))throw Error('Remote refresh hook missing: '+name);
  }
  // Never remove a populated stock page (and its editor) during a background refresh.

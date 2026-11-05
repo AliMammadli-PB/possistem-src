@@ -15,8 +15,13 @@ inline bool receiptOpensCashDrawer(std::string_view kind, bool reprint = false) 
     return !reprint && (kind == "customer_receipt" || kind == "refund_receipt");
 }
 
+/** Logo and QR are for the guest's paper: the kitchen and the back office get neither. */
+inline bool receiptShowsBrand(std::string_view kind) {
+    return kind == "customer_receipt" || kind == "customer_bill" || kind == "refund_receipt" ||
+           kind == "test_page";
+}
+
 struct EscPosOptions {
-    int density = 5;       // 0–8 (printer max 8)
     bool cut = true;       // full cut after receipt
     bool beep = false;     // silent by default; ESC B is noisy on the floor
     bool openCashDrawer = false;

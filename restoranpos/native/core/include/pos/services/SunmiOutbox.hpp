@@ -21,9 +21,17 @@ inline void queueSunmiSale(handlers::Context& ctx,const std::string& orderId){
   auto meta=ctx.db().prepare("SELECT sku FROM menu_items WHERE id=:id");meta.bind(":id",line.at("productId").get<std::string>());std::string sku;if(meta.step())sku=meta.columnText(0);
   lines.push_back(Json{{"barcode",sku},{"lineId",line.at("id")},{"productId",line.at("productId")},{"name",line.at("name")},{"unit","ədəd"},{"quantityMilli",line.at("quantity").get<std::int64_t>()*1000},{"lineTotalMinor",line.at("lineTotalMinor")}});
  }
- auto p=ctx.db().prepare("SELECT COALESCE(SUM(CASE WHEN method='cash' THEN amount_minor ELSE 0 END),0) AS cashMinor,COALESCE(SUM(CASE WHEN method='card' THEN amount_minor ELSE 0 END),0) AS cardMinor FROM payments WHERE order_id=:id AND status IN ('approved','refunded')");p.bind(":id",orderId);p.step();
+ const auto minimum=order.value("minimumTableMinor",Money{0});
+ if(minimum>0)lines.push_back(Json{{"lineId","table-minimum"},{"productId","table-minimum"},{"name","Minimum masa fərqi"},
+                                    {"unit","ədəd"},{"quantityMilli",1000},{"lineTotalMinor",minimum},{"isService",true}});
+ auto p=ctx.db().prepare(
+  "SELECT COALESCE(SUM(CASE WHEN p.method='cash' THEN p.amount_minor WHEN p.method='mixed' THEN "
+  "(SELECT SUM(t.amount_minor) FROM payment_tenders t WHERE t.payment_id=p.id AND t.method='cash') ELSE 0 END),0) AS cashMinor,"
+  "COALESCE(SUM(CASE WHEN p.method='card' THEN p.amount_minor WHEN p.method='mixed' THEN "
+  "(SELECT SUM(t.amount_minor) FROM payment_tenders t WHERE t.payment_id=p.id AND t.method='card') ELSE 0 END),0) AS cardMinor "
+  "FROM payments p WHERE p.order_id=:id AND p.status IN ('approved','refunded')");p.bind(":id",orderId);p.step();
  Json pay=p.row();
- auto rrn=ctx.db().prepare("SELECT bank_rrn FROM payments WHERE order_id=:id AND method='card' AND bank_rrn IS NOT NULL ORDER BY created_at DESC LIMIT 1");rrn.bind(":id",orderId);if(rrn.step())pay["rrn"]=rrn.columnText(0);
+ auto rrn=ctx.db().prepare("SELECT bank_rrn FROM payments WHERE order_id=:id AND method IN ('card','mixed') AND bank_rrn IS NOT NULL ORDER BY created_at DESC LIMIT 1");rrn.bind(":id",orderId);if(rrn.step())pay["rrn"]=rrn.columnText(0);
 pay["creditMinor"]=order.value("accountMinor",Money{0});
  const auto customer=order.contains("partnerName")&&!order["partnerName"].is_null()?order["partnerName"]:Json("");
  storeSunmi(ctx,Json{{"id","sale:"+orderId},{"saleId",orderId},{"kind","sale"},{"items",lines},{"payment",pay},{"totalMinor",order.at("totalMinor")},{"serviceMinor",order.value("serviceMinor",Money{0})},{"cashierName",ctx.session().fullName},{"customerName",customer},{"createdAt",nowMs()}});

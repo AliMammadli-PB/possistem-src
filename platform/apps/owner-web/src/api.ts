@@ -1072,3 +1072,7 @@ export function warehouseReceive(body:{deviceId:string;requestId:string;supplier
 
 // Platform billing is independent of the till's cash accounts.
 export function billingRequest<T>(path:string,init:RequestInit={}){return request<T>('/customer/billing'+path,init);}
+
+export type CloudBackupList={devices:Array<{id:string;hostname:string;enabled:boolean;last_success_at:string|null;last_error:string|null}>,backups:Array<{id:string;device_id:string;size_bytes:number;created_at:string;manifest:{assets:number;missingAssets?:number;schemaVersion:number}}>};
+export function getCloudBackups(){return request<CloudBackupList>('/owner/cloud-backups')}
+export async function downloadCloudBackup(id:string){const r=await fetch(`${API}/owner/cloud-backups/${encodeURIComponent(id)}/download`,{credentials:'same-origin'});if(!r.ok)throw new Error('Yedək yoxlanmadı və ya yüklənmədi.');return r.blob();}

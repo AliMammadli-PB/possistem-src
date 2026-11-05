@@ -8,11 +8,11 @@ function registerSunmi({ipcMain,app,safeStorage,assertTrusted,actor,invoke,getDb
  const manager=user=>user?.superAdmin||['manager','administrator','admin','owner','super_admin','superadmin'].includes(user?.role);
  let lastStatus='';
  const announce=(state,message)=>{const signature=getDbPath()+state+message;if(signature===lastStatus)return;lastStatus=signature;try{if(notify)notify({state,message});else for(const w of require('electron').BrowserWindow.getAllWindows())if(!w.isDestroyed())w.webContents.send('possistem:sunmi-status',{state,message});}catch{/* A closed window cannot affect fiscal registration. */}};
- const process=async()=>{actor();try{const result=await service.process();if(result.enabled){if(service.hasPending())announce('pending','SUNMI: fiskal çeki tamamlanmamış qaimə var. Parametrlər → SUNMI bölməsində səbəbi yoxlayın. Eyni satışı yenidən yaratmayın.');else if(result.results.length)announce('done','SUNMI: fiskal çek qeydə alındı.');}return result;}catch(error){announce('error',error instanceof SunmiError?error.message:'SUNMI: fiskal qeydiyyatı yoxlayın.');throw error;}};
+ const process=async()=>{actor();try{const result=await service.process();if(result.enabled){if(service.hasPending())announce('pending','E-kassa: fiskal çeki tamamlanmamış qaimə var. Parametrlər → İnteqrasiyalar bölməsində səbəbi yoxlayın. Eyni satışı yenidən yaratmayın.');else if(result.results.length)announce('done','E-kassa: fiskal çek qeydə alındı.');}return result;}catch(error){announce('error',error instanceof SunmiError?error.message:'E-kassa: fiskal qeydiyyatı yoxlayın.');throw error;}};
  ipcMain.handle('possistem:sunmi',async(event,input={})=>{
   assertTrusted(event);const user=actor();if(!user)throw new Error('Giriş tələb olunur.');
   const action=String(input.action||'');
-  if(['save','connect','retry','command'].includes(action)&&!manager(user))throw new Error('SUNMI ayarları və fiskal əməliyyatlar üçün müdir icazəsi tələb olunur.');
+  if(['save','connect','retry','command'].includes(action)&&!manager(user))throw new Error('E-kassa ayarları və fiskal əməliyyatlar üçün müdir icazəsi tələb olunur.');
   try{
    if(action==='get')return {ok:true,data:{config:service.get(),jobs:service.history(),canManage:!!manager(user)}};
    if(action==='save')return {ok:true,data:await service.save(input.data||{})};
@@ -31,7 +31,7 @@ function registerSunmi({ipcMain,app,safeStorage,assertTrusted,actor,invoke,getDb
     return {ok:true,data:await service.command(String(input.operation||''),data,String(input.key||''))};
    }
    throw new SunmiError('SUNMI_ACTION','Əməliyyat tanınmır.');
-  }catch(error){return {ok:false,error:{code:error.code||'SUNMI_ERROR',message:error instanceof SunmiError?error.message:'SUNMI əməliyyatı tamamlanmadı.',uncertain:!!error.uncertain}};}
+  }catch(error){return {ok:false,error:{code:error.code||'SUNMI_ERROR',message:error instanceof SunmiError?error.message:'E-kassa əməliyyatı tamamlanmadı.',uncertain:!!error.uncertain}};}
  });
  // Re-scan the transactional native outbox after a crash/restart; never depend on a renderer callback.
  const timer=setInterval(()=>{try{actor();if(service.get().enabled)void process().catch(()=>{});}catch{/* Signed out or changing branch. */}},15000);timer.unref?.();app.once('before-quit',()=>clearInterval(timer));

@@ -50,7 +50,7 @@ std::pair<std::string, std::string> normaliseReceiptCode(std::string_view raw) {
     // includes R, so about one code in thirty-two reads `R-RBC…`; deciding that
     // a leading R must be the prefix would make exactly those codes unfindable
     // for any guest who left the prefix off, and nobody would ever work out why.
-    const std::string withPrefix = compact.empty() || compact.front() != 'R' ? "R" + compact : compact;
+    const std::string withPrefix = "R" + compact;
     const std::string asTyped = compact;
     return {withPrefix, asTyped};
 }
@@ -81,9 +81,15 @@ std::string printerRoleKey(std::string_view target) {
     return "printer.receipt";
 }
 
+/**
+ * How long a paper keeps waiting for its printer. A kitchen ticket hours late would only confuse.
+ * After this it is `failed`, with its button on the print screen.
+ */
+constexpr Timestamp kPrintWaitsMs = 2 * 60 * 60 * 1000;
+
 /** Exponential backoff between print attempts. */
 Timestamp backoffFor(int attempts) {
-    static constexpr Timestamp kDelays[] = {2000, 5000, 15000, 60000, 300000};
+    static constexpr Timestamp kDelays[] = {2000, 5000, 15000, 60000, 60000};
     const int index = std::min(attempts, 4);
     return kDelays[index];
 }
@@ -107,6 +113,7 @@ struct RenderedPayload {
     int fontHeightPx = 32, fontWidthPx = 14, sideMarginPx = 2;
     printing::RenderMode renderMode = printing::RenderMode::Auto;
     bool openCashDrawer = false;
+    bool showBrand = false;
     int itemCount = 0;
     Money subtotalMinor = 0;
     Money taxMinor = 0;
@@ -137,7 +144,6 @@ struct DeliveryReport {
 
 printing::EscPosOptions escPosOptionsFor(Context& ctx, const RenderedPayload& payload) {
     printing::EscPosOptions opts;
-    opts.density = static_cast<int>(ctx.settingInt("printer.density", 5));
     opts.cut = ctx.settingInt("printer.cut", 1) != 0;
     opts.beep = ctx.settingInt("printer.beep", 0) != 0;
     opts.openCashDrawer = payload.openCashDrawer && ctx.settingInt("printer.openCashDrawer", 1) != 0;
@@ -149,9 +155,11 @@ printing::EscPosOptions escPosOptionsFor(Context& ctx, const RenderedPayload& pa
     opts.fontHeightPx = payload.fontHeightPx;
     opts.fontWidthPx = payload.fontWidthPx;
     opts.sideMarginPx = payload.sideMarginPx;
-    opts.qr = !payload.qrPayload.empty();
-    opts.qrPayload = payload.qrPayload;
-    opts.logo = printing::ReceiptBuilder(ctx).logoBitmap();
+    if (payload.showBrand) {
+        opts.qr = !payload.qrPayload.empty();
+        opts.qrPayload = payload.qrPayload;
+        opts.logo = printing::ReceiptBuilder(ctx).logoBitmap();
+    }
     return opts;
 }
 
@@ -519,7 +527,7 @@ int drainQueue(Context& ctx) {
     const auto now = nowMs();
 
     auto due = ctx.db().prepare(
-        "SELECT id, order_id, kind, target_printer, attempts, max_attempts, receipt_id, payload "
+        "SELECT id, order_id, kind, target_printer, attempts, max_attempts, receipt_id, payload, created_at "
         "FROM print_jobs "
         "WHERE status IN ('queued','retrying') AND (next_attempt_at IS NULL OR next_attempt_at <= :now) "
         "ORDER BY created_at LIMIT 20");
@@ -528,12 +536,13 @@ int drainQueue(Context& ctx) {
     struct Pending {
         std::string id, orderId, kind, printer, receiptId, options;
         int attempts, maxAttempts;
+        Timestamp createdAt;
     };
     std::vector<Pending> jobs;
     while (due.step()) {
         jobs.push_back({due.columnText(0), due.columnText(1), due.columnText(2), due.columnText(3),
                         due.columnText(6), due.columnText(7), static_cast<int>(due.columnInt(4)),
-                        static_cast<int>(due.columnInt(5))});
+                        static_cast<int>(due.columnInt(5)), due.columnInt(8)});
     }
 
     int processed = 0;
@@ -556,6 +565,7 @@ int drainQueue(Context& ctx) {
 
         const bool isReprint = overrides.value("reprint", false);
         payload.openCashDrawer = printing::receiptOpensCashDrawer(job.kind, isReprint);
+        payload.showBrand = printing::receiptShowsBrand(job.kind);
 
         try {
             const auto config = settingsForJob(ctx, overrides);
@@ -750,7 +760,9 @@ int drainQueue(Context& ctx) {
             // Exhausted retries become `failed`, which surfaces in the UI. The
             // order itself is never lost - the job row keeps everything needed
             // to reprint once the printer is back.
-            const bool giveUp = attempts >= job.maxAttempts;
+            // A test page is for now; anything else waits for paper or a printer back on.
+            const bool giveUp = job.kind == "test_page" ? attempts >= job.maxAttempts
+                                                        : nowMs() - job.createdAt >= kPrintWaitsMs;
             auto update = ctx.db().prepare(
                 "UPDATE print_jobs SET status = :status, attempts = :attempts, "
                 "       last_error = :error, next_attempt_at = :next, updated_at = :now "
@@ -841,7 +853,6 @@ std::vector<std::uint8_t> buildProbePage(Context& ctx, const std::string& label)
     text += label + "\n";
 
     printing::EscPosOptions opts;
-    opts.density = static_cast<int>(ctx.settingInt("printer.density", 5));
     opts.cut = ctx.settingInt("printer.cut", 1) != 0;
     opts.beep = false;  // probing several devices should not sound like an alarm
     opts.openCashDrawer = false;
@@ -1304,6 +1315,13 @@ void registerPrinting(const ContextPtr& ctx) {
                         {"failedCount", failedCount}};
         });
 
+    // Called by the app on a timer: without it a waiting paper only moved when the next one was printed.
+    server.registerHandler("print.drain", [ctx](const ipc::Request&) {
+        const int processed = drainQueue(*ctx);
+        if (processed > 0) ctx->server().emitEvent(protocol::event::kPrintUpdated, Json::object());
+        return Json{{"processed", processed}};
+    });
+
     server.registerHandler(
         std::string(protocol::method::kPrintRetry), [ctx](const ipc::Request& request) {
             ctx->requirePermission("printer.manage");
@@ -1478,6 +1496,7 @@ void registerPrinting(const ContextPtr& ctx) {
 
             RenderedPayload payload;
             payload.openCashDrawer = printing::receiptOpensCashDrawer("customer_receipt", reprint);
+            payload.showBrand = true;
             payload.paperWidth = config.paperWidth;
             payload.charsPerLine = config.charsPerLine;
             payload.renderMode = config.renderMode;

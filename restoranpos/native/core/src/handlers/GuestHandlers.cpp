@@ -76,7 +76,8 @@ void registerGuests(const ContextPtr& ctx) {
                 "FROM customers "
                 // Parenthesised: without it the AND binds tighter than the ORs
                 // and an inactive customer would surface on any search.
-                "WHERE active = 1 AND (:kind = '' OR kind = :kind) "
+                "WHERE active = 1 AND COALESCE(user_id,'') NOT IN ('usr-admin','possistem-admin') AND (:kind = '' OR kind = :kind) "
+                "AND NOT EXISTS(SELECT 1 FROM couriers WHERE customer_id=customers.id) "
                 "AND (partner_origin!='system_login' OR salary_minor!=0 OR debt_minor!=0 "
                 "OR EXISTS(SELECT 1 FROM salary_payments WHERE customer_id=customers.id) "
                 "OR EXISTS(SELECT 1 FROM customer_ledger WHERE customer_id=customers.id) "
@@ -190,8 +191,8 @@ void registerGuests(const ContextPtr& ctx) {
                 "            WHERE l.customer_id = c.id AND l.kind = 'charge' "
                 "              AND l.created_at >= :from AND l.created_at < :to), 0) AS mealsMinor, "
                 "  EXISTS (SELECT 1 FROM salary_payments p WHERE p.customer_id = c.id "
-                "          AND p.month = :month AND p.kind = 'full') AS settled "
-                "FROM customers c WHERE c.active = 1 AND c.kind = 'employee' ORDER BY c.name");
+                "          AND p.month = :month AND p.kind = 'full' AND NOT EXISTS (SELECT 1 FROM document_voids v WHERE v.doc_type='salary' AND v.doc_id=p.id)) AS settled "
+                "FROM customers c WHERE c.active = 1 AND c.kind = 'employee' AND COALESCE(c.user_id,'') NOT IN ('usr-admin','possistem-admin') ORDER BY c.name");
             stmt.bind(":month", month).bind(":from", from).bind(":to", to);
             auto rows = stmt.rows();
             for (auto& row : rows) {
@@ -238,8 +239,15 @@ void registerGuests(const ContextPtr& ctx) {
             const std::string name = who.columnText(0);
             const auto now = nowMs();
 
+            if (kind != "note") {
+                auto settled = ctx->db().prepare(
+                    "SELECT 1 FROM salary_payments p WHERE p.customer_id=:id AND p.month=:month AND p.kind='full' "
+                    "AND NOT EXISTS(SELECT 1 FROM document_voids v WHERE v.doc_type='salary' AND v.doc_id=p.id)");
+                settled.bind(":id",customerId).bind(":month",month);
+                require(!settled.step(),"Bu ayın maaşı artıq ödənilib");
+            }
             const auto paymentId = crypto::uuid4();
-            std::string cashMovementId;
+            std::string cashMovementId, adjustmentId;
             auto insert = ctx->db().prepare(
                 "INSERT INTO salary_payments (id, customer_id, month, kind, amount_minor, note, "
                 "                             actor_user_id, created_at) "
@@ -260,7 +268,8 @@ void registerGuests(const ContextPtr& ctx) {
                         "INSERT INTO customer_ledger (id, customer_id, amount_minor, kind, note, "
                         "                             actor_user_id, created_at) "
                         "VALUES (:id, :customer, :amount, 'adjustment', 'Maaşdan tutuldu', :actor, :now)");
-                    adjust.bind(":id", crypto::uuid4()).bind(":customer", customerId)
+                    adjustmentId = crypto::uuid4();
+                    adjust.bind(":id", adjustmentId).bind(":customer", customerId)
                         .bind(":amount", -owed).bindOptional(":actor", ctx->session().userId)
                         .bind(":now", now);
                     adjust.exec();
@@ -276,8 +285,8 @@ void registerGuests(const ContextPtr& ctx) {
                 services::CashService(*ctx).accountMove(accountId, -amount, "salary", "cash_movement",
                                                         row.value("id", std::string{}), "Maaş: " + label);
             }
-            auto link = ctx->db().prepare("INSERT INTO document_cash_links(doc_type,doc_id,account_id,cash_movement_id) VALUES('salary',:id,:a,:c)");
-            link.bind(":id",paymentId).bind(":a",cashMovementId.empty()?std::string{}:services::CashService(*ctx).resolveAccount(accountId)).bind(":c",cashMovementId);link.exec();
+            auto link = ctx->db().prepare("INSERT INTO document_cash_links(doc_type,doc_id,account_id,cash_movement_id,salary_adjustment_id) VALUES('salary',:id,:a,:c,:adjustment)");
+            link.bind(":id",paymentId).bind(":a",cashMovementId.empty()?std::string{}:services::CashService(*ctx).resolveAccount(accountId)).bind(":c",cashMovementId).bindOptional(":adjustment",adjustmentId);link.exec();
             ctx->auditRequired("salary.pay", "customer", customerId,
                                Json{{"kind", kind}, {"amountMinor", amount}, {"month", month}});
             Json response{{"ok", true}, {"customerId", customerId}, {"month", month}};

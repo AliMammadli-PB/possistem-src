@@ -18,6 +18,7 @@
 #include "pos/protocol_generated.hpp"
 #include "pos/services/InventoryService.hpp"
 #include "pos/services/CashService.hpp"
+#include "pos/services/CatalogAdminService.hpp"
 #include "pos/services/Idempotency.hpp"
 
 namespace pos::handlers {
@@ -53,9 +54,14 @@ void registerInventory(const ContextPtr& ctx) {
         std::string(protocol::method::kWarehousesList), [ctx](const ipc::Request&) {
             ctx->requirePermission("inventory.view");
             auto stmt = ctx->db().prepare(
-                "SELECT id, name, kind, active, sort_order AS sortOrder FROM warehouses "
+                "SELECT id, name, kind, active, sort_order AS sortOrder FROM warehouses WHERE active = 1 "
                 "ORDER BY sort_order, name");
-            return Json{{"warehouses", stmt.rows()}};
+            auto home = ctx->db().prepare(
+                "SELECT o.warehouse_id FROM cash_accounts a JOIN cash_objects o ON o.id = a.object_id "
+                "JOIN warehouses w ON w.id = o.warehouse_id AND w.active = 1 "
+                "WHERE a.kind = 'till' AND a.active = 1 AND a.terminal_id = :terminal");
+            home.bind(":terminal", ctx->saleTerminalId());
+            return Json{{"warehouses", stmt.rows()}, {"homeWarehouseId", home.step() ? home.columnText(0) : std::string{}}};
         });
 
     server.registerHandler(
@@ -932,14 +938,33 @@ void registerInventory(const ContextPtr& ctx) {
             stmt.bind(":item", menuItemId);
             const auto lines = stmt.rows();
 
+            // The parts of a set menu (1000 = one portion).
+            const auto unitCost = services::InventoryService::unitCostSql(inventory.costingMethod());
+            auto parts = ctx->db().prepare(
+                "SELECT c.component_menu_item_id AS menuItemId, m.name_az AS name, c.qty_milli AS qtyMilli, "
+                "       m.price_minor AS priceMinor, "
+                "       COALESCE((SELECT SUM(r.qty_milli * " + unitCost + " / 1000) "
+                "                 FROM menu_item_recipe_expanded r JOIN ingredients i ON i.id = r.ingredient_id "
+                "                 WHERE r.menu_item_id = c.component_menu_item_id), 0) AS costMinor "
+                "FROM menu_item_components c JOIN menu_items m ON m.id = c.component_menu_item_id "
+                "WHERE c.menu_item_id = :item ORDER BY m.name_az");
+            parts.bind(":item", menuItemId);
+            const auto components = parts.rows();
+
             // What the dish costs to make, which is the number a price is set
-            // against. Cost is per whole unit; quantities are thousandths.
-            Money cost = 0;
-            for (const auto& line : lines) {
-                cost += getOr<std::int64_t>(line, "qtyMilli", 0) *
-                        getOr<Money>(line, "costMinor", 0) / 1000;
-            }
-            return Json{{"menuItemId", menuItemId}, {"lines", lines}, {"costMinor", cost}};
+            // against: the expanded recipe, parts included. Cost is per whole
+            // unit; quantities are thousandths.
+            auto total = ctx->db().prepare(
+                "SELECT COALESCE(SUM(r.qty_milli * " + unitCost + " / 1000), 0) "
+                "FROM menu_item_recipe_expanded r JOIN ingredients i ON i.id = r.ingredient_id "
+                "WHERE r.menu_item_id = :item");
+            total.bind(":item", menuItemId);
+            total.step();
+            auto link = ctx->db().prepare("SELECT ingredient_id FROM catalog_goods_links WHERE menu_id=:item");
+            link.bind(":item", menuItemId);
+            const auto linkedIngredientId = link.step() ? link.columnText(0) : std::string{};
+            return Json{{"menuItemId", menuItemId}, {"linkedIngredientId", linkedIngredientId}, {"lines", lines}, {"components", components},
+                        {"costMinor", total.columnInt(0)}};
         });
 
     // ------------------------------------------------------------ kalkulyasiya
@@ -965,6 +990,10 @@ void registerInventory(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT m.id, m.name_az AS name, c.name_az AS category, m.active, "
                 "       m.price_minor AS priceMinor, "
+                "       COALESCE((SELECT l.ingredient_id FROM catalog_goods_links l WHERE l.menu_id=m.id),'') AS linkedIngredientId, "
+                "       (EXISTS(SELECT 1 FROM menu_item_components c WHERE c.menu_item_id=m.id) OR "
+                "        EXISTS(SELECT 1 FROM menu_item_ingredients raw WHERE raw.menu_item_id=m.id AND NOT EXISTS("
+                "          SELECT 1 FROM catalog_goods_links l WHERE l.menu_id=m.id AND l.ingredient_id=raw.ingredient_id))) AS hasPreparedRecipe, "
                 "       COALESCE(SUM(r.qty_milli * " + services::InventoryService::unitCostSql(method, ":warehouse") +
                 "       / 1000), 0) AS costMinor, "
                 "       COUNT(r.ingredient_id) AS lineCount, "
@@ -973,7 +1002,7 @@ void registerInventory(const ContextPtr& ctx) {
                 "       COALESCE(s.revenueMinor, 0) AS revenueMinor "
                 "FROM menu_items m "
                 "LEFT JOIN menu_categories c ON c.id = m.category_id "
-                "LEFT JOIN menu_item_ingredients r ON r.menu_item_id = m.id "
+                "LEFT JOIN menu_item_recipe_expanded r ON r.menu_item_id = m.id "
                 "LEFT JOIN ingredients i ON i.id = r.ingredient_id "
                 "LEFT JOIN ("
                 "  SELECT oi.product_id AS productId, "
@@ -1083,11 +1112,25 @@ void registerInventory(const ContextPtr& ctx) {
             clear.exec();
 
             int saved = 0;
+            Json preparedParts = Json::array();
             for (const auto& line : request.payload["lines"]) {
                 if (!line.is_object()) continue;
                 const auto ingredientId = getOr<std::string>(line, "ingredientId", "");
                 const auto qty = getOr<std::int64_t>(line, "qtyMilli", 0);
                 if (ingredientId.empty() || qty <= 0) continue;
+
+                // The stock card of a dish with its own recipe stands for that recipe, so the
+                // raw materials go out of stock, not the card (migration 070 did the old lines).
+                auto prepared = ctx->db().prepare(
+                    "SELECT l.menu_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id "
+                    "WHERE l.ingredient_id=:ingredient AND l.menu_id<>:item AND m.archived=0 "
+                    "AND (EXISTS(SELECT 1 FROM menu_item_components c WHERE c.menu_item_id=l.menu_id) "
+                    "  OR EXISTS(SELECT 1 FROM menu_item_ingredients r WHERE r.menu_item_id=l.menu_id AND r.ingredient_id<>l.ingredient_id))");
+                prepared.bind(":ingredient", ingredientId).bind(":item", menuItemId);
+                if (prepared.step()) {
+                    preparedParts.push_back(Json{{"menuItemId", prepared.columnText(0)}, {"qtyMilli", qty}});
+                    continue;
+                }
 
                 auto insert = ctx->db().prepare(
                     "INSERT INTO menu_item_ingredients (menu_item_id, ingredient_id, qty_milli) "
@@ -1096,7 +1139,36 @@ void registerInventory(const ContextPtr& ctx) {
                 insert.exec();
                 saved += 1;
             }
-            ctx->audit("recipe.save", "menu_item", menuItemId, Json{{"lines", saved}});
+            if (request.payload.contains("components") || !preparedParts.empty()) {
+                Json components = Json::array();
+                if (request.payload.contains("components")) {
+                    components = request.payload["components"];
+                } else {
+                    auto current = ctx->db().prepare(
+                        "SELECT component_menu_item_id AS menuItemId, qty_milli AS qtyMilli "
+                        "FROM menu_item_components WHERE menu_item_id=:item");
+                    current.bind(":item", menuItemId);
+                    components = current.rows();
+                }
+                for (const auto& part : preparedParts) {
+                    for (const auto& existing : components) {
+                        require(!existing.is_object() || existing.value("menuItemId", std::string{}) != part.at("menuItemId").get<std::string>(),
+                                "Hazır resept və ona bağlı anbar malı birlikdə saxlanıla bilməz");
+                    }
+                    components.push_back(part);
+                }
+                services::saveRecipeComponents(*ctx, menuItemId, components);
+            } else {
+                auto duplicate = ctx->db().prepare(
+                    "SELECT 1 FROM menu_item_components c JOIN catalog_goods_links l ON l.menu_id=c.component_menu_item_id "
+                    "JOIN menu_item_ingredients i ON i.ingredient_id=l.ingredient_id AND i.menu_item_id=c.menu_item_id "
+                    "WHERE c.menu_item_id=:item");
+                duplicate.bind(":item", menuItemId);
+                require(!duplicate.step(), "Hazır resept və ona bağlı anbar malı birlikdə saxlanıla bilməz");
+            }
+            services::adoptPreparedRecipe(*ctx, menuItemId);
+            ctx->audit("recipe.save", "menu_item", menuItemId,
+                       Json{{"lines", saved}, {"componentsChanged", request.payload.contains("components")}});
             txn.commit();
 
             return Json{{"menuItemId", menuItemId}, {"lines", saved}};

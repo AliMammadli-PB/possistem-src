@@ -52,6 +52,7 @@ private:
     void ensureMigrationTable();
     bool migrationTableExists();
     bool validateAppliedMigrations(int currentVersion, bool tableExists);
+    void rewindDivergedHistory();
     void backfillLegacyMigration();
     void applyMigration(const MigrationDefinition& migration);
     int targetVersion() const noexcept;

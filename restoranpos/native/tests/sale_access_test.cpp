@@ -38,7 +38,8 @@ TEST_CASE("initial administrator is not an automatic payroll employee; real cash
  ServiceFixture f;pos::handlers::registerGuests(f.contextPtr());
  auto list=call(f,"customers.list",{{"kind","employee"}}).at("customers");REQUIRE(list.empty());
  f.db().exec("UPDATE customers SET salary_minor=50000 WHERE user_id='usr-admin'");
- list=call(f,"customers.list",{{"kind","employee"}}).at("customers");REQUIRE(list.size()==1);REQUIRE(list[0].at("salaryMinor")==50000);
+ list=call(f,"customers.list",{{"kind","employee"}}).at("customers");REQUIRE(list.empty());
+ auto saved=f.db().prepare("SELECT salary_minor FROM customers WHERE user_id='usr-admin'");REQUIRE(saved.step());REQUIRE(saved.columnInt(0)==50000);
  auto identity=f.db().prepare("SELECT primary_role_id FROM users WHERE id='usr-admin'");REQUIRE(identity.step());REQUIRE(identity.columnText(0)=="role-administrator");
  f.db().exec("INSERT INTO users(id,code,full_name,pin_hash,primary_role_id,created_at,updated_at) SELECT 'test-cashier','9912','Aysel',pin_hash,'role-cashier',0,0 FROM users WHERE id='usr-admin'");
  list=call(f,"customers.list",{{"kind","employee"}}).at("customers");bool found=false;for(const auto& row:list)if(row.at("name")=="Aysel"){found=true;REQUIRE(row.at("userRole")=="role-cashier");}REQUIRE(found);
@@ -56,6 +57,6 @@ TEST_CASE("cashiers can open their assigned till without gaining Z-close permiss
 TEST_CASE("upgrade keeps administrator financial history and roles","[sale_access][migration]"){
  ServiceFixture f;
  f.db().exec("UPDATE users SET full_name='Super Admin' WHERE id='usr-admin'; UPDATE customers SET partner_origin='partner',salary_minor=12345 WHERE user_id='usr-admin'");
- f.db().exec(pos::db::kMigrations.back().sql());
+ f.db().exec(pos::db::kMigrations[64].sql());  // 065_system_login_partner
  auto card=f.db().prepare("SELECT salary_minor,partner_origin,name FROM customers WHERE user_id='usr-admin'");REQUIRE(card.step());REQUIRE(card.columnInt(0)==12345);REQUIRE(card.columnText(1)=="partner");REQUIRE(card.columnText(2)=="Yerli administrator");
 }

@@ -137,6 +137,20 @@ export const PATCH_ORDER = [
   'apply-restaurant-1928.mjs',
   'apply-restaurant-1929.mjs',
   'apply-restaurant-1930.mjs',
+  'apply-restaurant-1933.mjs',
+  'apply-restaurant-1934.mjs',
+  'apply-restaurant-local1935.mjs',
+  'apply-restaurant-local-staff.mjs',
+  'apply-restaurant-cloud-backup.mjs',
+  'apply-restaurant-1936.mjs',
+  'apply-restaurant-1100.mjs',
+  'apply-restaurant-1102.mjs',
+  'apply-restaurant-1103.mjs',
+  'apply-restaurant-1103-documents.mjs',
+  'apply-restaurant-1103-deposits.mjs',
+  'apply-restaurant-1104.mjs',
+  'apply-restaurant-1105.mjs',
+  'apply-restaurant-1106.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -176,11 +190,16 @@ function stageRenderer() {
   copy('possistem-system.css', path.join(STAGE, 'possistem-system.css'));
   copy('index-DAmHwBc4.js', path.join(STAGE, 'assets', 'index-BsrHjfOR.js'));
   copy('assets/brands/logo.png', path.join(STAGE, 'assets', 'brands', 'logo.png'));
+  copy('../website/public/assets/brand-ribbon/possistem-pattern-20261023.webp',
+    path.join(STAGE, 'assets', 'brands', 'possistem-pattern.webp'));
   copy('assets/backgrounds/login-bg.png', path.join(STAGE, 'assets', 'backgrounds', 'login-bg.png'));
   copy('assets/backgrounds/login-bg.png', path.join(STAGE, 'assets', 'login-bg-Dobpt4ta.png'));
 }
 
 function buildOut() {
+  copy('cloud-backup/client.cjs', path.join(OUT,'main/cloud-backup-client.cjs'));
+  fs.copyFileSync(path.join(ROOT,'../platform/packages/security/cloud-backup.cjs'),path.join(OUT,'main/cloud-backup-format.cjs'));
+
   fs.cpSync(path.join(ROOT,'integrations/sunmi'),path.join(OUT,'main/sunmi'),{recursive:true});
 
   copy('cloud-branches/object-selection.cjs', path.join(OUT,'main','object-selection.cjs'));
@@ -196,6 +215,7 @@ function buildOut() {
   }
 
   copy('index.js', path.join(OUT, 'main', 'index.js'));
+  copy('update-first.cjs', path.join(OUT, 'main', 'update-first.cjs'));
   const renderer = path.join(OUT, 'renderer');
   fs.rmSync(renderer, { recursive: true, force: true });
   fs.cpSync(STAGE, renderer, { recursive: true, filter: (src) => path.relative(STAGE, src) !== 'index.js' });

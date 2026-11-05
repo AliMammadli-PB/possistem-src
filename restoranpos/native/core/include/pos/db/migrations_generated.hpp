@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 65;
+inline constexpr int kSchemaVersion = 72;
 
 namespace detail {
 
@@ -4346,6 +4346,325 @@ END;
     return sql;
 }
 
+inline const std::string& migrationSql65() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(2232);
+        s += R"MIGSQL(-- 1.9.33. One level of sub-categories in the menu (İçkilər → Spirtli / Spirtsiz).
+ALTER TABLE menu_categories ADD COLUMN parent_id TEXT REFERENCES menu_categories(id);
+CREATE INDEX IF NOT EXISTS idx_menu_categories_parent ON menu_categories(parent_id);
+
+-- Set menus (business lunch): a product made of other products. 1000 = one portion of the part.
+-- Its parts' ingredients are taken from stock when the menu is sold. IF NOT EXISTS because tills
+-- that once ran the diverged 1.9.25 already have this table and view.
+CREATE TABLE IF NOT EXISTS menu_item_components (
+    menu_item_id           TEXT NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+    component_menu_item_id TEXT NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+    qty_milli              INTEGER NOT NULL CHECK (qty_milli > 0),
+    PRIMARY KEY (menu_item_id, component_menu_item_id),
+    CHECK (menu_item_id <> component_menu_item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_menu_item_components_component ON menu_item_components(component_menu_item_id);
+
+-- Every dish as plain ingredient lines, components expanded (depth-limited; saving refuses cycles).
+-- A dish's own catalog card line is left out when the dish has real lines or components, so nothing
+-- is counted twice. Quantities stay integer thousandths, rounded at each level.
+CREATE VIEW IF NOT EXISTS menu_item_recipe_expanded AS
+WITH RECURSIVE walk(root, item, factor, depth) AS (
+  SELECT id, id, 1000, 0 FROM menu_items
+  UNION ALL
+  SELECT w.root, c.component_menu_item_id, (w.factor * c.qty_milli + 500) / 1000, w.depth + 1
+  FROM walk w JOIN menu_item_components c ON c.menu_item_id = w.item
+  WHERE w.depth < 8
+)
+SELECT w.root AS menu_item_id, r.ingredient_id AS ingredient_id,
+       SUM((w.factor * r.qty_milli + 500) / 1000) AS qty_milli
+FROM walk w JOIN menu_item_ingredients r ON r.menu_item_id = w.item
+WHERE NOT (
+  r.ingredient_id IS (SELECT l.ingredient_id FROM catalog_goods_links l WHERE l.menu_id = w.item)
+  AND (EXISTS (SELECT 1 FROM menu_item_ingredients x WHERE x.menu_item_id = w.item AND x.ingredient_id <> r.ingredient_id)
+       OR EXISTS (SELECT 1 FROM menu_item_components y WHERE y.menu_item_id = w.item)))
+GROUP BY w.root, r.ingredient_id;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql66() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(7341);
+        s += R"MIGSQL(-- Stable identity links, never name-based merges. Existing records and financial/recipe data stay put.
+CREATE TABLE catalog_category_links (
+ menu_category_id TEXT PRIMARY KEY REFERENCES menu_categories(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+ stock_category_id TEXT NOT NULL UNIQUE REFERENCES stock_categories(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+INSERT INTO catalog_category_links SELECT id,'mcat-'||lower(hex(randomblob(16))) FROM menu_categories;
+INSERT INTO stock_categories(id,parent_id,name,sort_order,active,created_at)
+ SELECT l.stock_category_id,p.stock_category_id,m.name_az,m.sort_order,m.active,0
+ FROM menu_categories m JOIN catalog_category_links l ON l.menu_category_id=m.id
+ LEFT JOIN catalog_category_links p ON p.menu_category_id=m.parent_id;
+-- Preserve deeper warehouse trees; the restaurant supports a parent and one child level.
+INSERT INTO catalog_category_links(menu_category_id,stock_category_id)
+ SELECT 'scat-'||lower(hex(randomblob(16))),s.id FROM stock_categories s
+ WHERE s.active=1 AND NOT EXISTS(SELECT 1 FROM catalog_category_links WHERE stock_category_id=s.id)
+ AND (s.parent_id IS NULL OR EXISTS(SELECT 1 FROM stock_categories p WHERE p.id=s.parent_id AND p.parent_id IS NULL));
+INSERT INTO menu_categories(id,parent_id,name_az,sort_order,active)
+ SELECT l.menu_category_id,p.menu_category_id,s.name,s.sort_order,s.active
+ FROM stock_categories s JOIN catalog_category_links l ON l.stock_category_id=s.id
+ LEFT JOIN catalog_category_links p ON p.stock_category_id=s.parent_id
+ WHERE NOT EXISTS(SELECT 1 FROM menu_categories WHERE id=l.menu_category_id);
+UPDATE ingredients SET category_id=(
+ SELECT c.stock_category_id FROM catalog_goods_links g JOIN menu_items m ON m.id=g.menu_id
+ JOIN catalog_category_links c ON c.menu_category_id=m.category_id
+ WHERE g.ingredient_id=ingredients.id ORDER BY m.id LIMIT 1)
+ WHERE EXISTS(SELECT 1 FROM catalog_goods_links g JOIN menu_items m ON m.id=g.menu_id
+ JOIN catalog_category_links c ON c.menu_category_id=m.category_id WHERE g.ingredient_id=ingredients.id)
+ AND (SELECT COUNT(DISTINCT m.category_id) FROM catalog_goods_links g JOIN menu_items m ON m.id=g.menu_id WHERE g.ingredient_id=ingredients.id)=1;
+
+CREATE TRIGGER catalog_category_menu_insert AFTER INSERT ON menu_categories
+WHEN NOT EXISTS(SELECT 1 FROM catalog_category_links WHERE menu_category_id=NEW.id) BEGIN
+ INSERT INTO catalog_category_links VALUES(NEW.id,'mcat-'||lower(hex(randomblob(16))));
+ INSERT INTO stock_categories(id,parent_id,name,sort_order,active,created_at)
+ SELECT l.stock_category_id,p.stock_category_id,NEW.name_az,NEW.sort_order,NEW.active,0
+ FROM catalog_category_links l LEFT JOIN catalog_category_links p ON p.menu_category_id=NEW.parent_id WHERE l.menu_category_id=NEW.id;
+END;
+CREATE TRIGGER catalog_category_stock_insert AFTER INSERT ON stock_categories
+WHEN NOT EXISTS(SELECT 1 FROM catalog_category_links WHERE stock_category_id=NEW.id)
+ AND (NEW.parent_id IS NULL OR EXISTS(SELECT 1 FROM stock_categories p WHERE p.id=NEW.parent_id AND p.parent_id IS NULL)) BEGIN
+ INSERT INTO catalog_category_links VALUES('scat-'||lower(hex(randomblob(16))),NEW.id);
+ INSERT INTO menu_categories(id,parent_id,name_az,sort_order,active)
+ SELECT l.menu_category_id,p.menu_category_id,NEW.name,NEW.sort_order,NEW.active
+ FROM catalog_category_links l LEFT JOIN catalog_category_links p ON p.stock_category_id=NEW.parent_id WHERE l.stock_category_id=NEW.id;
+END;
+CREATE TRIGGER catalog_category_menu_update AFTER UPDATE OF name_az,parent_id,sort_order,active ON menu_categories BEGIN
+ UPDATE stock_categories SET name=NEW.name_az,parent_id=(SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id=NEW.parent_id),sort_order=NEW.sort_order,active=NEW.active
+ WHERE id=(SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id=NEW.id)
+ AND (name IS NOT NEW.name_az OR parent_id IS NOT (SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id=NEW.parent_id) OR sort_order IS NOT NEW.sort_order OR active IS NOT NEW.active);
+END;
+CREATE TRIGGER catalog_category_stock_update AFTER UPDATE OF name,parent_id,sort_order,active ON stock_categories BEGIN
+ UPDATE menu_categories SET name_az=NEW.name,parent_id=(SELECT menu_category_id FROM catalog_category_links WHERE stock_category_id=NEW.parent_id),sort_order=NEW.sort_order,active=NEW.active
+ WHERE id=(SELECT menu_category_id FROM catalog_category_links WHERE stock_category_id=NEW.id)
+ AND (name_az IS NOT NEW.name OR parent_id IS NOT (SELECT menu_category_id FROM catalog_category_links WHERE stock_category_id=NEW.parent_id) OR sort_order IS NOT NEW.sort_order OR active IS NOT NEW.active);
+END;
+CREATE TRIGGER catalog_category_depth_guard BEFORE UPDATE OF parent_id ON stock_categories
+WHEN NEW.parent_id IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_category_links WHERE stock_category_id=NEW.id)
+ AND (EXISTS(SELECT 1 FROM stock_categories WHERE id=NEW.parent_id AND parent_id IS NOT NULL) OR EXISTS(SELECT 1 FROM stock_categories WHERE parent_id=NEW.id AND active=1)) BEGIN
+ SELECT RAISE(ABORT,'Restoranla bağlı kateqoriyada yalnız bir alt səviyyə ola bilər');
+END;
+CREATE TRIGGER catalog_category_stock_archive_guard BEFORE UPDATE OF active ON stock_categories
+WHEN OLD.active=1 AND NEW.active=0 AND EXISTS(
+ SELECT 1 FROM menu_items m JOIN catalog_category_links l ON l.menu_category_id=m.category_id WHERE l.stock_category_id=NEW.id AND m.active=1 AND m.archived=0) BEGIN
+ SELECT RAISE(ABORT,'Əvvəl kateqoriyanın menyu məhsullarını köçürün və ya arxivləyin');
+END;
+CREATE TRIGGER catalog_category_menu_archive_guard BEFORE UPDATE OF active ON menu_categories
+WHEN OLD.active=1 AND NEW.active=0 AND EXISTS(
+ SELECT 1 FROM ingredients i JOIN catalog_category_links l ON l.stock_category_id=i.category_id WHERE l.menu_category_id=NEW.id AND i.active=1) BEGIN
+ SELECT RAISE(ABORT,'Əvvəl kateqoriyanın anbar mallarını köçürün və ya arxivləyin');
+END;
+CREATE TRIGGER catalog_category_product_insert AFTER INSERT ON catalog_goods_links BEGIN
+ UPDATE ingredients SET category_id=(SELECT c.stock_category_id FROM menu_items m JOIN catalog_category_links c ON c.menu_category_id=m.category_id WHERE m.id=NEW.menu_id)
+ WHERE id=NEW.ingredient_id;
+END;
+CREATE TRIGGER catalog_category_product_move AFTER UPDATE OF category_id ON menu_items
+WHEN NEW.category_id IS NOT OLD.category_id BEGIN
+ UPDATE ingredients SET category_id=(SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id=NEW.category_id)
+ WHERE id IN(SELECT ingredient_id FROM catalog_goods_links WHERE menu_id=NEW.id)
+ AND category_id IS NOT (SELECT stock_category_id FROM catalog_category_links WHERE menu_category_id=NEW.category_id);
+END;
+CREATE TRIGGER catalog_category_goods_move AFTER UPDATE OF category_id ON ingredients
+WHEN NEW.category_id IS NOT OLD.category_id AND EXISTS(SELECT 1 FROM catalog_category_links WHERE stock_category_id=NEW.category_id) BEGIN
+ UPDATE menu_items SET category_id=(SELECT menu_category_id FROM catalog_category_links WHERE stock_category_id=NEW.category_id),updated_at=NEW.updated_at
+ WHERE id IN(SELECT menu_id FROM catalog_goods_links WHERE ingredient_id=NEW.id)
+ AND category_id IS NOT (SELECT menu_category_id FROM catalog_category_links WHERE stock_category_id=NEW.category_id);
+END;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql67() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1787);
+        s += R"MIGSQL(ALTER TABLE document_cash_links ADD COLUMN salary_adjustment_id TEXT REFERENCES customer_ledger(id);
+
+-- Backfill only when the original transaction identifies exactly one pair.
+UPDATE document_cash_links AS link
+SET salary_adjustment_id = (
+  SELECT CASE WHEN COUNT(*)=1 THEN MIN(l.id) END
+  FROM salary_payments p JOIN customer_ledger l
+    ON l.customer_id=p.customer_id AND l.created_at=p.created_at AND l.actor_user_id IS p.actor_user_id
+  WHERE p.id=link.doc_id AND p.kind='full' AND l.kind='adjustment' AND l.note='Maaşdan tutuldu'
+    AND NOT EXISTS (
+      SELECT 1 FROM salary_payments other WHERE other.id<>p.id AND other.kind='full'
+        AND other.customer_id=p.customer_id AND other.created_at=p.created_at AND other.actor_user_id IS p.actor_user_id
+    )
+)
+WHERE link.doc_type='salary';
+
+CREATE TABLE cash_transfer_documents (
+    id TEXT PRIMARY KEY,
+    from_id TEXT NOT NULL REFERENCES cash_accounts(id),
+    to_id TEXT NOT NULL REFERENCES cash_accounts(id),
+    amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+    note TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    actor_user_id TEXT,
+    CHECK (from_id <> to_id)
+);
+
+-- The original implementation stored each transfer as exactly two ledger legs.
+INSERT INTO cash_transfer_documents(id,from_id,to_id,amount_minor,note,created_at,actor_user_id)
+SELECT a.ref_id,a.account_id,b.account_id,b.amount_minor,a.note,a.created_at,a.actor_user_id
+FROM cash_account_moves a JOIN cash_account_moves b ON b.ref_id=a.ref_id AND b.ref_type='transfer'
+WHERE a.ref_type='transfer' AND a.ref_id<>'' AND a.amount_minor<0 AND b.amount_minor=-a.amount_minor
+  AND a.account_id<>b.account_id
+  AND (SELECT COUNT(*) FROM cash_account_moves m WHERE m.ref_type='transfer' AND m.ref_id=a.ref_id)=2;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql68() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(522);
+        s += R"MIGSQL(ALTER TABLE payments ADD COLUMN is_deposit INTEGER NOT NULL DEFAULT 0 CHECK (is_deposit IN (0,1));
+ALTER TABLE orders ADD COLUMN prepaid_deposit_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN minimum_table_minor INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX idx_payment_one_deposit ON payments(order_id)
+    WHERE is_deposit=1 AND status NOT IN ('declined','canceled','failed');
+CREATE UNIQUE INDEX idx_deposit_bank_rrn ON payments(bank_rrn) WHERE is_deposit=1 AND bank_rrn IS NOT NULL;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql69() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1923);
+        s += R"MIGSQL(-- 1.10.4. A dish with its own recipe, added to another recipe through its stock card, took the
+-- card out of stock and left its raw materials untouched. Such lines become ready-made recipe
+-- parts, same quantity. A line that would close a cycle or pass the 8 levels the view walks stays.
+CREATE TABLE _m070_lines AS
+WITH RECURSIVE
+cand(menu, part, ing, qty) AS (
+  SELECT r.menu_item_id, l.menu_id, r.ingredient_id, r.qty_milli
+  FROM menu_item_ingredients r
+  JOIN catalog_goods_links l ON l.ingredient_id = r.ingredient_id
+  JOIN menu_items m ON m.id = l.menu_id
+  WHERE l.menu_id <> r.menu_item_id AND m.active = 1 AND m.archived = 0 AND r.qty_milli <= 100000
+    AND (EXISTS (SELECT 1 FROM menu_item_components c WHERE c.menu_item_id = l.menu_id)
+         OR EXISTS (SELECT 1 FROM menu_item_ingredients raw
+                    WHERE raw.menu_item_id = l.menu_id AND raw.ingredient_id <> l.ingredient_id))
+),
+edge(a, b) AS (
+  SELECT menu, part FROM cand UNION SELECT menu_item_id, component_menu_item_id FROM menu_item_components
+),
+down(seed, item, n) AS (
+  SELECT part, part, 0 FROM cand
+  UNION SELECT d.seed, e.b, d.n + 1 FROM down d JOIN edge e ON e.a = d.item WHERE d.n < 9
+),
+up(seed, item, n) AS (
+  SELECT menu, menu, 0 FROM cand
+  UNION SELECT u.seed, e.a, u.n + 1 FROM up u JOIN edge e ON e.b = u.item WHERE u.n < 9
+)
+SELECT c.menu, c.part, c.ing, c.qty FROM cand c
+WHERE NOT EXISTS (SELECT 1 FROM down d WHERE d.seed = c.part AND d.item = c.menu)
+  AND (SELECT MAX(n) FROM up WHERE seed = c.menu) + 1 + (SELECT MAX(n) FROM down WHERE seed = c.part) <= 8;
+
+INSERT INTO menu_item_components(menu_item_id, component_menu_item_id, qty_milli)
+SELECT menu, part, qty FROM _m070_lines WHERE true
+ON CONFLICT(menu_item_id, component_menu_item_id) DO NOTHING;
+
+DELETE FROM menu_item_ingredients
+WHERE (menu_item_id, ingredient_id) IN (SELECT menu, ing FROM _m070_lines);
+
+DROP TABLE _m070_lines;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql70() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(1811);
+        s += R"MIGSQL(-- 1.10.5. 070 skipped a dish hidden from the sale screen, which is what a sauce or a dough usually
+-- is, and lines whose dish got its recipe after them. Same conversion, hidden dishes included.
+CREATE TABLE _m071_lines AS
+WITH RECURSIVE
+cand(menu, part, ing, qty) AS (
+  SELECT r.menu_item_id, l.menu_id, r.ingredient_id, r.qty_milli
+  FROM menu_item_ingredients r
+  JOIN catalog_goods_links l ON l.ingredient_id = r.ingredient_id
+  JOIN menu_items m ON m.id = l.menu_id
+  WHERE l.menu_id <> r.menu_item_id AND m.archived = 0 AND r.qty_milli <= 100000
+    AND (EXISTS (SELECT 1 FROM menu_item_components c WHERE c.menu_item_id = l.menu_id)
+         OR EXISTS (SELECT 1 FROM menu_item_ingredients raw
+                    WHERE raw.menu_item_id = l.menu_id AND raw.ingredient_id <> l.ingredient_id))
+),
+edge(a, b) AS (
+  SELECT menu, part FROM cand UNION SELECT menu_item_id, component_menu_item_id FROM menu_item_components
+),
+down(seed, item, n) AS (
+  SELECT part, part, 0 FROM cand
+  UNION SELECT d.seed, e.b, d.n + 1 FROM down d JOIN edge e ON e.a = d.item WHERE d.n < 9
+),
+up(seed, item, n) AS (
+  SELECT menu, menu, 0 FROM cand
+  UNION SELECT u.seed, e.a, u.n + 1 FROM up u JOIN edge e ON e.b = u.item WHERE u.n < 9
+)
+SELECT c.menu, c.part, c.ing, c.qty FROM cand c
+WHERE NOT EXISTS (SELECT 1 FROM down d WHERE d.seed = c.part AND d.item = c.menu)
+  AND (SELECT MAX(n) FROM up WHERE seed = c.menu) + 1 + (SELECT MAX(n) FROM down WHERE seed = c.part) <= 8;
+
+INSERT INTO menu_item_components(menu_item_id, component_menu_item_id, qty_milli)
+SELECT menu, part, qty FROM _m071_lines WHERE true
+ON CONFLICT(menu_item_id, component_menu_item_id) DO NOTHING;
+
+DELETE FROM menu_item_ingredients
+WHERE (menu_item_id, ingredient_id) IN (SELECT menu, ing FROM _m071_lines);
+
+DROP TABLE _m071_lines;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql71() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(423);
+        s += R"MIGSQL(-- 1.10.6. What the core put right by itself at start-up, for support to read. The repair lives in
+-- services/DataRepair.cpp because it has to run again whenever the same state comes back; adding
+-- this table also gives every till a pre-migration backup before its first repair.
+CREATE TABLE data_repairs (
+    id         TEXT PRIMARY KEY,
+    detail     TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -4900,7 +5219,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 65> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 72> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -4966,6 +5285,13 @@ inline constexpr std::array<EmbeddedScript, 65> kMigrations{{
     {63, "063_qr_orders.sql", "d2afab71", &detail::migrationSql62},
     {64, "064_catalog_stock_atomic.sql", "a0c54ec4", &detail::migrationSql63},
     {65, "065_system_login_partner.sql", "811695fd", &detail::migrationSql64},
+    {66, "066_menu_subcategories_components.sql", "007fcba8", &detail::migrationSql65},
+    {67, "067_shared_catalog_categories.sql", "94ea9518", &detail::migrationSql66},
+    {68, "068_financial_documents.sql", "117f904d", &detail::migrationSql67},
+    {69, "069_prepaid_deposits.sql", "76f1a7e5", &detail::migrationSql68},
+    {70, "070_prepared_recipe_components.sql", "2cc8c53b", &detail::migrationSql69},
+    {71, "071_hidden_prepared_recipes.sql", "e0b2383c", &detail::migrationSql70},
+    {72, "072_data_repairs.sql", "c00f7d54", &detail::migrationSql71},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

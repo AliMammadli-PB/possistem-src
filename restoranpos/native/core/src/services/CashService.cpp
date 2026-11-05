@@ -70,7 +70,8 @@ Json CashService::listMovements(const std::string& businessDayId) {
         "SELECT m.id, m.business_day_id AS businessDayId, m.shift_id AS shiftId, m.kind, "
         "       m.amount_minor AS amountMinor, m.reason, m.note, m.actor_user_id AS actorUserId, "
         "       m.created_at AS createdAt, COALESCE(a.id, '') AS accountId, COALESCE(a.name, '') AS accountName, "
-        "       COALESCE(o.id, '') AS objectId, COALESCE(o.name, '') AS objectName "
+        "       COALESCE(o.id, '') AS objectId, COALESCE(o.name, '') AS objectName, "
+        "       COALESCE((SELECT l.doc_id FROM document_cash_links l WHERE l.doc_type='salary' AND l.cash_movement_id=m.id LIMIT 1),'') AS linkedSalaryDocumentId "
         "FROM cash_movements m "
         "LEFT JOIN cash_account_moves am ON am.rowid = (SELECT x.rowid FROM cash_account_moves x WHERE x.ref_type = 'cash_movement' AND x.ref_id = m.id ORDER BY x.created_at DESC,x.rowid DESC LIMIT 1) "
         "LEFT JOIN cash_accounts a ON a.id = COALESCE((SELECT l.account_id FROM document_cash_links l WHERE l.doc_type='salary' AND l.cash_movement_id=m.id LIMIT 1),am.account_id) "
@@ -92,7 +93,7 @@ Money CashService::expectedCash(const std::string& businessDayId) {
     // expected figure - leaving them out made every count look short.
     auto cashSales = ctx_.db().prepare(
         "SELECT COALESCE(SUM(amount_minor), 0) + COALESCE(SUM(tip_minor), 0) FROM payments "
-        "WHERE business_day_id = :day AND status = 'approved' AND method = 'cash'");
+        "WHERE business_day_id = :day AND status IN ('approved','refunded') AND method = 'cash'");
     cashSales.bind(":day", businessDayId);
     cashSales.step();
     total += cashSales.columnInt(0);

@@ -335,7 +335,8 @@ Json InventoryService::consumeForOrder(const std::string& orderId,
     auto rows = ctx_.db().prepare(
         "SELECT r.ingredient_id, SUM(r.qty_milli * i.quantity) AS needed "
         "FROM order_items i "
-        "JOIN menu_item_ingredients r ON r.menu_item_id = i.product_id "
+        // Expanded recipe: a set menu gives up the ingredients of its parts.
+        "JOIN menu_item_recipe_expanded r ON r.menu_item_id = i.product_id "
         "WHERE i.order_id = :order AND i.status != 'voided' "
         "GROUP BY r.ingredient_id");
     rows.bind(":order", orderId);
@@ -353,8 +354,9 @@ Json InventoryService::consumeForOrder(const std::string& orderId,
         // Stock is allowed to go negative: refusing to close a paid bill because
         // the store says there is no flour left would be worse than a negative
         // balance the low-stock report then shouts about.
+        // A switched-off card must not fail a paid bill either.
         written.push_back(move(need.ingredientId, warehouseId, -need.milli, "sale", orderId,
-                               "order consumption"));
+                               "order consumption", LotSpec{}, true));
     }
     return Json{{"movements", written}, {"orderId", orderId}};
 }
@@ -376,6 +378,15 @@ Json InventoryService::consumeOnClose(const std::string& orderId) {
         "ORDER BY p.created_at DESC LIMIT 1");
     branch.bind(":order", orderId);
     if (branch.step() && !branch.columnText(0).empty()) return consumeForOrder(orderId, branch.columnText(0));
+
+    // No payment row, as when a courier carries the money: the till closing it decides.
+    auto till = ctx_.db().prepare(
+        "SELECT o.warehouse_id FROM cash_accounts a "
+        "JOIN cash_objects o ON o.id = a.object_id "
+        "JOIN warehouses w ON w.id = o.warehouse_id AND w.active = 1 "
+        "WHERE a.kind = 'till' AND a.active = 1 AND a.terminal_id = :terminal");
+    till.bind(":terminal", ctx_.saleTerminalId());
+    if (till.step() && !till.columnText(0).empty()) return consumeForOrder(orderId, till.columnText(0));
 
     auto store = ctx_.db().prepare(
         "SELECT id FROM warehouses WHERE active = 1 ORDER BY sort_order, id LIMIT 1");

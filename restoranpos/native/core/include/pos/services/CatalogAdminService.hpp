@@ -8,6 +8,10 @@
 
 namespace pos::services {
 
+// Replaces the links inside the caller's recipe transaction.
+void saveRecipeComponents(handlers::Context& ctx, const std::string& menuId, const Json& components);
+void adoptPreparedRecipe(handlers::Context& ctx, const std::string& menuId);
+
 class CatalogAdminService {
 public:
     explicit CatalogAdminService(handlers::Context& ctx) : ctx_(ctx) {}

@@ -11,6 +11,7 @@
 #include "pos/handlers/Handlers.hpp"
 #include "pos/protocol_generated.hpp"
 #include "pos/services/AuditArchive.hpp"
+#include "pos/services/DataWipe.hpp"
 #include "pos/services/Idempotency.hpp"
 
 namespace pos {
@@ -99,6 +100,7 @@ void Application::bootstrap() {
     // data directory before anything is removed, and a failure here must never
     // stop the till from opening.
     pos::services::AuditArchive::run(*database_, config_.dbPath);
+    pos::services::DataWipe::purgeExpiredCopies(config_.dbPath, nowMs());
 
     reportStage("handlers", "Preparing menu…", 82);
     registerCoreHandlers();

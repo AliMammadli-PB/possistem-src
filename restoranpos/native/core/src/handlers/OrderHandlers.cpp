@@ -672,6 +672,7 @@ void registerOrders(const ContextPtr& ctx) {
             services::OrderService orders(*ctx);
             db::Transaction txn(ctx->db());
             const Json editable = orders.requireEditable(orderId);
+            require(editable.value("prepaidDepositMinor",Money{0})==0,"Ödənilmiş depozit bu üsulla dəyişdirilə bilməz");
 
             auto update = ctx->db().prepare(
                 "UPDATE orders SET deposit_minor = :deposit, updated_at = :now "
@@ -803,26 +804,42 @@ void registerOrders(const ContextPtr& ctx) {
                     markSent.exec();
 
                     auto station = ctx->db().prepare(
-                        "SELECT station, prep_minutes, category_id FROM menu_items WHERE id = :productId");
+                        "SELECT station, prep_minutes, category_id, "
+                        "       COALESCE((SELECT c.parent_id FROM menu_categories c WHERE c.id = menu_items.category_id), '') "
+                        "FROM menu_items WHERE id = :productId");
                     station.bind(":productId", line.productId);
                     std::string stationName = "kitchen";
                     std::int64_t prepMinutes = 15;
                     std::string categoryId;
+                    std::string parentCategoryId;
                     if (station.step()) {
                         stationName = station.columnText(0);
                         prepMinutes = station.columnInt(1);
                         categoryId = station.columnText(2);
+                        parentCategoryId = station.columnText(3);
                     }
-                    if (const auto* extra = printing::stationFor(stations, line.productId, categoryId)) {
+                    const auto route = [&](const printing::KitchenStation* extra) {
+                        if (!extra) {
+                            mainKitchenLines = true;
+                            return;
+                        }
                         auto group = std::find_if(stationLines.begin(), stationLines.end(),
                                                   [&](const auto& entry) { return entry.first == extra; });
                         if (group == stationLines.end()) {
                             stationLines.push_back({extra, {}});
                             group = std::prev(stationLines.end());
                         }
-                        group->second.push_back(line.id);
-                    } else {
-                        mainKitchenLines = true;
+                        if (std::find(group->second.begin(), group->second.end(), line.id) == group->second.end()) {
+                            group->second.push_back(line.id);
+                        }
+                    };
+                    // A set menu goes where its parts go: the dönər to the kitchen, the cola to the bar.
+                    const auto parts = printing::menuParts(ctx->db(), line.productId);
+                    if (parts.empty()) {
+                        route(printing::stationFor(stations, line.productId, categoryId, parentCategoryId));
+                    }
+                    for (const auto& part : parts) {
+                        route(printing::stationFor(stations, part.productId, part.categoryId, part.parentCategoryId));
                     }
 
                     auto job = ctx->db().prepare(
@@ -1035,6 +1052,14 @@ void registerOrders(const ContextPtr& ctx) {
                 }
 
                 services::queueSunmiSale(*ctx, orderId);
+                if (refreshed.value("prepaidDepositMinor",Money{0})>0 &&
+                    ctx->setting("sunmi.suppressLocalReceipt","0")!="1") {
+                    auto receipt=ctx->db().prepare(
+                        "INSERT INTO print_jobs(id,order_id,kind,target_printer,status,next_attempt_at,created_at,updated_at) "
+                        "VALUES(:id,:order,'customer_receipt',:printer,'queued',:now,:now,:now)");
+                    receipt.bind(":id",crypto::uuid4()).bind(":order",orderId)
+                        .bind(":printer",ctx->setting("printer.receipt","auto")).bind(":now",now).exec();
+                }
                 orders.logEvent(orderId, "order.closed", Json{{"totalMinor", totals.total}});
                 ctx->enqueueSync("order", orderId, "update", Json{{"status", "closed"}});
                 ctx->audit("order.close", "order", orderId, Json{{"totalMinor", totals.total}});
@@ -1047,6 +1072,10 @@ void registerOrders(const ContextPtr& ctx) {
             if (!tableId.empty()) {
                 ctx->server().emitEvent(protocol::event::kTablesUpdated,
                                         Json{{"tableIds", {tableId}}});
+            }
+            if(result.value("prepaidDepositMinor",Money{0})>0) {
+                drainPrintQueue(*ctx);
+                ctx->server().emitEvent(protocol::event::kPrintUpdated,Json{{"orderId",orderId}});
             }
             return result;
         });

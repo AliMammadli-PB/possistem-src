@@ -6,7 +6,7 @@ import {requireCustomer} from '../plugins/customer-auth.js';
 import {surfaceAccess} from './access.js';
 import {areaAllowed} from '../lib/access-areas.js';
 import {inventoryEnabled} from './inventory-access.js';
-import {ownerBranchDevices,branchOnline,branchVersionSupported,branchCallKind,branchRpc} from './cloud-branches.js';
+import {ownerBranchDevices,branchOnline,branchVersionSupported,branchTransferSupported,branchCallKind,branchRpc} from './cloud-branches.js';
 
 const Call=z.object({method:z.string().min(1).max(64),payload:z.record(z.unknown()).optional(),idempotencyKey:z.string().min(1).max(120).optional()});
 const Body=z.object({deviceId:z.string().uuid(),requestId:z.string().uuid(),calls:z.array(Call).min(1).max(16),defer:z.boolean().optional(),fresh:z.boolean().optional()});
@@ -26,6 +26,8 @@ export function warehouseArea(c:CallType):string[]{
   return ['transactions','cashes'];
  }
  if(/^(goods|ingredients|categories|catalog|recipes)\./.test(m))return ['product'];
+ if(m==='inventory.transfer')return ['move','anbar'];
+ if(m.startsWith('warehouses.'))return ['anbar','stock'];
  if(m.startsWith('inventory.'))return ['stock','enter','loss','inventory','anbar'];
  if(m.startsWith('stocktake.'))return ['inventory','anbar'];
  if(/^(suppliers|supplierItems|purchases|replenish)\./.test(m))return ['supply'];
@@ -90,9 +92,9 @@ const sourceKey=(c:CallType)=>c.method==='business.call'?c.method+':'+String(c.p
 const documentRows=(data:any):any[]=>Array.isArray(data)?data:data?.id?[data]:data&&typeof data==='object'?Object.values(data).find(Array.isArray) as any[]||[]:[];
 export function warehouseDocumentStore(app:FastifyInstance){return {
  async init(){await app.db.execute(sql`CREATE TABLE IF NOT EXISTS portal_warehouse_documents(customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,device_id uuid NOT NULL REFERENCES devices(id) ON DELETE CASCADE,source text NOT NULL,native_id text NOT NULL,call_json jsonb NOT NULL,row_json jsonb NOT NULL,doc_at timestamptz NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(customer_id,device_id,source,native_id))`);await app.db.execute(sql`CREATE INDEX IF NOT EXISTS portal_warehouse_documents_date ON portal_warehouse_documents(customer_id,doc_at DESC)`);await app.db.execute(sql`ALTER TABLE portal_warehouse_requests ADD COLUMN IF NOT EXISTS calls_json jsonb NOT NULL DEFAULT '[]'`);},
- async capture(owner:string,device:string,c:CallType,result:any,version?:number){const source=documentSources[sourceKey(c)];if(!source||!result?.success)return;const seen=new Set<string>();const rows=documentRows(result.data).filter(r=>r&&typeof r==='object'&&r.id&&!seen.has(String(r.id))&&seen.add(String(r.id))).map(r=>{const stamp=r.createdAt||r.orderedAt||r.date||r.updatedAt,at=new Date(stamp||Date.now());return {id:String(r.id),row:r,at:Number.isFinite(at.getTime())?at.toISOString():new Date().toISOString()};});if(!rows.length)return;await app.db.execute(sql`INSERT INTO portal_warehouse_documents(customer_id,device_id,source,native_id,call_json,row_json,doc_at) SELECT ${owner}::uuid,${device}::uuid,${source},d->>'id',${JSON.stringify(c)}::text::jsonb,d->'row',(d->>'at')::timestamptz FROM jsonb_array_elements(${JSON.stringify(rows)}::text::jsonb) d WHERE (${version??-1}=-1 OR COALESCE((SELECT version FROM portal_warehouse_cache_versions WHERE customer_id=${owner}::uuid AND device_id=${device}::uuid),0)=${version??-1}) ON CONFLICT(customer_id,device_id,source,native_id) DO UPDATE SET row_json=portal_warehouse_documents.row_json||EXCLUDED.row_json,call_json=EXCLUDED.call_json,doc_at=EXCLUDED.doc_at,updated_at=now()`);},
+ async capture(owner:string,device:string,c:CallType,result:any,version?:number){const source=documentSources[sourceKey(c)];if(!source||!result?.success)return;const seen=new Set<string>();const rows=documentRows(result.data).filter(r=>r&&typeof r==='object'&&r.id&&!(source==='payment'&&r.type==='income')&&!seen.has(String(r.id))&&seen.add(String(r.id))).map(r=>{const stamp=r.createdAt||r.orderedAt||r.date||r.updatedAt,at=new Date(stamp||Date.now());return {id:String(r.id),row:r,at:Number.isFinite(at.getTime())?at.toISOString():new Date().toISOString()};});if(!rows.length)return;await app.db.execute(sql`INSERT INTO portal_warehouse_documents(customer_id,device_id,source,native_id,call_json,row_json,doc_at) SELECT ${owner}::uuid,${device}::uuid,${source},d->>'id',${JSON.stringify(c)}::text::jsonb,d->'row',(d->>'at')::timestamptz FROM jsonb_array_elements(${JSON.stringify(rows)}::text::jsonb) d WHERE (${version??-1}=-1 OR COALESCE((SELECT version FROM portal_warehouse_cache_versions WHERE customer_id=${owner}::uuid AND device_id=${device}::uuid),0)=${version??-1}) ON CONFLICT(customer_id,device_id,source,native_id) DO UPDATE SET row_json=portal_warehouse_documents.row_json||EXCLUDED.row_json,call_json=EXCLUDED.call_json,doc_at=EXCLUDED.doc_at,updated_at=now()`);},
  async calls(owner:string,requestId:string,calls:CallType[]){await app.db.execute(sql`UPDATE portal_warehouse_requests SET calls_json=${JSON.stringify(hideSecrets(calls))}::text::jsonb WHERE customer_id=${owner}::uuid AND request_id=${requestId}::uuid`);},
- async list(owner:string,device:string,source:string,cursor:string,after:string,limit:number){return rowsOf(await app.db.execute(sql`SELECT source,native_id,call_json,row_json,doc_at,updated_at FROM portal_warehouse_documents WHERE customer_id=${owner}::uuid AND device_id=${device}::uuid AND (${source}='' OR source=${source}) AND (${cursor}='' OR doc_at<NULLIF(${cursor},'')::timestamptz OR doc_at=NULLIF(${cursor},'')::timestamptz AND device_id::text||':'||source||':'||native_id>${after}) ORDER BY doc_at DESC,source,native_id LIMIT ${limit}`));},
+ async list(owner:string,device:string,source:string,cursor:string,after:string,limit:number){return rowsOf(await app.db.execute(sql`SELECT source,native_id,call_json,row_json,doc_at,updated_at FROM portal_warehouse_documents WHERE customer_id=${owner}::uuid AND device_id=${device}::uuid AND (${source}='' OR source=${source}) AND NOT (source='cash' AND COALESCE(row_json->>'linkedSalaryDocumentId','')<>'') AND (${cursor}='' OR doc_at<NULLIF(${cursor},'')::timestamptz OR doc_at=NULLIF(${cursor},'')::timestamptz AND device_id::text||':'||source||':'||native_id>${after}) ORDER BY doc_at DESC,source,native_id LIMIT ${limit}`));},
  async activity(owner:string,device:string,cursor='',after='',limit=500){return rowsOf(await app.db.execute(sql`SELECT request_id,calls_json,response_json,status,http_status,started_at,updated_at FROM portal_warehouse_requests WHERE customer_id=${owner}::uuid AND device_id=${device}::uuid AND jsonb_array_length(calls_json)>0 AND (${cursor}='' OR started_at<NULLIF(${cursor},'')::timestamptz OR started_at=NULLIF(${cursor},'')::timestamptz AND device_id::text||':portal:'||request_id::text>${after}) ORDER BY started_at DESC,request_id LIMIT ${limit}`));},
  async owners(){return rowsOf(await app.db.execute(sql`SELECT DISTINCT l.customer_id FROM devices d JOIN licenses l ON l.id=d.license_id WHERE d.status<>'revoked' AND d.last_seen_at>now()-interval '5 minutes' AND l.status='active' AND (l.valid_until IS NULL OR l.valid_until>now()) ORDER BY l.customer_id LIMIT 500`));}
 };}
@@ -104,13 +106,14 @@ WARM_CALLS.push({method:'inventory.movements',payload:{limit:1000}},{method:'sto
 type WarmProfile={dayFrom:number;dayTo:number;month:string;monthFrom:number;monthTo:number};
 const WarmQuery=z.object({dayFrom:z.coerce.number().int().min(0).max(8640000000000000),dayTo:z.coerce.number().int().min(0).max(8640000000000000),month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),monthFrom:z.coerce.number().int().min(0).max(8640000000000000),monthTo:z.coerce.number().int().min(0).max(8640000000000000)}).refine(q=>q.dayTo>q.dayFrom&&q.dayTo-q.dayFrom<=28*3600000&&q.monthTo>q.monthFrom&&q.monthTo-q.monthFrom<=32*86400000);
 const warmCalls=(profile?:WarmProfile)=>{const date=new Date(Date.now()+14400000),year=date.getUTCFullYear(),month=date.getUTCMonth();const defaults={month:date.toISOString().slice(0,7),from:Date.UTC(year,month,1)-14400000,to:Date.UTC(year,month+1,1)-14400000};const calls=WARM_CALLS.map(c=>c.method==='salary.list'?{...c,payload:profile?{month:profile.month,from:profile.monthFrom,to:profile.monthTo}:defaults}:c);if(profile)calls.push({method:'cashAccounts.list',payload:{from:profile.dayFrom,to:profile.dayTo}});return calls;};
-const entityId=(c:CallType)=>String(c.payload?.id||c.payload?.ingredientId||c.payload?.purchaseId||c.payload?.saleId||c.payload?.documentId||c.payload?.accountId||c.payload?.customerId||c.payload?.supplierId||'');
+const entityId=(c:CallType)=>String(c.payload?.id||c.payload?.ingredientId||c.payload?.menuItemId||c.payload?.purchaseId||c.payload?.saleId||c.payload?.documentId||c.payload?.accountId||c.payload?.customerId||c.payload?.supplierId||'');
 const guardRead=(c:CallType):CallType|null=>{
- const id=entityId(c);if(!id)return null;if(c.method==='business.call'&&c.payload?.action==='correct')return {method:'business.call',payload:{action:'document.get',kind:c.payload?.kind}};
+ const id=entityId(c);if(!id)return null;if(c.method==='recipes.save')return {method:'recipes.get',payload:{menuItemId:id}};
+ if(c.method==='business.call'&&c.payload?.action==='correct')return {method:'business.call',payload:{action:'document.get',type:c.payload?.type,id}};
  const method=({'ingredients.save':'goods.list','ingredients.deactivate':'goods.list','cashAccounts.save':'cashAccounts.list','cashAccounts.deactivate':'cashAccounts.list','customers.save':'customers.list','customers.deactivate':'customers.list','suppliers.save':'suppliers.list','sales.update':'sales.get','sales.delete':'sales.get','purchases.update':'purchases.get','purchases.delete':'purchases.get'} as Record<string,string>)[c.method];
  return method?{method,payload:method.endsWith('.get')?{id}: {}}:null;
 };
-const entityValue=(data:any,id:string):any=>{if(Array.isArray(data))return data.find(r=>String(r.id||r.ingredientId)===id);if(data&&typeof data==='object'){if(String(data.id||data.ingredientId)===id)return data;for(const value of Object.values(data)){const found=entityValue(value,id);if(found!==undefined)return found;}}};
+const entityValue=(data:any,id:string):any=>{if(Array.isArray(data))return data.find(r=>String(r.id||r.ingredientId)===id);if(data&&typeof data==='object'){if(String(data.id||data.ingredientId||data.menuItemId)===id)return data;for(const value of Object.values(data)){const found=entityValue(value,id);if(found!==undefined)return found;}}};
 export const warehouseDeps={requireCustomer,surfaceAccess,devices:ownerBranchDevices,rpc:branchRpc};
 /** Dependency ports keep tests isolated from merchant databases and till queues. */
 export async function registerWarehousePortal(app:FastifyInstance,deps=warehouseDeps){
@@ -166,9 +169,11 @@ export async function registerWarehousePortal(app:FastifyInstance,deps=warehouse
     const v=String(target.app_version||'0.0.0').split('.').map(Number);
     if(!((v[0]||0)>1||v[0]===1&&((v[1]||0)>9||v[1]===9&&(v[2]||0)>=24)))return deny(409,{error:'Menyu redaktəsi üçün kassada Restoran POS 1.9.24 və ya daha yeni versiyanı quraşdırın.',code:'CATALOG_UPDATE_REQUIRED'});
    }
+   if(target.product==='restaurant'&&c.method==='business.call'&&c.payload?.action==='catalog.stockEdit'&&c.payload.categoryId&&!branchTransferSupported(target))
+    return deny(409,{error:'Menyu kateqoriyasını seçmək üçün Restoran POS 1.10.1 lazımdır.',code:'WAREHOUSE_UPDATE_REQUIRED'});
    if(c.method==='business.call'&&c.payload?.action==='transfer.save'){
     const destination=c.payload.toDeviceId;
-    if(destination&&(!devices.some(d=>d.id===destination&&d.product==='market'&&inventoryEnabled(d.license_features))||target.product!=='market'))return deny(403,{error:'Qəbul edən filial bu sahibkara bağlı deyil'});
+    if(destination&&(!devices.some(d=>d.id===destination&&d.product===target.product&&branchTransferSupported(d)&&inventoryEnabled(d.license_features))))return deny(403,{error:'Qəbul edən filial bu sahibkara bağlı deyil'});
     c.payload={...c.payload,fromDeviceId:target.id};
    }
   }
@@ -246,19 +251,20 @@ export async function registerWarehousePortal(app:FastifyInstance,deps=warehouse
   const who=deps.requireCustomer(req,reply);if(!who)return;
   const parsed=Body.safeParse(req.body);if(!parsed.success)return reply.code(400).send({error:'Filial və ya əməliyyat düzgün deyil'});
   const body=parsed.data,devices=await deps.devices(app,who.id),target=devices.find(d=>d.id===body.deviceId);
-   body.calls=body.calls.map((c,i)=>['inventory.adjust','inventory.waste'].includes(c.method)?{...c,idempotencyKey:c.idempotencyKey||body.requestId+':'+i,payload:{...c.payload,idempotencyKey:c.payload?.idempotencyKey||c.idempotencyKey||body.requestId+':'+i}}:c);
+   body.calls=body.calls.map((c,i)=>['inventory.adjust','inventory.waste','inventory.transfer','warehouses.save'].includes(c.method)?{...c,idempotencyKey:c.idempotencyKey||body.requestId+':'+i,payload:{...c.payload,idempotencyKey:c.payload?.idempotencyKey||c.idempotencyKey||body.requestId+':'+i}}:c);
   if(!target)return reply.code(403).send({error:'Filial bu sahibkara bağlı deyil və ya lisenziya aktiv deyil'});
   if(!inventoryEnabled(target.license_features))return reply.code(403).send({error:'Bu filialın anbar modulu aktiv deyil'});
   const authorized=await authorize(req,reply,who.id,target,devices,body);if(!authorized)return;const {grants}=authorized;
   if(body.calls.some(c=>c.method==='business.call'&&c.payload?.action==='transfer.targets')){
-   if(body.calls.length!==1||target.product!=='market')return reply.code(400).send({error:'Transfer hədəfləri ayrıca sorğulanmalıdır'});
-   const id=String(body.calls[0]!.payload?.deviceId||target.id),destination=devices.find(d=>d.id===id&&d.product==='market'&&inventoryEnabled(d.license_features));
+   if(!branchTransferSupported(target))return reply.code(409).send({error:'Bu filialın POS proqramını yeniləyin.'});
+   if(body.calls.length!==1)return reply.code(400).send({error:'Transfer hədəfləri ayrıca sorğulanmalıdır'});
+   const id=String(body.calls[0]!.payload?.deviceId||target.id),destination=devices.find(d=>d.id===id&&d.product===target.product&&branchTransferSupported(d)&&inventoryEnabled(d.license_features));
    if(!destination)return reply.code(403).send({error:'Qəbul edən filial bu sahibkara bağlı deyil'});
    const call={method:'warehouses.list',payload:{}},cached=await offline.get(who.id,destination.id,call);
    const result:any=!branchOnline(destination)&&cached?{results:[cached.result_json]}:await deps.rpc(app,req,reply,{customerId:who.id,source:target,target:destination,body:{requestId:body.requestId,calls:[call]},auditAction:'owner.warehouse.rpc',timeoutMs:10000});
    if(reply.sent)return result;
    const r=result.results?.[0];if(!r?.success)return {results:[r],deviceId:target.id,requestId:body.requestId};
-   return {results:[{success:true,data:{deviceId:target.id,warehouses:r.data?.warehouses||[],devices:devices.filter(d=>d.product==='market').map(d=>({deviceId:d.id,name:d.name,branchName:d.name,terminalName:d.register_name||d.hostname,online:branchOnline(d),supported:branchVersionSupported(d)}))},error:null}],deviceId:target.id,requestId:body.requestId};
+   return {results:[{success:true,data:{deviceId:target.id,localDeviceId:target.id,defaultWarehouseId:(r.data?.warehouses||[]).find((w:any)=>w.active!==false&&w.active!==0)?.id||'',warehouses:r.data?.warehouses||[],devices:devices.filter(d=>d.product===target.product&&inventoryEnabled(d.license_features)).map(d=>({deviceId:d.id,name:d.name,branchName:d.name,terminalName:d.register_name||d.hostname,online:branchOnline(d),supported:branchTransferSupported(d)}))},error:null}],deviceId:target.id,requestId:body.requestId};
   }
 
   if(body.defer&&body.calls.some(c=>branchCallKind(c)==='w')){

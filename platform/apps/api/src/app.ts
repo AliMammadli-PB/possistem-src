@@ -1,3 +1,4 @@
+import {cloudBackupRoutes} from './routes/cloud-backups.js';
 import {qrOrderRoutes} from './routes/qr-orders.js';
 import {withinBudget} from './lib/request-budget.js';
 import Fastify from 'fastify';
@@ -20,6 +21,7 @@ import { healthRoutes, dashboardRoutes, settingsRoutes } from './routes/misc.js'
 import { tenantRoutes, tenantRequestGuard } from './routes/tenant.js';
 import { ownerRoutes } from './routes/owner.js';
 import { resellerRoutes, salesRoutes } from './routes/resellers.js';
+import { dataWipeRoutes } from './routes/data-wipe.js';
 import { resellerPortalRoutes } from './routes/reseller-portal.js';
 import { downloadRoutes } from './routes/downloads.js';
 import { contactAdminRoutes, publicContactRoutes } from './routes/contact.js';
@@ -118,6 +120,7 @@ export async function buildApp() {
       await api.register(authRoutes);
       await api.register(resellerRoutes);
       await api.register(salesRoutes);
+      await api.register(dataWipeRoutes);
       await api.register(downloadRoutes);
       await api.register(dashboardRoutes);
       await api.register(settingsRoutes);
@@ -146,6 +149,7 @@ export async function buildApp() {
       await api.register(supportCustomerRoutes);
       await api.register(activationRoutes);
       await api.register(deviceRoutes);
+      await api.register(cloudBackupRoutes);
       await api.register(marketRoutes);
       await api.register(inventoryRoutes);
       await api.register(accessRoutes);

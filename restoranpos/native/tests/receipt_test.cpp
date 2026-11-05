@@ -652,3 +652,31 @@ TEST_CASE("write visual preview artifacts for QA", "[receipt][visual]") {
     }
     REQUIRE(bmp.good());
 }
+
+TEST_CASE("the bytes stay inside what a cheap thermal printer accepts", "[receipt][escpos]") {
+    printing::MonoBitmap bitmap;
+    bitmap.width = 576;
+    bitmap.height = 300;
+    bitmap.stride = 72;
+    bitmap.bits.assign(static_cast<std::size_t>(bitmap.stride) * bitmap.height, 0x1C);
+
+    const auto raster = printing::encodeRaster(bitmap);
+    int rows = 0;
+    for (std::size_t i = 0; i < raster.size();) {
+        if (raster[i] == 0x1B) {  // the ESC a 0 in front
+            i += 3;
+            continue;
+        }
+        REQUIRE(raster[i] == 0x1D);
+        REQUIRE(raster[i + 1] == 0x76);
+        const int height = raster[i + 6] | raster[i + 7] << 8;
+        CHECK(height <= 24);
+        rows += height;
+        i += 8 + static_cast<std::size_t>(bitmap.stride) * height;
+    }
+    CHECK(rows == bitmap.height);
+
+    const auto text = printing::buildEscPosText("Salam", printing::EscPosOptions{}).bytes;
+    const std::vector<std::uint8_t> escSeven{0x1B, 0x37};
+    CHECK(std::search(text.begin(), text.end(), escSeven.begin(), escSeven.end()) == text.end());
+}

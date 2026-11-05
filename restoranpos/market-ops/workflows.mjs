@@ -36,8 +36,12 @@ function PsMarketProductPicker({items,value,onChange,disabled}){const h=psH,[sea
  });
  section('PsDocuments',s=>{
   const old='canEdit(r)?jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setEdit(r),children:psBizText(lang,"Düzəliş","Düzenle","Edit")}):null';
-  if(!s.includes(old))throw Error('Payment document actions missing');
-  return s.replace(old,'jsxRuntimeExports.jsx(PsMarketDocActions,{row:r})');
+  const actions='jsxRuntimeExports.jsx(PsMarketDocActions,{row:r})';
+  if(s.includes(old))return s.replace(old,actions);
+  const start=s.indexOf('h("div",{className:"flex flex-wrap gap-1"},');
+  const end=s.indexOf('])}),',start);
+  if(start<0||end<0||!s.slice(start,end).includes('setVoidRow(r)'))throw Error('Payment document actions missing');
+  return s.slice(0,start)+actions+s.slice(end);
  });
  section('OpsExpenses',s=>{
   const a=s.indexOf('jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>setDocEdit('),b=s.indexOf('])\n',a);

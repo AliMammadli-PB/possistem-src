@@ -32,7 +32,7 @@ TEST_CASE("platform authentication leaves the merchant PIN and worker list uncha
     const auto session=x.call("auth.login",{{"userId","possistem-admin"},{"pin",secret}}).at("session");
     REQUIRE(session.at("superAdmin")==true);REQUIRE(session.at("fullName")=="POSSISTEM");REQUIRE(session.at("role")=="administrator");
     REQUIRE(x.call("auth.listUsers").at("users").size()==1);
-    REQUIRE(x.call("users.list").at("users").size()==1);
+    REQUIRE(x.call("users.list").at("users").empty());
     auto after=x.f.db().prepare("SELECT pin_hash FROM users WHERE id='usr-admin'");REQUIRE(after.step());REQUIRE(after.columnText(0)==hash);
     REQUIRE(x.error("users.setPin",{{"userId","possistem-admin"},{"pin","9876"}})=="E_VALIDATION");
     REQUIRE(x.error("users.update",{{"userId","possistem-admin"},{"role","waiter"}})=="E_VALIDATION");

@@ -1,3 +1,4 @@
+#include "pos/services/DataRepair.hpp"
 #include "pos/services/CatalogAdminService.hpp"
 
 #include <sstream>
@@ -52,7 +53,7 @@ void ensureCatalogStock(handlers::Context& ctx,const std::string& menuId,const s
                         const std::string& barcode,Money price,Timestamp now,const std::string& stockIngredientId) {
     std::string ingredient;bool active=true;
     {auto link=ctx.db().prepare("SELECT i.id,i.active FROM catalog_goods_links l JOIN ingredients i ON i.id=l.ingredient_id WHERE l.menu_id=:id");link.bind(":id",menuId);if(link.step()){ingredient=link.columnText(0);active=link.columnInt(1)!=0;}}
-    auto recipes=ctx.db().prepare("SELECT COUNT(*) FROM menu_item_ingredients WHERE menu_item_id=:id");recipes.bind(":id",menuId);recipes.step();const bool hasRecipe=recipes.columnInt(0)>0;
+    auto recipes=ctx.db().prepare("SELECT (SELECT COUNT(*) FROM menu_item_ingredients WHERE menu_item_id=:id)+(SELECT COUNT(*) FROM menu_item_components WHERE menu_item_id=:id)");recipes.bind(":id",menuId);recipes.step();const bool hasRecipe=recipes.columnInt(0)>0;
     if(ingredient.empty()){
         auto owned=ctx.db().prepare("SELECT id,active FROM ingredients WHERE sku=:sku");owned.bind(":sku","MENU-"+menuId);if(owned.step()){ingredient=owned.columnText(0);active=owned.columnInt(1)!=0;}
     }
@@ -81,7 +82,88 @@ void ensureCatalogStock(handlers::Context& ctx,const std::string& menuId,const s
     if(active&&!hasRecipe){auto recipe=ctx.db().prepare("INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES(:menu,:ingredient,1000)");recipe.bind(":menu",menuId).bind(":ingredient",ingredient).exec();}
 }
 
+// Sizes live in the name ("Pizza · 28 sm"). The other sizes of a moved dish follow it, so one
+// pizza never sits in two categories.
+void moveSizeSiblings(handlers::Context& ctx,const std::string& id,const std::string& name,const std::string& fromCategory,const std::string& toCategory,Timestamp now) {
+    const std::string separator=" · ";
+    const auto at=name.rfind(separator);if(at==std::string::npos||at==0)return;
+    const auto rest=name.substr(at+separator.size());if(rest.empty()||rest[0]<'0'||rest[0]>'9')return;
+    const auto prefix=name.substr(0,at+separator.size());
+    auto rows=ctx.db().prepare("SELECT id,name_az FROM menu_items WHERE category_id=:cat AND id!=:id AND archived=0");rows.bind(":cat",fromCategory).bind(":id",id);
+    std::vector<std::string> siblings;
+    while(rows.step()){const auto other=rows.columnText(1);if(other.size()>prefix.size()&&other.compare(0,prefix.size(),prefix)==0&&other[prefix.size()]>='0'&&other[prefix.size()]<='9')siblings.push_back(rows.columnText(0));}
+    for(const auto& sibling:siblings){auto move=ctx.db().prepare("UPDATE menu_items SET category_id=:cat,updated_at=:now WHERE id=:id");move.bind(":cat",toCategory).bind(":now",now).bind(":id",sibling);move.exec();}
+}
+
 }  // namespace
+
+// A set menu's parts. The parts' own recipes are what stock gives up when the menu is sold.
+void saveRecipeComponents(handlers::Context& ctx,const std::string& menuId,const Json& components) {
+    require(components.is_array() && components.size() <= 40, "Ən çox 40 hazır resept seçilə bilər");
+    auto drop=ctx.db().prepare("DELETE FROM menu_item_components WHERE menu_item_id=:id");drop.bind(":id",menuId);drop.exec();
+    for(const auto& part:components){
+        require(part.is_object()&&part.contains("menuItemId")&&part["menuItemId"].is_string()&&part.contains("qtyMilli")&&part["qtyMilli"].is_number_integer(),"Menyu məhsulunu düzgün seçin");
+        const auto partId=part["menuItemId"].get<std::string>();const auto qty=part["qtyMilli"].get<std::int64_t>();
+        require(partId!=menuId,"Menyu öz içində ola bilməz");
+        require(qty>0&&qty<=100000,"Menyu məhsulunun sayı düzgün deyil");
+        // A part may be hidden from the sale screen: a sauce or a dough usually is.
+        auto exists=ctx.db().prepare("SELECT 1 FROM menu_items WHERE id=:id AND archived=0");exists.bind(":id",partId);require(exists.step(),"Menyu məhsulu tapılmadı");
+        auto loop = ctx.db().prepare(
+            "WITH RECURSIVE down(item) AS (SELECT :part UNION "
+            "SELECT c.component_menu_item_id FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item) "
+            "SELECT 1 FROM down WHERE item=:menu");
+        loop.bind(":part", partId).bind(":menu", menuId);
+        require(!loop.step(), "Hazır resept bağlantısı dövrə yaradır");
+        auto depth = ctx.db().prepare(
+            "WITH RECURSIVE up(item, n) AS (SELECT :menu,0 UNION "
+            "SELECT c.menu_item_id,u.n+1 FROM up u JOIN menu_item_components c ON c.component_menu_item_id=u.item WHERE u.n<8), "
+            "down(item,n) AS (SELECT :part,0 UNION "
+            "SELECT c.component_menu_item_id,d.n+1 FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item WHERE d.n<8) "
+            "SELECT (SELECT MAX(n) FROM up) + 1 + (SELECT MAX(n) FROM down)");
+        depth.bind(":menu", menuId).bind(":part", partId);
+        depth.step();
+        require(depth.columnInt(0) <= 8, "Hazır reseptlər ən çox 8 səviyyə ola bilər");
+        auto duplicate = ctx.db().prepare(
+            "SELECT 1 FROM catalog_goods_links l JOIN menu_item_ingredients i ON i.ingredient_id=l.ingredient_id "
+            "WHERE l.menu_id=:part AND i.menu_item_id=:menu");
+        duplicate.bind(":part", partId).bind(":menu", menuId);
+        require(!duplicate.step(), "Hazır resepti əlavə etməzdən əvvəl ona bağlı anbar malını tərkibdən çıxarın");
+        auto insert=ctx.db().prepare(
+            "INSERT INTO menu_item_components(menu_item_id,component_menu_item_id,qty_milli) VALUES(:menu,:part,:qty) "
+            "ON CONFLICT(menu_item_id,component_menu_item_id) DO UPDATE SET qty_milli=excluded.qty_milli");
+        insert.bind(":menu",menuId).bind(":part",partId).bind(":qty",qty);insert.exec();
+    }
+}
+
+// A dish that has just got a recipe may already sit in other recipes through its stock card.
+void adoptPreparedRecipe(handlers::Context& ctx,const std::string& menuId) {
+    auto prepared=ctx.db().prepare(
+        "SELECT l.ingredient_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id "
+        "WHERE l.menu_id=:id AND m.archived=0 AND (EXISTS(SELECT 1 FROM menu_item_components c WHERE c.menu_item_id=l.menu_id) "
+        " OR EXISTS(SELECT 1 FROM menu_item_ingredients r WHERE r.menu_item_id=l.menu_id AND r.ingredient_id<>l.ingredient_id))");
+    prepared.bind(":id",menuId);
+    if(!prepared.step())return;
+    const auto card=prepared.columnText(0);
+    auto parents=ctx.db().prepare("SELECT menu_item_id,qty_milli FROM menu_item_ingredients WHERE ingredient_id=:card AND menu_item_id<>:id AND qty_milli<=100000");
+    parents.bind(":card",card).bind(":id",menuId);
+    for(const auto& row:parents.rows()){
+        const auto parent=row.at("menu_item_id").get<std::string>();
+        // Same limits as saving a part by hand; a line that breaks them stays a stock line.
+        auto reach=ctx.db().prepare(
+            "WITH RECURSIVE up(item,n) AS (SELECT :parent,0 UNION SELECT c.menu_item_id,u.n+1 FROM up u JOIN menu_item_components c ON c.component_menu_item_id=u.item WHERE u.n<9), "
+            "down(item,n) AS (SELECT :part,0 UNION SELECT c.component_menu_item_id,d.n+1 FROM down d JOIN menu_item_components c ON c.menu_item_id=d.item WHERE d.n<9) "
+            "SELECT EXISTS(SELECT 1 FROM down WHERE item=:parent),(SELECT MAX(n) FROM up)+1+(SELECT MAX(n) FROM down)");
+        reach.bind(":parent",parent).bind(":part",menuId);
+        reach.step();
+        if(reach.columnInt(0)!=0||reach.columnInt(1)>8)continue;
+        auto add=ctx.db().prepare(
+            "INSERT INTO menu_item_components(menu_item_id,component_menu_item_id,qty_milli) VALUES(:parent,:part,:qty) "
+            "ON CONFLICT(menu_item_id,component_menu_item_id) DO NOTHING");
+        add.bind(":parent",parent).bind(":part",menuId).bind(":qty",row.at("qty_milli").get<std::int64_t>()).exec();
+        auto drop=ctx.db().prepare("DELETE FROM menu_item_ingredients WHERE menu_item_id=:parent AND ingredient_id=:card");
+        drop.bind(":parent",parent).bind(":card",card).exec();
+    }
+}
 
 Json CatalogAdminService::upsertCategory(const Json& payload) {
     const auto nameAz = requireNonEmpty(payload, "nameAz");
@@ -91,7 +173,21 @@ Json CatalogAdminService::upsertCategory(const Json& payload) {
 
     auto existing = ctx_.db().prepare("SELECT id FROM menu_categories WHERE id = :id");
     existing.bind(":id", id);
-    if (existing.step()) {
+    const bool exists = existing.step();
+    // One level of sub-categories. parentId missing keeps it, null / "" makes it top level.
+    const bool hasParent = payload.contains("parentId");
+    const auto parentId = hasParent && payload["parentId"].is_string() ? payload["parentId"].get<std::string>() : std::string();
+    if (!parentId.empty()) {
+        require(parentId != id, "Kateqoriya öz içinə qoyula bilməz");
+        auto parent = ctx_.db().prepare("SELECT COALESCE(parent_id, '') FROM menu_categories WHERE id = :id AND active = 1");
+        parent.bind(":id", parentId);
+        require(parent.step(), "Ana kateqoriya tapılmadı");
+        require(parent.columnText(0).empty(), "Alt kateqoriyanın içinə kateqoriya qoyula bilməz");
+        auto children = ctx_.db().prepare("SELECT 1 FROM menu_categories WHERE parent_id = :id AND active = 1");
+        children.bind(":id", id);
+        require(!children.step(), "Alt kateqoriyası olan kateqoriya başqasının içinə qoyula bilməz");
+    }
+    if (exists) {
         auto upd = ctx_.db().prepare(
             "UPDATE menu_categories SET name_az = :nameAz, name_tr = :nameTr, name_en = :nameEn, "
             "icon = :icon, accent = :accent, image = :image, sort_order = :sort "
@@ -105,11 +201,15 @@ Json CatalogAdminService::upsertCategory(const Json& payload) {
             .bind(":sort", payload.value("sortOrder", 0))
             .bind(":id", id);
         upd.exec();
+        if (hasParent) {
+            auto parent = ctx_.db().prepare("UPDATE menu_categories SET parent_id = NULLIF(:parent, '') WHERE id = :id");
+            parent.bind(":parent", parentId).bind(":id", id).exec();
+        }
     } else {
         auto ins = ctx_.db().prepare(
             "INSERT INTO menu_categories (id, name_az, name_tr, name_en, icon, accent, image, "
-            "sort_order, active) "
-            "VALUES (:id, :nameAz, :nameTr, :nameEn, :icon, :accent, :image, :sort, 1)");
+            "sort_order, active, parent_id) "
+            "VALUES (:id, :nameAz, :nameTr, :nameEn, :icon, :accent, :image, :sort, 1, NULLIF(:parent, ''))");
         ins.bind(":id", id)
             .bind(":nameAz", nameAz)
             .bind(":nameTr", payload.value("nameTr", ""))
@@ -117,7 +217,8 @@ Json CatalogAdminService::upsertCategory(const Json& payload) {
             .bind(":icon", payload.value("icon", ""))
             .bind(":accent", payload.value("accent", ""))
             .bind(":image", payload.value("image", ""))
-            .bind(":sort", payload.value("sortOrder", 0));
+            .bind(":sort", payload.value("sortOrder", 0))
+            .bind(":parent", parentId);
         ins.exec();
         (void)now;
     }
@@ -125,7 +226,7 @@ Json CatalogAdminService::upsertCategory(const Json& payload) {
     ctx_.auditRequired("catalog.upsertCategory", "menu_category", id, payload);
     auto load = ctx_.db().prepare(
         "SELECT id, name_az AS nameAz, name_tr AS nameTr, name_en AS nameEn, icon, accent, image, "
-        "sort_order AS sortOrder, active FROM menu_categories WHERE id = :id");
+        "sort_order AS sortOrder, active, parent_id AS parentId FROM menu_categories WHERE id = :id");
     load.bind(":id", id);
     load.step();
     return load.row();
@@ -137,24 +238,74 @@ Json CatalogAdminService::upsertSizedProducts(const Json& payload) {
     require(payload.value("id",std::string()).empty(),"Mövcud variantı ayrıca redaktə edin");
     const auto& variants=payload.at("sizeVariants");
     require(variants.is_array()&&!variants.empty()&&variants.size()<=24,"1–24 ölçü variantı daxil edin");
+    // 300 is for centimetres; grams and millilitres are ordinary portions in the thousands.
+    const auto unit=payload.value("sizeUnit",std::string("sm"));
+    require(unit=="sm"||unit=="qr"||unit=="kq"||unit=="ml"||unit=="l","Ölçü vahidi düzgün deyil");
+    const double maxSize=unit=="sm"?300:100000;
+    const bool existing = variants.front().is_object() && variants.front().contains("productId");
+    require(!existing || variants.size() >= 2, "Birləşdirmək üçün ən azı iki məhsul seçin");
+    std::set<std::string> productIds;
     std::set<long long> seen;
     Json normalized=Json::array();
     for(const auto& row:variants){
-        require(row.is_object()&&row.contains("sizeCm")&&row["sizeCm"].is_number()&&row.contains("priceMinor")&&row["priceMinor"].is_number_integer(),"Ölçünü və qiyməti düzgün yazın");
+        require(row.is_object() && row.contains("sizeCm") && row["sizeCm"].is_number() &&
+                row.contains("productId") == existing, "Ölçünü düzgün yazın");
+        require(existing ? row["productId"].is_string() : row.contains("priceMinor") && row["priceMinor"].is_number_integer(),
+                "Ölçünü və məhsulu düzgün seçin");
         const double cm=row["sizeCm"].get<double>();
-        require(std::isfinite(cm)&&cm>0&&cm<=300,"Ölçü 0-dan böyük, ən çox 300 sm olmalıdır");
+        require(std::isfinite(cm)&&cm>0&&cm<=maxSize,"Ölçü 0-dan böyük, ən çox "+std::to_string(static_cast<int>(maxSize))+" "+unit+" olmalıdır");
         const auto hundredths=std::llround(cm*100);
         require(std::abs(cm*100-hundredths)<0.000001&&seen.insert(hundredths).second,"Ölçülər təkrarlanmamalı, ən çox iki onluq rəqəm olmalıdır");
-        const auto price=row["priceMinor"].get<Money>();
-        require(price>=0&&price<=100000000&&(!payload.value("active",false)||price>0),"Variantın qiyməti düzgün deyil");
+        const auto price=existing ? Money{0} : row["priceMinor"].get<Money>();
+        require(existing || (price>=0&&price<=100000000&&(!payload.value("active",false)||price>0)),"Variantın qiyməti düzgün deyil");
         std::string label=std::to_string(hundredths/100);
         if(hundredths%100){label+="."+std::to_string(100+hundredths%100).substr(1);while(label.back()=='0')label.pop_back();}
-        normalized.push_back(Json{{"label",label},{"sizeCm",cm},{"priceMinor",price}});
+        const auto productId = existing ? row["productId"].get<std::string>() : std::string{};
+        require(!existing || (!productId.empty() && productIds.insert(productId).second),
+                "Eyni məhsulu iki dəfə seçmək olmaz");
+        normalized.push_back(Json{{"label",label},{"sizeCm",cm},{"priceMinor",price},{"productId",productId}});
+    }
+    if (existing) {
+        const auto base = requireNonEmpty(payload, "nameAz");
+        const auto category = requireNonEmpty(payload, "categoryId");
+        require(base.size() <= 160, "Qrupun adı çox uzundur");
+        auto items = Json::array();
+        for (const auto& row : normalized) {
+            const auto id = row.at("productId").get<std::string>();
+            auto current = ctx_.db().prepare(
+                "SELECT price_minor FROM menu_items WHERE id=:id AND archived=0 AND category_id=:category");
+            current.bind(":id", id).bind(":category", category);
+            require(current.step(), "Məhsullar eyni kateqoriyada olmalıdır");
+            const auto suffix = " · " + row.at("label").get<std::string>() + " ";
+            const auto name = base + suffix + unit;
+            auto conflict = ctx_.db().prepare(
+                "SELECT id FROM menu_items WHERE category_id=:category AND archived=0 AND lower(name_az)=lower(:name)");
+            conflict.bind(":category", category).bind(":name", name);
+            while (conflict.step()) {
+                require(productIds.contains(conflict.columnText(0)), "Bu qrupda həmin ölçü artıq mövcuddur");
+            }
+            items.push_back(Json{{"id", id}, {"nameAz", name}, {"nameOther", base + suffix + (unit == "sm" ? "cm" : unit)},
+                                 {"priceMinor", current.columnInt(0)}, {"sizeCm", row.at("sizeCm")}});
+        }
+        for (const auto& item : items) {
+            const auto id = item.at("id").get<std::string>();
+            const auto name = item.at("nameAz").get<std::string>();
+            auto rename = ctx_.db().prepare(
+                "UPDATE menu_items SET name_az=:name,name_tr=:other,name_en=:other,updated_at=:now WHERE id=:id");
+            rename.bind(":name", name).bind(":other", item.at("nameOther").get<std::string>())
+                .bind(":now", nowMs()).bind(":id", id).exec();
+            auto stock = ctx_.db().prepare(
+                "UPDATE ingredients SET name=:name,updated_at=:now WHERE id="
+                "(SELECT ingredient_id FROM catalog_goods_links WHERE menu_id=:id)");
+            stock.bind(":name", name).bind(":now", nowMs()).bind(":id", id).exec();
+        }
+        ctx_.auditRequired("catalog.groupSizes", "menu_category", category, payload);
+        return Json{{"id", items.front().at("id")}, {"variants", items}};
     }
     Json result,rows=Json::array();int index=0;
     for(const auto& row:normalized){
-        auto item=payload;item.erase("sizeVariants");item.erase("sku");item.erase("barcode");
-        for(const auto key:{"nameAz","nameTr","nameEn"}){const auto name=payload.value(key,payload.value("nameAz",std::string()));item[key]=name+" · "+row["label"].get<std::string>()+(std::string(key)=="nameAz"?" sm":" cm");}
+        auto item=payload;item.erase("sizeVariants");item.erase("sizeUnit");item.erase("sku");item.erase("barcode");
+        for(const auto key:{"nameAz","nameTr","nameEn"}){const auto name=payload.value(key,payload.value("nameAz",std::string()));item[key]=name+" · "+row["label"].get<std::string>()+" "+(unit=="sm"&&std::string(key)!="nameAz"?std::string("cm"):unit);}
         item["priceMinor"]=row["priceMinor"];item["sortOrder"]=payload.value("sortOrder",0)+index++;
         const auto saved=upsertProduct(item);if(result.is_null())result=saved;
         rows.push_back(Json{{"id",saved.at("id")},{"nameAz",item.at("nameAz")},{"priceMinor",row["priceMinor"]},{"sizeCm",row["sizeCm"]}});
@@ -174,7 +325,8 @@ Json CatalogAdminService::upsertProduct(const Json& payload, const std::string& 
         "name_tr AS nameTr, name_en AS nameEn, description_az AS descriptionAz, "
         "description_tr AS descriptionTr, description_en AS descriptionEn, image, "
         "prep_minutes AS prepMinutes, station, course, allergens, calories, popular, "
-        "sort_order AS sortOrder, kitchen_route AS kitchenRoute, tags_json AS tagsJson "
+        "sort_order AS sortOrder, kitchen_route AS kitchenRoute, tags_json AS tagsJson, "
+        "category_id AS categoryId, name_az AS previousName "
         "FROM menu_items WHERE id = :id");
     existing.bind(":id", id);
     const bool isUpdate = existing.step();
@@ -294,6 +446,9 @@ Json CatalogAdminService::upsertProduct(const Json& payload, const std::string& 
             .bind(":now", now)
             .bind(":id", id);
         upd.exec();
+        if (current.value("categoryId", categoryId) != categoryId) {
+            moveSizeSiblings(ctx_, id, current.value("previousName", nameAz), current.value("categoryId", categoryId), categoryId, now);
+        }
 
         if (oldPrice != price) {
             auto hist = ctx_.db().prepare(
@@ -346,6 +501,10 @@ Json CatalogAdminService::upsertProduct(const Json& payload, const std::string& 
         ins.exec();
     }
 
+    if (payload.contains("components")) {
+        require(payload["components"].is_array() && !payload["components"].empty(), "Menyuya ən azı bir məhsul əlavə edin");
+        saveRecipeComponents(ctx_, id, payload["components"]);
+    }
     ensureCatalogStock(ctx_,id,nameAz,barcode,price,now,stockIngredientId);
     ctx_.auditRequired("catalog.upsertProduct", "menu_item", id,
                        Json{{"priceMinor", price}, {"sku", sku}});
@@ -370,6 +529,10 @@ Json CatalogAdminService::archiveCategory(const std::string& categoryId) {
         throw PosError(std::string(protocol::err::kConflict),
                        "Category still has active products; archive them first");
     }
+    auto children = ctx_.db().prepare("SELECT 1 FROM menu_categories WHERE parent_id = :id AND active = 1");
+    children.bind(":id", categoryId);
+    if (children.step())
+        throw PosError(std::string(protocol::err::kConflict), "Əvvəl alt kateqoriyaları silin və ya başqa yerə köçürün");
     auto stmt = ctx_.db().prepare("UPDATE menu_categories SET active = 0 WHERE id = :id");
     stmt.bind(":id", categoryId);
     stmt.exec();
@@ -385,6 +548,7 @@ Json CatalogAdminService::archiveProduct(const std::string& productId) {
     stmt.bind(":now", nowMs()).bind(":id", productId);
     stmt.exec();
     if (ctx_.db().changes() == 0) throw PosError::of(protocol::err::kNotFound);
+    retireArchivedCards(ctx_.db());
     ctx_.auditRequired("catalog.archiveProduct", "menu_item", productId, Json::object());
     return Json{{"productId", productId}, {"archived", true}};
 }

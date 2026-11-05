@@ -277,3 +277,52 @@ TEST_CASE("managed subscription expiry blocks direct order and payment calls whi
     request.method="orders.create";request.payload={{"tableId","tbl-01"},{"guestCount",1}};
     REQUIRE_NOTHROW(fixture.server().callHandler(request));
 }
+
+TEST_CASE("prepaid table deposit is recorded once and covers the minimum without closing the table",
+          "[payment][deposit][1103]") {
+    PaymentFixture f;
+    const pos::Money subtotal = GENERATE(800, 1000, 1500);
+    const std::string method = GENERATE("cash", "card");
+    const auto orderId = f.makeOrder(subtotal,"D-1103");
+    auto assign = f.fixture().db().prepare("UPDATE orders SET table_id=(SELECT id FROM restaurant_tables LIMIT 1) WHERE id=:id");
+    assign.bind(":id",orderId).exec();
+    f.call("orders.setDeposit",{{"orderId",orderId},{"depositMinor",1000}});
+    REQUIRE(f.call("payments.list",{{"orderId",orderId}}).at("outstandingMinor")==subtotal+1000);
+    pos::Json deposit{{"orderId",orderId},{"amountMinor",1000},{"isDeposit",true}};
+    const auto route = "payments.create"+std::string(method=="cash"?"Cash":"Card");
+    if(method=="card") {
+        REQUIRE_THROWS_AS(f.call(route,deposit),pos::PosError);
+        deposit["rrn"]="123456789012";
+    }
+    const auto saved = f.call(route,deposit,"deposit-once");
+    REQUIRE(saved.at("order").at("status")=="open");
+    REQUIRE(saved.at("order").at("depositMinor")==0);
+    REQUIRE(saved.at("order").at("prepaidDepositMinor")==1000);
+    REQUIRE(saved.at("order").at("minimumTableMinor")==std::max<pos::Money>(0,1000-subtotal));
+    REQUIRE(f.call(route,deposit,"deposit-once").at("payment").at("id")==saved.at("payment").at("id"));
+    REQUIRE_THROWS_AS(f.call(route,deposit),pos::PosError);
+    const auto remaining=std::max<pos::Money>(0,subtotal-1000);
+    REQUIRE(f.call("payments.list",{{"orderId",orderId}}).at("outstandingMinor")==remaining);
+    if(remaining>0) {
+        f.call("payments.createCash",{{"orderId",orderId},{"amountMinor",remaining}});
+    } else {
+        f.call("orders.close",{{"orderId",orderId}});
+    }
+    const auto order = pos::services::OrderService(f.fixture().ctx()).load(orderId);
+    REQUIRE(order.at("status")=="closed");
+    REQUIRE(order.at("paidMinor")==std::max<pos::Money>(subtotal,1000));
+    REQUIRE(order.at("payments").size()==(remaining>0?2:1));
+    pos::printing::ReceiptBuilder builder(f.fixture().ctx());
+    const auto doc=builder.customerDocument(orderId,builder.settings());
+    REQUIRE(doc.grandTotal==std::max<pos::Money>(subtotal,1000));
+    REQUIRE(doc.remainingAmount==0);
+    REQUIRE(doc.depositTotal==std::max<pos::Money>(0,1000-subtotal));
+    REQUIRE(doc.payments.front().label.find("Depozit")!=std::string::npos);
+    auto fiscal=f.fixture().db().prepare("SELECT payload_json FROM sunmi_outbox WHERE id=:id");
+    fiscal.bind(":id","sale:"+orderId);
+    REQUIRE(fiscal.step());
+    const auto payload=pos::Json::parse(fiscal.columnText(0));
+    REQUIRE(payload.at("totalMinor")==doc.grandTotal);
+    REQUIRE(payload.at("payment").at("cardMinor")== (method=="card"?1000:0));
+    REQUIRE(payload.at("payment").at("cashMinor")== (method=="cash"?1000:0)+remaining);
+}

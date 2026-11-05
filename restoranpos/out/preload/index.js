@@ -119,7 +119,7 @@ const api = {
     waste: (input) => call("inventory.waste", input),
     transfer: (input) => call("inventory.transfer", input),
     recipe: (menuItemId) => call("recipes.get", { menuItemId }),
-    saveRecipe: (menuItemId, lines) => call("recipes.save", { menuItemId, lines }),
+    saveRecipe: (menuItemId, lines, components) => call("recipes.save", { menuItemId, lines, ...(components === undefined ? {} : { components }) }),
     stocktakes: () => call("stocktake.list"),
     createStocktake: (warehouseId) => call("stocktake.create", { warehouseId: warehouseId ?? "" }),
     getStocktake: (stocktakeId) => call("stocktake.get", { stocktakeId }),
@@ -401,6 +401,8 @@ const api = {
     list: () => call("backup.list"),
     restorePreview: (backupId) => call("backup.restorePreview", { backupId }),
     restore: (backupId, adminPin, options) => call("backup.restore", { backupId, adminPin }, options),
+    cloudStatus: () => call("backup.cloudStatus", {}),
+    cloudNow: () => call("backup.cloudNow", {}),
     exportFile: (backupId) => call("backup.exportFile", { backupId }),
     importFile: () => call("backup.importFile", {})
   },
@@ -530,9 +532,9 @@ electron.contextBridge.exposeInMainWorld("sunmiApi",{call:input=>electron.ipcRen
 
 /* POSSISTEM_SUNMI_PRELOAD_v1 — copied inline: sandboxed preloads cannot require arbitrary local modules. */
 let _sunmiRrnBusy=false;
-async function _sunmiPreparePayment(payload,market=false,refund=false){
+async function _sunmiPreparePayment(payload,market=false,refund=false,required=false){
  const out=await electron.ipcRenderer.invoke('possistem:sunmi',{action:'get'});
- if(!out?.ok||!out.data?.config?.enabled)return payload;
+ if(!required&&(!out?.ok||!out.data?.config?.enabled))return payload;
  const prior=String(market?payload.reference||'':payload.rrn||'');
  if(/^\d{12}$/.test(prior))return payload;
  if(_sunmiRrnBusy)throw Error('Açıq bank RRN pəncərəsini tamamlayın.');_sunmiRrnBusy=true;
@@ -549,9 +551,9 @@ async function _sunmiPreparePayment(payload,market=false,refund=false){
 }
 
 async function _sunmiPrepareRefund(payload,market=false){
- const cfg=await electron.ipcRenderer.invoke('possistem:sunmi',{action:'get'});if(!cfg?.ok||!cfg.data?.config?.enabled)return payload;
+ const cfg=await electron.ipcRenderer.invoke('possistem:sunmi',{action:'get'});if(market&&(!cfg?.ok||!cfg.data?.config?.enabled))return payload;
  const original=await electron.ipcRenderer.invoke(market?'market:invoke':'pos:invoke',{method:market?'sale.receipt':'payments.get',payload:market?{saleId:payload.saleId}:{paymentId:payload.paymentId}});
- if(original?.success&&(market?original.data?.cardMinor>0:original.data?.method==='card'))return _sunmiPreparePayment(payload,false,true);
+ if(original?.success&&(market?original.data?.cardMinor>0:original.data?.method==='card'))return _sunmiPreparePayment(payload,false,true,!market&&Number(original.data?.isDeposit)===1);
  return payload;
 }
 

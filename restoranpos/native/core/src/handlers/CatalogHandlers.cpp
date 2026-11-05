@@ -20,7 +20,8 @@ constexpr const char* kItemColumns =
     "i.price_minor AS priceMinor, i.image, i.prep_minutes AS prepMinutes, "
     "i.station, i.course, i.allergens, i.calories, i.popular, i.available, "
     "i.sold_out AS soldOut, i.image_hidden AS imageHidden, "
-    "i.sort_order AS sortOrder, i.active, i.archived";
+    "i.sort_order AS sortOrder, i.active, i.archived, "
+    "(SELECT COUNT(*) FROM menu_item_components c WHERE c.menu_item_id = i.id) AS componentCount";
 
 /** allergens is stored as a JSON array string; hand it back as a real array. */
 void expandAllergens(Json& row) {
@@ -83,10 +84,12 @@ void registerCatalog(const ContextPtr& ctx) {
                                auto stmt = ctx->db().prepare(
                                    "SELECT id, name_az AS nameAz, name_tr AS nameTr, "
                                    "       name_en AS nameEn, icon, accent, image, "
-                                   "       sort_order AS sortOrder, "
-                                   "       (SELECT COUNT(*) FROM menu_items m "
-                                   "        WHERE m.category_id = c.id AND m.active = 1) AS itemCount "
-                                   "FROM menu_categories c WHERE active = 1 ORDER BY sort_order");
+                                   "       sort_order AS sortOrder, parent_id AS parentId, "
+                                   "       (SELECT COUNT(*) FROM menu_items m JOIN menu_categories k ON k.id = m.category_id "
+                                   "        WHERE (k.id = c.id OR k.parent_id = c.id) AND m.active = 1 AND m.archived = 0) AS itemCount "
+                                   "FROM menu_categories c WHERE active = 1 "
+                                   "ORDER BY COALESCE((SELECT p.sort_order FROM menu_categories p WHERE p.id = c.parent_id), sort_order), "
+                                   "COALESCE(c.parent_id, c.id), c.parent_id IS NOT NULL, sort_order");
                                return Json{{"categories", stmt.rows()}};
                            });
 

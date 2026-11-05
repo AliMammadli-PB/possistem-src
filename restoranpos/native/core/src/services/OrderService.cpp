@@ -83,7 +83,8 @@ Json OrderService::load(const std::string& orderId, bool withItems) {
         "       o.shift_id AS shiftId, o.status, o.guest_count AS guestCount, "
         "       o.subtotal_minor AS subtotalMinor, o.discount_minor AS discountMinor, "
         "       o.tax_minor AS taxMinor, o.service_minor AS serviceMinor, "
-        "       o.deposit_minor AS depositMinor, "
+        "       o.deposit_minor AS depositMinor, o.prepaid_deposit_minor AS prepaidDepositMinor, "
+        "       o.minimum_table_minor AS minimumTableMinor, "
         "       o.total_minor AS totalMinor, o.paid_minor AS paidMinor, o.tip_minor AS tipMinor, "
         "       o.discount_type AS discountType, o.discount_value AS discountValue, "
         "       o.discount_reason AS discountReason, o.note, o.opened_at AS openedAt, "
@@ -129,7 +130,7 @@ Json OrderService::load(const std::string& orderId, bool withItems) {
     auto payments = ctx_.db().prepare(
         "SELECT id, method, status, amount_minor AS amountMinor, tip_minor AS tipMinor, "
         "       tendered_minor AS tenderedMinor, change_minor AS changeMinor, "
-        "       card_last4 AS cardLast4, created_at AS createdAt "
+        "       card_last4 AS cardLast4, is_deposit AS isDeposit, created_at AS createdAt "
         "FROM payments WHERE order_id = :orderId ORDER BY created_at");
     payments.bind(":orderId", orderId);
     order["payments"] = payments.rows();
@@ -270,6 +271,18 @@ Totals OrderService::recalculate(const std::string& orderId) {
     totals.deposit = deposit;
     totals.total += deposit;
 
+    auto prepaidStmt = ctx_.db().prepare(
+        "SELECT o.status,o.prepaid_deposit_minor,o.minimum_table_minor,"
+        " COALESCE((SELECT SUM(p.amount_minor - COALESCE((SELECT SUM(r.amount_minor) FROM refunds r "
+        " WHERE r.payment_id=p.id AND r.status='completed'),0)) FROM payments p WHERE p.order_id=o.id "
+        " AND p.is_deposit=1 AND p.status IN ('approved','refunded')),0) FROM orders o WHERE o.id=:id");
+    prepaidStmt.bind(":id",orderId);
+    prepaidStmt.step();
+    const bool settled = prepaidStmt.columnText(0)=="closed" || prepaidStmt.columnText(0)=="voided";
+    const Money prepaid = settled ? prepaidStmt.columnInt(1) : prepaidStmt.columnInt(3);
+    const Money minimum = settled ? prepaidStmt.columnInt(2) : std::max<Money>(0,prepaid-totals.total);
+    totals.total += minimum;
+
     // One definition of "collected", shared with PaymentService::outstanding,
     // so the Paid and Remaining figures on the payment screen always add up to
     // the order total - including after a partial refund.
@@ -284,7 +297,7 @@ Totals OrderService::recalculate(const std::string& orderId) {
     auto update = ctx_.db().prepare(
         "UPDATE orders SET subtotal_minor = :subtotal, discount_minor = :discount, "
         "                  service_minor = :service, tax_minor = :tax, deposit_minor = :deposit, "
-        "                  total_minor = :total, "
+        "                  total_minor = :total, prepaid_deposit_minor=:prepaid, minimum_table_minor=:minimum, "
         "                  paid_minor = :paid, tip_minor = :tip, updated_at = :now "
         "WHERE id = :orderId");
     update.bind(":subtotal", totals.subtotal)
@@ -292,6 +305,8 @@ Totals OrderService::recalculate(const std::string& orderId) {
         .bind(":service", totals.service)
         .bind(":tax", totals.tax)
         .bind(":deposit", totals.deposit)
+        .bind(":prepaid",prepaid)
+        .bind(":minimum",minimum)
         .bind(":total", totals.total)
         .bind(":paid", paid)
         .bind(":tip", tips)

@@ -60,8 +60,8 @@ Json RefundService::createRefund(const std::string& paymentId, Money amountMinor
     }
 
     auto payment = ctx_.db().prepare(
-        "SELECT id, order_id, method, amount_minor, tip_minor, business_day_id, status "
-        "FROM payments WHERE id = :id");
+        "SELECT p.id,p.order_id,p.method,p.amount_minor,p.tip_minor,p.business_day_id,p.status,p.is_deposit,o.status "
+        "FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=:id");
     payment.bind(":id", paymentId);
     if (!payment.step()) {
         throw PosError(std::string(protocol::err::kPaymentNotFound), "Payment was not found");
@@ -76,6 +76,10 @@ Json RefundService::createRefund(const std::string& paymentId, Money amountMinor
     const Money original = payment.columnInt(3);
     const std::string paidOnDay = payment.columnIsNull(5) ? "" : payment.columnText(5);
     const auto remaining = remainingRefundable(paymentId);
+    const bool openDeposit = payment.columnInt(7)!=0 && payment.columnText(8)!="closed";
+    if (openDeposit && !lines.empty()) {
+        throw PosError(std::string(protocol::err::kValidation), "Açıq masada depozit məbləğ üzrə qaytarılır");
+    }
 
     // Price the disputed lines from the order's own snapshot. Doing this before
     // the cap check means an item refund is bounded by the payment too.
@@ -218,7 +222,7 @@ Json RefundService::createRefund(const std::string& paymentId, Money amountMinor
         mark.exec();
     }
 
-    queueSunmiRefund(ctx_, orderId, refundId, refundAmount, method, bankRrn);
+    if (!openDeposit) queueSunmiRefund(ctx_, orderId, refundId, refundAmount, method, bankRrn);
 
     ctx_.auditRequired("payment.refund", "refund", refundId,
                        Json{{"paymentId", paymentId},

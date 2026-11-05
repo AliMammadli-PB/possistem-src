@@ -7,6 +7,11 @@
  * opened plus its moves (opening balance, transfers, salaries, debts...).
  */
 #include <algorithm>
+#include <map>
+#include <utility>
+#include <vector>
+
+#include <algorithm>
 #include <vector>
 
 #include "pos/Crypto.hpp"
@@ -50,8 +55,171 @@ std::string ensureObjectWarehouse(Context& ctx, const std::string& objectId) {
 
 }  // namespace
 
+namespace {
+
+/**
+ * True when anything still points at this object or warehouse. Every text column of every table,
+ * because operational references are not all foreign keys. Logs do not count, nor do the rows
+ * tying the pair to itself, nor a stock row at zero.
+ */
+bool hasReferences(Context& ctx, const std::string& objectId, const std::string& warehouseId) {
+    const auto quoted = [](std::string name) {
+        for (std::size_t at = 0; (at = name.find('"', at)) != std::string::npos; at += 2) name.insert(at, 1, '"');
+        return '"' + name + '"';
+    };
+    const auto first = objectId.empty() ? warehouseId : objectId;
+    const auto second = warehouseId.empty() ? objectId : warehouseId;
+    auto tables = ctx.db().prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+        "AND name NOT IN ('audit_logs','sync_outbox','sync_inbox')");
+    for (const auto& tableRow : tables.rows()) {
+        const auto table = tableRow.at("name").get<std::string>();
+        auto columns = ctx.db().prepare("PRAGMA table_info(" + quoted(table) + ")");
+        for (const auto& columnRow : columns.rows()) {
+            const auto column = columnRow.at("name").get<std::string>();
+            const auto type = columnRow.at("type").get<std::string>();
+            if (type.find("INT") != std::string::npos || type == "REAL") continue;
+            if (column == "id" && (table == "cash_objects" || table == "warehouses")) continue;
+            std::string extra;
+            if (table == "cash_objects" && column == "warehouse_id") extra = " AND id<>:object";
+            if (table == "stock_levels" && column == "warehouse_id") extra = " AND qty_milli<>0";
+            auto count = ctx.db().prepare("SELECT 1 FROM " + quoted(table) + " WHERE " + quoted(column) +
+                                          " IN (:first,:second)" + extra + " LIMIT 1");
+            count.bind(":first", first).bind(":second", second);
+            if (!extra.empty() && extra.find(":object") != std::string::npos) count.bind(":object", objectId);
+            if (count.step()) return true;
+        }
+    }
+    return false;
+}
+
+/** Moves empty namesakes of a branch out of the way. False when one holds data, which is never touched. */
+bool clearEmptyNamesakes(Context& ctx, const std::string& name, const std::string& keepId, const std::string& keepWarehouse) {
+    std::vector<std::pair<std::string, std::string>> namesakes;
+    auto objects = ctx.db().prepare(
+        "SELECT id,COALESCE(warehouse_id,'') AS warehouseId FROM cash_objects WHERE name=:name AND id!=:id");
+    objects.bind(":name", name).bind(":id", keepId);
+    for (const auto& row : objects.rows()) {
+        const auto warehouse = row.at("warehouseId").get<std::string>();
+        if (warehouse == keepWarehouse) return false;
+        namesakes.emplace_back(row.at("id").get<std::string>(), warehouse);
+    }
+    auto warehouses = ctx.db().prepare("SELECT id FROM warehouses WHERE name=:name AND id!=:warehouse");
+    warehouses.bind(":name", name).bind(":warehouse", keepWarehouse);
+    for (const auto& row : warehouses.rows()) {
+        const auto id = row.at("id").get<std::string>();
+        if (std::none_of(namesakes.begin(), namesakes.end(), [&](const auto& pair) { return pair.second == id; }))
+            namesakes.emplace_back(std::string{}, id);
+    }
+    for (const auto& [objectId, warehouseId] : namesakes) {
+        if (hasReferences(ctx, objectId, warehouseId)) return false;
+    }
+    for (const auto& [objectId, warehouseId] : namesakes) {
+        const auto archived = name + " [arxiv " + (objectId.empty() ? warehouseId : objectId) + "]";
+        if (!objectId.empty()) {
+            auto object = ctx.db().prepare("UPDATE cash_objects SET name=:name,active=0 WHERE id=:id");
+            object.bind(":name", archived).bind(":id", objectId).exec();
+        }
+        if (!warehouseId.empty()) {
+            auto warehouse = ctx.db().prepare("UPDATE warehouses SET name=:name,active=0,updated_at=:at WHERE id=:id");
+            warehouse.bind(":name", archived).bind(":at", nowMs()).bind(":id", warehouseId).exec();
+        }
+        ctx.auditRequired("cash.object.archiveDuplicate", "cash_object", objectId.empty() ? warehouseId : objectId,
+                          Json{{"name", name}, {"keptObject", keepId}});
+    }
+    return true;
+}
+
+void rememberBranchConflict(Context& ctx, const std::string& message) {
+    auto save = ctx.db().prepare(
+        "INSERT INTO app_settings(key,value,updated_at) VALUES('branch.cloudConflict',:value,:at) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at");
+    save.bind(":value", message).bind(":at", nowMs()).exec();
+}
+
+}  // namespace
+
 void registerCashAccounts(const ContextPtr& ctx) {
     auto& server = ctx->server();
+
+    // The Electron main process supplies the verified branch and this device's terminal.
+    server.registerHandler("cashObjects.syncRestaurantBranch",[ctx](const ipc::Request& r){
+        ctx->requirePermission("cash.accounts");
+        const auto branch=r.payload.value("branchId",std::string{});
+        const auto name=r.payload.value("name",std::string{});
+        const auto terminal=ctx->saleTerminalId();
+        require(!branch.empty()&&branch.size()<=100&&!name.empty()&&name.size()<=240&&!terminal.empty(),
+                "Filial məlumatı natamamdır");
+        db::Transaction tx(ctx->db());
+        const auto key="restaurant.cloudObject."+branch;
+        std::string id=ctx->setting(key,"");
+        if(id.empty()) {
+            auto current=ctx->db().prepare(
+                "SELECT DISTINCT o.id FROM cash_accounts a JOIN cash_objects o ON o.id=a.object_id "
+                "WHERE a.terminal_id=:terminal AND a.kind='till' AND a.active=1 AND o.active=1 "
+                "AND NOT EXISTS(SELECT 1 FROM app_settings s WHERE s.key LIKE 'restaurant.cloudObject.%' AND s.value=o.id)");
+            current.bind(":terminal",terminal);
+            const auto candidates=current.rows();
+            require(candidates.size()<=1,"Bu satış nöqtəsinə birdən çox obyekt bağlıdır");
+            if(!candidates.empty())id=candidates.front().at("id").get<std::string>();
+            else {
+                auto exact=ctx->db().prepare(
+                    "SELECT o.id FROM cash_objects o WHERE o.active=1 AND (o.id=:branch OR o.name=:name) "
+                    "AND NOT EXISTS(SELECT 1 FROM app_settings s WHERE s.key LIKE 'restaurant.cloudObject.%' AND s.value=o.id)");
+                exact.bind(":branch",branch).bind(":name",name);
+                const auto matches=exact.rows();
+                require(matches.size()<=1,"Filialın yerli obyektini dəqiqləşdirin");
+                if(!matches.empty())id=matches.front().at("id").get<std::string>();
+            }
+            if(id.empty()) {
+                id=branch;
+                auto insert=ctx->db().prepare("INSERT INTO cash_objects(id,name,created_at) VALUES(:id,:name,:at)");
+                insert.bind(":id",id).bind(":name",name).bind(":at",nowMs()).exec();
+                ensureObjectWarehouse(*ctx,id);
+            }
+            auto link=ctx->db().prepare("INSERT INTO app_settings(key,value,updated_at) VALUES(:key,:id,:at)");
+            link.bind(":key",key).bind(":id",id).bind(":at",nowMs()).exec();
+            ctx->auditRequired("cash.object.cloudLink","cash_object",id,Json{{"branchId",branch}});
+        }
+        auto object=ctx->db().prepare("SELECT name,COALESCE(warehouse_id,'') FROM cash_objects WHERE id=:id AND active=1");
+        object.bind(":id",id);
+        require(object.step(),"Filialın bağlı obyekti aktiv deyil");
+        const auto oldName=object.columnText(0);
+        const auto warehouseId=object.columnText(1);
+        if(oldName!=name) {
+            auto conflict=ctx->db().prepare(
+                "SELECT 1 FROM cash_objects WHERE name=:name AND id!=:id "
+                "UNION ALL SELECT 1 FROM warehouses WHERE name=:name AND id!=:warehouse");
+            conflict.bind(":name",name).bind(":id",id).bind(":warehouse",warehouseId);
+            if(conflict.step()) {
+                // ponytail: this runs every 30 s and scans the whole database, so a namesake holding
+                // data is looked at again every 10 minutes. Restarting the till rechecks at once.
+                static std::map<std::string,Timestamp> lastScan;
+                auto& scanned=lastScan[branch+"/"+name];
+                const auto message="“"+name+"” adlı başqa obyektdə məlumat var, ona görə “"+oldName+"” obyektinin adı dəyişmədi. Dəstək ilə əlaqə saxlayın.";
+                if(nowMs()-scanned<600000 || !clearEmptyNamesakes(*ctx,name,id,warehouseId)) {
+                    if(scanned==0||nowMs()-scanned>=600000) scanned=nowMs();
+                    rememberBranchConflict(*ctx,message);
+                    tx.commit();
+                    return Json{{"id",id},{"conflict",true},{"oldName",oldName},{"name",name},{"message",message}};
+                }
+            }
+            auto rename=ctx->db().prepare("UPDATE cash_objects SET name=:name WHERE id=:id");
+            rename.bind(":name",name).bind(":id",id).exec();
+            auto warehouse=ctx->db().prepare(
+                "UPDATE warehouses SET name=:name,updated_at=:at WHERE id=:warehouse "
+                "AND NOT EXISTS(SELECT 1 FROM cash_objects WHERE warehouse_id=:warehouse AND id!=:id AND active=1)");
+            warehouse.bind(":name",name).bind(":at",nowMs()).bind(":warehouse",warehouseId).bind(":id",id).exec();
+            ctx->auditRequired("cash.object.cloudRename","cash_object",id,Json{{"branchId",branch},{"before",oldName},{"name",name}});
+        }
+        auto attach=ctx->db().prepare(
+            "UPDATE cash_accounts SET object_id=:id WHERE terminal_id=:terminal AND kind='till' AND active=1 "
+            "AND (object_id IS NULL OR object_id='')");
+        attach.bind(":id",id).bind(":terminal",terminal).exec();
+        if(!ctx->setting("branch.cloudConflict","").empty()) rememberBranchConflict(*ctx,"");
+        tx.commit();
+        return Json{{"id",id},{"warehouseId",warehouseId},{"name",name}};
+    });
 
     // Owner metadata is mirrored locally; this creates no cloud branch and never moves stock.
     // Not in the public/remote method list: only the trusted Market bridge invokes it.
@@ -430,6 +598,11 @@ void registerCashAccounts(const ContextPtr& ctx) {
             const auto ref = crypto::uuid4();
             cash.accountMove(fromId, -amount, "transfer", "transfer", ref, note);
             cash.accountMove(toId, amount, "transfer", "transfer", ref, note);
+            auto document = ctx->db().prepare(
+                "INSERT INTO cash_transfer_documents(id,from_id,to_id,amount_minor,note,created_at,actor_user_id) "
+                "VALUES(:id,:from,:to,:amount,:note,:at,:actor)");
+            document.bind(":id",ref).bind(":from",fromId).bind(":to",toId).bind(":amount",amount).bind(":note",note)
+                .bind(":at",nowMs()).bindOptional(":actor",ctx->session().userId).exec();
             ctx->auditRequired("cash.account.transfer", "cash_account", fromId,
                                Json{{"toId", toId}, {"amountMinor", amount}});
             Json response{{"ok", true}, {"transferId", ref},

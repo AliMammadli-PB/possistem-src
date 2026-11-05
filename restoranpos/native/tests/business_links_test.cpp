@@ -212,7 +212,9 @@ TEST_CASE("cross-device transfer survives repeated delivery and binds signed sen
  REQUIRE(bi.levelOf(localGood,"wh-main")==0);
  const auto response=b.biz("transfer.outbox").at("events")[0].at("payload");a.biz("transfer.sync",{{"event",response},{"cloudSourceDeviceId","B"},{"cloudTargetDeviceId","A"}});
  REQUIRE(ai.levelOf(good,"wh-main")==0);a.biz("transfer.returnConfirm",{{"id",doc.at("id")}});REQUIRE(ai.levelOf(good,"wh-main")==5000);
- const auto events=a.biz("transfer.outbox").at("events");const auto returned=events[events.size()-1].at("payload");
+ const auto pending=a.biz("transfer.outbox").at("events");REQUIRE(pending.size()==1);REQUIRE(pending[0].at("id")==event.at("id"));
+ a.biz("transfer.ack",{{"eventId",event.at("id")}});
+ const auto events=a.biz("transfer.outbox").at("events");REQUIRE(events.size()==1);const auto returned=events[0].at("payload");
  b.biz("transfer.sync",{{"event",returned},{"cloudSourceDeviceId","A"},{"cloudTargetDeviceId","B"}});REQUIRE(b.biz("transfer.get",{{"id",doc.at("id")}}).at("status")=="closed");
 }
 TEST_CASE("soft-cancelled customer and payroll payments retain evidence and reverse balances once","[market1529][documents]"){
@@ -271,4 +273,113 @@ TEST_CASE("stock publication without a positive price rolls back the metadata ed
  REQUIRE(x.scalar("SELECT COUNT(*) FROM catalog_goods_links WHERE ingredient_id='"+id+"'")==0);
  x.f.ctx().session().permissions.erase("catalog.manage");
  REQUIRE_THROWS_AS(x.biz("catalog.stockEdit",{{"ingredientId",id},{"name","Qadağan"},{"salePriceMinor",90}}),pos::PosError);
+}
+
+TEST_CASE("system identities stay hidden while created managers and their payroll remain visible", "[business][staff_workspace]") {
+ BusinessFixture x;
+ // Even a legacy financial balance does not turn the local login into a visible employee.
+ x.f.db().exec("UPDATE customers SET salary_minor=55000,debt_minor=1250 WHERE user_id='usr-admin'");
+ const auto manager=x.call("users.create",{{"fullName","Rauf Müdir"},{"pin","9628"},{"role","manager"}}).at("id").get<std::string>();
+ x.biz("staff.save",{{"userId",manager},{"salaryMinor",65000},{"warehouses",pos::Json::array({"wh-main"})}});
+ const auto users=x.call("users.list").at("users");REQUIRE(users.size()==1);REQUIRE(users[0].at("id")==manager);REQUIRE(users[0].at("role")=="manager");
+ const auto staff=x.biz("staff").at("staff");REQUIRE(staff.size()==1);REQUIRE(staff[0].at("id")==manager);REQUIRE(staff[0].at("salaryMinor")==65000);
+ const auto payroll=x.call("salary.list",{{"month","2026-11"},{"from",1},{"to",2000000000000LL}}).at("employees");REQUIRE(payroll.size()==1);REQUIRE(payroll[0].at("name")=="Rauf Müdir");
+ const auto guests=x.call("customers.list",{{"kind","employee"}}).at("customers");REQUIRE(guests.size()==1);REQUIRE(guests[0].at("name")=="Rauf Müdir");
+ REQUIRE(x.scalar("SELECT salary_minor FROM customers WHERE user_id='usr-admin'")==55000);
+ REQUIRE(x.scalar("SELECT debt_minor FROM customers WHERE user_id='usr-admin'")==1250);
+ REQUIRE(x.scalar("SELECT COUNT(*) FROM users WHERE id='usr-admin' AND active=1")==1);
+ auto& session=x.f.ctx().session();session.role="waiter";session.permissions={"customers.view"};
+ REQUIRE_THROWS_AS(x.call("users.list"),pos::PosError);REQUIRE_THROWS_AS(x.biz("staff"),pos::PosError);REQUIRE_THROWS_AS(x.call("salary.list",{{"month","2026-11"},{"from",1},{"to",2000000000000LL}}),pos::PosError);
+}
+
+TEST_CASE("salary, income and cash transfers each have one financial document","[business][documents][1103]") {
+    BusinessFixture x;
+    const auto source=x.till("Mərkəzi xəzinə"),target=x.till("Kassa 2");
+    const auto employee=x.call("customers.save",{{"name","İşçi"},{"kind","employee"},{"salaryMinor",10000}}).at("id");
+    x.call("customers.charge",{{"customerId",employee},{"amountMinor",1500}});
+    x.call("salary.pay",{{"customerId",employee},{"month","2026-11"},{"kind","full"},{"amountMinor",8500},{"accountId",source}});
+    auto docs=x.biz("documents").at("documents");
+    REQUIRE(docs.size()==1);
+    REQUIRE(docs[0].at("type")=="salary");
+    const auto salary=docs[0].at("id");
+    const pos::Json voidSalary{{"id",salary},{"type","salary"},{"cancel",true},{"note","Maaş səhv hesablanıb"}};
+    x.biz("correct",voidSalary,"void-salary");
+    x.biz("correct",voidSalary,"void-salary");
+    REQUIRE(x.balance(source)==0);
+    REQUIRE(x.call("customers.get",{{"customerId",employee}}).at("debtMinor")==1500);
+    const auto income=x.call("income.save",{{"accountId",source},{"amountMinor",9000},{"reason","Qazanc"}}).at("id");
+    REQUIRE(x.balance(source)==9000);
+    REQUIRE(x.biz("document.get",{{"type","income"},{"id",income}}).at("document").at("amount_minor")==9000);
+    const auto transfer=x.call("cashAccounts.transfer",{{"fromId",source},{"toId",target},{"amountMinor",4000}}).at("transferId");
+    REQUIRE(x.balance(source)==5000);
+    REQUIRE(x.balance(target)==4000);
+    const pos::Json edit{{"id",transfer},{"type","cash-transfer"},{"amountMinor",3000},{"accountId",source},{"toAccountId",target}};
+    x.biz("correct",edit,"transfer-edit");
+    x.biz("correct",edit,"transfer-edit");
+    REQUIRE(x.balance(source)==6000);
+    REQUIRE(x.balance(target)==3000);
+    const auto expense=x.call("cash.movement",{{"kind","expense"},{"amountMinor",1000},{"accountId",target},{"reason","Xərc"}}).at("movement").at("id");
+    const pos::Json cancel{{"id",transfer},{"type","cash-transfer"},{"cancel",true},{"note","Təkrar köçürmə"}};
+    REQUIRE_THROWS_AS(x.biz("correct",cancel),pos::PosError);
+    REQUIRE(x.balance(source)==6000);
+    REQUIRE(x.balance(target)==2000);
+    x.biz("correct",{{"id",expense},{"type","expense"},{"cancel",true},{"note","Səhv xərc"}});
+    x.biz("correct",cancel,"transfer-cancel");
+    x.biz("correct",cancel,"transfer-cancel");
+    REQUIRE(x.balance(source)==9000);
+    REQUIRE(x.balance(target)==0);
+    REQUIRE(x.biz("document.get",{{"type","cash-transfer"},{"id",transfer}}).at("document").at("cancelled")==true);
+}
+
+TEST_CASE("restaurant cloud renames preserve warehouse identity and reject duplicate names","[business][cloud][1103]") {
+    BusinessFixture x;
+    const auto original=x.call("cashObjects.save",{{"name","Filial Bir"}});
+    const auto terminal=x.f.ctx().saleTerminalId();
+    x.call("cashAccounts.save",{{"name","Kassa"},{"kind","till"},{"terminalId",terminal},{"objectId",original.at("id")}});
+    const auto branch=pos::crypto::uuid4();
+    const auto renamed=x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Test Restoran Filial Bir"}});
+    REQUIRE(renamed.at("id")==original.at("id"));
+    REQUIRE(renamed.at("warehouseId")==original.at("warehouseId"));
+    REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Test Restoran"}}).at("id")==original.at("id"));
+    REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_objects")==1);
+    x.call("cashObjects.save",{{"name","Ayrı filial"}});
+    REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Ayrı filial"}}).at("conflict")==true);
+    REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_objects WHERE active=1")==2);
+}
+
+TEST_CASE("a renamed branch clears an empty namesake and leaves one holding data alone","[business][branch][1104]"){
+ BusinessFixture x;pos::handlers::registerCashAccounts(x.f.contextPtr());
+ const auto terminal=x.f.ctx().saleTerminalId();
+ auto exec=[&](const std::string& sql){auto q=x.f.db().prepare(sql);q.exec();};
+ const auto object=[&](const std::string& id,const std::string& name){
+  exec("INSERT INTO warehouses(id,name,created_at,updated_at) VALUES('wh-"+id+"','"+name+"',1,1)");
+  exec("INSERT INTO cash_objects(id,name,warehouse_id,created_at) VALUES('"+id+"','"+name+"','wh-"+id+"',1)");
+ };
+ const auto objectName=[&](const std::string& id){auto q=x.f.db().prepare("SELECT name FROM cash_objects WHERE id='"+id+"'");q.step();return q.columnText(0);};
+ object("ayna","Filial Bir");
+ object("empty","Filial Iki");
+ const auto flour=x.call("ingredients.save",{{"name","Un"},{"unit","kg"}}).at("id").get<std::string>();
+ exec("INSERT INTO stock_levels(ingredient_id,warehouse_id,qty_milli,updated_at) VALUES('"+flour+"','wh-empty',0,1)");
+ exec("INSERT INTO cash_accounts(id,name,kind,object_id,terminal_id,active,created_at) VALUES('till-a','Kassa','till','ayna','"+terminal+"',1,1)");
+
+ const auto done=x.call("cashObjects.syncRestaurantBranch",{{"branchId","b1"},{"name","Filial Iki"}});
+ REQUIRE_FALSE(done.contains("conflict"));
+ REQUIRE(done.at("id")=="ayna");
+ REQUIRE(objectName("ayna")=="Filial Iki");
+ REQUIRE(objectName("empty")=="Filial Iki [arxiv empty]");
+ REQUIRE(x.scalar("SELECT active FROM cash_objects WHERE id='empty'")==0);
+ REQUIRE(x.scalar("SELECT active FROM warehouses WHERE id='wh-empty'")==0);
+ REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_accounts WHERE id='till-a' AND object_id='ayna'")==1);
+
+ object("full","Filial Uc");
+ exec("INSERT INTO cash_accounts(id,name,kind,object_id,active,created_at) VALUES('till-f','Kassa 2','till','full',1,1)");
+ const auto stopped=x.call("cashObjects.syncRestaurantBranch",{{"branchId","b1"},{"name","Filial Uc"}});
+ REQUIRE(stopped.at("conflict")==true);
+ REQUIRE(objectName("ayna")=="Filial Iki");
+ REQUIRE(objectName("full")=="Filial Uc");
+ REQUIRE(x.scalar("SELECT active FROM cash_objects WHERE id='full'")==1);
+ REQUIRE(x.f.ctx().setting("branch.cloudConflict","").find("Filial Uc")!=std::string::npos);
+
+ x.call("cashObjects.syncRestaurantBranch",{{"branchId","b1"},{"name","Filial Iki"}});
+ REQUIRE(x.f.ctx().setting("branch.cloudConflict","x").empty());
 }
