@@ -198,6 +198,25 @@ export function verifyTenantActivateSignature(body: z.infer<typeof TenantActivat
  * Activates (or re-activates) one PC on an already locked key row and signs
  * its licence. Shared by /activation/redeem and /tenant/pos/activate.
  */
+/* SEAT_HANDOVER_1108 */
+// The admin cleared the customer's HWID to move the shop to another PC. Within 7 days the first new PC
+// takes the seat of the till seen longest ago, which is revoked; after that new PCs need a free seat again.
+export async function handOverSeat(tx: any, licenseId: string, customerId: string, seats: number): Promise<boolean> {
+  const r = await tx.execute(sql`
+    WITH reset AS (SELECT max(created_at) AS at FROM audit_logs WHERE action = 'customer.clearHwid' AND entity_id = ${String(customerId)}),
+    live AS (SELECT id, COALESCE(last_seen_at, created_at) AS seen FROM devices WHERE license_id = ${licenseId}::uuid AND status <> 'revoked')
+    UPDATE devices SET status = 'revoked', device_public_key = NULL, updated_at = now()
+    WHERE id = (SELECT id FROM live ORDER BY seen ASC LIMIT 1)
+      AND (SELECT count(*) FROM live) >= ${seats}
+      AND (SELECT at FROM reset) > now() - interval '7 days'
+      AND NOT EXISTS (SELECT 1 FROM devices WHERE license_id = ${licenseId}::uuid AND created_at > (SELECT at FROM reset))
+    RETURNING id`);
+  const row = (Array.isArray(r) ? r : r.rows)[0];
+  if (row)
+    await tx.execute(sql`INSERT INTO audit_logs(action, entity_type, entity_id, meta) VALUES ('device.seatHandover', 'device', ${String(row.id)}, ${JSON.stringify({ customerId, licenseId })}::jsonb)`);
+  return Boolean(row);
+}
+
 export async function redeemWithKey(
   tx: Tx,
   keyRow: KeyRow,
@@ -269,6 +288,7 @@ export async function redeemWithKey(
     // endpoint still refused the activation. Counting live devices makes the
     // panel and the gate agree, and it is safe here because the caller's
     // SELECT … FOR UPDATE serialises every redeem of this key.
+    await handOverSeat(tx, keyRow.licenseId, license.customerId, keyRow.maxDevices);
     const [{ activeDevices }] = await tx
       .select({ activeDevices: sql<number>`count(*)::int` })
       .from(devices)

@@ -21,7 +21,14 @@ function createClient(options){
   }catch(e){const code=/^[A-Z0-9_]{1,80}$/.test(e.message)?e.message:'BACKUP_FAILED';const old=c?states.get(c.deviceId)||{}:{};if(c&&code==='BACKUP_BUSY'){const s={status:'waiting',lastSuccessAt:old.lastSuccessAt||null,retryAt:Date.now()+2*60_000};states.set(c.deviceId,s);return s;}const s={status:'error',lastSuccessAt:old.lastSuccessAt||null,error:code,retryAt:Date.now()+5*60_000};if(c){states.set(c.deviceId,s);try{await request(c,'/error',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code})})}catch{}}return s;
   }finally{if(temp)await fs.unlink(temp).catch(()=>{});busy=false;}
  }
- return{tick,status};
+ // A new computer of the same account: the newest copy of each till, and one brought into this till's backups folder.
+ async function available(){const c=await get();if(!c)throw Error('NOT_ACTIVATED');return(await request(c,'/available')).backups||[];}
+ async function fetchBackup(id,dest,assetsDir){const c=await get();if(!c)throw Error('NOT_ACTIVATED');if(!/^[a-f0-9-]{36}$/i.test(String(id)))throw Error('BACKUP_INVALID');
+  const r=await (options.fetch||fetch)(c.baseUrl.replace(/\/$/,'')+'/devices/'+encodeURIComponent(c.deviceId)+'/cloud-backup/download/'+id,{headers:{'x-device-fingerprint':c.fingerprint},signal:AbortSignal.timeout(600000)});
+  if(!r.ok){let code='HTTP_'+r.status;try{code=(await r.json()).code||code}catch{}throw Error(code)}
+  const file=dest+'.posbackup';await fs.writeFile(file,Buffer.from(await r.arrayBuffer()),{mode:0o600});
+  try{return await importBundle(file,dest,assetsDir,c.customerId);}finally{await fs.unlink(file).catch(()=>{});}}
+ return{tick,status,available,fetchBackup};
 }
 async function importBundle(file,dest,assetsDir,customerId){const bytes=await fs.readFile(file);let data;try{data=await format.decode(bytes);}catch{throw Error('Bu fayl zədələnib və ya Possistem yedəyi deyil.');}if(!customerId)throw Error('Yedəyi bərpa etmək üçün əvvəlcə kassanı aktivləşdirin.');if(data.meta.customerId!==customerId)throw Error('Bu yedək başqa hesaba aiddir.');await format.unpack(bytes,dest,assetsDir);return{path:dest,manifest:{assets:data.assets.length,sha256:format.sha(bytes)}};}
 module.exports={createClient,importBundle,localPath};

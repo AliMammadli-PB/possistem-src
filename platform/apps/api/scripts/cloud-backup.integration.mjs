@@ -78,11 +78,22 @@ try{
  await assert.rejects(client.importBundle(bundle,restore,images,B),/başqa hesaba/);await assert.rejects(client.importBundle(bundle,restore,images,null),/aktivləşdirin/);
  await fs.writeFile(path.join(dir,'junk.posbackup'),'junk');await assert.rejects(client.importBundle(path.join(dir,'junk.posbackup'),restore,images,A),/zədələnib/);
  await client.importBundle(bundle,restore,images,A);assert.deepEqual(await fs.readFile(restore),db);assert.deepEqual(await fs.readFile(path.join(images,image)),pixel);
+ // A new computer of the same account restores by itself, with its own device proof; another account's till cannot.
+ const D3=randomUUID(),fp3='test-fingerprint-new-pc',newImages=path.join(dir,'new-pc-images');await q(`INSERT INTO devices(id,license_id,device_fingerprint,status,hostname,app_version) VALUES($1,$2,$3,'active','Yeni PC','1.10.8')`,[D3,L,fp3]);
+ const newPc=client.createClient({credentials:async()=>({deviceId:D3,customerId:A,fingerprint:fp3,baseUrl:`http://127.0.0.1:${port}`,appVersion:'1.10.8'}),assetsDir:()=>newImages,snapshot:async()=>{throw Error('unused')}});
+ const offered=await newPc.available();assert.ok(offered.some(r=>r.id===latest&&r.this_device===false&&r.hostname==='Test kassa'&&r.tables&&'orders' in r.tables),JSON.stringify(offered));
+ const fetched=path.join(dir,'new-pc.db');await newPc.fetchBackup(latest,fetched,newImages);assert.deepEqual(await fs.readFile(fetched),db);assert.deepEqual(await fs.readFile(path.join(newImages,image)),pixel);
+ assert.deepEqual((await fs.readdir(dir)).filter(n=>n.startsWith('new-pc.db.')),[],'no download left beside it');
+ const other=client.createClient({credentials:async()=>({deviceId:D2,customerId:B,fingerprint:fingerprintB,baseUrl:`http://127.0.0.1:${port}`}),assetsDir:()=>dir,snapshot:async()=>{throw Error('unused')}});
+ assert.equal((await other.available()).some(r=>r.id===latest),false,'another account sees nothing of this one');
+ await assert.rejects(other.fetchBackup(latest,path.join(dir,'stolen.db'),dir),/BACKUP_NOT_FOUND/);
+ await assert.rejects(newPc.fetchBackup('../../etc/passwd',path.join(dir,'x.db'),dir),/BACKUP_INVALID/);
+ await q(`UPDATE devices SET status='revoked' WHERE id=$1`,[D3]);await assert.rejects(newPc.available(),/DEVICE_AUTH_FAILED/);
  // Failure and switching off keep what is already saved.
  const before=(await q('SELECT count(*)::int AS n FROM pos_cloud_backups')).rows[0].n;const failing=client.createClient({credentials:async()=>creds(),assetsDir:()=>assetsDir,snapshot:async()=>{throw Error('SNAPSHOT_FAILED')}});assert.equal((await failing.tick(true)).status,'error');assert.equal((await q('SELECT count(*)::int AS n FROM pos_cloud_backups')).rows[0].n,before);
  assert.equal((await app.inject({method:'POST',url:`/customers/${A}/cloud-backups/${D}/disable`,headers:admin,payload:{}})).statusCode,200);assert.equal((await q('SELECT features FROM licenses WHERE id=$1',[L])).rows[0].features.cloudBackup,false);
  assert.equal((await till.tick(true)).status,'disabled');assert.equal((await upload(await pack({appVersion:'off'}))).statusCode,403);assert.equal((await app.inject({url:`/owner/cloud-backups/${latest}/download`,headers:owner})).statusCode,200,'switching off does not remove what was saved');
  // An existing admin action must keep working once a customer has backups.
  await q('DELETE FROM customers WHERE id=$1',[A]);assert.equal((await q('SELECT count(*)::int AS n FROM pos_cloud_backups')).rows[0].n,0);
- console.log('PASS route + till client + restore on a real Postgres engine: device proof without an owner login, off by default, superadmin switches, account isolation, lost picture counted, unchanged till stored once, encryption, tamper and repair, retention, LAN till skipped, stale snapshots removed, request acknowledged after verification, restore only into the same account, customer delete still works.');
+ console.log('PASS route + till client + restore on a real Postgres engine: new computer restores by itself, device proof without an owner login, off by default, superadmin switches, account isolation, lost picture counted, unchanged till stored once, encryption, tamper and repair, retention, LAN till skipped, stale snapshots removed, request acknowledged after verification, restore only into the same account, customer delete still works.');
 }finally{await app.close();await pg.close();await fs.rm(dir,{recursive:true,force:true})}

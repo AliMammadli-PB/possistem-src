@@ -403,6 +403,8 @@ const api = {
     restore: (backupId, adminPin, options) => call("backup.restore", { backupId, adminPin }, options),
     cloudStatus: () => call("backup.cloudStatus", {}),
     cloudNow: () => call("backup.cloudNow", {}),
+    cloudList: () => call("backup.cloudList", {}),
+    cloudFetch: (backupId) => call("backup.cloudFetch", { backupId }),
     exportFile: (backupId) => call("backup.exportFile", { backupId }),
     importFile: () => call("backup.importFile", {})
   },
