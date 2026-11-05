@@ -150,6 +150,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-1103-deposits.mjs',
   'apply-restaurant-1104.mjs',
   'apply-restaurant-1105.mjs',
+  'apply-restaurant-1106.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');

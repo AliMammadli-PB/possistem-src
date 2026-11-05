@@ -1,3 +1,5 @@
+#include "pos/Logging.hpp"
+#include "pos/services/DataRepair.hpp"
 #include "pos/handlers/Handlers.hpp"
 
 #include "pos/Crypto.hpp"
@@ -75,6 +77,14 @@ void registerAll(ipc::StdioServer& server, db::Database& database) {
     registerExport(ctx);
     registerSystem(ctx);
     registerBusiness(ctx);
+
+    // Bad stock data must never stop a till from opening; it rolls back and tries again next start.
+    try {
+        const auto repaired = services::repairStockData(*ctx);
+        if (!repaired.empty()) logging::get("core")->warn("stock data repaired: {}", repaired.dump());
+    } catch (const std::exception& error) {
+        logging::get("core")->error("stock data repair failed: {}", error.what());
+    }
 }
 
 void sweepPendingPayments(ipc::StdioServer& server, db::Database& database) {

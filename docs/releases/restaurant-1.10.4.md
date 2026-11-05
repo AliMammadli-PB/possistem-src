@@ -27,7 +27,7 @@ Includes 1.10.3. Fixes the gaps found checking 1.10.3 against the customer's lis
 
 ## Not tested
 
-- A real Windows till or a customer's database. The object fix on Pizza Home is only proven once that till updates.
+- A real Windows till or a customer's database. The object fix on the customer till is only proven once that till updates.
 - The warning banner in Kassalar on screen. The setting behind it is tested.
 - The deposit on a physical till, and the deposit with SUNMI fiscal on a real device.
 

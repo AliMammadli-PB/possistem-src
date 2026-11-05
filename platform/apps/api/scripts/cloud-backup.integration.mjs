@@ -40,10 +40,11 @@ try{
  assert.equal((await upload(Buffer.from('junk'))).statusCode,400);
  r=await upload(await pack({},[]));assert.equal(r.statusCode,200,'A lost picture must not cost the whole backup: '+r.body);
  const partialId=r.json().id;
+ assert.equal((await app.inject({url:'/owner/cloud-backups',headers:owner})).json().backups.find(b=>b.id===partialId).manifest.missingAssets,1);
  r=await upload(bytes,{'x-backup-request-id':requestId});assert.equal(r.statusCode,200,r.body);assert.equal(r.json().verified,true);const id=r.json().id;
  assert.equal((await upload(bytes)).json().id,id,'unchanged till is one stored copy');
  const listed=(await app.inject({url:'/owner/cloud-backups',headers:owner})).json();
- assert.equal(listed.backups.length,2);assert.equal(listed.backups.find(b=>b.id===partialId).manifest.missingAssets,1);assert.equal(listed.backups.find(b=>b.id===id).manifest.missingAssets,0);assert.equal(listed.devices[0].hostname,'Test kassa');
+ assert.equal(listed.backups.length,1,'the newer copy replaced the older one');assert.equal(listed.backups[0].id,id);assert.equal(listed.backups[0].manifest.missingAssets,0);await assert.rejects(fs.stat(path.join(process.env.POS_CLOUD_BACKUP_DIR,partialId+'.enc')));assert.equal(listed.devices[0].hostname,'Test kassa');
  assert.equal((await app.inject({url:'/owner/cloud-backups',headers:{'x-test-customer':B}})).json().backups.length,0);
  assert.equal((await app.inject({url:url+'/status',headers})).json().requestId,null,'request acknowledged only after a verified copy');
  // Stored encrypted, private, unreadable by another customer, repairable.
@@ -56,12 +57,12 @@ try{
  assert.ok((await q(`SELECT count(*)::int AS n FROM audit_logs WHERE action='cloud_backup.download'`)).rows[0].n>=2,'every download leaves a trail');
  const corrupted=Buffer.from(stored);corrupted[20]^=1;await fs.writeFile(file,corrupted);assert.equal((await app.inject({url:`/owner/cloud-backups/${id}/download`,headers:owner})).statusCode,409);
  assert.equal((await upload(bytes)).statusCode,200);assert.equal((await app.inject({url:`/owner/cloud-backups/${id}/download`,headers:owner})).statusCode,200,'a verified retry repairs a damaged stored file');
- // Keeps 8 recent and one a day for 30 days, not the last 30 uploads.
- const seeded=[];for(let day=1;day<=45;day++)for(const hour of [0,6]){const seed=randomUUID();seeded.push({seed,day,hour});await fs.writeFile(path.join(process.env.POS_CLOUD_BACKUP_DIR,seed+'.enc'),'x');await q(`INSERT INTO pos_cloud_backups(id,customer_id,device_id,product,sha256,size_bytes,db_bytes,manifest,created_at) VALUES($1,$2,$3,'restaurant',$4,1000,1000,'{}',now()-make_interval(days=>$5::int,hours=>$6::int))`,[seed,A,D,seed,day,hour])}
+ // Only the newest verified copy of a till stays, and the old files go with their rows.
+ const seeded=[];for(let day=1;day<=5;day++){const seed=randomUUID();seeded.push(seed);await fs.writeFile(path.join(process.env.POS_CLOUD_BACKUP_DIR,seed+'.enc'),'x');await q(`INSERT INTO pos_cloud_backups(id,customer_id,device_id,product,sha256,size_bytes,db_bytes,manifest,created_at) VALUES($1,$2,$3,'restaurant',$4,1,1,'{}'::jsonb,now()-($5||' days')::interval)`,[seed,A,D,randomUUID().replaceAll('-','')+randomUUID().replaceAll('-',''),String(day)]);}
  r=await upload(await pack({appVersion:'retention'}));assert.equal(r.statusCode,200,r.body);
- const kept=new Set((await q('SELECT id FROM pos_cloud_backups WHERE device_id=$1',[D])).rows.map(x=>x.id));assert.ok(kept.size<=38,'kept '+kept.size);
- assert.ok(seeded.some(s=>s.day===29&&kept.has(s.seed)),'a copy from 29 days ago survives');assert.ok(!seeded.some(s=>s.day>=32&&kept.has(s.seed)),'older than 30 days goes');
- const gone=seeded.find(s=>s.day===40).seed;await assert.rejects(fs.stat(path.join(process.env.POS_CLOUD_BACKUP_DIR,gone+'.enc')),'its file goes too');
+ const newest=JSON.parse(r.body).id,kept=(await q('SELECT id FROM pos_cloud_backups WHERE device_id=$1',[D])).rows.map(x=>x.id);assert.deepEqual(kept,[newest],'only the newest stays');
+ await fs.stat(path.join(process.env.POS_CLOUD_BACKUP_DIR,newest+'.enc'));for(const gone of seeded)await assert.rejects(fs.stat(path.join(process.env.POS_CLOUD_BACKUP_DIR,gone+'.enc')),'its file goes too');
+ r=await upload(await pack({appVersion:'retention'}));assert.equal(r.statusCode,200,r.body);assert.equal(JSON.parse(r.body).id,newest,'the same data stays one copy');assert.equal((await q('SELECT count(*)::int AS n FROM pos_cloud_backups WHERE device_id=$1',[D])).rows[0].n,1);
  // The real till client over HTTP: snapshot, pictures, multipart, verified acknowledgement.
  await app.listen({host:'127.0.0.1',port:0});const port=app.server.address().port;let calls=0,terminal=false,changed=false;const creds=()=>({deviceId:D,customerId:changed?B:A,fingerprint,baseUrl:`http://127.0.0.1:${port}`,appVersion:'1.9.34'});
  const snapshots=path.join(dir,'backups');await fs.mkdir(snapshots);await fs.writeFile(path.join(snapshots,'pos-cloud-crashed.db'),'x');await fs.writeFile(path.join(snapshots,'pos-usb-1.db'),'keep');
@@ -72,14 +73,15 @@ try{
  changed=true;assert.equal((await till.tick(true)).status,'error','account changed under the upload');changed=false;
  assert.match((await q('SELECT last_error FROM pos_cloud_backup_state WHERE device_id=$1',[D])).rows[0].last_error,/ACCOUNT|MISMATCH/);
  // Restore side: only into the same account.
- const download=(await app.inject({url:`/owner/cloud-backups/${id}/download`,headers:owner})).rawPayload,bundle=path.join(dir,'bundle.posbackup'),restore=path.join(dir,'restored.db'),images=path.join(dir,'restored-images');await fs.writeFile(bundle,download);
+ const latest=(await app.inject({url:'/owner/cloud-backups',headers:owner})).json().backups[0].id;
+ const download=(await app.inject({url:`/owner/cloud-backups/${latest}/download`,headers:owner})).rawPayload,bundle=path.join(dir,'bundle.posbackup'),restore=path.join(dir,'restored.db'),images=path.join(dir,'restored-images');await fs.writeFile(bundle,download);
  await assert.rejects(client.importBundle(bundle,restore,images,B),/başqa hesaba/);await assert.rejects(client.importBundle(bundle,restore,images,null),/aktivləşdirin/);
  await fs.writeFile(path.join(dir,'junk.posbackup'),'junk');await assert.rejects(client.importBundle(path.join(dir,'junk.posbackup'),restore,images,A),/zədələnib/);
  await client.importBundle(bundle,restore,images,A);assert.deepEqual(await fs.readFile(restore),db);assert.deepEqual(await fs.readFile(path.join(images,image)),pixel);
  // Failure and switching off keep what is already saved.
  const before=(await q('SELECT count(*)::int AS n FROM pos_cloud_backups')).rows[0].n;const failing=client.createClient({credentials:async()=>creds(),assetsDir:()=>assetsDir,snapshot:async()=>{throw Error('SNAPSHOT_FAILED')}});assert.equal((await failing.tick(true)).status,'error');assert.equal((await q('SELECT count(*)::int AS n FROM pos_cloud_backups')).rows[0].n,before);
  assert.equal((await app.inject({method:'POST',url:`/customers/${A}/cloud-backups/${D}/disable`,headers:admin,payload:{}})).statusCode,200);assert.equal((await q('SELECT features FROM licenses WHERE id=$1',[L])).rows[0].features.cloudBackup,false);
- assert.equal((await till.tick(true)).status,'disabled');assert.equal((await upload(await pack({appVersion:'off'}))).statusCode,403);assert.equal((await app.inject({url:`/owner/cloud-backups/${id}/download`,headers:owner})).statusCode,200,'switching off does not remove what was saved');
+ assert.equal((await till.tick(true)).status,'disabled');assert.equal((await upload(await pack({appVersion:'off'}))).statusCode,403);assert.equal((await app.inject({url:`/owner/cloud-backups/${latest}/download`,headers:owner})).statusCode,200,'switching off does not remove what was saved');
  // An existing admin action must keep working once a customer has backups.
  await q('DELETE FROM customers WHERE id=$1',[A]);assert.equal((await q('SELECT count(*)::int AS n FROM pos_cloud_backups')).rows[0].n,0);
  console.log('PASS route + till client + restore on a real Postgres engine: device proof without an owner login, off by default, superadmin switches, account isolation, lost picture counted, unchanged till stored once, encryption, tamper and repair, retention, LAN till skipped, stale snapshots removed, request acknowledged after verification, restore only into the same account, customer delete still works.');

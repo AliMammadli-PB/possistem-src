@@ -87,6 +87,8 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -15003,7 +15005,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.5 · b64a9cd";
+const _PS_BUILD = "1.10.6 · c37130d";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -23500,7 +23502,7 @@ function OpsStock() {
     if (whRes.success) {
       const list = whRes.data.warehouses ?? [];
       setWarehouses(list);
-      setWarehouseId((prev) => prev || list[0]?.id || "");
+      /* POS_HOME_WAREHOUSE_1106 */ setWarehouseId((prev) => prev || whRes.data.homeWarehouseId || list[0]?.id || "");
     }
     if (valRes.success) setWorth(valRes.data.totalMinor ?? 0);
 
@@ -31287,7 +31289,7 @@ function PsCloudBackupCard(){
  const h=psH,[state,setState]=reactExports.useState({status:'waiting'}),[busy,setBusy]=reactExports.useState(false);
  reactExports.useEffect(()=>{let live=true;const read=async()=>{const r=await window.pos.backup.cloudStatus?.();if(live&&r?.success)setState(r.data)};void read();const timer=setInterval(()=>void read(),10000);return()=>{live=false;clearInterval(timer)}},[]);
  const message={waiting:'Bulud yedəyi hələ yoxlanmayıb.',current:'Son nüsxə serverdə yoxlanıb saxlanılıb.',disabled:'Bu hesabda tam bulud yedəyi bağlıdır.',not_activated:'Bulud yedəyi üçün kassa aktivləşdirilməlidir.',terminal:'Bu kompüter əlavə kassadır. Bulud yedəyini əsas kassa alır.',uploading:'Baza və şəkillər təhlükəsiz yedəklənir…',error:'Son bulud yedəyi uğursuzdur. Əvvəlki uğurlu nüsxə saxlanılır.'};
- return h('section',{className:'ps-full-cloud-backup',style:{padding:16,border:'1px solid #c8d9ed',borderRadius:8,background:'#fff',marginBottom:16}},h('h2',{style:{margin:'0 0 8px',fontSize:18}},'Tam bulud yedəyi'),h('p',{role:'status'},message[state.status]||message.waiting),state.lastSuccessAt?h('p',null,'Son uğurlu nüsxə: '+new Date(state.lastSuccessAt).toLocaleString('az-AZ')):null,state.error?h('small',null,'Xəta kodu: '+state.error):null,h('p',{style:{fontSize:13,color:'#5b708d'}},'Bütün POS bazası və məhsul şəkilləri. Proqram açıq və internetə qoşulu olduqda hər 6 saatda. Son 8 nüsxə və 30 gün üçün gündə bir nüsxə saxlanılır. Bərpa üçün saytdan .posbackup faylını yükləyib «Fayldan yüklə» seçin.'),h('button',{type:'button',disabled:busy||state.status==='uploading'||state.status==='terminal',className:'touch-target mt-2 rounded-xl bg-gold/20 px-4 py-3 text-sm text-gold hover:bg-gold/30 disabled:opacity-50',onClick:async()=>{setBusy(true);try{const r=await window.pos.backup.cloudNow?.();if(r?.success)setState(r.data);else setState({status:'error',error:r?.error?.code||'BACKUP_UNAVAILABLE'});}finally{setBusy(false)}}},busy?'Yoxlanır…':'Yoxla və yedəklə'));
+ return h('section',{className:'ps-full-cloud-backup',style:{padding:16,border:'1px solid #c8d9ed',borderRadius:8,background:'#fff',marginBottom:16}},h('h2',{style:{margin:'0 0 8px',fontSize:18}},'Tam bulud yedəyi'),h('p',{role:'status'},message[state.status]||message.waiting),state.lastSuccessAt?h('p',null,'Son uğurlu nüsxə: '+new Date(state.lastSuccessAt).toLocaleString('az-AZ')):null,state.error?h('small',null,'Xəta kodu: '+state.error):null,h('p',{style:{fontSize:13,color:'#5b708d'}},'Bütün POS bazası və məhsul şəkilləri. Proqram açıq və internetə qoşulu olduqda hər 6 saatda. Serverdə yalnız son nüsxə saxlanılır, köhnəsi silinir. Bərpa üçün saytdan .posbackup faylını yükləyib «Fayldan yüklə» seçin.'),h('button',{type:'button',disabled:busy||state.status==='uploading'||state.status==='terminal',className:'touch-target mt-2 rounded-xl bg-gold/20 px-4 py-3 text-sm text-gold hover:bg-gold/30 disabled:opacity-50',onClick:async()=>{setBusy(true);try{const r=await window.pos.backup.cloudNow?.();if(r?.success)setState(r.data);else setState({status:'error',error:r?.error?.code||'BACKUP_UNAVAILABLE'});}finally{setBusy(false)}}},busy?'Yoxlanır…':'Yoxla və yedəklə'));
 }
 
 /* FULL_CLOUD_BACKUP_UI_END */
@@ -31445,6 +31447,18 @@ function psReadSizeName(name) {
   if (!Number.isFinite(size) || size <= 0 || size > (unit === 'sm' ? 300 : 100000)) return null;
   return { base: match[1].trim(), size, unit };
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

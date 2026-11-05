@@ -1,3 +1,4 @@
+#include "pos/services/DataRepair.hpp"
 #include "pos/services/CatalogAdminService.hpp"
 
 #include <sstream>
@@ -547,6 +548,7 @@ Json CatalogAdminService::archiveProduct(const std::string& productId) {
     stmt.bind(":now", nowMs()).bind(":id", productId);
     stmt.exec();
     if (ctx_.db().changes() == 0) throw PosError::of(protocol::err::kNotFound);
+    retireArchivedCards(ctx_.db());
     ctx_.auditRequired("catalog.archiveProduct", "menu_item", productId, Json::object());
     return Json{{"productId", productId}, {"archived", true}};
 }

@@ -1,3 +1,4 @@
+#include "pos/services/InventoryService.hpp"
 #include "catch_amalgamated.hpp"
 
 #include "ServiceFixture.hpp"
@@ -16,6 +17,8 @@ namespace {
 
 class DeliveryFixture {
 public:
+    ServiceFixture& fixture() { return fixture_; }
+
     DeliveryFixture() { fixture_.openTill();
         pos::handlers::registerOrders(fixture_.contextPtr());
         pos::handlers::registerPayments(fixture_.contextPtr());
@@ -142,4 +145,23 @@ TEST_CASE("paid at the till: closed by the payment, nothing owed by the courier"
     REQUIRE(row.at("money") == "paid");
     REQUIRE(row.at("dueMinor") == 0);
     REQUIRE_THROWS_AS(f.call("delivery.settle", pos::Json{{"deliveryIds", pos::Json::array({start.at("id")})}}), pos::PosError);
+}
+
+TEST_CASE("an order the courier carries takes stock from the branch of the till closing it", "[delivery][warehouse][1106]") {
+    DeliveryFixture f;
+    f.fixture().db().exec("INSERT INTO warehouses(id,name,created_at,updated_at) VALUES('wh-filial','Filial',1,1)");
+    f.fixture().db().exec("INSERT INTO cash_objects(id,name,warehouse_id,created_at) VALUES('filial','Filial','wh-filial',1)");
+    auto till = f.fixture().db().prepare("UPDATE cash_accounts SET object_id='filial' WHERE kind='till' AND terminal_id=:terminal");
+    till.bind(":terminal", f.fixture().ctx().saleTerminalId()).exec();
+    REQUIRE(f.fixture().db().changes() == 1);
+    pos::services::InventoryService inventory(f.fixture().ctx());
+    f.fixture().db().exec("INSERT INTO ingredients(id,sku,name,unit,created_at,updated_at) VALUES('qa-raw','ING-qa-raw','qa','kg',1,1)");
+    f.fixture().db().exec("INSERT OR IGNORE INTO menu_categories(id,name_az) VALUES('qa-c','qa')");
+    f.fixture().db().exec("INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,created_at,updated_at) VALUES('qa-menu','qa-c','qa-menu','qa',1,1,1)");
+    f.fixture().db().exec("INSERT INTO menu_item_ingredients(menu_item_id,ingredient_id,qty_milli) VALUES('qa-menu','qa-raw',200)");
+    f.fixture().db().exec("INSERT INTO orders(id,order_number,user_id,status,opened_at,updated_at) VALUES('qa-order','QA-1','usr-admin','closed',1,1)");
+    f.fixture().db().exec("INSERT INTO order_items(id,order_id,product_id,line_seq,name_snapshot,unit_price_minor,quantity,line_total_minor,status,created_at,updated_at) VALUES('qa-line','qa-order','qa-menu',1,'qa',1,1,1,'served',1,1)");
+    inventory.consumeOnClose("qa-order");
+    REQUIRE(inventory.levelOf("qa-raw", "wh-filial") == -200);
+    REQUIRE(inventory.levelOf("qa-raw", "wh-main") == 0);
 }

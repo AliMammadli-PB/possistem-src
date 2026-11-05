@@ -54,9 +54,14 @@ void registerInventory(const ContextPtr& ctx) {
         std::string(protocol::method::kWarehousesList), [ctx](const ipc::Request&) {
             ctx->requirePermission("inventory.view");
             auto stmt = ctx->db().prepare(
-                "SELECT id, name, kind, active, sort_order AS sortOrder FROM warehouses "
+                "SELECT id, name, kind, active, sort_order AS sortOrder FROM warehouses WHERE active = 1 "
                 "ORDER BY sort_order, name");
-            return Json{{"warehouses", stmt.rows()}};
+            auto home = ctx->db().prepare(
+                "SELECT o.warehouse_id FROM cash_accounts a JOIN cash_objects o ON o.id = a.object_id "
+                "JOIN warehouses w ON w.id = o.warehouse_id AND w.active = 1 "
+                "WHERE a.kind = 'till' AND a.active = 1 AND a.terminal_id = :terminal");
+            home.bind(":terminal", ctx->saleTerminalId());
+            return Json{{"warehouses", stmt.rows()}, {"homeWarehouseId", home.step() ? home.columnText(0) : std::string{}}};
         });
 
     server.registerHandler(

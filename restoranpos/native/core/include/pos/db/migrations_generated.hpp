@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 71;
+inline constexpr int kSchemaVersion = 72;
 
 namespace detail {
 
@@ -4646,6 +4646,25 @@ DROP TABLE _m071_lines;
     return sql;
 }
 
+inline const std::string& migrationSql71() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(423);
+        s += R"MIGSQL(-- 1.10.6. What the core put right by itself at start-up, for support to read. The repair lives in
+-- services/DataRepair.cpp because it has to run again whenever the same state comes back; adding
+-- this table also gives every till a pre-migration backup before its first repair.
+CREATE TABLE data_repairs (
+    id         TEXT PRIMARY KEY,
+    detail     TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -5200,7 +5219,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 71> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 72> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -5272,6 +5291,7 @@ inline constexpr std::array<EmbeddedScript, 71> kMigrations{{
     {69, "069_prepaid_deposits.sql", "76f1a7e5", &detail::migrationSql68},
     {70, "070_prepared_recipe_components.sql", "2cc8c53b", &detail::migrationSql69},
     {71, "071_hidden_prepared_recipes.sql", "e0b2383c", &detail::migrationSql70},
+    {72, "072_data_repairs.sql", "c00f7d54", &detail::migrationSql71},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

@@ -92,7 +92,7 @@ void syncSaleStock(Context& ctx, const std::string& orderId, bool deleted) {
     services::InventoryService inventory(ctx);
     for (const auto& [ingredient, already] : taken) {
         const auto want = needed.count(ingredient) ? needed[ingredient] : 0;
-        if (want != already) inventory.move(ingredient, warehouseId, already - want, "adjustment", orderId, "satış düzəlişi");
+        if (want != already) inventory.move(ingredient, warehouseId, already - want, "adjustment", orderId, "satış düzəlişi", services::LotSpec{}, true);
     }
 }
 
