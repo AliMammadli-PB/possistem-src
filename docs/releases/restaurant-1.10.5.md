@@ -31,3 +31,7 @@
 ## Not included
 
 - A fixed deposit per table. The owner portal. Market and the other tills.
+
+## Publication (2026-11-05)
+
+Through `artifacts/release-1105/publish.sh`. EXE SHA-256 `dfb3ecf522fcc190b258905cf19a6cb3eec3e054f393787d50563663d0509dd7`, 356287284 bytes. Site build `xDhOMw0lC6jyW0U3m9qZj`. Website rollback: `/var/www/possistem/.next-before-release-1105-20261105`, then `pm2 restart possistem`. A till that has updated cannot go back: migrations are forward-only.
