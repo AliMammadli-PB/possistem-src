@@ -13,7 +13,7 @@ const pixel=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 const license=id=>`INSERT OR REPLACE INTO license_state(id,status,device_id,installation_id,customer_id,updated_at) VALUES('local','active','${id}','${id}','cust-1',1);INSERT OR REPLACE INTO app_settings(key,value,updated_at) VALUES('device.installationId','${id}',1);`;
 try{
  const dish=`INSERT INTO menu_categories(id,name_az,name_tr,name_en) VALUES('qa-cat','Yemək','Yemek','Food');INSERT INTO menu_items(id,sku,created_at,updated_at,category_id,name_az,name_tr,name_en,price_minor,image) VALUES('qa-dish','QA-1',1,1,'qa-cat','Dönər','Dönər','Doner',500,'app://local/user-assets/${image}');`;
- await seed(dirA,license('dead-pc')+dish+`INSERT OR REPLACE INTO app_settings(key,value,updated_at) VALUES('qa-marker','pizza-home',1);`);
+ await seed(dirA,license('dead-pc')+dish+`INSERT OR REPLACE INTO app_settings(key,value,updated_at) VALUES('qa-marker','test-marker',1);`);
  const assets=dirA+'/catalog-assets';fs.mkdirSync(assets);fs.writeFileSync(path.join(assets,image),pixel);
  let core=start(dirA);await core.ready;
  const snapshot=must(await core.call('backup.cloudSnapshot'));const listed=must(await core.call('backup.list')).backups.length;
@@ -34,7 +34,7 @@ try{
  assert.equal(must(await core.call('backup.restorePreview',{backupId:imported.id})).fileExists,true);
  const restored=must(await core.call('backup.restore',{backupId:imported.id}));assert.equal(restored.restored,true);await core.stop();
  core=start(dirB);await core.ready;must(await core.call('license.status'));await core.stop();
- assert.equal(one(dirB,`SELECT value FROM app_settings WHERE key='qa-marker'`).value,'pizza-home','the shop\'s data came across');
+ assert.equal(one(dirB,`SELECT value FROM app_settings WHERE key='qa-marker'`).value,'test-marker','the shop\'s data came across');
  assert.equal(one(dirB,`SELECT image FROM menu_items WHERE id='qa-dish'`).image,'app://local/user-assets/'+image);assert.ok(fs.existsSync(path.join(assetsB,image)),'and its picture');
  assert.equal(one(dirB,`SELECT device_id AS v FROM license_state WHERE id='local'`).v,'new-pc','the new computer keeps its own licence');
  assert.equal(one(dirB,`SELECT value AS v FROM app_settings WHERE key='device.installationId'`).v,'new-pc');

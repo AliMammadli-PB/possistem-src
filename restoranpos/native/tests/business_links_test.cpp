@@ -337,10 +337,10 @@ TEST_CASE("restaurant cloud renames preserve warehouse identity and reject dupli
     const auto terminal=x.f.ctx().saleTerminalId();
     x.call("cashAccounts.save",{{"name","Kassa"},{"kind","till"},{"terminalId",terminal},{"objectId",original.at("id")}});
     const auto branch=pos::crypto::uuid4();
-    const auto renamed=x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Pizza Home Filial Bir"}});
+    const auto renamed=x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Test Restoran Filial Bir"}});
     REQUIRE(renamed.at("id")==original.at("id"));
     REQUIRE(renamed.at("warehouseId")==original.at("warehouseId"));
-    REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Pizza Home"}}).at("id")==original.at("id"));
+    REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Test Restoran"}}).at("id")==original.at("id"));
     REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_objects")==1);
     x.call("cashObjects.save",{{"name","Ayrı filial"}});
     REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Ayrı filial"}}).at("conflict")==true);
