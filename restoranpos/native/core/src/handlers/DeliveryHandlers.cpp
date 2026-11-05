@@ -82,9 +82,11 @@ void registerDelivery(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT c.id, c.name, c.phone, c.vehicle, c.active, "
                 "       c.user_id AS userId, u.full_name AS staffName, "
-                "       (SELECT COUNT(*) FROM delivery_orders d "
+                // A paid order is off the courier's list. Money the courier still has to hand in keeps it on.
+                "       (SELECT COUNT(*) FROM delivery_orders d JOIN orders o ON o.id=d.order_id "
                 "         WHERE d.courier_id = c.id "
-                "           AND d.status IN ('assigned','picked_up')) AS openCount, "
+                "           AND d.status IN ('assigned','picked_up') AND o.status<>'voided' "
+                "           AND NOT (o.status IN ('paid','closed') AND (d.pay_mode<>'courier' OR d.settled_at IS NOT NULL))) AS openCount, "
                 "       (SELECT COALESCE(SUM(o.account_minor),0) FROM delivery_orders d JOIN orders o ON o.id=d.order_id "
                 "         WHERE d.courier_id=c.id AND d.pay_mode='courier' AND d.settled_at IS NULL "
                 "           AND o.status IN ('paid','closed')) AS dueMinor "

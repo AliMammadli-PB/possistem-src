@@ -346,3 +346,40 @@ TEST_CASE("restaurant cloud renames preserve warehouse identity and reject dupli
     REQUIRE(x.call("cashObjects.syncRestaurantBranch",{{"branchId",branch},{"name","Ayrı filial"}}).at("conflict")==true);
     REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_objects WHERE active=1")==2);
 }
+
+TEST_CASE("a renamed branch clears an empty namesake and leaves one holding data alone","[business][branch][1104]"){
+ BusinessFixture x;pos::handlers::registerCashAccounts(x.f.contextPtr());
+ const auto terminal=x.f.ctx().saleTerminalId();
+ auto exec=[&](const std::string& sql){auto q=x.f.db().prepare(sql);q.exec();};
+ const auto object=[&](const std::string& id,const std::string& name){
+  exec("INSERT INTO warehouses(id,name,created_at,updated_at) VALUES('wh-"+id+"','"+name+"',1,1)");
+  exec("INSERT INTO cash_objects(id,name,warehouse_id,created_at) VALUES('"+id+"','"+name+"','wh-"+id+"',1)");
+ };
+ const auto objectName=[&](const std::string& id){auto q=x.f.db().prepare("SELECT name FROM cash_objects WHERE id='"+id+"'");q.step();return q.columnText(0);};
+ object("ayna","Ayna Sultanova");
+ object("empty","Telman");
+ const auto flour=x.call("ingredients.save",{{"name","Un"},{"unit","kg"}}).at("id").get<std::string>();
+ exec("INSERT INTO stock_levels(ingredient_id,warehouse_id,qty_milli,updated_at) VALUES('"+flour+"','wh-empty',0,1)");
+ exec("INSERT INTO cash_accounts(id,name,kind,object_id,terminal_id,active,created_at) VALUES('till-a','Kassa','till','ayna','"+terminal+"',1,1)");
+
+ const auto done=x.call("cashObjects.syncRestaurantBranch",{{"branchId","b1"},{"name","Telman"}});
+ REQUIRE_FALSE(done.contains("conflict"));
+ REQUIRE(done.at("id")=="ayna");
+ REQUIRE(objectName("ayna")=="Telman");
+ REQUIRE(objectName("empty")=="Telman [arxiv empty]");
+ REQUIRE(x.scalar("SELECT active FROM cash_objects WHERE id='empty'")==0);
+ REQUIRE(x.scalar("SELECT active FROM warehouses WHERE id='wh-empty'")==0);
+ REQUIRE(x.scalar("SELECT COUNT(*) FROM cash_accounts WHERE id='till-a' AND object_id='ayna'")==1);
+
+ object("full","Elmar");
+ exec("INSERT INTO cash_accounts(id,name,kind,object_id,active,created_at) VALUES('till-f','Kassa 2','till','full',1,1)");
+ const auto stopped=x.call("cashObjects.syncRestaurantBranch",{{"branchId","b1"},{"name","Elmar"}});
+ REQUIRE(stopped.at("conflict")==true);
+ REQUIRE(objectName("ayna")=="Telman");
+ REQUIRE(objectName("full")=="Elmar");
+ REQUIRE(x.scalar("SELECT active FROM cash_objects WHERE id='full'")==1);
+ REQUIRE(x.f.ctx().setting("branch.cloudConflict","").find("Elmar")!=std::string::npos);
+
+ x.call("cashObjects.syncRestaurantBranch",{{"branchId","b1"},{"name","Telman"}});
+ REQUIRE(x.f.ctx().setting("branch.cloudConflict","x").empty());
+}

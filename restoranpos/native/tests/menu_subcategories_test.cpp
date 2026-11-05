@@ -283,3 +283,35 @@ TEST_CASE("recipe saves expand nested portions and rollback conflicting changes"
     x.call("sales.delete",{{"orderId","nested-sale"},{"reason","Sınaq satışı ləğv edildi"}});
     REQUIRE(inventory.levelOf(flour,"wh-main")==3000);
 }
+
+TEST_CASE("a prepared dish saved through its stock card becomes a recipe part","[catalog][recipe][1104]") {
+    MenuFixture x;
+    const auto category=x.category("Card recipes");
+    const auto flour=x.call("ingredients.save",{{"name","Un"},{"unit","kg"}}).at("id").get<std::string>();
+    const auto salt=x.call("ingredients.save",{{"name","Duz"},{"unit","kg"}}).at("id").get<std::string>();
+    const auto dough=x.product(category,"Xəmir",500);
+    const auto pizza=x.product(category,"Pizza",900);
+    const auto plain=x.product(category,"Kola",200);
+    x.call("recipes.save",{{"menuItemId",dough},{"lines",pos::Json::array({{{"ingredientId",flour},{"qtyMilli",200}}})}});
+
+    x.call("recipes.save",{{"menuItemId",pizza},{"lines",pos::Json::array({
+        {{"ingredientId",x.cardOf(dough)},{"qtyMilli",2000}},{{"ingredientId",salt},{"qtyMilli",10}},
+        {{"ingredientId",x.cardOf(plain)},{"qtyMilli",1000}}})}});
+    const auto saved=x.call("recipes.get",{{"menuItemId",pizza}});
+    REQUIRE(saved.at("components").size()==1);
+    REQUIRE(saved.at("components")[0].at("menuItemId")==dough);
+    REQUIRE(saved.at("components")[0].at("qtyMilli")==2000);
+    REQUIRE(x.expanded(pizza,flour)==400);
+    REQUIRE(x.expanded(pizza,salt)==10);
+    REQUIRE(x.expanded(pizza,x.cardOf(dough))==0);
+    REQUIRE(x.expanded(pizza,x.cardOf(plain))==1000);  // a good with no recipe stays a stock line
+
+    // Saving the lines alone keeps the parts already there.
+    x.call("recipes.save",{{"menuItemId",pizza},{"lines",pos::Json::array({{{"ingredientId",salt},{"qtyMilli",20}}})}});
+    REQUIRE(x.expanded(pizza,flour)==400);
+    REQUIRE(x.expanded(pizza,salt)==20);
+
+    // A dish cannot end up inside itself through a card.
+    REQUIRE_THROWS_AS(x.call("recipes.save",{{"menuItemId",dough},{"lines",pos::Json::array({{{"ingredientId",x.cardOf(pizza)},{"qtyMilli",1000}}})}}),pos::PosError);
+    REQUIRE(x.expanded(pizza,flour)==400);
+}

@@ -99,7 +99,11 @@ TEST_CASE("the guest pays the courier: the bill sits on the courier until handed
     // The bill is closed, so its table leaves the floor.
     REQUIRE_FALSE(f.tableOnFloor(tableId));
 
+    const auto carrying = f.call("couriers.list", pos::Json::object()).at("couriers")[0];
+    REQUIRE(carrying.at("openCount") == 1);
+    REQUIRE(carrying.at("dueMinor") == 700);
     f.call("delivery.settle", pos::Json{{"deliveryIds", pos::Json::array({deliveryId})}});
+    REQUIRE(f.call("couriers.list", pos::Json::object()).at("couriers")[0].at("openCount") == 0);
     row = f.delivery(deliveryId);
     REQUIRE(row.at("money") == "paid");
     REQUIRE(row.at("status") == "picked_up");
@@ -130,7 +134,7 @@ TEST_CASE("paid at the till: closed by the payment, nothing owed by the courier"
     REQUIRE(f.delivery(start.at("id")).at("money") == "open");
     f.call("payments.createCard", pos::Json{{"orderId", orderId}, {"amountMinor", 700}});
     const auto courierStatus=f.call("couriers.list",pos::Json::object()).at("couriers")[0];
-    REQUIRE(courierStatus.at("openCount")==1);
+    REQUIRE(courierStatus.at("openCount")==0);
     REQUIRE(courierStatus.at("dueMinor")==0);
     f.call("delivery.setStatus",{{"deliveryId",start.at("id")},{"status","delivered"}});
     REQUIRE(f.call("couriers.list",pos::Json::object()).at("couriers")[0].at("openCount")==0);

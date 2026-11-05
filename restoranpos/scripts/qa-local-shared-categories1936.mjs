@@ -179,6 +179,9 @@ try{
  assert.ok(recipe.lines.some(line=>line.qtyMilli===200));
  assert.ok(recipe.linkedIngredientId);
  must(await core.call('recipes.save',{menuItemId:nested,lines:[{ingredientId:recipe.linkedIngredientId,qtyMilli:1000}]},key()));
+ const byCard=must(await core.call('recipes.get',{menuItemId:nested}));
+ assert.equal(byCard.lines.length,0,'a prepared dish saved through its stock card is a recipe part');
+ assert.equal(byCard.components[0].menuItemId,pizza28);
  await costingPage.getByRole('checkbox',{name:'Yalnız reseptsiz'}).check();
  assert.equal(await costingPage.getByRole('row',{name:/Marqarit pizza · 28 sm/}).count(),0);
  await costingPage.getByRole('checkbox',{name:'Yalnız reseptsiz'}).uncheck();
@@ -198,11 +201,9 @@ try{
    assert.ok(Math.abs(button.y-buttonAfter.y)<1);
   }
  }
- await d.getByRole('button',{name:'Hazır resept',exact:true}).click();
+ await d.getByRole('button',{name:'Marqarit pizza · 28 sm reseptini sil'}).click();
  await search.fill('Marqarit pizza');
  await d.getByRole('button',{name:/Marqarit pizza · 28 sm/}).click();
- const conversion=d.getByRole('group',{name:'Anbar sətrini dəyiş'});
- await conversion.getByRole('button',{name:'Əvəz et',exact:true}).click();
  await d.getByLabel('Marqarit pizza · 28 sm porsiya sayı').fill('2');
  await save.click();
  await d.waitFor({state:'detached'});
@@ -211,7 +212,7 @@ try{
  assert.equal(nestedRecipe.components.length,1);
  assert.equal(nestedRecipe.components[0].menuItemId,pizza28);
  assert.equal(nestedRecipe.components[0].qtyMilli,2000);
- console.log('PASS 1.10.3 UI: nested recipe and stable search at 1536, 1000 and 390 px.');
+ console.log('PASS 1.10.4 UI: a prepared dish picked from the stock list is a recipe part; stable search at 1536, 1000 and 390 px.');
  await costingPage.setViewportSize({width:1000,height:650});
  assert.ok(await costingPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  assert.deepEqual(costingPage.errors,[]);

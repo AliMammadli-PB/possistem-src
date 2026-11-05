@@ -1107,11 +1107,25 @@ void registerInventory(const ContextPtr& ctx) {
             clear.exec();
 
             int saved = 0;
+            Json preparedParts = Json::array();
             for (const auto& line : request.payload["lines"]) {
                 if (!line.is_object()) continue;
                 const auto ingredientId = getOr<std::string>(line, "ingredientId", "");
                 const auto qty = getOr<std::int64_t>(line, "qtyMilli", 0);
                 if (ingredientId.empty() || qty <= 0) continue;
+
+                // The stock card of a dish with its own recipe stands for that recipe, so the
+                // raw materials go out of stock, not the card (migration 070 did the old lines).
+                auto prepared = ctx->db().prepare(
+                    "SELECT l.menu_id FROM catalog_goods_links l JOIN menu_items m ON m.id=l.menu_id "
+                    "WHERE l.ingredient_id=:ingredient AND l.menu_id<>:item AND m.active=1 AND m.archived=0 "
+                    "AND (EXISTS(SELECT 1 FROM menu_item_components c WHERE c.menu_item_id=l.menu_id) "
+                    "  OR EXISTS(SELECT 1 FROM menu_item_ingredients r WHERE r.menu_item_id=l.menu_id AND r.ingredient_id<>l.ingredient_id))");
+                prepared.bind(":ingredient", ingredientId).bind(":item", menuItemId);
+                if (prepared.step()) {
+                    preparedParts.push_back(Json{{"menuItemId", prepared.columnText(0)}, {"qtyMilli", qty}});
+                    continue;
+                }
 
                 auto insert = ctx->db().prepare(
                     "INSERT INTO menu_item_ingredients (menu_item_id, ingredient_id, qty_milli) "
@@ -1120,8 +1134,25 @@ void registerInventory(const ContextPtr& ctx) {
                 insert.exec();
                 saved += 1;
             }
-            if (request.payload.contains("components")) {
-                services::saveRecipeComponents(*ctx, menuItemId, request.payload["components"]);
+            if (request.payload.contains("components") || !preparedParts.empty()) {
+                Json components = Json::array();
+                if (request.payload.contains("components")) {
+                    components = request.payload["components"];
+                } else {
+                    auto current = ctx->db().prepare(
+                        "SELECT component_menu_item_id AS menuItemId, qty_milli AS qtyMilli "
+                        "FROM menu_item_components WHERE menu_item_id=:item");
+                    current.bind(":item", menuItemId);
+                    components = current.rows();
+                }
+                for (const auto& part : preparedParts) {
+                    for (const auto& existing : components) {
+                        require(!existing.is_object() || existing.value("menuItemId", std::string{}) != part.at("menuItemId").get<std::string>(),
+                                "Hazır resept və ona bağlı anbar malı birlikdə saxlanıla bilməz");
+                    }
+                    components.push_back(part);
+                }
+                services::saveRecipeComponents(*ctx, menuItemId, components);
             } else {
                 auto duplicate = ctx->db().prepare(
                     "SELECT 1 FROM menu_item_components c JOIN catalog_goods_links l ON l.menu_id=c.component_menu_item_id "
