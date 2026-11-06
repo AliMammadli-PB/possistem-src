@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T07:00:00Z",
+  "title": "Design System: Possistem QR Order Menu",
+  "scope": "QR order menu only (/qr/<menu>/<table>/, src/components/qr). The possistem.az marketing site (src/styles/site.css, Montserrat / Space Grotesk) is a separate, undocumented system and out of scope.",
+  "extensions": {
+    "colorMeta": {
+      "accent-blue": { "role": "primary", "displayName": "Cloth Band Blue", "canonical": "#1f56b8", "note": "Default accent; .qr-menu --qr-accent", "tonalRamp": ["#000b39", "#022360", "#113d8a", "#265dc0", "#5584d8", "#83abf0", "#b3d2ff", "#d8f0ff"] },
+      "accent-green": { "role": "primary", "displayName": "Bottle Green", "canonical": "#1d6a49", "note": ".qr-menu[data-accent=green]", "tonalRamp": ["#00180a", "#00321e", "#104f35", "#287352", "#5b9577", "#89b79e", "#b8dbc7", "#dcf6e7"] },
+      "accent-burgundy": { "role": "primary", "displayName": "Wine Burgundy", "canonical": "#922c49", "note": ".qr-menu[data-accent=burgundy]", "tonalRamp": ["#2a000b", "#4c0c20", "#712037", "#a13a55", "#bf677a", "#dd93a0", "#fabfc9", "#ffe1e8"] },
+      "accent-amber": { "role": "primary", "displayName": "Copper Amber", "canonical": "#94520c", "note": ".qr-menu[data-accent=amber]", "tonalRamp": ["#250700", "#441c00", "#663300", "#925008", "#b17748", "#cfa07a", "#eec9ac", "#ffe8d3"] },
+      "on-accent": { "role": "neutral", "displayName": "On Accent", "canonical": "#fff", "tonalRamp": ["#121212", "#292929", "#424242", "#636363", "#868686", "#ababab", "#d1d1d1", "#eeeeee"] },
+      "linen-base": { "role": "neutral", "displayName": "Linen Base", "canonical": "#fbf7f0", "note": "Untinted input to --qr-linen", "tonalRamp": ["#13110f", "#2b2925", "#45423d", "#66635d", "#898680", "#adaaa6", "#d3d1cd", "#f0eeeb"] },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#fffdf9", "tonalRamp": ["#121110", "#2a2927", "#434240", "#656360", "#878683", "#acaba8", "#d2d1ce", "#f0eeeb"] },
+      "ink-base": { "role": "neutral", "displayName": "Ink Base", "canonical": "#1b1814", "note": "Untinted input to --qr-ink", "tonalRamp": ["#13110f", "#2b2826", "#45423e", "#66635e", "#898681", "#adaaa7", "#d3d0ce", "#f0eeeb"] },
+      "linen": { "role": "neutral", "displayName": "Linen", "canonical": "color-mix(in oklab, var(--qr-accent) 5%, #fbf7f0)", "resolved": { "blue": "#efefee", "green": "#f0f0e7", "burgundy": "#f7ede7", "amber": "#f6eee5" }, "tonalRamp": ["#121211", "#292928", "#424242", "#636362", "#868685", "#ababaa", "#d1d1d0", "#eeeeed"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "color-mix(in oklab, var(--qr-accent) 16%, #1b1814)", "resolved": { "blue": "#1e232c", "green": "#1f241c", "burgundy": "#2d1d1c", "amber": "#2d2116" }, "tonalRamp": ["#0f1216", "#25292f", "#3e434b", "#5e636e", "#818690", "#a7abb3", "#ced1d7", "#eceff3"] },
+      "muted": { "role": "neutral", "displayName": "Muted Ink", "canonical": "color-mix(in oklab, var(--qr-ink) 70%, var(--qr-linen))", "resolved": { "blue": "#555960", "green": "#565a52", "burgundy": "#645452", "amber": "#63584d" }, "note": "About 6:1 on linen for every accent", "tonalRamp": ["#101215", "#27292d", "#3f4248", "#5f636b", "#83868d", "#a8abb0", "#cfd1d5", "#edeef2"] },
+      "rule": { "role": "neutral", "displayName": "Hairline", "canonical": "color-mix(in oklab, var(--qr-ink) 11%, var(--qr-linen))", "resolved": { "blue": "#d5d6d6", "green": "#d6d7ce", "burgundy": "#ded3ce", "amber": "#ddd5cb" }, "tonalRamp": ["#111212", "#282929", "#424242", "#626363", "#858686", "#aaabab", "#d0d1d1", "#eeefef"] },
+      "soft": { "role": "neutral", "displayName": "Soft Tint", "canonical": "color-mix(in oklab, var(--qr-accent) 10%, var(--qr-paper))", "resolved": { "blue": "#e8ecf4", "green": "#e8eee6", "burgundy": "#f6e8e6", "amber": "#f5ebe2" }, "tonalRamp": ["#101214", "#27292d", "#404248", "#60636a", "#83868c", "#a8abb0", "#cfd1d5", "#edeef1"] },
+      "signal-red": { "role": "status", "displayName": "Signal Red", "canonical": "#b3261e", "note": "Failed order step border", "tonalRamp": ["#310000", "#570000", "#7f0a08", "#b3251e", "#d05d50", "#ec8d80", "#ffbbb0", "#ffdfd6"] },
+      "signal-red-deep": { "role": "status", "displayName": "Signal Red Deep", "canonical": "#9b1c14", "note": "Failed step text; remove-button hover", "tonalRamp": ["#2f0000", "#530101", "#7b1610", "#ad3025", "#cb6255", "#e79083", "#ffbeb3", "#ffe0d7"] },
+      "notice-amber": { "role": "status", "displayName": "Notice Amber", "canonical": "#c27a10", "note": "Used as color-mix(in oklab, #c27a10 12%, paper) ground; text color-mix(in oklab, #7a4300 80%, ink)", "tonalRamp": ["#260700", "#461c00", "#683200", "#945000", "#b3782f", "#d1a06b", "#efc9a2", "#ffe9cb"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Category headings; 30px from 760px; over a 2px ink rule." },
+      "headline": { "displayName": "Headline", "purpose": "Dish sheet title; receipt title at 22px." },
+      "brand": { "displayName": "Brand", "purpose": "Restaurant name in the header; 24px from 760px; one line with ellipsis." },
+      "title": { "displayName": "Title", "purpose": "Dish names in rows; 18px from 760px; 16px for basket lines." },
+      "body": { "displayName": "Body", "purpose": "Base text and every input (16px prevents phone zoom)." },
+      "body-small": { "displayName": "Body Small", "purpose": "Descriptions (2-line clamp), intro (60ch), band text." },
+      "label": { "displayName": "Label", "purpose": "Tabs, option legends, field labels, button text (600-700)." },
+      "meta": { "displayName": "Meta", "purpose": "Option summaries, counts, steps, unavailable pill, fees (12-13px)." },
+      "price": { "displayName": "Price", "purpose": "Every price, total, count and quantity; tabular lining, nowrap, right-aligned." }
+    },
+    "fonts": [
+      { "family": "Bitter", "source": "public/assets/fonts/bitter-latin{,-ext}-wght-normal.woff2", "weights": "300 800", "display": "swap" },
+      { "family": "Onest", "source": "public/assets/fonts/onest-latin{,-ext}-wght-normal.woff2", "weights": "300 800", "display": "swap" }
+    ],
+    "shadows": [
+      { "name": "plate-rim", "value": "0 0 0 4px var(--qr-paper), 0 0 0 5px var(--qr-rule), 0 6px 14px -6px color-mix(in oklab, var(--qr-ink) 45%, transparent)", "purpose": "Dish photos and empty plates in rows." },
+      { "name": "plate-small", "value": "0 0 0 2px var(--qr-paper), 0 3px 8px -3px color-mix(in oklab, var(--qr-ink) 50%, transparent)", "purpose": "Plates in basket lines and loading; on the spread bar the ring is 0 0 0 2px var(--qr-accent)." },
+      { "name": "brand-mark-ring", "value": "0 0 0 3px var(--qr-paper), 0 0 0 4px var(--qr-rule)", "purpose": "Restaurant logo plate." },
+      { "name": "spread-glow", "value": "0 14px 30px -12px color-mix(in oklab, var(--qr-accent) 70%, #000), 0 2px 6px -2px color-mix(in oklab, var(--qr-ink) 40%, transparent)", "purpose": "The spread bar only." },
+      { "name": "sheet", "value": "0 -20px 60px -20px color-mix(in oklab, var(--qr-ink) 60%, transparent)", "purpose": "Dish and basket sheets." },
+      { "name": "receipt", "value": "0 1px 0 var(--qr-rule), 0 18px 40px -28px color-mix(in oklab, var(--qr-ink) 55%, transparent)", "purpose": "Order status card." },
+      { "name": "focus-ring", "value": "outline: 2px solid var(--qr-accent); outline-offset: 2px", "purpose": "Every focus-visible element; should follow the element's own radius." },
+      { "name": "sticky-veil", "value": "background: color-mix(in oklab, var(--qr-linen) 92%, transparent); backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid var(--qr-rule)", "purpose": "Sticky header and tabs; separates by blur, not shadow." }
+    ],
+    "motion": [
+      { "name": "ease-settle", "value": "cubic-bezier(.16,1,.3,1)", "purpose": "--qr-ease; all state transitions and entrances." },
+      { "name": "plate-land", "value": "qr-land .6s ease-settle: from translateY(-34px) scale(.5) opacity 0, overshoot to translateY(3px) scale(1.08)", "purpose": "A newly chosen dish dropping onto the spread." },
+      { "name": "spread-rise", "value": "qr-rise .45s ease-settle: from translateY(24px) opacity 0", "purpose": "Spread bar appearing." },
+      { "name": "sheet-rise", "value": "qr-sheet .42s ease-settle: from translateY(40px) opacity .4; overlay qr-fade .25s ease-out", "purpose": "Sheets opening." },
+      { "name": "breathe", "value": "qr-breathe 1.4-1.6s ease-in-out infinite: opacity to .45", "purpose": "Current order step; loading plates staggered .15s." },
+      { "name": "press", "value": "transform .2s ease-settle; scale(.9) add button, scale(.98) primary", "purpose": "Touch feedback." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce) { animation: none; transition: none }", "purpose": "Required." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "max-width: 360px", "purpose": "62px plates; spread shows fewer plates." },
+      { "name": "tablet", "value": "min-width: 760px", "purpose": "Larger type and plates; centred dialogs; 3:1 cover; sticky offset 162px." },
+      { "name": "wide", "value": "min-width: 1100px", "purpose": "Column min(860px, 100% - 64px); spread column 560px." },
+      { "name": "pointer", "value": "hover: hover", "purpose": "All hover styles live here only." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action that moves the order forward: add to the table, send to the till.",
+      "html": "<button class=\"ds-btn-primary\"><span>Əlavə et</span><span>18.50 ₼</span></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 52px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--qr-accent, #1f56b8); color: #fff; font: 700 16px/1 Onest, system-ui, sans-serif; font-variant-numeric: tabular-nums; cursor: pointer; transition: transform .2s cubic-bezier(.16,1,.3,1), filter .2s; } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:active { transform: scale(.98); } .ds-btn-primary:focus-visible { outline: 2px solid var(--qr-accent, #1f56b8); outline-offset: 2px; } .ds-btn-primary:disabled { background: #c9cacc; color: #fffdf9; cursor: default; }"
+    },
+    {
+      "name": "Add Button",
+      "kind": "button",
+      "refersTo": "add-button",
+      "description": "Round 44px add on every dish row; fills with the accent and shows the count once chosen.",
+      "html": "<div style=\"display:flex;gap:12px\"><button class=\"ds-add\" aria-label=\"Add\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M12 5v14M5 12h14\"/></svg></button><button class=\"ds-add is-chosen\">2</button></div>",
+      "css": ".ds-add { width: 44px; height: 44px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--qr-paper, #fffdf9); color: var(--qr-ink, #1e232c); box-shadow: inset 0 0 0 1.5px #bdbdbf; font: 750 16px/1 Onest, system-ui, sans-serif; font-variant-numeric: tabular-nums; cursor: pointer; transition: transform .2s cubic-bezier(.16,1,.3,1), background .2s, color .2s; } .ds-add:hover:not(.is-chosen) { background: var(--qr-soft, #e8ecf4); } .ds-add:active { transform: scale(.9); } .ds-add:focus-visible { outline: 2px solid var(--qr-accent, #1f56b8); outline-offset: 2px; } .ds-add.is-chosen { background: var(--qr-accent, #1f56b8); color: #fff; box-shadow: none; }"
+    },
+    {
+      "name": "Category Tabs",
+      "kind": "nav",
+      "refersTo": "category-tab",
+      "description": "Sticky horizontal pills; the current category carries the accent.",
+      "html": "<nav class=\"ds-tabs\"><button aria-current=\"true\">Pizzalar</button><button>Burgerlər</button><button>Salatlar</button><button>İçkilər</button></nav>",
+      "css": ".ds-tabs { display: flex; gap: 4px; padding: 6px 0; background: var(--qr-linen, #efefee); } .ds-tabs button { min-height: 40px; padding: 0 15px; border: 0; border-radius: 999px; background: none; color: var(--qr-muted, #555960); font: 600 14px/1 Onest, system-ui, sans-serif; white-space: nowrap; cursor: pointer; transition: background .25s cubic-bezier(.16,1,.3,1), color .25s; } .ds-tabs button:hover:not([aria-current=true]) { color: var(--qr-ink, #1e232c); } .ds-tabs button:focus-visible { outline: 2px solid var(--qr-accent, #1f56b8); outline-offset: 2px; } .ds-tabs button[aria-current=true] { background: var(--qr-accent, #1f56b8); color: #fff; }"
+    },
+    {
+      "name": "Table Band",
+      "kind": "custom",
+      "refersTo": "table-band",
+      "description": "The cloth's band under the header naming the guest's table.",
+      "html": "<div class=\"ds-band\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 4h18v14H3zM9 4v14m6-14v14M3 11h18M5 18v3m14-3v3\"/></svg><span>Sifariş masaya</span><strong>Terras · Masa 7</strong></div>",
+      "css": ".ds-band { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 0 16px; background: var(--qr-accent, #1f56b8); color: #e2e9f4; font: 400 14px/1.3 Onest, system-ui, sans-serif; } .ds-band strong { color: #fff; font-weight: 700; }"
+    },
+    {
+      "name": "Dish Row",
+      "kind": "custom",
+      "refersTo": "dish-photo",
+      "description": "Plate, name, description, tabular price and add button between hairlines; unavailable dishes restyle in place.",
+      "html": "<ul class=\"ds-dishes\"><li class=\"ds-dish\"><span class=\"ds-plate\"></span><span class=\"ds-dish-text\"><span class=\"ds-dish-name\">Pepperoni</span><span class=\"ds-dish-desc\">Acılı kolbasa, mosarella, oreqano.</span></span><span class=\"ds-dish-side\"><span class=\"ds-price\">15.00 ₼</span><button class=\"ds-add-mini\" aria-label=\"Add\">+</button></span></li><li class=\"ds-dish is-out\"><span class=\"ds-plate\"></span><span class=\"ds-dish-text\"><span class=\"ds-dish-name\">Tiramisu</span></span><span class=\"ds-dish-side\"><span class=\"ds-price\">7.00 ₼</span><span class=\"ds-out\">Hazırda yoxdur</span></span></li></ul>",
+      "css": ".ds-dishes { list-style: none; margin: 0; padding: 0; background: var(--qr-linen, #efefee); font-family: Onest, system-ui, sans-serif; color: var(--qr-ink, #1e232c); } .ds-dish { display: flex; align-items: flex-start; gap: 14px; padding: 16px; border-bottom: 1px solid var(--qr-rule, #d5d6d6); } .ds-plate { width: 76px; height: 76px; flex-shrink: 0; border-radius: 50%; background: radial-gradient(circle, #fbfcff 0 46%, #b9c6e0 48% 49.5%, #eaeef6 51% 100%); box-shadow: 0 0 0 4px var(--qr-paper, #fffdf9), 0 0 0 5px var(--qr-rule, #d5d6d6), 0 6px 14px -8px rgba(30,35,44,.4); } .ds-dish-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 2px; } .ds-dish-name { font-size: 17px; font-weight: 650; line-height: 1.25; } .ds-dish-desc { font-size: 14px; color: var(--qr-muted, #555960); } .ds-dish-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; } .ds-price { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; } .ds-add-mini { width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--qr-paper, #fffdf9); box-shadow: inset 0 0 0 1.5px #bdbdbf; font-size: 22px; color: inherit; cursor: pointer; } .ds-add-mini:focus-visible { outline: 2px solid var(--qr-accent, #1f56b8); outline-offset: 2px; } .ds-dish.is-out .ds-dish-name, .ds-dish.is-out .ds-price { color: var(--qr-muted, #555960); } .ds-dish.is-out .ds-price { text-decoration: line-through; text-decoration-thickness: 1px; } .ds-dish.is-out .ds-plate { filter: grayscale(1); opacity: .6; } .ds-out { font-size: 12px; font-weight: 650; color: var(--qr-muted, #555960); padding: 5px 10px; border-radius: 999px; background: var(--qr-rule, #d5d6d6); }"
+    },
+    {
+      "name": "Spread Bar",
+      "kind": "custom",
+      "refersTo": "spread-bar",
+      "description": "The table's spread fixed at the foot of the screen: overlapping plates of chosen dishes, count, table and total.",
+      "html": "<button class=\"ds-spread\"><span class=\"ds-spread-plates\"><span></span><span></span><span></span></span><span class=\"ds-spread-text\"><strong>Səbət · 3</strong><small>Terras · Masa 7 süfrəsi</small></span><span class=\"ds-spread-total\">27.00 ₼ →</span></button>",
+      "css": ".ds-spread { width: 100%; min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 12px; border: 0; border-radius: 999px; background: var(--qr-accent, #1f56b8); color: #fff; text-align: left; font-family: Onest, system-ui, sans-serif; cursor: pointer; box-shadow: 0 14px 30px -12px #0f2c60, 0 2px 6px -2px rgba(30,35,44,.4); } .ds-spread:focus-visible { outline: 2px solid var(--qr-accent, #1f56b8); outline-offset: 2px; } .ds-spread-plates { display: flex; padding-left: 4px; } .ds-spread-plates span { width: 38px; height: 38px; margin-left: -12px; border-radius: 50%; background: radial-gradient(circle, #fbfcff 0 44%, #b9c6e0 46% 48%, #eaeef6 50% 100%); box-shadow: 0 0 0 2px var(--qr-accent, #1f56b8); } .ds-spread-plates span:first-child { margin-left: 0; } .ds-spread-text { flex: 1; min-width: 0; display: flex; flex-direction: column; } .ds-spread-text strong { font-size: 16px; font-weight: 700; } .ds-spread-text small { font-size: 12px; color: #c9d6ee; } .ds-spread-total { font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }"
+    },
+    {
+      "name": "Option Choice",
+      "kind": "chip",
+      "refersTo": "option-choice",
+      "description": "A 52px linen row per option in the dish sheet; selected rows take the soft tint and an inset accent ring.",
+      "html": "<div class=\"ds-choices\"><label class=\"ds-choice\"><input type=\"radio\" name=\"s\"><span>30 sm</span></label><label class=\"ds-choice is-on\"><input type=\"radio\" name=\"s\" checked><span>40 sm</span><em>+5.00 ₼</em></label></div>",
+      "css": ".ds-choices { display: grid; gap: 8px; padding: 12px; background: var(--qr-paper, #fffdf9); font-family: Onest, system-ui, sans-serif; } .ds-choice { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; border-radius: 14px; background: var(--qr-linen, #efefee); color: var(--qr-ink, #1e232c); cursor: pointer; transition: background .2s, box-shadow .2s; } .ds-choice:focus-within { outline: 2px solid var(--qr-accent, #1f56b8); outline-offset: 2px; } .ds-choice.is-on { background: var(--qr-soft, #e8ecf4); box-shadow: inset 0 0 0 1.5px var(--qr-accent, #1f56b8); } .ds-choice input { width: 20px; height: 20px; margin: 0; accent-color: var(--qr-accent, #1f56b8); } .ds-choice span { flex: 1; font-size: 15px; } .ds-choice em { font-style: normal; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--qr-muted, #555960); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Note and name fields in sheets; hairline border that turns accent on focus.",
+      "html": "<label class=\"ds-field\">Qeyd<input placeholder=\"Məsələn: soğansız\"></label>",
+      "css": ".ds-field { display: grid; gap: 6px; font: 650 14px/1.3 Onest, system-ui, sans-serif; color: var(--qr-ink, #1e232c); } .ds-field input { min-height: 48px; padding: 12px 14px; border: 1px solid var(--qr-rule, #d5d6d6); border-radius: 14px; background: var(--qr-paper, #fffdf9); font: 400 16px/1.45 Onest, system-ui, sans-serif; color: inherit; outline: none; } .ds-field input:focus { border-color: var(--qr-accent, #1f56b8); } .ds-field input::placeholder { color: var(--qr-muted, #555960); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Laid Table (Süfrə)",
+    "overview": "The guest's table is the page. A warm linen ground, deep ink type, and the restaurant's own colour running through it as the band of the tablecloth: the strip that names the table, the active category, the chosen dishes and the button that sends the order. Dishes sit on round plates, chosen dishes land as overlapping plates on the spread at the foot of the screen, and prices stand in one tabular column on the right. The menu begins in the first screen; there is no introduction to scroll past.\n\nThe page belongs to the restaurant, not to Possistem. The accent, logo and name are the restaurant's; the whole neutral palette is tinted from that accent, so a burgundy restaurant gets a rosy linen and a green one a sage linen without anyone choosing a second colour. Possistem appears only as a small signature link in the footer. Density is a printed menu's: flat rows divided by hairlines, one column, generous touch targets, nothing boxed.\n\nLight only (`color-scheme: light`). The world is a laid table in restaurant light; there is no dark variant.",
+    "keyCharacteristics": [
+      "One accent per restaurant (blue, green, burgundy, amber), set by `data-accent`, used only for what is active or chosen.",
+      "Neutrals derived from the accent by oklab mixing; never chosen per restaurant.",
+      "Bitter for names of things (restaurant, category, dish sheet, receipt), Onest for everything read or tapped.",
+      "Round plates for every dish image and every chosen dish; an empty plate when there is no photo.",
+      "Hairline-ruled rows, not cards; prices tabular and right-aligned.",
+      "Bottom sheets on phones, centred dialogs from 760px."
+    ],
+    "rules": [
+      { "name": "The Cloth Band Rule", "body": "The accent marks what is active or chosen and nothing else. If an element is neither the table, the current category, a chosen dish, a selected option, progress, or the action that sends the order, it is not accent-coloured.", "section": "colors" },
+      { "name": "The Tinted Linen Rule", "body": "Neutrals are never picked per restaurant. They are mixed from the accent so the whole page shifts with one setting; a new neutral is added as another `color-mix` of the existing tokens, not as a fixed hex.", "section": "colors" },
+      { "name": "The Two Voices Rule", "body": "Bitter names places and things (restaurant, category, the dish in its sheet, the receipt). Onest does everything else. Bitter never appears on a button, price, tab or form.", "section": "typography" },
+      { "name": "The Tabular Column Rule", "body": "Every number the till will charge is set in tabular lining figures, never wraps, and sits right-aligned in its own column, so prices read down the page like a printed bill.", "section": "typography" },
+      { "name": "The Things On The Table Rule", "body": "Only objects that sit on the table (plates, the spread, the receipt, sheets) cast shadows. Rows, headings, tabs and the page ground stay flat.", "section": "elevation" },
+      { "name": "The Round Plate Rule", "body": "Food is always on a round plate. A dish without a photo gets the empty plate in the same slot, never a letter, icon or stock picture.", "section": "shapes" }
+    ],
+    "dos": [
+      "**Do** take every derived colour from the `--qr-*` mixes of the accent; adding a fifth accent means one new `data-accent` value and nothing else.",
+      "**Do** keep every touch target at 44px or more and inputs at 16px.",
+      "**Do** set every price, total and count in tabular lining figures, right-aligned, nowrap.",
+      "**Do** put food on round plates and keep the plate slot fixed across rows, using the empty plate when there is no photo.",
+      "**Do** restyle unavailable dishes in place (muted, struck price, greyscale plate, pill) rather than hiding or reordering them.",
+      "**Do** gate hover styles behind `@media (hover: hover)` and drop all animation under `prefers-reduced-motion: reduce`.",
+      "**Do** keep Possistem to the footer signature; the restaurant's name, mark and colour lead."
+    ],
+    "donts": [
+      "**Don't** box dishes in cards or a photo grid; dishes are hairline-ruled rows.",
+      "**Don't** open with a hero banner or a slider; the cover is at most a short strip under the header.",
+      "**Don't** use the accent for decoration, headings or body text.",
+      "**Don't** fill a missing dish photo with a letter, icon or stock food picture (the restaurant mark's initial is the logo fallback, not a dish placeholder).",
+      "**Don't** set Bitter on controls, prices or tabs.",
+      "**Don't** use offset or hard-edged shadows; only objects on the table cast soft ones."
+    ]
+  }
+}

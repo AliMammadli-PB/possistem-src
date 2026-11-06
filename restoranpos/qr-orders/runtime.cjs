@@ -16,7 +16,7 @@ module.exports=function qrOrders({native,identity,owner,isTerminal}){
     await access(true);
     if(payload.action==='get'||!payload.action){
      const [catalog,saved]=await Promise.all([core('qr.catalog',{}),cloud('config',{action:'get'})]);
-     if(saved.menu){const old=saved.menu.document;catalog.name=old.name;catalog.description=old.description;catalog.logo=old.logo;catalog.accent=old.accent;catalog.layout=old.layout;
+     if(saved.menu){const old=saved.menu.document;catalog.name=old.name;catalog.description=old.description;catalog.logo=old.logo;catalog.cover=old.cover||"";catalog.accent=old.accent;catalog.layout=old.layout;
       catalog.items=catalog.items.map(p=>{const previous=old.items.find(x=>x.id===p.id);return {...p,hidden:previous?.hidden??false,image:previous?.image||p.image,description:previous?.description||p.description};});}
      return {success:true,data:{...saved,document:catalog}};
     }

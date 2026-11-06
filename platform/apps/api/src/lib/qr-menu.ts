@@ -1,8 +1,10 @@
 import {z} from 'zod/v3';
 const id=z.string().min(1).max(120),text=z.string().trim().max(150),minor=z.number().int().min(0).max(10000000);
 const picture=z.string().max(1800).default('').refine(s=>!s||s.startsWith('https://'),'Şəkil üçün HTTPS ünvanı yazın.');
+// Brand artwork is decoded and resized in the POS before publication. SVG/HTML data URLs are never accepted.
+const brandPicture=z.string().max(300000).default('').refine(s=>!s||(s.length<=1800&&s.startsWith('https://'))||/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(s),'PNG, JPEG, WebP və ya HTTPS şəkil ünvanı seçin.');
 export const QrDocument=z.object({
- name:text.min(1),description:z.string().max(400).default(''),logo:picture,
+ name:text.min(1),description:z.string().max(400).default(''),logo:brandPicture,cover:brandPicture,
  accent:z.enum(['blue','green','burgundy','amber']).default('blue'),layout:z.enum(['cards','list']).default('cards'),
  categories:z.array(z.object({id,name:text,nameTr:text.default(''),nameEn:text.default('')})).max(100),
  tables:z.array(z.object({id,label:text})).min(1).max(300),

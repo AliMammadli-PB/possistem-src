@@ -4,7 +4,7 @@ const once=(source,a,b)=>{if(source.split(a).length!==2)throw Error('object mana
 const section=(a,b,change)=>{const i=s.indexOf(a),j=s.indexOf(b,i+a.length);if(i<0||j<0)throw Error('object management section '+a);s=s.slice(0,i)+change(s.slice(i,j))+s.slice(j);};
 // Converge after older sidebar/hub patch scripts and regenerated admin components.
 section('  const serviceLinks = [','  const visible =',part=>part.replace(/    \{ to: "\/refund"[^\n]+\n/,'').replace(/    \{to:"\/branches"[^\n]+\n/,'').replace('show: canAdmin }','show: canAdmin || hasPermission("payment.refund") }'));
-section('function AdminHubPage()', 'const LOGO_RASTER_WIDTH',part=>{
+section(s.includes('/* MANAGEMENT_UNIFIED_V1 */')?'function usePsManagementLinks()':'function AdminHubPage()', 'const LOGO_RASTER_WIDTH',part=>{
  if(!part.includes('to: "/branches"'))part=once(part,'  const links = [','  const links = [\n    {to: "/branches",label:psAdminText("Obyektlər","İşletmeler","Locations"),icon:Store,show:hasPermission("users.manage")||["manager","administrator"].includes(useAuthStore.getState().session?.role)},\n    {to: "/refund",label:psAdminText("Geri qaytarma","İade","Returns"),icon:ReceiptText,show:hasPermission("payment.refund")},');
  return part.replace('l.show && _psArea(l.to)','l.show && (l.to === "/branches" || _psArea(l.to))');
 });

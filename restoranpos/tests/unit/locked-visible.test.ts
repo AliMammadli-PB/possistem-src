@@ -23,10 +23,11 @@ describe('restaurant till', () => {
     expect(bundle).toContain('onClick: _psOk ? void 0 : (event) => { event.preventDefault(); _psDenied(); }');
   });
 
-  it('keeps every İdarə card and Əməliyyat tab', () => {
-    expect(bundle).toContain('].map((l) => ({ ...l, locked: !(l.show && (l.to === "/branches" || _psArea(l.to))) }))');
-    expect(bundle).toContain('children: _psTabs.map((tab) =>');
-    expect(bundle).toContain('onClick: () => tab.show ? setActive(tab.id) : _psDenied()');
+  // Since the unified management UI (2026-11-06) unpermitted destinations are left out of the
+  // management navigation and search (management/README.md); their lock is still computed per link.
+  it('computes the lock of every İdarə link through the shared access path', () => {
+    expect(bundle).toContain('].map((l) => ({ ...l, locked: !(l.show && (l.to === "/branches" || _psArea(psManagementAccessPath(l.to)))) }))');
+    expect(bundle).toContain('/* MANAGEMENT_UNIFIED_V1 */');
   });
 
   it('keeps the money buttons and refuses without the permission', () => {

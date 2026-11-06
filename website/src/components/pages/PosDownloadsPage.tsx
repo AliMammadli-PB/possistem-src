@@ -6,11 +6,11 @@ import './pos-downloads.css';
 
 type Product='market'|'restaurant';
 type Release={version:string;size:number;href:string};
-const QR_RELEASE:Release={version:'1.10.9',size:356303581,href:'/pos-updates/Possistem-Setup-1.10.9.exe'};
+const QR_RELEASE:Release={version:'1.10.9',size:359830548,href:'/pos-updates/Possistem-Setup-1.10.9.exe'};
 const MARKET_RELEASE:Release={version:'1.5.78',size:381429701,href:'/marketpos/updates/MarketPos-Setup-1.5.78.exe'};
 const MARKET_ZIP='/marketpos/updates/MarketPos-Setup-1.5.78-verified.zip';
 const QR_ZIP='/pos-updates/Possistem-Setup-1.10.9-verified.zip';
-const QR_SHA='f6ec85d5ccd9fb518897452b3214084f37eb10164f83c400bfcd4d2b22279240';
+const QR_SHA='a32896e10b79e87901b70f555cd2cb20e54db36cdc48042af8cb7c9c0017c3dd';
 const copy={
   az:{eyebrow:'WINDOWS ÜÇÜN POSSİSTEM',title:'POS proqramınızı yükləyin.',intro:'Mağazanız və ya restoranınız üçün uyğun proqramı seçin.',market:'Barkodla satış, anbar və kassa əməliyyatları.',restaurant:'Masa, menyu və mətbəx idarəsi. QR ilə sifariş funksiyası daxildir.',stable:'Stabil buraxılış',download:'Quraşdırıcını yüklə',zip:'ZIP ilə yüklə',loading:'Versiya yoxlanılır…',error:'Yükləmə məlumatı alınmadı.',retry:'Yenidən yoxla',previous:'Stabil Restoran POS-u yüklə',unsigned:'Windows kod sertifikatı yoxdur. Avtomatik yeniləmə manifesti Possistem imzası ilə yoxlanılır.',helpTitle:'Quraşdırıcı bütövlük xətası göstərirsə',help:'Əvvəlki yarımçıq faylı silin. ZIP nüsxəsini tam endirin, “Hamısını çıxart / Extract all” seçin və çıxarılan .exe faylını açın.',verify:'Faylı yoxlamaq',hash:'Restoran POS 1.10.9 EXE üçün SHA-256',account:'Daxil olmaq üçün administratorun yaratdığı hesabdan istifadə edin.',guide:'Quraşdırma təlimatı',support:'Dəstək al',format:'Windows · 64 bit',size:'MB'},
   en:{eyebrow:'POSSİSTEM FOR WINDOWS',title:'Download your POS.',intro:'Choose the application for your shop or restaurant.',market:'Barcode sales, stock and till operations.',restaurant:'Tables, menus and kitchen management. Includes QR ordering.',stable:'Stable release',download:'Download installer',zip:'Download ZIP',loading:'Checking version…',error:'Download information is unavailable.',retry:'Try again',previous:'Download stable Restaurant POS',unsigned:'The installer has no Windows code-signing certificate. Automatic updates are verified with the Possistem manifest signature.',helpTitle:'If the installer reports an integrity error',help:'Delete the previous incomplete file. Download the ZIP fully, choose “Extract all”, then open the extracted .exe file.',verify:'Verify the file',hash:'SHA-256 for the Restaurant POS 1.10.9 EXE',account:'Sign in with the account created by your administrator.',guide:'Installation guide',support:'Get support',format:'Windows · 64 bit',size:'MB'},

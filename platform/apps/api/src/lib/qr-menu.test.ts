@@ -6,3 +6,13 @@ test('QR cart prices come from the published catalogue and modifier choices',()=
 test('required, foreign and duplicate modifiers are refused',()=>{for(const modifiers of [[],['foreign'],['s','s']])assert.throws(()=>priceQrCart(doc(),{...cart(),lines:[{...cart().lines[0]!,modifiers}]}));});
 test('hidden and unavailable products cannot be ordered',()=>{for(const key of ['hidden','available'] as const){const d=doc();d.items[0]![key]=key==='hidden';assert.throws(()=>priceQrCart(d,cart()));}});
 test('invalid quantity, duplicate product identifiers and unsafe image URLs are rejected',()=>{assert.equal(QrCart.safeParse({...cart(),lines:[{...cart().lines[0],qty:0}]}).success,false);const d=doc();d.items.push(d.items[0]!);assert.equal(QrDocument.safeParse(d).success,false);assert.equal(QrDocument.safeParse({...doc(),logo:'javascript:alert(1)'}).success,false);});
+test('brand artwork supports bounded raster uploads and rejects executable or oversized data URLs',()=>{
+ const raster='data:image/webp;base64,UklGRg==';
+ const value=QrDocument.parse({...doc(),logo:raster,cover:'https://possistem.az/cover.webp'});
+ assert.equal(value.logo,raster);assert.equal(value.cover,'https://possistem.az/cover.webp');
+ assert.equal(QrDocument.parse(doc()).cover,'');
+ for(const url of ['data:image/svg+xml;base64,PHN2Zz4=','data:text/html;base64,PHNjcmlwdD4=','http://unsafe/logo.png','javascript:alert(1)','data:image/webp;base64,'+'A'.repeat(300000)]){
+  assert.equal(QrDocument.safeParse({...doc(),logo:url}).success,false);
+  assert.equal(QrDocument.safeParse({...doc(),cover:url}).success,false);
+ }
+});

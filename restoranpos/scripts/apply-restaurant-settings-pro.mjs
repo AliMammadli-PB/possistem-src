@@ -36,6 +36,7 @@ function replaceOnce(src, find, repl, label) {
 let bundle = fs.readFileSync(BUNDLE, 'utf8');
 // Superseded by later settings chrome — do not fail the launch chain.
 if (
+  bundle.includes('MANAGEMENT_UNIFIED_V1') ||
   bundle.includes('POS_SETTINGS_FORM_BUNDLE_v1') ||
   bundle.includes('POS_SETTINGS_EXACT_BUNDLE_v1') ||
   bundle.includes('ps-category-bar') ||

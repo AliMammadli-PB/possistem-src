@@ -153,6 +153,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-1106.mjs',
   'apply-restaurant-1107.mjs',
   'apply-restaurant-1108.mjs',
+  'apply-restaurant-management.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -165,6 +166,7 @@ function log(msg) {
 function applyPatches() {
   const failed = [];
   for (const script of PATCH_ORDER) {
+    if(process.env.POS_BUILD_TRACE)log('patch '+script);
     const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts', script)], { cwd: ROOT, encoding: 'utf8' });
     if (result.status === 0) continue;
     const detail = `${result.stderr || ''}${result.stdout || ''}`.trim().split('\n').slice(-3).join(' | ');
@@ -187,6 +189,7 @@ function stageRenderer() {
   copy('sunmi-renderer.js', path.join(STAGE, 'sunmi-renderer.js'));
 
   fs.cpSync(path.join(ROOT, 'assets/nav'), path.join(STAGE, 'assets/nav'), {recursive:true});
+  fs.cpSync(path.join(ROOT, 'assets/modules'), path.join(STAGE, 'assets/modules'), {recursive:true});
   copy('index.js', path.join(STAGE, 'index.js'));
   copy('index.html', path.join(STAGE, 'index.html'));
   copy('possistem-system.css', path.join(STAGE, 'possistem-system.css'));
