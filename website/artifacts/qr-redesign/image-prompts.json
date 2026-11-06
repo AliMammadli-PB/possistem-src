@@ -1,0 +1,47 @@
+{
+  "method": "built-in image_gen",
+  "assets": [
+    {
+      "id": "pizza",
+      "prompt": "Use case: photorealistic-natural. Asset: photographic background for a restaurant QR menu cover slideshow, decorative food inspiration, no product claims. Wide landscape composition 16:9. Subject mainly in right half with uncluttered dark navy/slate tabletop negative space on left for white interface text. Consistent warm natural side light, appetising realistic food texture, shallow depth of field, editorial restaurant food photography. No people, no text, no logos, no watermark, no frame. Do not create a UI or collage. A rustic freshly baked margherita pizza, blistered crust, melted mozzarella, basil and red tomatoes on a ceramic plate.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-e0234957-6ac9-4669-944f-25c677c56498.png",
+      "png": "artifacts/qr-redesign/originals/pizza.png",
+      "webp": "public/assets/qr-menu/pizza.webp"
+    },
+    {
+      "id": "grill",
+      "prompt": "Use case: photorealistic-natural. Asset: photographic background for a restaurant QR menu cover slideshow, decorative food inspiration, no product claims. Wide landscape composition 16:9. Subject mainly in right half with uncluttered dark navy/slate tabletop negative space on left for white interface text. Consistent warm natural side light, appetising realistic food texture, shallow depth of field, editorial restaurant food photography. No people, no text, no logos, no watermark, no frame. Do not create a UI or collage. A freshly grilled Azerbaijani lamb kebab plate with grilled tomatoes, flatbread and herbs.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-c1ae718a-baf6-492f-94a9-7d4d63f3bb90.png",
+      "png": "artifacts/qr-redesign/originals/grill.png",
+      "webp": "public/assets/qr-menu/grill.webp"
+    },
+    {
+      "id": "burger",
+      "prompt": "Use case: photorealistic-natural. Asset: photographic background for a restaurant QR menu cover slideshow, decorative food inspiration, no product claims. Wide landscape composition 16:9. Subject mainly in right half with uncluttered dark navy/slate tabletop negative space on left for white interface text. Consistent warm natural side light, appetising realistic food texture, shallow depth of field, editorial restaurant food photography. No people, no text, no logos, no watermark, no frame. Do not create a UI or collage. A freshly made beef burger with lettuce, sliced tomato and crispy potatoes on a ceramic plate.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-350ee2ff-ce13-45f6-8782-1f6c8b7407cc.png",
+      "png": "artifacts/qr-redesign/originals/burger.png",
+      "webp": "public/assets/qr-menu/burger.webp"
+    },
+    {
+      "id": "salad",
+      "prompt": "Use case: photorealistic-natural. Asset: photographic background for a restaurant QR menu cover slideshow, decorative food inspiration, no product claims. Wide landscape composition 16:9. Subject mainly in right half with uncluttered dark navy/slate tabletop negative space on left for white interface text. Consistent warm natural side light, appetising realistic food texture, shallow depth of field, editorial restaurant food photography. No people, no text, no logos, no watermark, no frame. Do not create a UI or collage. A colourful fresh green salad with cucumber, cherry tomatoes, feta and herbs, in a shallow ceramic bowl.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-bdb92db1-e918-43dd-a3a7-b388d98c82a6.png",
+      "png": "artifacts/qr-redesign/originals/salad.png",
+      "webp": "public/assets/qr-menu/salad.webp"
+    },
+    {
+      "id": "pasta",
+      "prompt": "Use case: photorealistic-natural. Asset: photographic background for a restaurant QR menu cover slideshow, decorative food inspiration, no product claims. Wide landscape composition 16:9. Subject mainly in right half with uncluttered dark navy/slate tabletop negative space on left for white interface text. Consistent warm natural side light, appetising realistic food texture, shallow depth of field, editorial restaurant food photography. No people, no text, no logos, no watermark, no frame. Do not create a UI or collage. Fresh ribbon pasta with tomato sauce, basil and parmesan, a natural twirl on a ceramic plate.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-f9bdc5e6-27bb-4b42-b06b-8e179feccf43.png",
+      "png": "artifacts/qr-redesign/originals/pasta.png",
+      "webp": "public/assets/qr-menu/pasta.webp"
+    },
+    {
+      "id": "dessert",
+      "prompt": "Use case: photorealistic-natural. Asset: photographic background for a restaurant QR menu cover slideshow, decorative food inspiration, no product claims. Wide landscape composition 16:9. Subject mainly in right half with uncluttered dark navy/slate tabletop negative space on left for white interface text. Consistent warm natural side light, appetising realistic food texture, shallow depth of field, editorial restaurant food photography. No people, no text, no logos, no watermark, no frame. Do not create a UI or collage. A slice of honey cake with berries and tea on a ceramic plate, delicate visible cake layers.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-f842e351-7be7-4dfc-82e4-35245bd2c6cf.png",
+      "png": "artifacts/qr-redesign/originals/dessert.png",
+      "webp": "public/assets/qr-menu/dessert.webp"
+    }
+  ]
+}

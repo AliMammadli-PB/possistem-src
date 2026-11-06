@@ -135,7 +135,9 @@ const helpers = await transform(fs.readFileSync(path.join(root,'scripts/admin-ui
 const helperStart = '/* POS_ADMIN_COMPONENTS_START */';
 const helperEnd = '/* POS_ADMIN_COMPONENTS_END */';
 const block = helperStart + '\n' + helpers.code + helperEnd + '\n';
-if(source.includes(helperStart)) {
+if(source.includes('/* MANAGEMENT_UNIFIED_V1 */')) {
+  // The unified management owner keeps the current frame and recovery boundary.
+} else if(source.includes(helperStart)) {
   const a=source.indexOf(helperStart), b=source.indexOf(helperEnd,a)+helperEnd.length+1;
   source=source.slice(0,a)+block+source.slice(b);
 } else source=source.replace('function AdminHubPage() {',block+'function AdminHubPage() {');

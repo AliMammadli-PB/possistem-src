@@ -1,3 +1,4 @@
+/* MANAGEMENT_UNIFIED_V1 */
 function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  const h=psH,{lang}=useI18n(),L=(a,t,e)=>psBizText(lang,a,t,e);
  const update=(i,key,value)=>onChange(rows.map((row,n)=>n===i?{...row,[key]:value}:row));
@@ -7,6 +8,20 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü ('+unit+')','Boyut ('+unit+')','Size ('+unit+')'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
  h('button',{type:'button',disabled:rows.length>=24,onClick:()=>onChange([...rows,{size:'',price:price||''}])},L('+ Ölçü əlavə et','+ Boyut ekle','+ Add size'))):null);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15011,7 +15026,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.8 · f827494";
+const _PS_BUILD = "1.10.9 · 8863256";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15299,7 +15314,6 @@ function AppShell() {
     { to: "/operations?tab=stocktake", label: "Sayım", icon: ClipboardList, show: hasPermission("inventory.count") },
     { to: "/operations?tab=purchases", label: "Alışlar", icon: Store, show: hasPermission("suppliers.view") },
     { to: "/operations?tab=vendors", label: "Partnyorlar", icon: Users, show: hasPermission("suppliers.view") || hasPermission("customers.view") },
-    { to: "/operations?tab=delivery", label: "Çatdırılma", icon: Move, show: !psMarketMode() && hasPermission("delivery.view") },
   ];
   const serviceLinks = [
     {
@@ -15313,15 +15327,17 @@ function AppShell() {
     { to: "/kds", label: t.nav.kds, icon: Soup, show: hasPermission("kds.operate") },
     ...opsLinks
   ];
+  /* MANAGEMENT_DELIVERY_NAV */
+  serviceLinks.splice(2,0,{to:'/operations?tab=delivery',label:psAdminText('Çatdırılma','Teslimat','Delivery'),icon:PsDeliveryNavIcon,show:!psMarketMode()&&hasPermission('delivery.view')&&_psArea('/operations?tab=delivery')});
   const adminLinksNav = [
     { to: "/admin", label: t.nav.admin, icon: LayoutDashboard, show: canAdmin || hasPermission("payment.refund") }
   ];
-  for (const l of [...serviceLinks, ...adminLinksNav]) l.show = l.show && (l.to === "/branches" || _psArea(l.to));
+  for (const l of [...serviceLinks, ...adminLinksNav]) l.show = l.show && (l.to === "/branches" || _psArea(psManagementAccessPath(l.to)));
   const visible = [...serviceLinks, ...adminLinksNav].filter((l) => l.show);
   // A permission set nobody anticipated must not produce an empty sidebar: a
   // till with no way out of the current screen is worse than one extra link.
   /* POS_LOCKED_PAGES_v1 */void visible;
-  const links = [...serviceLinks, ...adminLinksNav];
+  const links = visible;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-shell flex h-full flex-col overflow-hidden bg-ink" + (psMarketMode() ? "" : " ps-restaurant-brand"), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(CoreBanner, {}),
     /* QR_SIDEBAR_1927 */
@@ -15345,7 +15361,7 @@ function AppShell() {
             title: _psOk ? label : `${label} · Buna icazəniz yoxdur`,
             "aria-disabled": _psOk ? void 0 : true,
             onClick: _psOk ? void 0 : (event) => { event.preventDefault(); _psDenied(); },
-            className: ({ isActive }) => `ps-nav ${(isActive && _psNavTabMatches(to, location)) || (to === "/admin" && psAdminRoute(location.pathname)) ? "ps-nav-on" : "ps-nav-off"}`,
+            className: ({ isActive }) => `ps-nav ${(isActive && _psNavTabMatches(to, location)) || (to === "/admin" && psAdminRoute(location.pathname) && !(location.pathname === "/operations" && new URLSearchParams(location.search).get("tab") === "delivery") /* MANAGEMENT_NAV_ACTIVE */) ? "ps-nav-on" : "ps-nav-off"}`,
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size:22, "aria-hidden":true }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ps-touch-nav-label", children: label })
@@ -23315,12 +23331,30 @@ const SettingsSectionCtx = reactExports.createContext(null);
 const psQrText=(az,tr,en)=>psAdminText(az,tr,en);
 async function psQrCall(method,payload){const r=await window.possistemQr?.call(method,payload);if(!r?.success)throw Error(r?.error?.message||psQrText("QR xidməti açılmadı","QR hizmeti açılamadı","QR service unavailable"));return r.data;}
 const psQrMoney=v=>(Number(v)/100).toFixed(2)+" ₼";
+// Ready-made cover pictures: shown to guests only when the owner picks one, so no restaurant shows food it does not serve.
+const PS_QR_SCENES=[["pizza","Pizza","Pizza","Pizza"],["grill","Kabab, qril","Kebap, ızgara","Grill"],["burger","Burger","Burger","Burger"],["salad","Salat","Salata","Salad"],["pasta","Makaron","Makarna","Pasta"],["dessert","Desert","Tatlı","Dessert"]];
+function psQrScenes(doc,setDoc,busy){const h=psH,url=id=>"https://possistem.az/assets/qr-menu/"+id+".webp";
+ return h("section",{className:"ps-qr-scenes","aria-label":psQrText("Hazır üz qabığı şəkilləri","Hazır kapak görselleri","Ready-made cover pictures")},h("strong",null,psQrText("Hazır şəkil seçin (istəyə bağlı)","Hazır görsel seçin (isteğe bağlı)","Or pick a ready-made picture (optional)")),
+  h("div",{className:"ps-qr-scene-row"},PS_QR_SCENES.map(([id,az,tr,en])=>h("button",{key:id,type:"button",disabled:busy,"aria-pressed":doc.cover===url(id),className:"ps-qr-scene"+(doc.cover===url(id)?" is-on":""),onClick:()=>setDoc(previous=>({...previous,cover:previous.cover===url(id)?"":url(id)}))},h("img",{src:url(id),alt:"",loading:"lazy"}),h("span",null,psQrText(az,tr,en))))));}
+async function psQrBrandImage(file,kind){
+ if(!file||!['image/png','image/jpeg','image/webp'].includes(file.type))throw Error(psQrText("PNG, JPEG və ya WebP şəkli seçin.","PNG, JPEG veya WebP resmi seçin.","Choose a PNG, JPEG or WebP image."));
+ if(file.size>8*1024*1024)throw Error(psQrText("Şəkil 8 MB-dan kiçik olmalıdır.","Resim 8 MB'dan küçük olmalıdır.","The image must be smaller than 8 MB."));
+ const url=URL.createObjectURL(file);
+ try{
+  const image=new Image();image.src=url;await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error(psQrText("Şəkil oxunmadı.","Resim okunamadı.","The image could not be read.")))});
+  if(!image.naturalWidth||image.naturalWidth*image.naturalHeight>32000000)throw Error(psQrText("Şəklin ölçüsü çox böyükdür.","Resim boyutları çok büyük.","The image dimensions are too large."));
+  const scale=Math.min(1,(kind==='logo'?384:1440)/Math.max(image.naturalWidth,image.naturalHeight)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));const context=canvas.getContext('2d');if(!context)throw Error('Image preview unavailable');context.drawImage(image,0,0,canvas.width,canvas.height);
+  let result='';for(const quality of [.82,.68,.5,.35]){result=canvas.toDataURL('image/webp',quality);if(result.length<=300000)break;}
+  if(result.length>300000)throw Error(psQrText("Daha sadə və kiçik şəkil seçin.","Daha küçük bir resim seçin.","Choose a smaller image."));return result;
+ }finally{URL.revokeObjectURL(url)}
+}
 function PsQrSettings(){
  const h=psH,[data,setData]=reactExports.useState(null),[doc,setDoc]=reactExports.useState(null),[busy,setBusy]=reactExports.useState(false),[error,setError]=reactExports.useState(""),[search,setSearch]=reactExports.useState(""),[rotate,setRotate]=reactExports.useState(false);
  const load=async()=>{setBusy(true);setError("");try{const r=await psQrCall("qr.config",{action:"get"});setData(r);setDoc(r.document);}catch(e){setError(e.message)}finally{setBusy(false)}};
  reactExports.useEffect(()=>{void load()},[]);
  const action=async(kind)=>{setBusy(true);setError("");try{const r=await psQrCall("qr.config",{action:kind,expectedRevision:data?.menu?.revision||0,...(kind==="publish"?{document:doc}:{})});setData({...r,document:doc});toast(kind==="publish"?psQrText("QR menyu yayımlandı","QR menü yayınlandı","QR menu published"):psQrText("QR menyu yeniləndi","QR menü güncellendi","QR menu updated"),"success");}catch(e){setError(e.message)}finally{setBusy(false)}};
- const field=(key,label,type="text")=>h("label",{className:"ps-qr-field"},label,h("input",{type,value:doc?.[key]||"",onChange:e=>setDoc({...doc,[key]:e.target.value})}));
+ const field=(key,label,type="text")=>h("label",{className:"ps-qr-field"},label,h("input",{type,value:type==="url"&&doc?.[key]?.startsWith("data:")?"":doc?.[key]||"",placeholder:type==="url"?"https://…":undefined,onChange:e=>setDoc({...doc,[key]:e.target.value})}));
+ const brandFile=(key,label)=>h("section",{className:"ps-qr-brand-asset"},h("div",{className:"ps-qr-brand-preview "+(key==='cover'?'is-cover':'')},doc[key]?h("img",{src:doc[key],alt:label,onError:e=>{e.currentTarget.style.visibility='hidden'}}):h("span",null,label)),h("div",null,h("strong",null,label),h("label",{className:"ps-qr-upload"},psQrText("Şəkil yüklə","Resim yükle","Upload image"),h("input",{type:"file",accept:"image/png,image/jpeg,image/webp",disabled:busy,"aria-label":label,onChange:async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;setBusy(true);setError('');try{const value=await psQrBrandImage(file,key);setDoc(previous=>({...previous,[key]:value}));}catch(error){setError(error.message)}finally{setBusy(false)}}})),doc[key]&&h("button",{type:"button",disabled:busy,onClick:()=>setDoc(previous=>({...previous,[key]:''}))},psQrText("Şəkli sil","Resmi kaldır","Remove image"))));
  const update=(id,values)=>setDoc({...doc,items:doc.items.map(p=>p.id===id?{...p,...values}:p)});
  const download=async()=>{
   const escape=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -23331,7 +23365,7 @@ function PsQrSettings(){
  error&&h("p",{role:"alert",className:"ps-qr-error"},error),
  h("div",{className:"ps-qr-actions"},h("button",{disabled:busy,onClick:load},psQrText("POS menyusunu yenilə","POS menüsünü yenile","Refresh POS menu")),h("button",{className:"primary",disabled:busy||!doc?.items?.length||!doc?.tables?.length,onClick:()=>action("publish")},busy?psQrText("Gözləyin…","Bekleyin…","Please wait…"):psQrText("Menyunu yayımla","Menüyü yayınla","Publish menu")),data?.menu?.enabled&&h("button",{disabled:busy,onClick:()=>action("disable")},psQrText("Sifarişi dayandır","Siparişi durdur","Disable ordering"))),
  doc&&h(reactExports.Fragment,null,
-  h("div",{className:"ps-qr-design"},field("name",psQrText("Restoran adı","Restoran adı","Restaurant name")),field("description",psQrText("Qısa açıqlama","Kısa açıklama","Short description")),field("logo",psQrText("Loqo — HTTPS şəkil ünvanı","Logo — HTTPS resim adresi","Logo — HTTPS image URL"),"url"),
+  h("div",{className:"ps-qr-design"},field("name",psQrText("Restoran adı","Restoran adı","Restaurant name")),field("description",psQrText("Qısa açıqlama","Kısa açıklama","Short description")),field("logo",psQrText("Loqo ünvanı (istəyə bağlı)","Logo adresi (isteğe bağlı)","Logo URL (optional)"),"url"),field("cover",psQrText("Üz qabığı ünvanı (istəyə bağlı)","Kapak adresi (isteğe bağlı)","Cover URL (optional)"),"url"),brandFile("logo",psQrText("Restoran loqosu","Restoran logosu","Restaurant logo")),brandFile("cover",psQrText("Üz qabığı","Kapak görseli","Cover photo")),psQrScenes(doc,setDoc,busy),h("p",{className:"ps-qr-brand-help"},psQrText("Loqonu və üz qabığını kompüterdən seçin. Üz qabığı olmayanda qonaq səhifəsi restoranın adı, loqosu və rəngi ilə açılır; hazır şəkillərdən birini də seçə bilərsiniz. Dəyişiklikləri saxlamaq üçün menyunu yayımlayın.","Logo ve kapağı bilgisayardan seçin. Kapak yoksa misafir sayfası restoranın adı, logosu ve rengiyle açılır; hazır görsellerden birini de seçebilirsiniz. Değişiklikleri kaydetmek için menüyü yayınlayın.","Choose a logo and cover from your computer. Without a cover the guest page opens with the restaurant's name, logo and colour; you can also pick one of the ready-made pictures. Publish the menu to save changes.")),
    h("label",{className:"ps-qr-field"},psQrText("Rəng","Renk","Colour"),h("select",{"aria-label":psQrText("Rəng","Renk","Colour"),value:doc.accent,onChange:e=>setDoc({...doc,accent:e.target.value})},...[['blue','Mavi','Mavi','Blue'],['green','Yaşıl','Yeşil','Green'],['burgundy','Bordo','Bordo','Burgundy'],['amber','Kəhrəba','Kehribar','Amber']].map(([v,a,t,e])=>h("option",{key:v,value:v},psQrText(a,t,e))))),
    h("label",{className:"ps-qr-field"},psQrText("Görünüş","Görünüm","Layout"),h("select",{"aria-label":psQrText("Görünüş","Görünüm","Layout"),value:doc.layout,onChange:e=>setDoc({...doc,layout:e.target.value})},h("option",{value:"cards"},psQrText("Şəkilli kartlar","Resimli kartlar","Photo cards")),h("option",{value:"list"},psQrText("Yığcam siyahı","Kompakt liste","Compact list"))))),
   h("p",{className:"ps-qr-help"},psQrText("Qiymətlər, kateqoriyalar və seçimlər POS menyusundan götürülür. Dəyişəndə menyunu yenidən yayımlayın. Yalnız əsas kassa və internet açıq olduqda yeni sifariş qəbul edilir.","Fiyatlar, kategoriler ve seçenekler POS menüsünden alınır. Değişiklikten sonra yeniden yayınlayın. Yeni siparişler için ana kasa ve internet açık olmalıdır.","Prices, categories and options come from the POS menu. Republish after changes. The main till and internet must remain available for new orders.")),
@@ -23343,15 +23377,48 @@ function PsQrSettings(){
  data?.tables?.length>0&&h("section",{className:"ps-qr-codes"},h("div",{className:"ps-qr-heading"},h("h3",null,psQrText("Masa QR kodları","Masa QR kodları","Table QR codes")),h("button",{disabled:busy,onClick:()=>{if(rotate){void action("rotate");setRotate(false);}else setRotate(true)}},rotate?psQrText("Təsdiq et: əvvəlki kodlar bağlanacaq","Onayla: eski kodlar kapanacak","Confirm: old codes will stop working"):psQrText("QR kodlarını dəyiş","QR kodlarını değiştir","Replace QR codes")),h("button",{onClick:download},psQrText("Çap kartlarını endir","Baskı kartlarını indir","Download printable cards"))),h("p",{className:"ps-qr-help"},psQrText("HTML faylını brauzerdə açıb Çap et / PDF seçin. Hər kartı uyğun masaya yerləşdirin.","HTML dosyasını tarayıcıda açıp Yazdır / PDF seçin. Kartları ilgili masalara koyun.","Open the HTML file in a browser and choose Print / PDF. Place each card on its matching table.")),h("div",{className:"ps-qr-code-grid"},...data.tables.map(t=>h("article",{key:t.id},h("img",{src:t.qr,alt:'QR · '+t.label}),h("strong",null,t.label),h("a",{href:t.url,target:"_blank",rel:"noreferrer"},psQrText("Menyunu aç","Menüyü aç","Open menu")))))));
 }
 function PsQrInbox(){
- const h=psH,navigate=useNavigate(),session=useAuthStore(s=>s.session),allowed=useAuthStore(s=>s.hasPermission)("order.create"),[orders,setOrders]=reactExports.useState([]),[open,setOpen]=reactExports.useState(false),[busy,setBusy]=reactExports.useState(""),[error,setError]=reactExports.useState(""),[reason,setReason]=reactExports.useState({}),seen=reactExports.useRef(new Set()),dialogRef=reactExports.useRef(null);
- const enabled=!!session&&allowed&&!window.__psMarketMode;
- const load=reactExports.useCallback(async()=>{try{const r=await psQrCall("qr.inbox",{});setOrders(r.orders||[]);setError("");const news=(r.orders||[]).filter(o=>o.status==='pending'&&!seen.current.has(o.id));for(const o of r.orders||[])seen.current.add(o.id);if(news.length)toast(psQrText("Yeni QR sifariş: ","Yeni QR sipariş: ","New QR order: ")+news[0].tableLabel,"info");}catch(e){setError(e.message)}},[]);
- reactExports.useEffect(()=>{if(!enabled)return;void load();const timer=setInterval(()=>{if(!document.hidden)void load()},8000);return()=>clearInterval(timer)},[enabled,load]);
- reactExports.useEffect(()=>{if(!open)return;const previous=document.activeElement,overflow=document.body.style.overflow;document.body.style.overflow="hidden";const timer=setTimeout(()=>dialogRef.current?.querySelector("button")?.focus(),0);const key=e=>{if(e.key!=="Tab")return;const controls=[...dialogRef.current?.querySelectorAll("button:not(:disabled),input")||[]],first=controls[0],last=controls[controls.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}};document.addEventListener("keydown",key);return()=>{clearTimeout(timer);document.body.style.overflow=overflow;document.removeEventListener("keydown",key);previous?.focus?.()}},[open]);
+ const h=psH,navigate=useNavigate(),session=useAuthStore(s=>s.session),allowed=useAuthStore(s=>s.hasPermission)("order.create");
+ const [,accessTick]=reactExports.useState(0);
+ reactExports.useEffect(()=>{const update=()=>accessTick(n=>n+1);window.addEventListener('ps:access',update);return()=>window.removeEventListener('ps:access',update)},[]);
+ const enabled=!!session&&allowed&&!window.__psMarketMode&&_psArea('/tables');
+ const [orders,setOrders]=reactExports.useState([]),[open,setOpen]=reactExports.useState(false),[busy,setBusy]=reactExports.useState(''),[error,setError]=reactExports.useState(''),[reason,setReason]=reactExports.useState({});
+ const seen=reactExports.useRef(new Set()),dialogRef=reactExports.useRef(null),request=reactExports.useRef(0),pendingRequest=reactExports.useRef(0),context=reactExports.useRef(null);
+ context.current={session,enabled};
+ const valid=()=>context.current.session===session&&context.current.enabled;
+ const load=reactExports.useCallback(async()=>{
+  if(!enabled)return false;
+  const sequence=++request.current;pendingRequest.current=sequence;
+  try{
+   const r=await psQrCall('qr.inbox',{});if(!valid()||sequence!==request.current)return false;
+   const rows=r.orders||[];setOrders(rows);setError('');
+   const news=rows.filter(o=>o.status==='pending'&&!seen.current.has(o.id));for(const o of rows)seen.current.add(o.id);
+   if(news.length)toast(psQrText('Yeni QR sifariş: ','Yeni QR sipariş: ','New QR order: ')+news[0].tableLabel,'info');return true;
+  }catch(e){if(valid()&&sequence===request.current)setError(e.message);return false;}
+  finally{if(pendingRequest.current===sequence)pendingRequest.current=0;}
+ },[session,enabled]);
+ reactExports.useEffect(()=>{
+  ++request.current;pendingRequest.current=0;seen.current=new Set();setOrders([]);setError('');setReason({});setBusy('');setOpen(false);
+  if(!enabled)return;
+  void load();const timer=setInterval(()=>{if(!document.hidden&&!pendingRequest.current)void load()},8000);
+  return()=>{++request.current;pendingRequest.current=0;clearInterval(timer)};
+ },[session,enabled,load]);
+ reactExports.useEffect(()=>{
+  if(!open||!enabled)return;
+  const previous=document.activeElement,overflow=document.body.style.overflow;document.body.style.overflow='hidden';
+  const timer=setTimeout(()=>dialogRef.current?.querySelector('button')?.focus(),0);
+  const key=e=>{if(e.key!=='Tab')return;const controls=[...dialogRef.current?.querySelectorAll('button:not(:disabled),input')||[]],first=controls[0],last=controls[controls.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}};
+  document.addEventListener('keydown',key);return()=>{clearTimeout(timer);document.body.style.overflow=overflow;document.removeEventListener('keydown',key);if(previous?.isConnected)previous.focus?.();else document.querySelector('.ps-touch-sidebar .ps-nav')?.focus()};
+ },[open,enabled]);
  if(!enabled)return null;
  const pending=orders.filter(o=>o.status==='pending'||o.status==='accepting');
- const decide=async(o,action)=>{setBusy(o.id);setError("");try{const r=await psQrCall("qr.decision",{id:o.id,action,reason:reason[o.id]||""});await load();if(action==='accept'){setOpen(false);navigate('/orders/'+r.tableId);toast(psQrText("Sifariş hesaba əlavə edildi. Mətbəxə göndərməyi unutmayın.","Sipariş hesaba eklendi. Mutfağa göndermeyi unutmayın.","Order added to the bill. Remember to send it to the kitchen."),"success");}}catch(e){setError(e.message)}finally{setBusy("")}};
- return h(reactExports.Fragment,null,h("button",{type:"button",className:"ps-qr-inbox-toggle ps-nav "+(open?"ps-nav-on":"ps-nav-off"),"aria-haspopup":"dialog","aria-expanded":open,"aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders")+(pending.length?' · '+pending.length:''),title:psQrText("QR sifarişlər","QR siparişler","QR orders"),onClick:()=>{setOpen(true);void load()}},h("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.8,"aria-hidden":"true"},h("path",{d:"M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h2v2h-2z M19 15h2 M15 19v2 M19 19h2v2h-2z"})),h("span",{className:"ps-touch-nav-label"},psQrText("QR sifarişlər","QR siparişler","QR orders")),pending.length>0&&h("b",{"aria-hidden":"true"},pending.length>99?'99+':pending.length)),open&&requireReactDom().createPortal(h("div",{className:"ps-qr-overlay",onClick:e=>{if(e.target===e.currentTarget)setOpen(false)}},h("section",{className:"ps-qr-inbox",ref:dialogRef,role:"dialog","aria-modal":"true","aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders"),onKeyDown:e=>{if(e.key==='Escape')setOpen(false)}},h("header",{className:"ps-qr-heading"},h("h2",null,psQrText("QR sifarişlər","QR siparişler","QR orders")),h("button",{onClick:()=>setOpen(false)},psQrText("Bağla","Kapat","Close"))),error&&h("p",{className:"ps-qr-error",role:"alert"},error),h("button",{onClick:load},psQrText("Yenilə","Yenile","Refresh")),!orders.length&&h("p",null,psQrText("Hələ QR sifariş yoxdur.","Henüz QR sipariş yok.","No QR orders yet.")),...orders.map(o=>h("article",{key:o.id,className:"ps-qr-order"},h("div",{className:"ps-qr-heading"},h("h3",null,o.tableLabel),h("span",null,new Date(o.createdAt).toLocaleString())),h("ul",null,...o.lines.map((l,i)=>h("li",{key:i},h("strong",null,l.qty+' × '+l.name),h("span",null,psQrMoney(l.lineTotalMinor)),l.selected?.length>0&&h("small",null,l.selected.map(m=>m.name).join(', ')),l.note&&h("small",null,l.note)))),o.note&&h("p",null,o.note),h("p",null,psQrText("Məhsullar: ","Ürünler: ","Items: ")+psQrMoney(o.subtotalMinor)),o.reason&&h("p",{className:"ps-qr-error"},o.reason),['pending','accepting'].includes(o.status)?h("div",{className:"ps-qr-actions"},h("button",{className:"primary",disabled:!!busy||(o.status==='accepting'&&Date.parse(o.claimUntil)>Date.now()),onClick:()=>decide(o,'accept')},psQrText("Qəbul et və hesabı aç","Kabul et ve hesabı aç","Accept and open bill")),o.status==='pending'&&h(reactExports.Fragment,null,h("input",{placeholder:psQrText("İmtina səbəbi","Ret nedeni","Rejection reason"),value:reason[o.id]||"",onChange:e=>setReason({...reason,[o.id]:e.target.value})}),h("button",{disabled:!!busy||!(reason[o.id]||'').trim(),onClick:()=>decide(o,'reject')},psQrText("İmtina et","Reddet","Reject")))):h("span",{className:"ps-qr-state"},({accepted:psQrText("Qəbul edilib","Kabul edildi","Accepted"),rejected:psQrText("İmtina edilib","Reddedildi","Rejected"),expired:psQrText("Müddəti bitib","Süresi doldu","Expired")})[o.status]||o.status))))),document.body));
+ const decide=async(o,action)=>{
+  setBusy(o.id);setError('');try{
+   const r=await psQrCall('qr.decision',{id:o.id,action,reason:reason[o.id]||''});if(!valid())return;
+   await load();if(!valid())return;
+   if(action==='accept'){setOpen(false);navigate('/orders/'+r.tableId);toast(psQrText('Sifariş hesaba əlavə edildi. Mətbəxə göndərməyi unutmayın.','Sipariş hesaba eklendi. Mutfağa göndermeyi unutmayın.','Order added to the bill. Remember to send it to the kitchen.'),'success');}
+  }catch(e){if(valid())setError(e.message)}finally{if(valid())setBusy('')}
+ };
+ return h(reactExports.Fragment,null,pending.length>0&&h("button",{type:"button",className:"ps-qr-inbox-toggle ps-nav "+(open?"ps-nav-on":"ps-nav-off"),"aria-haspopup":"dialog","aria-expanded":open,"aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders")+(pending.length?' · '+pending.length:''),title:psQrText("QR sifarişlər","QR siparişler","QR orders"),onClick:()=>{setOpen(true);void load()}},h("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.8,"aria-hidden":"true"},h("path",{d:"M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h2v2h-2z M19 15h2 M15 19v2 M19 19h2v2h-2z"})),h("span",{className:"ps-touch-nav-label"},psQrText("QR sifarişlər","QR siparişler","QR orders")),pending.length>0&&h("b",{"aria-hidden":"true"},pending.length>99?'99+':pending.length)),open&&requireReactDom().createPortal(h("div",{className:"ps-qr-overlay",onClick:e=>{if(e.target===e.currentTarget)setOpen(false)}},h("section",{className:"ps-qr-inbox",ref:dialogRef,role:"dialog","aria-modal":"true","aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders"),onKeyDown:e=>{if(e.key==='Escape')setOpen(false)}},h("header",{className:"ps-qr-heading"},h("h2",null,psQrText("QR sifarişlər","QR siparişler","QR orders")),h("button",{onClick:()=>setOpen(false)},psQrText("Bağla","Kapat","Close"))),error&&h("p",{className:"ps-qr-error",role:"alert"},error),h("button",{onClick:load},psQrText("Yenilə","Yenile","Refresh")),!orders.length&&h("p",null,psQrText("Hələ QR sifariş yoxdur.","Henüz QR sipariş yok.","No QR orders yet.")),...orders.map(o=>h("article",{key:o.id,className:"ps-qr-order"},h("div",{className:"ps-qr-heading"},h("h3",null,o.tableLabel),h("span",null,new Date(o.createdAt).toLocaleString())),h("ul",null,...o.lines.map((l,i)=>h("li",{key:i},h("strong",null,l.qty+' × '+l.name),h("span",null,psQrMoney(l.lineTotalMinor)),l.selected?.length>0&&h("small",null,l.selected.map(m=>m.name).join(', ')),l.note&&h("small",null,l.note)))),o.note&&h("p",null,o.note),h("p",null,psQrText("Məhsullar: ","Ürünler: ","Items: ")+psQrMoney(o.subtotalMinor)),o.reason&&h("p",{className:"ps-qr-error"},o.reason),['pending','accepting'].includes(o.status)?h("div",{className:"ps-qr-actions"},h("button",{className:"primary",disabled:!!busy||(o.status==='accepting'&&Date.parse(o.claimUntil)>Date.now()),onClick:()=>decide(o,'accept')},psQrText("Qəbul et və hesabı aç","Kabul et ve hesabı aç","Accept and open bill")),o.status==='pending'&&h(reactExports.Fragment,null,h("input",{placeholder:psQrText("İmtina səbəbi","Ret nedeni","Rejection reason"),value:reason[o.id]||"",onChange:e=>setReason({...reason,[o.id]:e.target.value})}),h("button",{disabled:!!busy||!(reason[o.id]||'').trim(),onClick:()=>decide(o,'reject')},psQrText("İmtina et","Reddet","Reject")))):h("span",{className:"ps-qr-state"},({accepted:psQrText("Qəbul edilib","Kabul edildi","Accepted"),rejected:psQrText("İmtina edilib","Reddedildi","Rejected"),expired:psQrText("Müddəti bitib","Süresi doldu","Expired")})[o.status]||o.status))))),document.body));
 }
 
 function settingsSections(t) {
@@ -26524,7 +26591,7 @@ function PsDeliveryStartButton() {
   };
   const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
   return h(reactExports.Fragment, null,
-    h("button", { type: "button", className: "ps-delivery-start", onClick: () => setForm({ name: "", phone: "", address: "", note: "" }) }, h("img",{src:"./assets/nav/delivery.png",alt:"",draggable:false}),h("span",null,psAdminText("Çatdırılma","Teslimat","Delivery"))),
+    h("button", {type:"button",className:"ps-ops-button ps-ops-button--gold ps-delivery-new",onClick:()=>setForm({name:"",phone:"",address:"",note:""})},psAdminText("+ Yeni sifariş","+ Yeni sipariş","+ New order")),
     form ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Yeni çatdırılma sifarişi", onClose: () => setForm(null), busy, children: h("div", { className: "space-y-3" },
       h("div", { className: "grid gap-2 sm:grid-cols-2" },
         jsxRuntimeExports.jsx(OpsField, { label: "Müştəri", value: form.name, onChange: (v) => setForm({ ...form, name: v }), placeholder: "məs. Aysel" }),
@@ -26658,6 +26725,7 @@ function OpsDelivery() {
         h("option", { value: "" }, "Bütün kuryerlər"), couriers.map((c) => h("option", { key: c.id, value: c.id }, c.name))),
       h("select",{className:psSelectCls,value:branch,onChange:e=>{setBranch(e.target.value);setPicked({});}},h("option",{value:""},psAdminText("Bütün filiallar","Tüm şubeler","All branches")),branchOptions.map(([id,name])=>h("option",{key:id,value:id},name))),
       h("span", { className: "ml-auto" }),
+      /* DELIVERY_CREATE_IN_PANEL */ h(PsDeliveryStartButton, {}),
       hasPermission("delivery.manage") ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setCourierForm({ name: "", phone: "" }), children: "+ Kuryer" }) : null,
       jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", disabled: busy, onClick: () => void reload(), children: "Yenilə" })),
 
@@ -27810,7 +27878,7 @@ function OperationsPage() {
     { id: "delivery", label: "Çatdırılma", show: !psMarketMode() && hasPermission("delivery.view"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsDelivery, {}) },
     { id: "export", label: "İxrac", show: hasPermission("reports.export"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsExport, {}) }
   ].filter((tab) => !(psMarketMode() && (tab.id === "costing" || tab.id === "delivery")));
-  const tabs = _psTabs.filter((tab) => tab.show);
+  const tabs = _psTabs.filter((tab) => tab.show && _psArea(tab.id==='goods'||tab.id==='categories'||tab.id==='stocktake'||tab.id==='costing'?'/operations?tab=stock':'/operations?tab='+tab.id));
 
   const opsLocation = useLocation();
   const opsNavigate = useNavigate();
@@ -27848,23 +27916,7 @@ function OperationsPage() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted", children: "Bu bölmələr üçün səlahiyyətiniz yoxdur." }) });
   }
 
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-operations-page", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: current?.label ?? "Əməliyyatlar" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-page-subtitle", children: psOpsSubtitle(current?.id) })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "ps-ops-tabs", "aria-label": psAdminText("Bölmələr", "Bölümler", "Sections"), children: _psTabs.map((tab) =>
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
-        type: "button",
-        "aria-disabled": tab.show ? void 0 : true,
-        onClick: () => tab.show ? setActive(tab.id) : _psDenied(), "aria-current": current?.id === tab.id ? "page" : undefined,
-        className: current?.id === tab.id
-          ? "rounded-xl border border-gold/50 bg-gold/15 px-3 py-2 text-sm text-gold"
-          : "rounded-xl border border-hairline px-3 py-2 text-sm text-muted hover:text-cream",
-        children: tab.label
-      }, tab.id)) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-ops-panel", children: current?.render() })
-  ] });
+  return jsxRuntimeExports.jsx(PsOperationsWorkspace,{tabs:_psTabs,current,onSelect:setActive,children: current?.render()});
 }
 
 /* POS_ADMIN_COMPONENTS_START */
@@ -28016,13 +28068,13 @@ function PsOpsLoadState({ error, retry }) {
   return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-empty-state", role: error ? "alert" : "status" }, /* @__PURE__ */ reactExports.createElement("p", null, error || psAdminText("M\u0259lumatlar y\xFCkl\u0259nir\u2026", "Veriler y\xFCkleniyor\u2026", "Loading data\u2026")), error && /* @__PURE__ */ reactExports.createElement("button", { onClick: retry }, psAdminText("Yenid\u0259n yoxla", "Tekrar dene", "Try again")));
 }
 /* POS_ADMIN_COMPONENTS_END */
-function AdminHubPage() {
+function usePsManagementLinks() {
   const { t } = useI18n();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   useAuthStore((s) => s.session);
   const[, _psAccessTick]=reactExports.useState(0);reactExports.useEffect(()=>{const fn=()=>_psAccessTick(n=>n+1);window.addEventListener("ps:access",fn);return()=>window.removeEventListener("ps:access",fn);},[]);
   const links = [
-    {to: "/branches",label:psAdminText("Obyektlər","İşletmeler","Locations"),icon:Store,show:hasPermission("users.manage")||["manager","administrator"].includes(useAuthStore.getState().session?.role)},
+    {to: "/branches",label:psAdminText("Obyektlər","İşletmeler","Locations"),icon:Store,show:hasPermission("users.manage")},
     {to: "/refund",label:psAdminText("Geri qaytarma","İade","Returns"),icon:ReceiptText,show:hasPermission("payment.refund")},
     { to: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard, show: hasPermission("reports.view") },
     { to: "/admin/tables", label: t.nav.adminTables, icon: LayoutGrid, show: hasPermission("tables.layout") },
@@ -28042,10 +28094,18 @@ function AdminHubPage() {
     { to: "/admin/cash", label: t.nav.cash, icon: CircleDollarSign, show: hasPermission("cash.manage") },
     { to: "/reconcile", label: t.nav.reconcile, icon: CircleDollarSign, show: hasPermission("payment.reconcile") },
     { to: "/audit", label: t.nav.audit, icon: ClipboardList, show: hasPermission("audit.view") },
-    { to: "/settings/license", label: t.nav.license, icon: Key, show: true },
+    { to: "/settings/license", label: t.nav.license, icon: Key, show: hasPermission("settings.manage") },
     { to: "/diagnostics", label: t.nav.diagnostics, icon: ShieldAlert, show: hasPermission("settings.manage") }
-  ].map((l) => ({ ...l, locked: !(l.show && (l.to === "/branches" || _psArea(l.to))) }));
-  return jsxRuntimeExports.jsx(PsAdminHub, { links });
+  ].map((l) => ({ ...l, locked: !(l.show && (l.to === "/branches" || _psArea(psManagementAccessPath(l.to)))) }));
+  const extra = [
+    {to:'/operations?tab=costing',label:psAdminText('Kalkulyasiya','Reçete maliyeti','Recipe costing'),show:!psMarketMode()&&hasPermission('inventory.view'),area:'/operations?tab=stock'},
+    {to:'/operations?tab=categories',label:psAdminText('Kateqoriyalar','Kategoriler','Categories'),show:hasPermission('inventory.view'),area:'/operations?tab=stock'},
+    {to:'/operations?tab=expenses',label:psAdminText('Xərclər','Giderler','Expenses'),show:hasPermission('cash.manage')},
+    {to:'/operations?tab=income',label:psAdminText('Qazanc','Gelir','Income'),show:hasPermission('cash.manage')},
+    {to:'/operations?tab=documents',label:psAdminText('Ödəniş qaimələri','Ödeme belgeleri','Payment documents'),show:(!psMarketMode()||window.__psCloudBranchMode||useAuthStore.getState().session?.canPaymentDocuments===true)&&['cash.manage','customers.view','suppliers.view','salary.manage'].some(hasPermission)},
+    {to:'/operations?tab=export',label:psAdminText('İxrac','Dışa aktar','Export'),show:hasPermission('reports.export')}
+  ].map(link=>({...link,locked:!(link.show&&_psArea(link.area||link.to))}));
+  return [...links,...extra].filter(link=>link.show&&!link.locked&&link.to!=='/operations?tab=delivery');
 }
 const LOGO_RASTER_WIDTH = 384;
 const LOGO_PREVIEW_WIDTH = 220;
@@ -28368,12 +28428,15 @@ const ZOOM_OPTIONS = [
   { id: 1.1, label: "110%" },
   { id: 1.25, label: "125%" }
 ];
-function SettingsPage() {
+function PsManagementSettingsContent() {
   const { t, lang, setLang } = useI18n();
   const [confirm, confirmDialog] = useConfirm();
   const navigate = useNavigate();
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  const [settingsSection, setSettingsSection] = reactExports.useState("restaurant");
+  const settingsLocation=useLocation();
+  const validSection=()=>{const value=new URLSearchParams(settingsLocation.search).get('section');return settingsSections(t).some(section=>section.id===value)?value:'restaurant';};
+  const [settingsSection,setSettingsSection]=reactExports.useState(validSection);
+  reactExports.useEffect(()=>{setSettingsSection(validSection());},[settingsLocation.search]);
   const [qrUrl, setQrUrl] = reactExports.useState("");
   const [qrOn, setQrOn] = reactExports.useState(true);
   const [receiptLogo, setReceiptLogo] = reactExports.useState("");
@@ -28925,32 +28988,10 @@ function SettingsPage() {
         return t.settings.updateIdle;
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-settings-page flex h-full flex-col overflow-auto", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-settings-page pm-settings-content", children: [
     /* POS_DESTINATION_SETTINGS_TOP_v1 */
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "settings-shell", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-hero", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: "Sistem ayarları" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Restoran, ekran, printer və cihaz sazlamaları." })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "category-bar", "aria-label": "Sistem ayarları", children:
-        settingsSections(t).map((sec) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            type: "button",
-            onClick: () => { setSettingsSection(sec.id); document.querySelector(".ps-settings-page")?.scrollTo({top:0,behavior:"auto"}); },
-            "aria-current": settingsSection === sec.id ? "page" : undefined,
-            className: "category" + (settingsSection === sec.id ? " active" : "") + (sec.danger ? " danger" : ""),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ci tone-" + sec.tone, children:
-                /* @__PURE__ */ jsxRuntimeExports.jsx(sec.icon, { className: "h-4 w-4" }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: sec.label }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: sec.hint })
-            ]
-          },
-          sec.id
-        )) }),
+      jsxRuntimeExports.jsx(PsSettingsPicker,{sections:settingsSections(t),value:settingsSection,onChange:id=>{setSettingsSection(id);navigate('/settings?section='+encodeURIComponent(id),{replace:true});}}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSectionCtx.Provider, { value: settingsSection, children:
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-section": settingsSection, className: "ps-settings-stack pane active", children: [
       settingsSection === "qr-orders" && jsxRuntimeExports.jsx(PsQrSettings, {}),
@@ -30188,7 +30229,7 @@ function PsOriginalTablesPage() {
               },
               area.id
             );
-          }), jsxRuntimeExports.jsx(PsDeliveryStartButton, {}, "ps-delivery-start")] }),
+          })] }),
         ]
       }
     ),
@@ -31616,6 +31657,90 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -31823,3 +31948,125 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
+/* MANAGEMENT_COMPONENTS_START */
+function psManagementGroups() {
+  return [
+    { id: "menu", label: psAdminText("Menyu v\u0259 anbar", "Men\xFC ve stok", "Menu & stock"), image: "menu", hint: psAdminText("M\u0259hsul, resept v\u0259 qal\u0131qlar", "\xDCr\xFCn, re\xE7ete ve stok", "Products, recipes and stock") },
+    { id: "trade", label: psAdminText("Ticar\u0259t", "Ticaret", "Trade"), image: "trade", hint: psAdminText("Al\u0131\u015Flar v\u0259 sat\u0131\u015Flar", "Al\u0131\u015Flar ve sat\u0131\u015Flar", "Purchases and sales") },
+    { id: "finance", label: psAdminText("Maliyy\u0259", "Finans", "Finance"), image: "cash", hint: psAdminText("Kassa, qaim\u0259 v\u0259 hesabat", "Kasa, belge ve rapor", "Cash, documents and reports") },
+    { id: "people", label: psAdminText("Hey\u0259t v\u0259 xidm\u0259t", "Ekip ve hizmet", "People & service"), image: "staff", hint: psAdminText("\u0130\u015F\xE7il\u0259r, masalar v\u0259 \xE7atd\u0131r\u0131lma", "\xC7al\u0131\u015Fanlar, masalar ve teslimat", "Staff, tables and delivery") },
+    { id: "settings", label: psAdminText("Parametrl\u0259r", "Ayarlar", "Settings"), image: "settings", hint: psAdminText("Restoran, printer v\u0259 cihazlar", "Restoran, yaz\u0131c\u0131 ve cihazlar", "Restaurant, printers and devices") }
+  ];
+}
+function psManagementModule(to) {
+  const params = new URLSearchParams(to.split("?")[1] || "");
+  const section = params.get("section");
+  if (to.split("?")[0] === "/settings" && section) return ["settings", { printer: "printer", receipt: "documents", "qr-orders": "qr", screen: "devices" }[section] || "settings"];
+  const tab = params.get("tab");
+  const modules = { stock: ["menu", "stock"], goods: ["menu", "goods"], categories: ["menu", "categories"], stocktake: ["menu", "stocktake"], costing: ["menu", "costing"], menuCatalog: ["menu", "menu"], sales: ["trade", "trade"], purchases: ["trade", "trade"], vendors: ["people", "partners"], objects: ["settings", "branches"], kassa: ["finance", "cash"], staff: ["people", "staff"], expenses: ["finance", "expenses"], documents: ["finance", "documents"], income: ["finance", "income"], delivery: ["people", "delivery"], export: ["finance", "export"] };
+  const pages = { "/admin/catalog": ["menu", "menu"], "/branches": ["settings", "branches"], "/admin/staff": ["people", "staff"], "/admin/tables": ["people", "tables"], "/admin/gifts": ["people", "gifts"], "/refund": ["trade", "returns"], "/dashboard": ["finance", "reports"], "/admin/reports": ["finance", "reports"], "/admin/cash": ["finance", "cash"], "/reconcile": ["finance", "reconcile"], "/audit": ["finance", "audit"], "/settings": ["settings", "settings"], "/admin/backup": ["settings", "backup"], "/settings/license": ["settings", "license"], "/diagnostics": ["settings", "devices"] };
+  return modules[tab] || pages[to.split("?")[0]] || ["settings", "settings"];
+}
+function PsModuleImage({ name, className = "" }) {
+  return /* @__PURE__ */ psH("img", { className: "pm-image " + className, src: "./assets/modules/" + name + ".png", width: "64", height: "64", alt: "", "aria-hidden": "true", draggable: false });
+}
+function PsDeliveryNavIcon() {
+  return /* @__PURE__ */ psH("img", { className: "pm-delivery-icon", src: "./assets/modules/delivery-sidebar-white.png", width: "28", height: "28", alt: "", "aria-hidden": "true", draggable: false });
+}
+function psManagementAccessPath(to) {
+  const tab = new URLSearchParams(to.split("?")[1] || "").get("tab");
+  return ["goods", "categories", "stocktake", "costing"].includes(tab) ? "/operations?tab=stock" : to;
+}
+function PsManagementRail({ active, links }) {
+  links = links.filter((link) => link.show !== false && !link.locked);
+  return /* @__PURE__ */ psH("nav", { className: "pm-rail", "aria-label": psAdminText("\u0130dar\u0259etm\u0259 b\xF6lm\u0259l\u0259ri", "Y\xF6netim b\xF6l\xFCmleri", "Management sections") }, psManagementGroups().filter((group) => links.some((link) => psManagementModule(link.to)[0] === group.id)).map((group) => /* @__PURE__ */ psH(Link, { key: group.id, to: "/admin?group=" + group.id, className: "pm-rail-link" + (active === group.id ? " is-active" : ""), "aria-current": active === group.id ? "page" : void 0 }, /* @__PURE__ */ psH(PsModuleImage, { name: group.image }), /* @__PURE__ */ psH("span", null, group.label))));
+}
+function PsManagementLayout({ links, active, children }) {
+  return /* @__PURE__ */ psH("div", { className: "pm-layout" }, /* @__PURE__ */ psH(PsManagementRail, { active, links }), /* @__PURE__ */ psH("main", { className: "pm-main" }, children));
+}
+function PsManagementHub({ links }) {
+  links = links.filter((link) => link.show !== false && !link.locked && link.to !== "/operations?tab=delivery");
+  const location = useLocation();
+  const [query, setQuery] = reactExports.useState("");
+  const groups = psManagementGroups().filter((group2) => links.some((link) => psManagementModule(link.to)[0] === group2.id));
+  const requested = new URLSearchParams(location.search).get("group");
+  reactExports.useEffect(() => {
+    setQuery("");
+  }, [location.search]);
+  const active = groups.some((g) => g.id === requested) ? requested : groups[0]?.id;
+  const group = groups.find((g) => g.id === active);
+  const normal = (value) => String(value).toLocaleLowerCase("az").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
+  const needle = normal(query.trim());
+  const settingsLinks = [
+    ["printer", psAdminText("Printerl\u0259r", "Yaz\u0131c\u0131lar", "Printers"), psAdminText("Printeri qo\u015Fun v\u0259 \xE7ap i\u015Fini se\xE7in", "Yaz\u0131c\u0131 ba\u011Flay\u0131n ve g\xF6revini se\xE7in", "Connect a printer and choose its purpose")],
+    ["receipt", psAdminText("\xC7ek", "Fi\u015F", "Receipt"), psAdminText("\xC7ek loqosu, ka\u011F\u0131z v\u0259 QR", "Fi\u015F logosu, ka\u011F\u0131t ve QR", "Receipt logo, paper and QR")],
+    ["screen", psAdminText("Ekran v\u0259 dil", "Ekran ve dil", "Display & language"), psAdminText("G\xF6r\xFCn\xFC\u015F\xFC v\u0259 dili d\u0259yi\u015Fin", "G\xF6r\xFCn\xFCm\xFC ve dili de\u011Fi\u015Ftirin", "Change the display and language")],
+    ...!psMarketMode() ? [["qr-orders", psAdminText("QR sifari\u015Fl\u0259r", "QR sipari\u015Fler", "QR orders"), psAdminText("Menyu v\u0259 masa kodlar\u0131", "Men\xFC ve masa kodlar\u0131", "Menu and table codes")]] : []
+  ].map(([section, label, hint]) => ({ ...links.find((link) => link.to === "/settings"), to: "/settings?section=" + section, label, hint }));
+  const searchable = [...links, ...links.some((link) => link.to === "/settings") ? settingsLinks : []].map((link) => ({ ...link, ...link.to === "/admin/catalog" ? { label: psAdminText("Menyu", "Men\xFC", "Menu") } : {}, ...link.to === "/operations?tab=sales" || link.to === "/operations?tab=purchases" ? { label: psAdminText("Ticar\u0259t", "Ticaret", "Trade"), hint: psAdminText("Al\u0131\u015Flar v\u0259 sat\u0131\u015Flar", "Al\u0131\u015Flar ve sat\u0131\u015Flar", "Purchases and sales") } : {} }));
+  const trade = searchable.filter((link) => link.to === "/operations?tab=sales" || link.to === "/operations?tab=purchases");
+  const tradeLink = trade.find((link) => !link.locked) || trade[0];
+  const entries = searchable.filter((link) => !trade.includes(link) || link === tradeLink);
+  const shown = entries.filter((link) => needle ? normal(link.label + " " + (link.hint || psManagementHint(psManagementModule(link.to)[1])) + " " + psManagementGroups().find((g) => g.id === psManagementModule(link.to)[0])?.label).includes(needle) : psManagementModule(link.to)[0] === active);
+  if (!group) return /* @__PURE__ */ psH("div", { className: "pm-empty-access" }, /* @__PURE__ */ psH("h1", null, psAdminText("\u0130dar\u0259etm\u0259", "Y\xF6netim", "Management")), /* @__PURE__ */ psH("p", null, psAdminText("Bu hesab \xFC\xE7\xFCn b\xF6lm\u0259 t\u0259yin edilm\u0259yib.", "Bu hesaba b\xF6l\xFCm atanmam\u0131\u015F.", "No sections have been assigned to this account.")));
+  return /* @__PURE__ */ psH(PsManagementLayout, { links, active }, /* @__PURE__ */ psH("header", { className: "pm-heading" }, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, psAdminText("\u0130dar\u0259etm\u0259", "Y\xF6netim", "Management")), /* @__PURE__ */ psH("p", null, psAdminText("G\xFCnd\u0259lik i\u015Fl\u0259r v\u0259 proqram\u0131n ayarlar\u0131", "G\xFCnl\xFCk i\u015Fler ve uygulama ayarlar\u0131", "Daily work and application settings"))), /* @__PURE__ */ psH("label", { className: "pm-search" }, /* @__PURE__ */ psH("span", null, psAdminText("B\xF6lm\u0259 axtar", "B\xF6l\xFCm ara", "Find a section")), /* @__PURE__ */ psH("input", { type: "search", value: query, onChange: (event) => setQuery(event.target.value), placeholder: psAdminText("M\u0259s\u0259l\u0259n: kalkulyasiya, printer\u2026", "\xD6rne\u011Fin: re\xE7ete, yaz\u0131c\u0131\u2026", "Try: recipes, printers\u2026") }))), /* @__PURE__ */ psH("section", { className: "pm-destinations", "aria-label": needle ? psAdminText("Axtar\u0131\u015F n\u0259tic\u0259l\u0259ri", "Arama sonu\xE7lar\u0131", "Search results") : group.label }, /* @__PURE__ */ psH("header", { className: "pm-section-heading" }, /* @__PURE__ */ psH("h2", null, needle ? psAdminText("Axtar\u0131\u015F n\u0259tic\u0259l\u0259ri", "Arama sonu\xE7lar\u0131", "Search results") : group.label), !needle && /* @__PURE__ */ psH("p", null, group.hint)), /* @__PURE__ */ psH("div", { className: "pm-module-grid" }, shown.map((link) => {
+    const [, image] = psManagementModule(link.to);
+    return /* @__PURE__ */ psH(Link, { key: link.to, className: "pm-module" + (link.locked ? " is-locked" : ""), to: link.to, "aria-disabled": link.locked || void 0, onClick: (event) => {
+      if (link.locked) {
+        event.preventDefault();
+        _psDenied();
+      }
+    } }, /* @__PURE__ */ psH(PsModuleImage, { name: image }), /* @__PURE__ */ psH("span", { className: "pm-module-copy" }, /* @__PURE__ */ psH("strong", null, link.label), /* @__PURE__ */ psH("small", null, link.locked ? psAdminText("Giri\u015F icaz\u0259si t\u0259l\u0259b olunur", "Eri\u015Fim izni gerekiyor", "Access permission required") : link.hint || psManagementHint(image))), /* @__PURE__ */ psH("span", { className: "pm-module-arrow", "aria-hidden": "true" }, link.locked ? "\u2212" : "\u203A"));
+  })), !shown.length && /* @__PURE__ */ psH("p", { className: "pm-no-results", role: "status" }, psAdminText("Uy\u011Fun b\xF6lm\u0259 tap\u0131lmad\u0131. Ba\u015Fqa s\xF6zl\u0259 axtar\u0131n.", "Uygun b\xF6l\xFCm bulunamad\u0131. Ba\u015Fka s\xF6zc\xFCk deneyin.", "No matching section. Try another word."))));
+}
+function psManagementHint(image) {
+  const hints = { menu: ["Menyunu v\u0259 qiym\u0259tl\u0259ri d\xFCz\u0259ldin", "Men\xFCy\xFC ve fiyatlar\u0131 d\xFCzenleyin", "Edit your menu and prices"], stock: ["Qal\u0131qlar\u0131 v\u0259 mal h\u0259r\u0259k\u0259tini izl\u0259yin", "Stok ve hareketleri izleyin", "Track stock and movements"], goods: ["Mallar v\u0259 xammal kartlar\u0131", "\xDCr\xFCn ve hammadde kartlar\u0131", "Products and ingredients"], categories: ["Ana v\u0259 alt kateqoriyalar", "Ana ve alt kategoriler", "Categories and subcategories"], stocktake: ["Faktiki qal\u0131\u011F\u0131 yoxlay\u0131n", "Ger\xE7ek stok miktar\u0131n\u0131 kontrol edin", "Check physical stock"], costing: ["T\u0259rkib, porsiya v\u0259 maya d\u0259y\u0259ri", "\u0130\xE7erik, porsiyon ve maliyet", "Ingredients, portions and cost"], trade: ["Al\u0131\u015Flar v\u0259 sat\u0131\u015Flar", "Al\u0131\u015Flar ve sat\u0131\u015Flar", "Purchases and sales"], staff: ["\u0130\u015F\xE7il\u0259r, icaz\u0259l\u0259r v\u0259 maa\u015Flar", "\xC7al\u0131\u015Fanlar, izinler ve maa\u015Flar", "Staff, permissions and salaries"], tables: ["Zallar v\u0259 masalar\u0131n d\xFCz\xFCl\xFC\u015F\xFC", "Salonlar ve masa d\xFCzeni", "Rooms and table layout"], delivery: ["Sifari\u015Fl\u0259r v\u0259 kuryerl\u0259r", "Sipari\u015Fler ve kuryeler", "Orders and couriers"], partners: ["T\u0259chizat\xE7\u0131lar v\u0259 m\xFC\u015Ft\u0259ril\u0259r", "Tedarik\xE7iler ve m\xFC\u015Fteriler", "Suppliers and customers"], cash: ["Kassalar v\u0259 pul h\u0259r\u0259k\u0259ti", "Kasalar ve para hareketi", "Cash accounts and movements"], documents: ["\xD6d\u0259ni\u015Fl\u0259rin vahid siyah\u0131s\u0131", "\xD6demelerin ortak listesi", "All payment documents"], reports: ["G\u0259lir v\u0259 sat\u0131\u015F g\xF6st\u0259ricil\u0259ri", "Gelir ve sat\u0131\u015F verileri", "Revenue and sales figures"], settings: ["Restoran, printer, \xE7ek v\u0259 sistem", "Restoran, yaz\u0131c\u0131, fi\u015F ve sistem", "Restaurant, printer, receipt and system"], branches: ["Obyektl\u0259r v\u0259 ba\u011Fl\u0131 kassalar", "\u0130\u015Fletmeler ve ba\u011Fl\u0131 kasalar", "Locations and connected tills"], backup: ["Yed\u0259kl\u0259yin v\u0259 b\u0259rpa edin", "Yedekleyin ve geri y\xFCkleyin", "Back up and restore"], license: ["\u0130stifad\u0259 h\xFCquqlar\u0131", "Kullan\u0131m haklar\u0131", "Usage permissions"], devices: ["Ba\u011Flant\u0131 v\u0259 cihaz yoxlamas\u0131", "Ba\u011Flant\u0131 ve cihaz kontrol\xFC", "Connections and device checks"], gifts: ["Kampaniya v\u0259 h\u0259diyy\u0259l\u0259r", "Kampanyalar ve hediyeler", "Campaigns and gifts"], returns: ["Sat\u0131\u015F\u0131 tap\u0131n v\u0259 qaytar\u0131n", "Sat\u0131\u015F\u0131 bulun ve iade edin", "Find and return a sale"], reconcile: ["\xD6d\u0259ni\u015Fl\u0259ri tutu\u015Fdurun", "\xD6demeleri kar\u015F\u0131la\u015Ft\u0131r\u0131n", "Reconcile payments"], audit: ["\u018Fm\u0259liyyat tarix\xE7\u0259si", "\u0130\u015Flem ge\xE7mi\u015Fi", "Activity history"], expenses: ["X\u0259rcl\u0259ri qeyd edin", "Giderleri kaydedin", "Record expenses"], income: ["Dig\u0259r g\u0259lirl\u0259ri qeyd edin", "Di\u011Fer gelirleri kaydedin", "Record other income"], export: ["M\u0259lumatlar\u0131 fayla \xE7\u0131xar\u0131n", "Verileri dosyaya aktar\u0131n", "Export your records"] };
+  return hints[image] ? psAdminText(...hints[image]) : "";
+}
+function AdminHubPage() {
+  return /* @__PURE__ */ psH(PsManagementHub, { links: usePsManagementLinks() });
+}
+function SettingsPage() {
+  return /* @__PURE__ */ psH(PsManagementLayout, { links: usePsManagementLinks(), active: "settings" }, /* @__PURE__ */ psH(PsManagementSettingsContent, null));
+}
+function PsSettingsPicker({ sections, value, onChange }) {
+  const images = { "qr-orders": "qr", sunmi: "devices", restaurant: "branches", screen: "devices", printer: "printer", receipt: "documents", system: "devices", backup: "backup", danger: "license" };
+  return /* @__PURE__ */ psH("div", { className: "pm-settings-picker" }, /* @__PURE__ */ psH(PsModuleImage, { name: images[value] || "settings" }), /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, psAdminText("Parametrl\u0259r", "Ayarlar", "Settings")), /* @__PURE__ */ psH("p", null, psAdminText("D\u0259yi\u015Fm\u0259k ist\u0259diyiniz b\xF6lm\u0259ni se\xE7in", "D\xFCzenlemek istedi\u011Finiz b\xF6l\xFCm\xFC se\xE7in", "Choose the settings to edit"))), /* @__PURE__ */ psH("label", null, /* @__PURE__ */ psH("span", null, psAdminText("Parametr b\xF6lm\u0259si", "Ayar b\xF6l\xFCm\xFC", "Settings section")), /* @__PURE__ */ psH("select", { "aria-label": psAdminText("Parametr b\xF6lm\u0259si", "Ayar b\xF6l\xFCm\xFC", "Settings section"), value, onChange: (event) => onChange(event.target.value) }, sections.map((section) => /* @__PURE__ */ psH("option", { key: section.id, value: section.id }, section.label)))));
+}
+function PsOperationsWorkspace({ tabs, current, onSelect, children }) {
+  const groupId = psManagementModule("/operations?tab=" + current.id)[0];
+  const group = psManagementGroups().find((group2) => group2.id === groupId);
+  const siblings = current.id === "delivery" ? [] : tabs.filter((tab) => psManagementModule("/operations?tab=" + tab.id)[0] === groupId && tab.show && _psArea(psManagementAccessPath("/operations?tab=" + tab.id)) && tab.id !== "delivery");
+  const label = groupId === "trade" ? psAdminText("Ticar\u0259t", "Ticaret", "Trade") : current.label;
+  const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  const dialog = reactExports.useRef(null), trigger = reactExports.useRef(null), dialogId = reactExports.useId();
+  reactExports.useEffect(() => {
+    setMenuOpen(false);
+  }, [current.id]);
+  reactExports.useEffect(() => {
+    if (!menuOpen) return;
+    const element = dialog.current, previous = document.activeElement;
+    element.showModal();
+    element.querySelector('[aria-current="page"],button')?.focus();
+    return () => {
+      element.close();
+      if (previous?.isConnected) previous.focus();
+      else trigger.current?.focus();
+    };
+  }, [menuOpen]);
+  const choices = () => siblings.map((tab) => /* @__PURE__ */ psH("button", { key: tab.id, type: "button", "aria-current": current.id === tab.id ? "page" : void 0, onClick: () => {
+    onSelect(tab.id);
+    setMenuOpen(false);
+  } }, /* @__PURE__ */ psH(PsModuleImage, { name: psManagementModule("/operations?tab=" + tab.id)[1] }), /* @__PURE__ */ psH("span", null, tab.label)));
+  return /* @__PURE__ */ psH("div", { className: "ps-operations-page pm-operations", "data-module": current.id }, /* @__PURE__ */ psH("div", { className: "pm-operation-shell" + (siblings.length ? "" : " pm-operation-shell--single") }, siblings.length > 0 && /* @__PURE__ */ psH("div", { className: "pm-operation-rail" }, /* @__PURE__ */ psH(Link, { className: "pm-rail-home", to: "/admin?group=" + groupId }, psAdminText("\u2039 \u0130dar\u0259etm\u0259", "\u2039 Y\xF6netim", "\u2039 Management")), /* @__PURE__ */ psH("nav", { "aria-label": group.label }, choices())), /* @__PURE__ */ psH("div", { className: "pm-operation-main" }, /* @__PURE__ */ psH("header", { className: "pm-operation-heading" }, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, label), /* @__PURE__ */ psH("span", { className: "pm-operation-group" }, group.label)), siblings.length > 0 ? /* @__PURE__ */ psH("button", { ref: trigger, type: "button", className: "pm-sections-toggle", "aria-haspopup": "dialog", "aria-expanded": menuOpen, "aria-controls": dialogId, onClick: () => setMenuOpen(true) }, psAdminText("B\xF6lm\u0259l\u0259r", "B\xF6l\xFCmler", "Sections")) : /* @__PURE__ */ psH(Link, { className: "pm-back", to: "/admin?group=" + groupId }, psAdminText("\u0130dar\u0259etm\u0259", "Y\xF6netim", "Management"))), /* @__PURE__ */ psH("div", { className: "ps-ops-panel pm-operation-panel" }, children))), menuOpen && /* @__PURE__ */ psH("dialog", { id: dialogId, ref: dialog, className: "pm-section-drawer", "aria-label": psAdminText("B\xF6lm\u0259l\u0259r", "B\xF6l\xFCmler", "Sections"), onCancel: (event) => {
+    event.preventDefault();
+    setMenuOpen(false);
+  }, onClick: (event) => {
+    if (event.target === event.currentTarget) {
+      const box = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) setMenuOpen(false);
+    }
+  } }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("h2", null, psAdminText("B\xF6lm\u0259l\u0259r", "B\xF6l\xFCmler", "Sections")), /* @__PURE__ */ psH("button", { type: "button", onClick: () => setMenuOpen(false) }, psAdminText("Ba\u011Fla", "Kapat", "Close"))), /* @__PURE__ */ psH("nav", { "aria-label": group.label }, choices()), /* @__PURE__ */ psH(Link, { to: "/admin?group=" + groupId, onClick: () => setMenuOpen(false) }, psAdminText("\u0130dar\u0259etm\u0259y\u0259 qay\u0131t", "Y\xF6netime d\xF6n", "Back to management"))));
+}
+
+/* MANAGEMENT_COMPONENTS_END */

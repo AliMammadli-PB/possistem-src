@@ -30,7 +30,7 @@ window.__psBranchCache=branchTransport;
 function call(method,payload,options){return branchTransport.call(method,payload,options);}
 `+bridge.slice(b);
 bridge=bridge.replace("if (!location.hash.startsWith('#/operations') && !location.hash.startsWith('#/settings'))", "if (!location.hash.startsWith('#/operations'))");
-bridge=bridge.replace("document.documentElement.classList.add('ps-market-ops');","document.documentElement.classList.add('ps-market-ops');\nwindow.__psCloudBranchMode=true;\ndocument.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent='.ps-ops-tabs,.ps-admin-breadcrumb,.ps-operations-page>header{display:none!important}.ps-operations-page{padding:16px!important}';document.head.appendChild(style);});");
+bridge=bridge.replace("document.documentElement.classList.add('ps-market-ops');","document.documentElement.classList.add('ps-market-ops');\nwindow.__psCloudBranchMode=true;\ndocument.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent='.ps-ops-tabs,.pm-operation-rail,.pm-sections-toggle,.pm-operation-heading,.ps-admin-breadcrumb,.ps-operations-page>header{display:none!important}.pm-operation-shell{display:block!important}.ps-operations-page{padding:16px!important}';document.head.appendChild(style);});");
 bridge=bridge.replaceAll('__APP_VERSION__',JSON.parse(fs.readFileSync(path.join(root,'package.json'))).version).replace('/*PRELOAD*/',()=>fs.readFileSync(path.join(root,'out/preload/index.js'),'utf8'));
 new Script(bridge,{filename:'cloud-bridge.js'});
 fs.writeFileSync(path.join(remote,'cloud-bridge.js'),bridge);

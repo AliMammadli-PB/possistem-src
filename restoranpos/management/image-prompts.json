@@ -1,0 +1,174 @@
+{
+  "method": "built-in image_gen",
+  "transparent": true,
+  "assets": [
+    {
+      "id": "costing",
+      "prompt": "Create ONE polished product UI illustration for the CALCULATION / RECIPE COSTING module of Possistem Restaurant POS. A compact cobalt-blue calculator beside a white kitchen bowl with flour and a small cyan measuring spoon. Friendly premium miniature 3D product illustration, rounded but precise realistic geometry, satin white ceramic, cobalt blue #1559cf and tiny cyan details. Clear readable silhouette at 64 pixels. Front three-quarter orthographic view, no text, no letters, no numbers, no logos, no surrounding square tile, no background, no floor, no cast shadow outside objects. Isolated object group centered with generous transparent padding. True transparent PNG alpha. This is a functional navigation illustration, restrained detail, not a sticker sheet. One composition only.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-b3126a50-72f0-4774-b828-087756055a69.png",
+      "file": "assets/modules/costing.png"
+    },
+    {
+      "id": "menu",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing MENU / CATALOG: a white plate with a small appetizing pizza slice and cobalt-blue fork. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-df7ceb35-d56b-4d92-bf60-716ca018f224.png",
+      "file": "assets/modules/menu.png"
+    },
+    {
+      "id": "stock",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing WAREHOUSE / STOCK: two neat cobalt-blue and white storage boxes, one open with packaged ingredients. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-48a1f8ff-49c0-49fc-a30a-c379e3383496.png",
+      "file": "assets/modules/stock.png"
+    },
+    {
+      "id": "trade",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing PURCHASES AND SALES: a blue shopping bag with a white receipt and two opposing small cyan arrows. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-86d2ff9e-af4b-449c-bae7-8a1486be5056.png",
+      "file": "assets/modules/trade.png"
+    },
+    {
+      "id": "staff",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing EMPLOYEES: two friendly abstract human bust figures in white and cobalt-blue uniforms, no facial details. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-7135eea6-3f8d-4429-8843-1b2da0c323d8.png",
+      "file": "assets/modules/staff.png"
+    },
+    {
+      "id": "settings",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing SETTINGS: one thick cobalt-blue precision gear with a white center and a tiny cyan adjustment slider. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-005ed759-a19d-4a69-b229-e2f7f5847e12.png",
+      "file": "assets/modules/settings.png"
+    },
+    {
+      "id": "branches",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing LOCATIONS: a small white restaurant storefront with a cobalt blue awning. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-7d71f2fa-c6e0-4d8e-a2dc-e8ab47cb41f5.png",
+      "file": "assets/modules/branches.png"
+    },
+    {
+      "id": "tables",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing DINING TABLES: one white round dining table with two cobalt-blue chairs. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-29cca93f-cc8d-4eab-8255-b1846d4c37f1.png",
+      "file": "assets/modules/tables.png"
+    },
+    {
+      "id": "delivery",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing DELIVERY: a small cobalt-blue delivery scooter with a white delivery box. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-d3639d0e-0ac2-4dbb-a3b7-37150cd5f0e1.png",
+      "file": "assets/modules/delivery.png"
+    },
+    {
+      "id": "cash",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing CASH ACCOUNTS: a cobalt blue cash register with a white drawer and small cyan screen. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-ce739d4b-4bde-4af8-bd60-221dbce8726a.png",
+      "file": "assets/modules/cash.png"
+    },
+    {
+      "id": "reports",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing REPORTS: a white chart board with cobalt blue bar chart and one small cyan line. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-00bc2853-493d-40e2-8db9-33bc38c1b841.png",
+      "file": "assets/modules/reports.png"
+    },
+    {
+      "id": "documents",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing PAYMENT DOCUMENTS: a cobalt blue folder containing two white paper receipts, simple cyan lines without text. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-d14fef2b-a554-4f0b-887e-d94dd832215c.png",
+      "file": "assets/modules/documents.png"
+    },
+    {
+      "id": "goods",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing PRODUCTS AND INGREDIENTS: one cobalt blue grocery jar, a white flour sack and a small tomato. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-2b4a9526-19e3-4c85-b067-57696d788328.png",
+      "file": "assets/modules/goods.png"
+    },
+    {
+      "id": "categories",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing CATEGORIES: three small white organizer trays with cobalt blue dividers, neatly grouped. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-f13409a2-7e91-40b0-be65-2f6fae9c173f.png",
+      "file": "assets/modules/categories.png"
+    },
+    {
+      "id": "stocktake",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing STOCK COUNT: a cobalt-blue clipboard with a checkmark and two white stock cubes. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-2711979a-9a7b-4a7b-be29-8e42051edf46.png",
+      "file": "assets/modules/stocktake.png"
+    },
+    {
+      "id": "partners",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing BUSINESS PARTNERS: a handshake between two simplified hands with white and cobalt blue sleeves. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-bc2388e4-e50d-42bd-acb8-aef788b48c0e.png",
+      "file": "assets/modules/partners.png"
+    },
+    {
+      "id": "expenses",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing EXPENSES: a white receipt beside a cobalt-blue wallet with one cyan outward arrow. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-a2447e3f-f93c-4875-ba72-6fb6ca09d422.png",
+      "file": "assets/modules/expenses.png"
+    },
+    {
+      "id": "income",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing OTHER INCOME: a cobalt blue wallet with a white coin entering it and a small cyan inward arrow. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-53a0040d-60a3-4664-807a-8ebefce777ef.png",
+      "file": "assets/modules/income.png"
+    },
+    {
+      "id": "export",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing EXPORT DATA: a cobalt blue document with a bold cyan outward arrow and a small white drive. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-d22fd847-47d7-4a4a-8d2d-a742770727e7.png",
+      "file": "assets/modules/export.png"
+    },
+    {
+      "id": "returns",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing SALES RETURNS: a white product box with a single cobalt-blue curved return arrow. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-faf7f29e-981c-4777-a806-81e29777e820.png",
+      "file": "assets/modules/returns.png"
+    },
+    {
+      "id": "reconcile",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing RECONCILIATION: two white receipts aligned side by side with a single cobalt blue checkmark. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-b60f08de-4d80-4a3b-898a-8e72df3d73cc.png",
+      "file": "assets/modules/reconcile.png"
+    },
+    {
+      "id": "audit",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing AUDIT HISTORY: a cobalt blue magnifying glass over a white document with small neutral lines. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-add5eae1-ee59-45eb-aab8-7b7040816474.png",
+      "file": "assets/modules/audit.png"
+    },
+    {
+      "id": "backup",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing BACKUP AND RESTORE: a white cloud above a cobalt blue hard drive joined by two small cyan arrows. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-9501c943-201b-4856-94a7-6b647ed9bb4d.png",
+      "file": "assets/modules/backup.png"
+    },
+    {
+      "id": "license",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing LICENSE AND SECURITY: a cobalt blue shield with a simple white keyhole, no text. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-1d5015f4-13f8-45c1-9c4e-ccfb08d9ada3.png",
+      "file": "assets/modules/license.png"
+    },
+    {
+      "id": "devices",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing DEVICES AND INTEGRATIONS: a white POS monitor with a cobalt blue bezel and one small cyan connector. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-d34675cc-9109-45f6-8d90-fc7e9f13c64a.png",
+      "file": "assets/modules/devices.png"
+    },
+    {
+      "id": "gifts",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing GIFTS AND CAMPAIGNS: one elegant cobalt blue gift box with a white ribbon. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-03c0e714-2239-4afa-b315-2a86ffa27afd.png",
+      "file": "assets/modules/gifts.png"
+    },
+    {
+      "id": "qr",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing QR ORDERING: a cobalt blue tabletop menu stand with white paper and an abstract four-square cyan mark, no real QR code. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-6ae5a384-fa4b-4172-a5b9-71769eca241f.png",
+      "file": "assets/modules/qr.png"
+    },
+    {
+      "id": "printer",
+      "prompt": "Use case: stylized-concept. Asset type: Restaurant POS navigation PNG illustration. Create ONE isolated small premium 3D object group representing PRINTER: a small cobalt blue thermal receipt printer with a curl of blank white receipt paper. Coherent series: satin cobalt-blue #1559cf, white ceramic, restrained cyan accents, soft neutral studio light, rounded precise solid shapes, clear silhouette readable at 64px. Front three-quarter orthographic view. Object centered, generous padding, TRUE TRANSPARENT ALPHA BACKGROUND. No floor, no background, NO GLOW OR BLOOM, no haze, no drop shadow, no surrounding tile, no text, no letters, no logos, no watermark. Minimal professional illustration, not a sheet.",
+      "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-203e0bc2-9d41-4da6-b4ca-378b0f3fe234.png",
+      "file": "assets/modules/printer.png"
+    }
+  ]
+}

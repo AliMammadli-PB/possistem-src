@@ -1,3 +1,4 @@
+#include "pos/printing/ReceiptBuilder.hpp"
 #include "pos/services/InventoryService.hpp"
 #include "catch_amalgamated.hpp"
 
@@ -164,4 +165,31 @@ TEST_CASE("an order the courier carries takes stock from the branch of the till 
     inventory.consumeOnClose("qa-order");
     REQUIRE(inventory.levelOf("qa-raw", "wh-filial") == -200);
     REQUIRE(inventory.levelOf("qa-raw", "wh-main") == 0);
+}
+
+TEST_CASE("the kitchen ticket of a delivery says whose it is and what the guest asked", "[delivery][print][1109]") {
+    DeliveryFixture f;
+    const auto start = f.call("delivery.start", pos::Json{{"address", "Nizami 5"}, {"customerName", "Aysel Məmmədova"},
+                                                         {"note", "Qapıda zəng edin, 3-cü mərtəbə, nağd 50 manatdan qalıq lazımdır"}});
+    const auto orderId = start.at("orderId").get<std::string>();
+    f.addDish(orderId);
+    pos::printing::ReceiptBuilder builder(f.base().ctx());
+    const auto text = builder.kitchenTicket(orderId).text;
+    CHECK(text.find("*** ÇATDIRILMA ***") != std::string::npos);
+    CHECK(text.find("Müştəri: Aysel Məmmədova") != std::string::npos);
+    CHECK(text.find("Qeyd: Qapıda zəng edin") != std::string::npos);
+    CHECK(text.find("qalıq lazımdır") != std::string::npos);  // wrapped, not cut
+    CHECK(text.find("Nizami 5") == std::string::npos);        // the address is the courier's, not the kitchen's
+    CHECK(text.find("1 x Dönər") != std::string::npos);
+
+    // A hall table's ticket is as before.
+    f.base().db().exec("INSERT OR IGNORE INTO restaurant_areas (id, name_az, sort_order, active) VALUES ('qa-hall', 'Zal', 1, 1);"
+                       "INSERT INTO restaurant_tables (id, area_id, label, seats, sort_order, active, updated_at) "
+                       "VALUES ('qa-t5', 'qa-hall', '5', 4, 1, 1, 0)");
+    const auto table = f.call("orders.create", pos::Json{{"tableId", "qa-t5"}, {"guestCount", 1}});
+    const auto hall = table.at("id").get<std::string>();
+    f.addDish(hall);
+    const auto plain = builder.kitchenTicket(hall).text;
+    CHECK(plain.find("ÇATDIRILMA") == std::string::npos);
+    CHECK(plain.find("Müştəri:") == std::string::npos);
 }
