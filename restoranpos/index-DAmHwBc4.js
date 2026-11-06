@@ -110,6 +110,7 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -15026,7 +15027,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.9 · 8863256";
+const _PS_BUILD = "1.10.15 · 8863256";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -23354,7 +23355,7 @@ function PsQrSettings(){
  reactExports.useEffect(()=>{void load()},[]);
  const action=async(kind)=>{setBusy(true);setError("");try{const r=await psQrCall("qr.config",{action:kind,expectedRevision:data?.menu?.revision||0,...(kind==="publish"?{document:doc}:{})});setData({...r,document:doc});toast(kind==="publish"?psQrText("QR menyu yayımlandı","QR menü yayınlandı","QR menu published"):psQrText("QR menyu yeniləndi","QR menü güncellendi","QR menu updated"),"success");}catch(e){setError(e.message)}finally{setBusy(false)}};
  const field=(key,label,type="text")=>h("label",{className:"ps-qr-field"},label,h("input",{type,value:type==="url"&&doc?.[key]?.startsWith("data:")?"":doc?.[key]||"",placeholder:type==="url"?"https://…":undefined,onChange:e=>setDoc({...doc,[key]:e.target.value})}));
- const brandFile=(key,label)=>h("section",{className:"ps-qr-brand-asset"},h("div",{className:"ps-qr-brand-preview "+(key==='cover'?'is-cover':'')},doc[key]?h("img",{src:doc[key],alt:label,onError:e=>{e.currentTarget.style.visibility='hidden'}}):h("span",null,label)),h("div",null,h("strong",null,label),h("label",{className:"ps-qr-upload"},psQrText("Şəkil yüklə","Resim yükle","Upload image"),h("input",{type:"file",accept:"image/png,image/jpeg,image/webp",disabled:busy,"aria-label":label,onChange:async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;setBusy(true);setError('');try{const value=await psQrBrandImage(file,key);setDoc(previous=>({...previous,[key]:value}));}catch(error){setError(error.message)}finally{setBusy(false)}}})),doc[key]&&h("button",{type:"button",disabled:busy,onClick:()=>setDoc(previous=>({...previous,[key]:''}))},psQrText("Şəkli sil","Resmi kaldır","Remove image"))));
+ const brandFile=(key,label)=>h("section",{className:"ps-qr-brand-asset"},h("div",{className:"ps-qr-brand-preview "+(key==='cover'?'is-cover':'')},doc[key]?h("img",{src:doc[key],alt:label,onLoad:e=>{e.currentTarget.style.visibility=''},onError:e=>{e.currentTarget.style.visibility='hidden'}}):h("span",null,label)),h("div",null,h("strong",null,label),h("label",{className:"ps-qr-upload"},psQrText("Şəkil yüklə","Resim yükle","Upload image"),h("input",{type:"file",accept:"image/png,image/jpeg,image/webp",disabled:busy,"aria-label":label,onChange:async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;setBusy(true);setError('');try{const value=await psQrBrandImage(file,key);setDoc(previous=>({...previous,[key]:value}));}catch(error){setError(error.message)}finally{setBusy(false)}}})),doc[key]&&h("button",{type:"button",disabled:busy,onClick:()=>setDoc(previous=>({...previous,[key]:''}))},psQrText("Şəkli sil","Resmi kaldır","Remove image"))));
  const update=(id,values)=>setDoc({...doc,items:doc.items.map(p=>p.id===id?{...p,...values}:p)});
  const download=async()=>{
   const escape=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -31507,6 +31508,12 @@ function psReadSizeName(name) {
   if (!Number.isFinite(size) || size <= 0 || size > (unit === 'sm' ? 300 : 100000)) return null;
   return { base: match[1].trim(), size, unit };
 }
+
+
+
+
+
+
 
 
 
