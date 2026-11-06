@@ -1,3 +1,4 @@
+import {CustomerOperationalReset} from './CustomerOperationalReset';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useLiveEffect } from '../lib/live';
@@ -28,7 +29,7 @@ function statusLabel(c: WipeStatus['commands'][number]): string {
 }
 
 /** Restaurant only for now: other tills have their own databases and commands. */
-export function CustomerDataWipe({ customerId }: { customerId: string }) {
+function CustomerFullDataWipe({ customerId }: { customerId: string }) {
   const [data, setData] = useState<WipeStatus | null>(null);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -130,3 +131,5 @@ export function CustomerDataWipe({ customerId }: { customerId: string }) {
     </section>
   );
 }
+
+export function CustomerDataWipe({customerId}:{customerId:string}){return <><CustomerOperationalReset key={customerId} customerId={customerId}/><details><summary>Tam sıfırlama — menyu da silinir</summary><CustomerFullDataWipe key={customerId} customerId={customerId}/></details></>;}

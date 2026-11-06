@@ -510,7 +510,8 @@ void Migrator::ensurePermissionGrants() {
         "('perm-table-layout','tables.layout','Edit floor plan layout'),"
         "('perm-split-bill','payment.split','Split bills'),"
         "('perm-discount-rules','discount.manage','Manage discount rules'),"
-        "('perm-users-manage','users.manage','Create and deactivate local staff accounts')";
+        "('perm-users-manage','users.manage','Create and deactivate local staff accounts'),"
+        "('perm-system-reset','system.reset','Reset test operations while preserving the catalog')";
     db_.exec(kPermissionsSql);
 
     static constexpr const char* kRoleGrantsSql =
@@ -531,7 +532,7 @@ void Migrator::ensurePermissionGrants() {
         "('role-administrator','perm-catalog-import'),('role-administrator','perm-backup-manage'),"
         "('role-administrator','perm-license-manage'),('role-administrator','perm-table-layout'),"
         "('role-administrator','perm-split-bill'),('role-administrator','perm-discount-rules'),"
-        "('role-administrator','perm-users-manage')";
+        "('role-administrator','perm-users-manage'),('role-administrator','perm-system-reset')";
     db_.exec(kRoleGrantsSql);
 
     // Keys for actions the app already performed but never checked, so a role

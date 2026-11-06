@@ -1,0 +1,30 @@
+{
+  "generator": "OpenAI built-in image_gen",
+  "createdAt": "2026-11-06",
+  "transparentBackground": true,
+  "commonStyle": "Square restaurant QR menu artwork; polished realistic studio food render; one centered dish or drink; three-quarter view from slightly above; whole subject visible with comfortable margins; natural textures; warm soft studio lighting; transparent outside the subject; no backdrop, floor, heavy external shadow, text, logo, watermark, cutlery or decorative props; illustrative artwork, not a claim of the restaurant's actual serving.",
+  "assets": {
+    "pizza-margarita": "Classic margherita pizza with tomato sauce, mozzarella and basil.",
+    "pizza-doner": "Pizza topped with thin beef doner, mozzarella and tomato sauce.",
+    "pizza-caesar": "Chicken Caesar pizza with grilled chicken, romaine, parmesan and light dressing.",
+    "pizza-pepperoni": "Pepperoni pizza with mozzarella and tomato sauce.",
+    "pizza-mushroom": "Funghi pizza with brown mushrooms and mozzarella.",
+    "pizza-vegetable": "Vegetarian pizza with peppers, cherry tomatoes, olives and mushrooms.",
+    "pizza-mixed": "Mixed pizza with beef, peppers, mushrooms, olives and mozzarella.",
+    "pide": "Boat-shaped cheese pide cut into three connected portions.",
+    "lahmacun": "Two thin lahmacun with minced beef, parsley, tomato and lemon.",
+    "doner-bread": "Beef doner sandwich in toasted round bread with tomato, lettuce and white sauce.",
+    "doner-wrap": "Toasted chicken doner lavash wrap cut in half.",
+    "burger": "Beef cheeseburger with sesame bun, lettuce, tomato and cheese.",
+    "salad": "Chicken Caesar salad with romaine, chicken, croutons and parmesan.",
+    "soup": "Red lentil soup with paprika oil and lemon.",
+    "sauce": "Creamy garlic and herb sauce in a white ramekin.",
+    "cola": "Unbranded glass of cola with ice.",
+    "orange-drink": "Unbranded glass of orange soda with ice.",
+    "water": "Unbranded glass of sparkling mineral water.",
+    "ayran": "Glass of foamy ayran.",
+    "cocktail": "Mojito-style lime and mint sparkling cocktail.",
+    "sourceFiles": "original/*.png",
+    "menuFiles": "webp/*.webp"
+  }
+}

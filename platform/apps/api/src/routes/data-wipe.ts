@@ -1,3 +1,4 @@
+import {operationResetRoutes} from './operation-reset.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import mysql from 'mysql2/promise';
@@ -55,6 +56,7 @@ type WipeRow = mysql.RowDataPacket & {
 };
 
 export async function dataWipeRoutes(app: FastifyInstance) {
+  await operationResetRoutes(app);
   const pool = env.mysqlUrl ? mysql.createPool({ uri: env.mysqlUrl, connectionLimit: 2 }) : null;
 
   async function restaurantLicenses(customerId: string) {

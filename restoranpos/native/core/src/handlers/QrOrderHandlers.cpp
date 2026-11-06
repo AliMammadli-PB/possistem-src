@@ -14,6 +14,19 @@ Money qrPrice(Context& ctx,const std::string& id,Money fallback){
  auto s=ctx.db().prepare("SELECT p.sale_price_minor FROM item_prices p JOIN ingredients i ON i.id=p.ingredient_id AND i.active=1 AND i.sku='MENU-'||:product JOIN cash_accounts a ON a.object_id=p.object_id AND a.kind='till' AND a.active=1 WHERE a.terminal_id=:terminal AND a.terminal_id!='' LIMIT 1");
  s.bind(":product",id).bind(":terminal",ctx.saleTerminalId());return s.step()?s.columnInt(0):fallback;
 }
+// A dish archived and made again keeps its name but not its id, and a QR menu published before
+// that still sends the old id: the one live dish of that name takes the line. Prices are still
+// checked against the guest's, so nothing is charged differently.
+std::string qrLiveProduct(Context& ctx,const std::string& id){
+ auto live=ctx.db().prepare("SELECT 1 FROM menu_items WHERE id=:id AND active=1 AND archived=0");live.bind(":id",id);if(live.step())return id;
+ auto same=ctx.db().prepare("SELECT n.id FROM menu_items o JOIN menu_items n ON n.name_az=o.name_az AND n.id<>o.id AND n.active=1 AND n.archived=0 WHERE o.id=:id LIMIT 2");same.bind(":id",id);
+ std::vector<std::string> found;while(same.step())found.push_back(same.columnText(0));return found.size()==1?found[0]:id;
+}
+std::string qrUnavailable(Context& ctx,const std::string& id){
+ auto n=ctx.db().prepare("SELECT name_az,active=1 AND archived=0 FROM menu_items WHERE id=:id");n.bind(":id",id);
+ if(!n.step())return "Sifarişdəki məhsul kassada tapılmadı. QR menyunu yenidən yayımlayın.";
+ return "«"+n.columnText(0)+"» "+(n.columnInt(1)?"hazırda satışda deyil (stop-list).":"kassada artıq yoxdur. QR menyunu yenidən yayımlayın.");
+}
 struct QrLine{std::string product,name,note,course;Money price,delta;std::int64_t qty;std::vector<services::ResolvedModifier> modifiers;};
 }
 void registerQrOrders(const ContextPtr& ctx){
@@ -41,7 +54,8 @@ void registerQrOrders(const ContextPtr& ctx){
   auto table=ctx->db().prepare("SELECT id FROM restaurant_tables WHERE id=:id AND active=1 AND area_id!='area-delivery'");table.bind(":id",tableId);require(table.step(),"Masa aktiv deyil");
   services::OrderService orders(*ctx);std::vector<QrLine> lines;
   for(const auto& l:req.payload["lines"]){QrLine line;line.product=getOr<std::string>(l,"productId","");line.qty=getOr<std::int64_t>(l,"qty",0);line.note=getOr<std::string>(l,"note","");require(line.qty>=1&&line.qty<=20,"Miqdar düzgün deyil");require(line.note.size()<=1000,"Məhsul qeydi çox uzundur");
-   auto p=ctx->db().prepare("SELECT name_az,price_minor,course FROM menu_items WHERE id=:id AND active=1 AND archived=0 AND available=1 AND sold_out=0");p.bind(":id",line.product);require(p.step(),"Məhsul artıq satışda yoxdur");line.name=p.columnText(0);line.price=qrPrice(*ctx,line.product,p.columnInt(1));line.course=p.columnText(2);
+   line.product=qrLiveProduct(*ctx,line.product);
+   auto p=ctx->db().prepare("SELECT name_az,price_minor,course FROM menu_items WHERE id=:id AND active=1 AND archived=0 AND available=1 AND sold_out=0");p.bind(":id",line.product);require(p.step(),qrUnavailable(*ctx,line.product));line.name=p.columnText(0);line.price=qrPrice(*ctx,line.product,p.columnInt(1));line.course=p.columnText(2);
    std::vector<std::string> mods;if(l.contains("modifiers")){require(l["modifiers"].is_array()&&l["modifiers"].size()<=30,"Seçimlər düzgün deyil");for(const auto& m:l["modifiers"]){require(m.is_string(),"Seçim düzgün deyil");mods.push_back(m.get<std::string>());}}
    auto unique=mods;std::sort(unique.begin(),unique.end());require(std::adjacent_find(unique.begin(),unique.end())==unique.end(),"Təkrarlanan seçim");line.modifiers=orders.resolveModifiers(line.product,mods);line.delta=0;for(const auto& m:line.modifiers)line.delta+=m.priceDelta;
    require(line.price==getOr<Money>(l,"unitPriceMinor",-1)&&line.delta==getOr<Money>(l,"modifierPriceMinor",-1),"QR menyudakı qiymət dəyişib. Menyunu yenidən yayımlayın və müştəridən sifarişi yeniləməsini istəyin");require(line.price+line.delta>=0,"Qiymət düzgün deyil");lines.push_back(line);

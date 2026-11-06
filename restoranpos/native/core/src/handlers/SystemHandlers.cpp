@@ -17,6 +17,7 @@
 #include "pos/services/BusinessDayService.hpp"
 #include "pos/services/CashService.hpp"
 #include "pos/services/DataWipe.hpp"
+#include "pos/services/OperationalReset.hpp"
 #include "pos/services/GiftCampaignService.hpp"
 #include "pos/services/Idempotency.hpp"
 #include "pos/services/LicenseService.hpp"
@@ -1383,6 +1384,16 @@ void registerSystem(const ContextPtr& ctx) {
                         {"safetyCopy", safety.string()},
                         {"restartRequired", true}};
         });
+
+    server.registerHandler(std::string(protocol::method::kSystemResetOperational), [ctx](const ipc::Request& request) {
+        ctx->requirePermission("system.reset");
+        if(getOr<bool>(request.payload,"preview",false))return services::OperationalReset::preview(ctx->db());
+        require(getOr<std::string>(request.payload,"confirmation","")=="RESET_TEST_OPERATIONS","Sıfırlama təsdiqi yoxdur");
+        const auto command=getOr<std::string>(request.payload,"commandId","");
+        const auto result=services::OperationalReset::run(ctx->db(),command,getOr<std::string>(request.payload,"catalogHash",""),getOr<std::string>(request.payload,"reason",""));
+        if(!result.value("replayed",false))ctx->auditRequired("data.resetOperations","system",command,result);
+        return result;
+    });
 
     // Reached only from the main process, for a signed data.wipeAll command.
     server.registerHandler("system.wipeAllData", [ctx](const ipc::Request& request) {

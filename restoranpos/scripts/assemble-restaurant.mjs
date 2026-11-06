@@ -154,6 +154,8 @@ export const PATCH_ORDER = [
   'apply-restaurant-1107.mjs',
   'apply-restaurant-1108.mjs',
   'apply-restaurant-management.mjs',
+  'apply-restaurant-operational-reset.mjs',
+  'apply-restaurant-qr-sync-print.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -203,6 +205,7 @@ function stageRenderer() {
 
 function buildOut() {
   copy('cloud-backup/client.cjs', path.join(OUT,'main/cloud-backup-client.cjs'));
+  copy('operational-reset/client.cjs', path.join(OUT,'main/operational-reset.cjs'));
   fs.copyFileSync(path.join(ROOT,'../platform/packages/security/cloud-backup.cjs'),path.join(OUT,'main/cloud-backup-format.cjs'));
 
   fs.cpSync(path.join(ROOT,'integrations/sunmi'),path.join(OUT,'main/sunmi'),{recursive:true});

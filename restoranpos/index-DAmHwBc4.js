@@ -114,6 +114,9 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -15030,7 +15033,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.16 · a1bb91c";
+const _PS_BUILD = "1.10.18 · 6c41c69";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -21637,7 +21640,8 @@ function PaymentPage() {
     const mine = list.find((job) => job.orderId === id && job.kind === "customer_receipt");
     if (!mine) return;
     if (mine.status === "completed") toast(t.payment.printOk, "success");
-    else if (mine.status === "failed" || mine.status === "retrying") {
+    /* QR_SYNC_PRINT_QUEUE */ else if (mine.status === "retrying") toast(psAdminText("Printer qoşulu deyil. Çek növbədədir, printer qoşulanda özü çap olunacaq.","Yazıcı bağlı değil. Fiş sırada, yazıcı bağlanınca kendiliğinden basılacak.","The printer is not connected. The receipt is queued and prints when the printer is back."), "info");
+    else if (mine.status === "failed") {
       toast(mine.lastError || t.payment.printFail, "warning");
     }
   };
@@ -21654,7 +21658,8 @@ function PaymentPage() {
       return;
     }
     const job = res.data;
-    if (job.status === "failed" || job.status === "retrying") {
+    if (job.status === "retrying") { toast(psAdminText("Printer qoşulu deyil. Çek növbədədir, printer qoşulanda özü çap olunacaq.","Yazıcı bağlı değil. Fiş sırada, yazıcı bağlanınca kendiliğinden basılacak.","The printer is not connected. The receipt is queued and prints when the printer is back."), "info"); return; }
+    if (job.status === "failed") {
       toast(job.lastError || t.payment.printFail, "warning");
       return;
     }
@@ -31499,6 +31504,24 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -31881,7 +31904,7 @@ function PsCashTransferDialog({ form, onChange, accounts, busy, error, onClose, 
   } }, /* @__PURE__ */ psH("form", { className: "pm-cash-transfer-form", onSubmit: (event) => {
     event.preventDefault();
     if (valid && !busy) onSave();
-  } }, /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-selects" }, /* @__PURE__ */ psH("label", null, psAdminText("Haradan", "Nereden", "From"), /* @__PURE__ */ psH("select", { value: form.fromId, disabled: busy, onChange: (event) => onChange({ ...form, fromId: event.target.value, toId: event.target.value === form.toId ? "" : form.toId, value: "" }) }, /* @__PURE__ */ psH("option", { value: "" }, psAdminText("Kassan\u0131 se\xE7in", "Kasa se\xE7in", "Choose account")), accounts.map(option))), /* @__PURE__ */ psH("label", null, psAdminText("Haraya", "Nereye", "To"), /* @__PURE__ */ psH("select", { value: form.toId, disabled: busy, onChange: (event) => onChange({ ...form, toId: event.target.value }) }, /* @__PURE__ */ psH("option", { value: "" }, psAdminText("Kassan\u0131 se\xE7in", "Kasa se\xE7in", "Choose account")), accounts.filter((a) => a.id !== form.fromId).map(option)))), from && /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-summary" }, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("span", null, psAdminText("K\xF6\xE7\xFCr\xFCl\u0259 bil\u0259n balans", "Aktar\u0131labilir bakiye", "Available balance")), /* @__PURE__ */ psH("strong", null, formatMoney(available))), psCashFacts(from).map(([label, value]) => /* @__PURE__ */ psH("div", { key: label }, /* @__PURE__ */ psH("span", null, label), /* @__PURE__ */ psH("b", null, value)))), /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-amount" }, /* @__PURE__ */ psH("label", null, psAdminText("M\u0259bl\u0259\u011F (\u20BC)", "Tutar (\u20BC)", "Amount (\u20BC)"), /* @__PURE__ */ psH("input", { inputMode: "decimal", value: form.value, disabled: busy, placeholder: "0.00", onChange: (event) => onChange({ ...form, value: event.target.value }) })), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", disabled: busy || !from || available <= 0, onClick: () => onChange({ ...form, value: (available / 100).toFixed(2) }) }, psAdminText("Ham\u0131s\u0131n\u0131 k\xF6\xE7\xFCr", "T\xFCm\xFCn\xFC aktar", "Transfer all"))), amount > available && from && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, psAdminText("M\u0259bl\u0259\u011F cari balansdan \xE7oxdur.", "Tutar g\xFCncel bakiyeyi a\u015F\u0131yor.", "The amount exceeds the current balance.")), /* @__PURE__ */ psH("label", null, psAdminText("Qeyd", "Not", "Note"), /* @__PURE__ */ psH("input", { value: form.note, disabled: busy, maxLength: 500, onChange: (event) => onChange({ ...form, note: event.target.value }) })), /* @__PURE__ */ psH("p", { className: "pm-cash-help" }, psAdminText("Transfer cari balansdan edilir. Sat\u0131\u015F \xF6d\u0259ni\u015Fi kassada qalan pul v\u0259 ya m\u0259nf\u0259\u0259t deyil.", "Transfer g\xFCncel bakiyeden yap\u0131l\u0131r. Sat\u0131\u015F \xF6demesi kasada kalan para veya k\xE2r de\u011Fildir.", "Transfers use the current balance. Sales receipts are not remaining funds or profit.")), error && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, error), /* @__PURE__ */ psH("div", { className: "pm-cash-dialog-actions" }, /* @__PURE__ */ psH("button", { type: "submit", className: "ps-ops-button", disabled: busy || !valid }, busy ? psAdminText("K\xF6\xE7\xFCr\xFCl\xFCr\u2026", "Aktar\u0131l\u0131yor\u2026", "Transferring\u2026") : psAdminText("Transfer et", "Transfer et", "Transfer")), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", disabled: busy, onClick: onClose }, psAdminText("\u0130mtina", "Vazge\xE7", "Cancel")))));
+  } }, /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-selects" }, /* @__PURE__ */ psH("label", null, psAdminText("Haradan", "Nereden", "From"), /* @__PURE__ */ psH("select", { value: form.fromId, disabled: busy, onChange: (event) => onChange({ ...form, fromId: event.target.value, toId: event.target.value === form.toId ? "" : form.toId, value: "" }) }, /* @__PURE__ */ psH("option", { value: "" }, psAdminText("Kassan\u0131 se\xE7in", "Kasa se\xE7in", "Choose account")), accounts.map(option))), /* @__PURE__ */ psH("label", null, psAdminText("Haraya", "Nereye", "To"), /* @__PURE__ */ psH("select", { value: form.toId, disabled: busy, onChange: (event) => onChange({ ...form, toId: event.target.value }) }, /* @__PURE__ */ psH("option", { value: "" }, psAdminText("Kassan\u0131 se\xE7in", "Kasa se\xE7in", "Choose account")), accounts.filter((a) => a.id !== form.fromId).map(option)))), accounts.length < 2 && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "status" }, psAdminText("K\xF6\xE7\xFCrm\u0259 \xFC\xE7\xFCn ba\u015Fqa aktiv kassa yoxdur. Kassalar b\xF6lm\u0259sind\u0259 \u201CYeni kassa\u201D yarad\u0131n. Cari balans silinmir.", "Transfer i\xE7in ba\u015Fka aktif hesap yok. Kasalar b\xF6l\xFCm\xFCnden yeni hesap olu\u015Fturun.", "There is no other active account. Create an account in Cash accounts. Your balance is retained.")), from && /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-summary" }, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("span", null, psAdminText("K\xF6\xE7\xFCr\xFCl\u0259 bil\u0259n balans", "Aktar\u0131labilir bakiye", "Available balance")), /* @__PURE__ */ psH("strong", null, formatMoney(available))), psCashFacts(from).map(([label, value]) => /* @__PURE__ */ psH("div", { key: label }, /* @__PURE__ */ psH("span", null, label), /* @__PURE__ */ psH("b", null, value)))), /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-amount" }, /* @__PURE__ */ psH("label", null, psAdminText("M\u0259bl\u0259\u011F (\u20BC)", "Tutar (\u20BC)", "Amount (\u20BC)"), /* @__PURE__ */ psH("input", { inputMode: "decimal", value: form.value, disabled: busy, placeholder: "0.00", onChange: (event) => onChange({ ...form, value: event.target.value }) })), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", disabled: busy || !from || available <= 0, onClick: () => onChange({ ...form, value: (available / 100).toFixed(2) }) }, psAdminText("Ham\u0131s\u0131n\u0131 k\xF6\xE7\xFCr", "T\xFCm\xFCn\xFC aktar", "Transfer all"))), amount > available && from && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, psAdminText("M\u0259bl\u0259\u011F cari balansdan \xE7oxdur.", "Tutar g\xFCncel bakiyeyi a\u015F\u0131yor.", "The amount exceeds the current balance.")), /* @__PURE__ */ psH("label", null, psAdminText("Qeyd", "Not", "Note"), /* @__PURE__ */ psH("input", { value: form.note, disabled: busy, maxLength: 500, onChange: (event) => onChange({ ...form, note: event.target.value }) })), /* @__PURE__ */ psH("p", { className: "pm-cash-help" }, psAdminText("Transfer cari balansdan edilir. Sat\u0131\u015F \xF6d\u0259ni\u015Fi kassada qalan pul v\u0259 ya m\u0259nf\u0259\u0259t deyil.", "Transfer g\xFCncel bakiyeden yap\u0131l\u0131r. Sat\u0131\u015F \xF6demesi kasada kalan para veya k\xE2r de\u011Fildir.", "Transfers use the current balance. Sales receipts are not remaining funds or profit.")), error && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, error), /* @__PURE__ */ psH("div", { className: "pm-cash-dialog-actions" }, /* @__PURE__ */ psH("button", { type: "submit", className: "ps-ops-button", disabled: busy || !valid }, busy ? psAdminText("K\xF6\xE7\xFCr\xFCl\xFCr\u2026", "Aktar\u0131l\u0131yor\u2026", "Transferring\u2026") : psAdminText("Transfer et", "Transfer et", "Transfer")), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", disabled: busy, onClick: onClose }, psAdminText("\u0130mtina", "Vazge\xE7", "Cancel")))));
 }
 function PsCashActivity({ account, onClose }) {
   const rg = usePsRange("day"), [query, setQuery] = reactExports.useState(""), [result, setResult] = reactExports.useState(null), [error, setError] = reactExports.useState(""), [retry, setRetry] = reactExports.useState(0);

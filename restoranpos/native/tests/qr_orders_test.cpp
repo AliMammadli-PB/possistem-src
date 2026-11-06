@@ -25,3 +25,24 @@ TEST_CASE("QR cashier approval joins only the selected table and validates permi
  auto other=q.body();other["tableId"]="tbl-02";auto third=q.call(other);REQUIRE(first["orderId"]!=third["orderId"]);REQUIRE(q.count("orders")==2);
  q.f.ctx().session().permissions.clear();REQUIRE_THROWS_AS(q.call(q.body()),pos::PosError);
 }
+TEST_CASE("a QR menu published before a dish was archived and made again still orders the live dish","[qr][stale]"){
+ QrFixture q;
+ // The menu the guest sees still carries 'qr-dish'; the till archived it and made 'qr-dish-2' of the same name.
+ q.f.db().exec("UPDATE menu_items SET active=0,archived=1 WHERE id='qr-dish';INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,active,available,created_at,updated_at) SELECT 'qr-dish-2',category_id,'QR-TEST-2',name_az,700,1,1,0,0 FROM menu_items WHERE id='qr-dish'");
+ const auto r=q.call(q.body());
+ auto line=q.f.db().prepare("SELECT product_id,quantity,unit_price_minor FROM order_items WHERE order_id=:o");line.bind(":o",r["orderId"].get<std::string>());REQUIRE(line.step());
+ CHECK(line.columnText(0)=="qr-dish-2");CHECK(line.columnInt(1)==2);CHECK(line.columnInt(2)==700);
+ // A different price on the live dish is still refused: the guest is never charged another amount.
+ q.f.db().exec("UPDATE menu_items SET price_minor=900 WHERE id='qr-dish-2'");
+ REQUIRE_THROWS_AS(q.call(q.body()),pos::PosError);
+ // Two live dishes of that name: which was meant is not known, so the order is refused by name.
+ q.f.db().exec("UPDATE menu_items SET price_minor=700 WHERE id='qr-dish-2';INSERT INTO menu_items(id,category_id,sku,name_az,price_minor,active,available,created_at,updated_at) SELECT 'qr-dish-3',category_id,'QR-TEST-3',name_az,700,1,1,0,0 FROM menu_items WHERE id='qr-dish'");
+ try{q.call(q.body());FAIL("ambiguous dish accepted");}catch(const pos::PosError& e){CHECK(std::string(e.what()).find("«Sınaq yeməyi» kassada artıq yoxdur")!=std::string::npos);}
+}
+TEST_CASE("a dish on the stop-list or unknown to the till is named in the refusal","[qr][stale]"){
+ QrFixture q;
+ q.f.db().exec("UPDATE menu_items SET sold_out=1 WHERE id='qr-dish'");
+ try{q.call(q.body());FAIL("sold-out dish accepted");}catch(const pos::PosError& e){CHECK(std::string(e.what()).find("«Sınaq yeməyi» hazırda satışda deyil")!=std::string::npos);}
+ auto body=q.body();body["lines"][0]["productId"]="nowhere";
+ try{q.call(body);FAIL("unknown dish accepted");}catch(const pos::PosError& e){CHECK(std::string(e.what()).find("kassada tapılmadı")!=std::string::npos);}
+}

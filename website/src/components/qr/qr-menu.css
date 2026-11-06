@@ -225,3 +225,6 @@
 }
 @media(max-width:360px){.qr-dish-photo{width:62px;height:62px}.qr-spread-plates .qr-plate:nth-child(-n+1):not(:last-child){display:none}}
 @media(prefers-reduced-motion:reduce){.qr-menu *,.qr-menu *::before,.qr-menu *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Product art also identifies menu categories without replacing their readable labels. */
+.qr-tabs button{display:inline-flex;align-items:center;gap:8px}.qr-category-picture{width:30px;height:30px;object-fit:contain;flex:none}.qr-category-picture[hidden]{display:none}

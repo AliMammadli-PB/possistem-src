@@ -11,3 +11,26 @@ test('refresh keeps published restaurant artwork while taking fresh POS product 
  const runtime=create({isTerminal:()=>false,identity:async()=>({deviceId:'device',baseUrl:'https://example.invalid'}),owner:()=>({token:'test'}),native:async method=>({success:true,data:method==='qr.catalog'?{name:'POS name',items:[{id:'p',priceMinor:900,image:'',description:''}]}:{}})});
  try{const result=await runtime('qr.config',{action:'get'});assert.equal(result.success,true);assert.equal(result.data.document.logo,document.logo);assert.equal(result.data.document.cover,document.cover);assert.equal(result.data.document.items[0].priceMinor,900);assert.equal(result.data.document.items[0].hidden,true);}finally{global.fetch=old}
 });
+test('a published menu follows the till by itself and keeps the owner\'s words, pictures and hidden dishes',async()=>{
+ const old=global.fetch,posts=[];
+ const item=(id,price,extra={})=>({id,categoryId:'c',name:'Dönər',nameTr:'',nameEn:'',description:'',image:'',priceMinor:price,available:true,groups:[],...extra});
+ let saved={enabled:true,revision:4,document:{name:'Pizza Ev',description:'Ev menyusu',logo:'',cover:'',accent:'green',layout:'cards',categories:[{id:'c',name:'Yemək'}],tables:[{id:'t1',label:'Zal · 1'}],items:[item('old',700,{description:'Sahibin sözü',image:'https://example.invalid/d.webp',hidden:false}),item('tea',200,{hidden:true})]}};
+ let catalog;
+ global.fetch=async(url,init)=>{const body=JSON.parse(init.body);posts.push(body.action);if(body.action==='publish'){saved={...saved,revision:saved.revision+1,document:body.document};}return {ok:true,json:async()=>({menu:saved,tables:[]})};};
+ const runtime=create({isTerminal:()=>false,identity:async()=>({deviceId:'device',baseUrl:'https://example.invalid'}),owner:()=>({token:'t'}),native:async()=>({success:true,data:{}})});
+ const invoke=async m=>({success:true,data:JSON.parse(JSON.stringify(catalog))});
+ try{
+  // Same orderable menu: nothing is published, so guests mid-order keep their basket.
+  catalog={name:'POS',categories:[{id:'c',name:'Yemək',nameTr:'',nameEn:''}],tables:[{id:'t1',label:'Zal · 1'}],items:[item('old',700),item('tea',200)]};
+  assert.equal((await runtime.sync(invoke)).status,'current');assert.deepEqual(posts,['get']);
+  // The dish was archived and made again: new id, new price. Published once, owner's choices kept.
+  catalog.items=[item('new',750),item('tea',200)];
+  assert.equal((await runtime.sync(invoke)).status,'published');assert.deepEqual(posts,['get','get','publish']);
+  assert.deepEqual(saved.document.items.map(i=>[i.id,i.priceMinor]),[['new',750],['tea',200]]);
+  assert.equal(saved.document.name,'Pizza Ev');assert.equal(saved.document.description,'Ev menyusu');assert.equal(saved.document.items[1].hidden,true);
+  assert.equal((await runtime.sync(invoke)).status,'current');
+  // Switched off by the owner: never switched back on by the sync.
+  saved={...saved,enabled:false};assert.equal((await runtime.sync(invoke)).status,'off');
+  assert.equal(posts.filter(p=>p==='publish').length,1);
+ }finally{global.fetch=old;}
+});

@@ -1,3 +1,4 @@
+import {QR_ITEM_IMAGES_DDL,withQrItemImages} from '../lib/qr-item-images.js';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import type {FastifyInstance,FastifyRequest,FastifyReply} from 'fastify';
 import {sql} from 'drizzle-orm';
@@ -12,6 +13,8 @@ const Device=z.object({deviceId:uuid});
 const publicUrl=(m:Menu,t:string)=>`https://possistem.az/qr/${m.public_token}/${t}/`;
 const orderView=(o:Record<string,unknown>)=>({id:o.id,status:o.status,tableLabel:o.table_label,tableId:o.table_id,lines:o.lines,note:o.note,subtotalMinor:Number(o.subtotal_minor),createdAt:o.created_at,reason:o.reason,posOrderId:o.pos_order_id,claimUntil:o.claim_until});
 export async function qrOrderRoutes(app:FastifyInstance){
+ await app.db.execute(sql.raw(QR_ITEM_IMAGES_DDL));
+ const artworkDocument=async(menu:Menu)=>withQrItemImages(menu.document,await query<{product_id:string;image:string}>(app.db,sql`SELECT product_id,image FROM restaurant_qr_item_images WHERE menu_id=${menu.id}::uuid`));
  const route=(fn:(req:FastifyRequest,reply:FastifyReply)=>Promise<unknown>)=>async(req:FastifyRequest,reply:FastifyReply)=>{reply.header('Cache-Control','no-store');try{return await fn(req,reply);}catch(e){if(e instanceof z.ZodError)return reply.code(400).send({error:e.issues[0]?.message||'Məlumat düzgün deyil.'});if(e instanceof QrError)return reply.code(e.statusCode).send({error:e.message});throw e;}};
  async function device(req:FastifyRequest,body:{deviceId:string}){
   const auth=resolveTenantToken(req.headers.authorization?.replace(/^Bearer\s+/i,''));if(!auth)throw new QrError('Hesaba yenidən daxil olun.',401);
@@ -24,7 +27,7 @@ export async function qrOrderRoutes(app:FastifyInstance){
  const deviceMenu=async(customerId:string,deviceId:string)=>{
   const [menu]=await query<Menu>(app.db,sql`SELECT * FROM restaurant_qr_menus WHERE customer_id=${customerId}::uuid AND device_id=${deviceId}::uuid`);return menu;
  };
- async function config(menu:Menu|undefined){if(!menu)return {menu:null,tables:[]};return {menu:{enabled:menu.enabled,revision:menu.revision,document:menu.document},tables:await Promise.all(menu.document.tables.map(async t=>{const url=publicUrl(menu,menu.table_tokens[t.id]!);return {...t,url,qr:await QRCode.toDataURL(url,{width:240,margin:2,errorCorrectionLevel:'M'})};}))};}
+ async function config(menu:Menu|undefined){if(!menu)return {menu:null,tables:[]};return {menu:{enabled:menu.enabled,revision:menu.revision,document:await artworkDocument(menu)},tables:await Promise.all(menu.document.tables.map(async t=>{const url=publicUrl(menu,menu.table_tokens[t.id]!);return {...t,url,qr:await QRCode.toDataURL(url,{width:240,margin:2,errorCorrectionLevel:'M'})};}))};}
  app.post('/qr/device/config',{bodyLimit:1024*1024},route(async(req)=>{
   const b=Device.extend({action:z.enum(['get','publish','disable','rotate']).default('get'),document:QrDocument.optional(),expectedRevision:z.number().int().nonnegative().optional()}).parse(req.body),customerId=await device(req,b);
   if(b.action==='get')return config(await deviceMenu(customerId,b.deviceId));
@@ -76,7 +79,7 @@ export async function qrOrderRoutes(app:FastifyInstance){
   const b=z.object({menu:opaque,table:opaque}).parse(req.params);
   const [m]=await query<Menu>(app.db,sql`SELECT * FROM restaurant_qr_menus WHERE public_token=${b.menu}`);
   const table=m?.document.tables.find(t=>m.table_tokens[t.id]===b.table);if(!m||!m.enabled||!table)throw new QrError('QR menyu hazırda bağlıdır. Restoran əməkdaşına müraciət edin.',404);
-  const {tables,...document}=m.document;return {revision:m.revision,table,document:{...document,items:document.items.filter(i=>!i.hidden)},ordersAvailable:await licenseActive(m)&&!!m.last_seen_at&&Date.now()-new Date(m.last_seen_at).getTime()<90000};
+  const {tables,...document}=await artworkDocument(m);return {revision:m.revision,table,document:{...document,items:document.items.filter(i=>!i.hidden)},ordersAvailable:await licenseActive(m)&&!!m.last_seen_at&&Date.now()-new Date(m.last_seen_at).getTime()<90000};
  }));
  app.post('/public/qr/:menu/:table/orders',{config:{rateLimit:{max:30,timeWindow:'1 minute'}}},route(async(req)=>{
   const p=z.object({menu:opaque,table:opaque}).parse(req.params),b=QrCart.parse(req.body),hash=createHash('sha256').update(JSON.stringify({table:p.table,...b})).digest('hex');

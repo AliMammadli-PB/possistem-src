@@ -183,6 +183,7 @@ try{
    await page.evaluate(permissions=>qaSetPermissions(permissions),permissions);
    await page.waitForFunction(()=>document.querySelectorAll('.pm-module').length>0);
    await page.evaluate(()=>{window.__psAccess=['tables','admin','settings'];window.dispatchEvent(new Event('ps:access'));});
+   await page.waitForFunction(()=>![...document.querySelectorAll('.ps-touch-sidebar nav>a')].some(a=>a.textContent==='Çatdırılma'));
    assert.equal(await page.locator('.ps-touch-sidebar nav>a',{hasText:'Çatdırılma'}).count(),0,'Disabled delivery module is hidden');
    assert.equal(await page.locator('.pm-module',{hasText:'Anbar'}).count(),0,'Disabled stock module hides linked goods too');
    await page.evaluate(()=>{delete window.__psAccess;window.dispatchEvent(new Event('ps:access'));});
