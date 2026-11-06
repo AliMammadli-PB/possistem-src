@@ -1,0 +1,22 @@
+function SupportPage(){
+ const [mode,setMode]=reactExports.useState('assistant'),[messages,setMessages]=reactExports.useState([]),[local,setLocal]=reactExports.useState([]),[draft,setDraft]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false),[error,setError]=reactExports.useState('');
+ const locked=reactExports.useRef(false),list=reactExports.useRef(null),alive=reactExports.useRef(true),epoch=reactExports.useRef(0),owner=useAuthStore(s=>s.session?.userId);
+ const text=(az,tr,en)=>psAdminText(az,tr,en);
+ const pull=async()=>{const current=epoch.current;try{const r=await window.pos.support.thread();if(!alive.current||current!==epoch.current)return;if(!r.success)throw Error(r.error?.message||'Dəstək açıla bilmədi');setMessages(r.data.messages||[]);setError('');}catch(e){if(alive.current&&current===epoch.current)setError(e.message||String(e))}};
+ reactExports.useEffect(()=>{alive.current=true;epoch.current++;setMessages([]);setLocal([]);setDraft('');void pull();const timer=setInterval(()=>{if(!document.hidden)void pull()},5000);return()=>{alive.current=false;epoch.current++;clearInterval(timer)}},[owner]);
+ reactExports.useEffect(()=>{list.current?.scrollTo({top:list.current.scrollHeight,behavior:'smooth'})},[messages,local,mode]);
+ const send=async()=>{const value=draft.trim();if(!value||locked.current)return;locked.current=true;setBusy(true);setError('');try{
+  if(mode==='assistant'&&!/\b(live agent|operator)\b/i.test(value)){
+   const history=local.map(m=>({author:m.author,body:m.body,reply:m.reply})),reply=PsSupportKnowledge.getConversationReply(value,'az',history);
+   setLocal(old=>[...old,{id:crypto.randomUUID(),author:'me',body:value},{id:crypto.randomUUID(),author:'helper',body:reply.body,reply}].slice(-100));setDraft('');
+  }else{
+   const transcript=mode==='assistant'?local.slice(-12).map(m=>(m.author==='me'?'Müştəri: ':'Köməkçi: ')+m.body).join('\n'):'',body=transcript?('POS köməkçisindən yönləndirmə\n'+transcript+'\nMüştəri: '+value).slice(-4000):value;
+   const r=await window.pos.support.request(body);if(!r.success)throw Error(r.error?.message||'Mesaj göndərilmədi');setMode('agent');setDraft('');await pull();
+  }
+ }catch(e){setError(e.message||String(e))}finally{locked.current=false;if(alive.current)setBusy(false)}};
+ const lastAdmin=messages.filter(m=>m.authorKind==='admin').at(-1),rows=mode==='agent'?messages:local;
+ return <section className="ps-support-page"><header><h1>{text('Canlı dəstək','Canlı destek','Support')}</h1><div role="tablist" aria-label="Dəstək növü"><button role="tab" aria-selected={mode==='assistant'} onClick={()=>setMode('assistant')}>{text('Köməkçi','Yardımcı','Assistant')}</button><button role="tab" aria-selected={mode==='agent'} onClick={()=>setMode('agent')}>{text('Əməkdaş','Temsilci','Support team')}{lastAdmin&&<span> · {text('Cavab var','Yanıt var','Reply available')}</span>}</button></div></header>
+ <div className="ps-support-messages" ref={list} role="log" aria-live="polite">{!rows.length&&<p>{mode==='assistant'?text('Salam, sizə necə kömək edə bilərəm?','Merhaba, nasıl yardımcı olabilirim?','Hello, how can I help?'):text('Dəstək əməkdaşına mesajınızı yazın.','Destek ekibine mesaj yazın.','Write to our support team.')}</p>}{rows.map((m,i)=><article key={m.id||i} className={(m.author==='me'||m.authorKind==='customer')?'is-me':'is-helper'}><small>{m.author==='me'||m.authorKind==='customer'?text('Siz','Siz','You'):m.authorKind==='admin'?text('Dəstək əməkdaşı','Destek ekibi','Support team'):text('Köməkçi','Yardımcı','Assistant')}</small><p>{m.body}</p>{m.meta?.attachment&&<p>{text('Əlavə fayl','Ek dosya','Attachment')}: {m.meta.attachment.fileName}</p>}{m.createdAt&&<time dateTime={m.createdAt}>{new Date(m.createdAt).toLocaleString('az-AZ')}</time>}</article>)}</div>
+ {error&&<div role="alert" className="ps-support-error">{error} <button onClick={()=>void pull()}>{text('Yenidən yoxla','Tekrar dene','Retry')}</button></div>}
+ <form onSubmit={e=>{e.preventDefault();void send()}}><textarea aria-label="Mesaj" rows="2" maxLength="4000" value={draft} disabled={busy} onChange={e=>setDraft(e.target.value)} placeholder={text('Mesajınızı yazın…','Mesajınızı yazın…','Write a message…')} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send()}}}/><button type="submit" disabled={busy||!draft.trim()}>{busy?'…':text('Göndər','Gönder','Send')}</button></form></section>;
+}

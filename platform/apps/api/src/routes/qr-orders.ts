@@ -1,4 +1,5 @@
 import {QR_ITEM_IMAGES_DDL,withQrItemImages} from '../lib/qr-item-images.js';
+import {QR_VISITS_DDL,openQrVisit,readQrVisit,requireQrVisitActive} from '../lib/qr-visits.js';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import type {FastifyInstance,FastifyRequest,FastifyReply} from 'fastify';
 import {sql} from 'drizzle-orm';
@@ -14,6 +15,8 @@ const publicUrl=(m:Menu,t:string)=>`https://possistem.az/qr/${m.public_token}/${
 const orderView=(o:Record<string,unknown>)=>({id:o.id,status:o.status,tableLabel:o.table_label,tableId:o.table_id,lines:o.lines,note:o.note,subtotalMinor:Number(o.subtotal_minor),createdAt:o.created_at,reason:o.reason,posOrderId:o.pos_order_id,claimUntil:o.claim_until});
 export async function qrOrderRoutes(app:FastifyInstance){
  await app.db.execute(sql.raw(QR_ITEM_IMAGES_DDL));
+ await app.db.execute(sql.raw(QR_VISITS_DDL));
+ await app.db.execute(sql`ALTER TABLE restaurant_qr_orders ADD COLUMN IF NOT EXISTS visit_hash text`);
  const artworkDocument=async(menu:Menu)=>withQrItemImages(menu.document,await query<{product_id:string;image:string}>(app.db,sql`SELECT product_id,image FROM restaurant_qr_item_images WHERE menu_id=${menu.id}::uuid`));
  const route=(fn:(req:FastifyRequest,reply:FastifyReply)=>Promise<unknown>)=>async(req:FastifyRequest,reply:FastifyReply)=>{reply.header('Cache-Control','no-store');try{return await fn(req,reply);}catch(e){if(e instanceof z.ZodError)return reply.code(400).send({error:e.issues[0]?.message||'Məlumat düzgün deyil.'});if(e instanceof QrError)return reply.code(e.statusCode).send({error:e.message});throw e;}};
  async function device(req:FastifyRequest,body:{deviceId:string}){
@@ -75,26 +78,35 @@ export async function qrOrderRoutes(app:FastifyInstance){
    await tx.execute(sql`INSERT INTO restaurant_qr_events(menu_id,order_id,action,detail) VALUES(${o.menu_id}::uuid,${b.id}::uuid,${b.action},${JSON.stringify({posOrderId:b.posOrderId??null})}::jsonb)`);return {ok:true};
   });
  }));
+ app.post('/public/qr/:menu/:table/session',{config:{rateLimit:{max:120,timeWindow:'1 minute'}}},route(async(req)=>{
+  const b=z.object({menu:opaque,table:opaque}).parse(req.params),body=z.object({sessionToken:opaque.optional()}).parse(req.body);
+  const [m]=await query<Menu>(app.db,sql`SELECT * FROM restaurant_qr_menus WHERE public_token=${b.menu}`);
+  if(!m||!m.enabled||!m.document.tables.some(t=>m.table_tokens[t.id]===b.table))throw new QrError('QR menyu hazırda bağlıdır.',404);
+  const {hash,...visit}=await openQrVisit(app.db,m.id,b.table,body.sessionToken);return visit;
+ }));
  app.get('/public/qr/:menu/:table',{config:{rateLimit:{max:1200,timeWindow:'1 minute'}}},route(async(req)=>{
   const b=z.object({menu:opaque,table:opaque}).parse(req.params);
   const [m]=await query<Menu>(app.db,sql`SELECT * FROM restaurant_qr_menus WHERE public_token=${b.menu}`);
   const table=m?.document.tables.find(t=>m.table_tokens[t.id]===b.table);if(!m||!m.enabled||!table)throw new QrError('QR menyu hazırda bağlıdır. Restoran əməkdaşına müraciət edin.',404);
-  const {tables,...document}=await artworkDocument(m);return {revision:m.revision,table,document:{...document,items:document.items.filter(i=>!i.hidden)},ordersAvailable:await licenseActive(m)&&!!m.last_seen_at&&Date.now()-new Date(m.last_seen_at).getTime()<90000};
+  const visit=req.headers['x-qr-session']?await readQrVisit(app.db,m.id,b.table,req.headers['x-qr-session']):null;
+  const {tables,...document}=await artworkDocument(m);return {revision:m.revision,table,document:{...document,items:document.items.filter(i=>!i.hidden)},ordersAvailable:!!visit?.active&&await licenseActive(m)&&!!m.last_seen_at&&Date.now()-new Date(m.last_seen_at).getTime()<90000};
  }));
  app.post('/public/qr/:menu/:table/orders',{config:{rateLimit:{max:30,timeWindow:'1 minute'}}},route(async(req)=>{
   const p=z.object({menu:opaque,table:opaque}).parse(req.params),b=QrCart.parse(req.body),hash=createHash('sha256').update(JSON.stringify({table:p.table,...b})).digest('hex');
   return app.db.transaction(async tx=>{
    const [m]=await query<Menu>(tx,sql`SELECT * FROM restaurant_qr_menus WHERE public_token=${p.menu} FOR UPDATE`);if(!m)throw new QrError('Menyu tapılmadı.',404);
    const table=m.document.tables.find(t=>m.table_tokens[t.id]===p.table);if(!table)throw new QrError('Masa tapılmadı.',404);
+   const visit=await readQrVisit(tx,m.id,p.table,req.headers['x-qr-session']);
    const [old]=await query<Record<string,any>>(tx,sql`SELECT * FROM restaurant_qr_orders WHERE menu_id=${m.id}::uuid AND request_id=${b.requestId}::uuid`);
-   if(old){if(old.request_hash!==hash)throw new QrError('Sifariş sorğusu dəyişib. Yenidən yoxlayın.',409);return {order:orderView(old),receiptToken:old.receipt_token};}
+   if(old){if(old.visit_hash!==visit.hash)throw new QrError('Sifariş başqa sessiyaya aiddir.',403);if(old.request_hash!==hash)throw new QrError('Sifariş sorğusu dəyişib. Yenidən yoxlayın.',409);return {order:orderView(old),receiptToken:old.receipt_token};}
+   requireQrVisitActive(visit);
    if(!m.enabled||!m.last_seen_at||Date.now()-new Date(m.last_seen_at).getTime()>=90000)throw new QrError('Kassa hazırda oflayndır. Əməkdaşa müraciət edin.',409);
    if(!await licenseActive(m,tx))throw new QrError('Restoran hazırda yeni sifariş qəbul etmir.',409);
    if(m.revision!==b.revision)throw new QrError('Menyu dəyişib. Səhifəni yeniləyin.',409);
    const [count]=await query<{count:number}>(tx,sql`SELECT count(*)::int AS count FROM restaurant_qr_orders WHERE menu_id=${m.id}::uuid AND status IN ('pending','accepting')`);if(Number(count?.count)>=100)throw new QrError('Restoran hazırda çox sifariş qəbul edir. Əməkdaşa müraciət edin.',429);
    const priced=priceQrCart(m.document,b),orderId=randomUUID(),receipt=token();
-   const [order]=await query(tx,sql`INSERT INTO restaurant_qr_orders(id,menu_id,request_id,request_hash,receipt_token,table_id,table_label,menu_revision,lines,note,subtotal_minor)
-    VALUES(${orderId}::uuid,${m.id}::uuid,${b.requestId}::uuid,${hash},${receipt},${table.id},${table.label},${m.revision},${JSON.stringify(priced.lines)}::jsonb,${b.note},${priced.subtotal}) RETURNING *`);
+   const [order]=await query(tx,sql`INSERT INTO restaurant_qr_orders(id,menu_id,request_id,request_hash,receipt_token,table_id,table_label,menu_revision,lines,note,subtotal_minor,visit_hash)
+    VALUES(${orderId}::uuid,${m.id}::uuid,${b.requestId}::uuid,${hash},${receipt},${table.id},${table.label},${m.revision},${JSON.stringify(priced.lines)}::jsonb,${b.note},${priced.subtotal},${visit.hash}) RETURNING *`);
    return {order:orderView(order!),receiptToken:receipt};
   });
  }));

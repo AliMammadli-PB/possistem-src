@@ -156,6 +156,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-management.mjs',
   'apply-restaurant-operational-reset.mjs',
   'apply-restaurant-qr-sync-print.mjs',
+  'apply-restaurant-support.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');

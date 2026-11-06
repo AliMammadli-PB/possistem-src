@@ -2463,6 +2463,8 @@ html body .ps-pin-layout-1930 .ps-staff-pin-error,html body .ps-pin-layout-1930 
 
 
 
+
+
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}
@@ -3298,3 +3300,8 @@ body .ps-admin-workspace p.pm-cash-help,.pm-cash-help{font-size:12px!important;l
 @media(max-width:650px){.pm-cash-transfer-selects{grid-template-columns:1fr}.pm-cash-transfer-amount{grid-template-columns:1fr}.pm-cash-transfer-summary>div{flex-wrap:wrap;gap:4px 12px}.pm-cash-activity-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.pm-cash-card-main{padding:14px}.pm-cash-activity header{flex-wrap:wrap}.pm-cash-activity-tools>input{min-width:0;flex-basis:100%}}
 
 /* MANAGEMENT_STYLE_END */
+
+/* SUPPORT_PAGE_START */
+.ps-support-page{display:flex;flex-direction:column;gap:16px;width:min(100%,900px);height:100%;min-height:0;margin:auto;padding:24px;color:#12325b}.ps-support-page h1{font-size:24px;margin:0 0 16px}.ps-support-page [role=tablist]{display:flex;gap:8px}.ps-support-page button{min-height:44px;border:1px solid #cbd9ef;border-radius:10px;padding:10px 18px;background:white;color:#154a93;font-weight:600}.ps-support-page [aria-selected=true],.ps-support-page button[type=submit]{background:#1859c7;color:white;border-color:#1859c7}.ps-support-page button:disabled{opacity:.5}.ps-support-messages{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #d4dfef;background:#fff;border-radius:12px}.ps-support-messages article{max-width:88%;padding:12px 16px;border-radius:12px;background:#f0f4fa;align-self:flex-start}.ps-support-messages article.is-me{background:#e7f0ff;align-self:flex-end}.ps-support-messages p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.ps-support-messages small,.ps-support-messages time{font-size:12px;color:#526b8a}.ps-support-page form{display:flex;align-items:end;gap:10px}.ps-support-page textarea{flex:1;min-width:0;resize:vertical;max-height:180px;background:white;border:1px solid #cbd9ef;border-radius:10px;padding:12px;color:#12325b}.ps-support-error{color:#a22424;font-size:14px}@media(max-width:600px){.ps-support-page{padding:12px}.ps-support-page [role=tablist]{flex-wrap:wrap}.ps-support-page form{flex-wrap:wrap}.ps-support-page form button{margin-left:auto}}
+
+/* SUPPORT_PAGE_END */

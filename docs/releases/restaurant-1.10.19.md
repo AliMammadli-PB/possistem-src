@@ -1,0 +1,23 @@
+# Restoran POS 1.10.19 — QR visits and support
+
+QR ordering now requires an independently generated 30-minute visit credential. Opening a printed QR creates a personal link carried in the URL fragment; that fragment is not sent in HTTP URLs or referrers. Credentials are random, stored only as hashes in PostgreSQL, and bound to the menu and table token. The server owns the absolute expiry. Refresh, receipt polling, new-order actions and reopening the same personal link never extend it. Four guests can open the same printed QR independently. Personal links disable new ordering at expiry while already-submitted orders remain trackable. Replaying the same order after expiry can recover its result for the same visit, without creating a new order. Foreign visits cannot recover another visit's request id. Menu browsing remains available after expiry.
+
+Security boundary: a static printed QR URL is a public entry point. Neither this flow nor a web browser can prove that the user physically rescanned it. Someone who deliberately retains the base QR address or removes the personal fragment can request a fresh visit. Physical presence enforcement would require staff approval, a changing in-venue challenge or a controlled network. This release addresses an ordinary retained personal link; it is not a geofence or proof of presence.
+
+The POS live-support reader used `support.thread`, but the main process registered `support.active`. The final owner patch makes the preload use `support.active` and retains a policy/dispatcher alias for older callers. The support page now includes the website's shared conversation engine, local conversation history, explicit assistant/human tabs, and `live agent` handoff with the recent transcript. Human messages use the existing signed, customer-scoped owner endpoints. Admin replies are refreshed every five seconds while visible. Account changes clear local conversation state. No fake online indicator is introduced; the bundled helper provides advice and does not execute inventory or account mutations.
+
+## Checks
+
+- QR database integration: 13/13 cases passed against a dedicated isolated PostgreSQL test database, including four concurrent guests, expiry, refresh, cross-table binding, forged/missing credentials, menu rotation, cashier claims and idempotent result recovery.
+- Chromium 151.0.7922.34: four independent browser contexts, personal fragments, 30-minute expiry, expired-link reload without renewal and other guests unaffected all passed. Public live API smoke verified four distinct 30-minute credentials, immutable expiry and rejection of forged credentials. No restaurant orders were submitted by live QA.
+- Support browser acceptance passed: website greeting/context engine, transcript handoff, admin reply polling, duplicate-click lock and packaged preload/main method compatibility.
+- Versioned native Release rebuild: 403 cases / 3363 assertions passed under Wine. Desktop assembly applied 133/133 patches. All five POS TypeScript checks and API TypeScript passed. Website production build passed. Packaged ASAR main, preload and renderer matched the final assembly.
+- Live Pizza Home menu checked at 390, 768 and 1536 px for image rendering, horizontal overflow and browser exceptions. The owner is actively editing the catalogue: it now has 128 visible items, 109 with images. New/renamed product IDs without artwork were not automatically changed by this security release.
+
+## Publication and recovery
+
+- Setup: `https://possistem.az/pos-updates/Possistem-Setup-1.10.19.exe`, 360124891 bytes. SHA-256: `3960eee7d2a417a9972c24219253f7bcec518261d514ce9ca64ba73f08f1efbe`.
+- ZIP: `https://possistem.az/pos-updates/Possistem-Setup-1.10.19-verified.zip`. ZIP is validated before atomic publication. Installer local integrity and packaged ASAR agreement verified; signed update manifest verified by the publisher. Windows Authenticode certificate remains unavailable.
+- API changes are additive: `restaurant_qr_visits` and a nullable `restaurant_qr_orders.visit_hash`. Existing orders and menu data remain. API rollback file: `/opt/possistem-pos-control-backups/release-11019-20261106/qr-orders.js`. Website rollback: `/var/www/possistem/.next-before-release-11019-20261106`. Old static chunks retained for open tabs. Previous setup/feed retained.
+- POS users update/restart to get the fixed support page. QR session enforcement is on the server and website and does not require printing new table codes. Market POS remains 1.5.78.
+- The separate requested Pizza Home operational reset remains pending an online updated till; this release does not clear customer financial data.
