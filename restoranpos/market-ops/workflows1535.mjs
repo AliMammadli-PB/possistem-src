@@ -14,6 +14,8 @@ export function patchMarket1535(source){
  });
  section('OpsKassalar',s=>{
   s=s.replace('Satış kassaları əsas Kassalar bölməsi ilə ortaqdır. Burada ad və filialı dəyişə bilərsiniz; növbəni əsas Kassalar bölməsindən açıb bağlayın.','Kassanı seçin: hər kassanın növbəsi, X/Z hesabatı və pul hərəkətləri ayrıca idarə olunur.').replace('Satış kasaları ana Kasalar bölümüyle ortaktır. Burada ad ve şubeyi düzenleyin; vardiyayı ana Kasalar bölümünden açıp kapatın.','Выберите кассу: смена, X/Z и движения денег ведутся отдельно.').replace('Sale registers are shared with the main Registers section. Edit labels and branches here; open or close shifts from Registers.','Each till has its own shift, X/Z reports and money movements.');
+  // New shared cards retain Market's register/shift action in their overflow menu.
+  if(s.includes('h(PsCashAccountsGrid,{'))return s.replace('h(PsCashAccountsGrid,{','h(PsCashAccountsGrid,{onRegisterOpen:a=>{const host=window.parent;host.dispatchEvent(new host.CustomEvent("market:register-open",{detail:a.terminalId.slice(7)}));},');
   const anchor='jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => void openMoves(a), children: "Hərəkətlər" })';
   if(!s.includes(anchor))throw Error('1535 till card actions missing');
   s=s.replace(anchor,`a.kind==="till"&&String(a.terminalId||"").startsWith("market-")?jsxRuntimeExports.jsx(OpsButton,{onClick:()=>{const host=window.parent;host.dispatchEvent(new host.CustomEvent("market:register-open",{detail:a.terminalId.slice(7)}));},children:psMarketWords("Növbə · X/Z","Смена · X/Z","Shift · X/Z")}):null,${anchor}`);

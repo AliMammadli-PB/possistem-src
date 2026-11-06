@@ -7,7 +7,8 @@ export function patchRegisterLinking(source) {
   if(start<0||end<start)throw new Error('Market cash account component missing');
   let component=source.slice(start,end);
   const replace=(before,after)=>{if(!component.includes(before))throw new Error('Market cash account patch missing: '+before);component=component.replace(before,after)};
-  replace('return h("div", { className: "space-y-4" },', `return h("div", { className: "space-y-4 ps-market-linked-registers" },
+  const rootClass=component.includes('className: "space-y-4 pm-cash-accounts"')?"space-y-4 pm-cash-accounts":"space-y-4";
+  replace(`return h("div", { className: "${rootClass}" },`, `return h("div", { className: "${rootClass} ps-market-linked-registers" },
     h("p", { className: "ps-recipe-note" }, psAdminText("Satış kassaları əsas Kassalar bölməsi ilə ortaqdır. Burada ad və filialı dəyişə bilərsiniz; növbəni əsas Kassalar bölməsindən açıb bağlayın.", "Satış kasaları ana Kasalar bölümüyle ortaktır. Burada ad ve şubeyi düzenleyin; vardiyayı ana Kasalar bölümünden açıp kapatın.", "Sale registers are shared with the main Registers section. Edit labels and branches here; open or close shifts from Registers.")),`);
   replace('value: form.terminalId, className: field,', 'value: form.terminalId, disabled: Boolean(form.id) && String(form.terminalId || "").startsWith("market-"), className: field,');
   component=component.replace('disabled: busy, onClick: () => void remove(a), children: "Bağla"','disabled: busy, onClick: () => void remove(a), children: psAdminText("Sil", "Sil", "Delete")');

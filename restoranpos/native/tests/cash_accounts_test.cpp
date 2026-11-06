@@ -224,3 +224,61 @@ TEST_CASE("object with remaining warehouse stock cannot be archived", "[kassa][o
     auto list=f.call("cashAccounts.list",pos::Json::object());
     REQUIRE(std::any_of(list.at("objects").begin(),list.at("objects").end(),[&](const auto& o){return o.at("id")==id;}));
 }
+
+TEST_CASE("unified account activity includes sales refunds and movements without posting twice", "[kassa][activity]") {
+    KassaFixture f;
+    const auto till=f.kassa("Till","till",10000,"pc-1"), bank=f.kassa("Bank","bank",0), safe=f.kassa("Safe","treasury",0);
+    const auto order=f.order(1400);
+    f.call("payments.createCash",pos::Json{{"orderId",order},{"amountMinor",1400},{"tenderedMinor",1400}},"pc-1");
+    f.cardPaid(f.order(2500),2500,"pc-1");
+    auto payment=f.fixture().db().prepare("SELECT id FROM payments WHERE order_id=:id");payment.bind(":id",order);REQUIRE(payment.step());
+    auto refund=f.fixture().db().prepare("INSERT INTO refunds(id,order_id,payment_id,amount_minor,reason,status,method,actor_user_id,created_at,updated_at,terminal_id) VALUES('qa-refund',:order,:payment,400,'Partial','completed','cash','usr-admin',:now,:now,'pc-1')");
+    refund.bind(":order",order).bind(":payment",payment.columnText(0)).bind(":now",pos::nowMs()).exec();
+    f.call("cashAccounts.transfer",pos::Json{{"fromId",till},{"toId",safe},{"amountMinor",2000}});
+    f.call("cash.movement",pos::Json{{"kind","expense"},{"amountMinor",500},{"reason","Purchase"},{"accountId",till}});
+    const auto activity=f.call("cashAccounts.moves",pos::Json{{"accountId",till},{"includeSales",true}});
+    REQUIRE(activity.at("includesSales")==true);REQUIRE(activity.at("moves").size()==5);
+    REQUIRE(activity.at("closingMinor")==8500);REQUIRE(activity.at("balanceMinor")==8500);
+    REQUIRE(activity.at("openingMinor")==0);REQUIRE(activity.at("inMinor")==11400);REQUIRE(activity.at("outMinor")==2900);
+    pos::Money sum=0;for(const auto& row:activity.at("moves"))sum+=row.at("amountMinor").get<pos::Money>();REQUIRE(sum==f.balance(till));
+    REQUIRE(f.account(till).at("totalCashMinor")==1000);REQUIRE(f.account(till).at("totalCardMinor")==2500);
+    REQUIRE(f.call("cashAccounts.moves",pos::Json{{"accountId",till}}).at("moves").size()==3); // compatibility
+    const auto bankRows=f.call("cashAccounts.moves",pos::Json{{"accountId",bank},{"includeSales",true}});REQUIRE(bankRows.at("moves").size()==1);REQUIRE(bankRows.at("closingMinor")==2500);
+    const auto safeRows=f.call("cashAccounts.moves",pos::Json{{"accountId",safe},{"includeSales",true}});REQUIRE(safeRows.at("moves").size()==1);REQUIRE(safeRows.at("closingMinor")==2000);
+    REQUIRE(f.account(safe).at("totalInMinor")==2000);
+}
+
+TEST_CASE("unified activity splits mixed tenders and respects bank branch scope", "[kassa][activity]") {
+    KassaFixture f;
+    const auto branch=f.call("cashObjects.save",pos::Json{{"name","Branch"}}).at("id").get<std::string>();
+    const auto till=f.kassa("Till","till",0,"pc-a",branch),bank=f.kassa("Bank","bank",0,"",branch);
+    const auto order=f.order(3000);const auto now=pos::nowMs();
+    auto payment=f.fixture().db().prepare("INSERT INTO payments(id,order_id,method,status,amount_minor,user_id,created_at,updated_at,terminal_id) VALUES('qa-mixed',:order,'mixed','approved',3000,'usr-admin',:now,:now,'pc-a')");payment.bind(":order",order).bind(":now",now).exec();
+    f.fixture().db().exec("INSERT INTO payment_tenders(id,payment_id,method,amount_minor,tip_minor) VALUES('qa-cash','qa-mixed','cash',1000,100),('qa-card','qa-mixed','card',2000,200)");
+    f.cardPaid(f.order(7000),7000,"other-branch");
+    const auto cash=f.call("cashAccounts.moves",pos::Json{{"accountId",till},{"includeSales",true}}),card=f.call("cashAccounts.moves",pos::Json{{"accountId",bank},{"includeSales",true}});
+    REQUIRE(cash.at("moves").size()==1);REQUIRE(cash.at("closingMinor")==1100);REQUIRE(cash.at("balanceMinor")==1100);
+    REQUIRE(card.at("moves").size()==1);REQUIRE(card.at("closingMinor")==2200);REQUIRE(card.at("balanceMinor")==2200);
+    REQUIRE(f.account(till).at("totalCashMinor")==1100);REQUIRE(f.account(till).at("totalCardMinor")==2200);
+}
+
+TEST_CASE("activity period opening and closing reconcile while search only filters the rows", "[kassa][activity]") {
+    KassaFixture f;const auto till=f.kassa("Till","till",1000,"pc-1");
+    const auto order=f.order(200);f.call("payments.createCash",pos::Json{{"orderId",order},{"amountMinor",200},{"tenderedMinor",200}},"pc-1");
+    f.call("cash.movement",pos::Json{{"kind","expense"},{"amountMinor",250},{"reason","Outside period"},{"accountId",till}});
+    auto account=f.fixture().db().prepare("UPDATE cash_accounts SET created_at=1000 WHERE id=:id");account.bind(":id",till).exec();
+    auto moves=f.fixture().db().prepare("UPDATE cash_account_moves SET created_at=CASE WHEN kind='opening' THEN 1000 ELSE 3000 END WHERE account_id=:id");moves.bind(":id",till).exec();
+    auto paid=f.fixture().db().prepare("UPDATE payments SET created_at=2000 WHERE order_id=:id");paid.bind(":id",order).exec();
+    const auto activity=f.call("cashAccounts.moves",pos::Json{{"accountId",till},{"includeSales",true},{"from",2000},{"to",3000}});
+    REQUIRE(activity.at("moves").size()==1);REQUIRE(activity.at("openingMinor")==1000);REQUIRE(activity.at("closingMinor")==1200);REQUIRE(activity.at("balanceMinor")==950);
+    const auto filtered=f.call("cashAccounts.moves",pos::Json{{"accountId",till},{"includeSales",true},{"from",2000},{"to",3000},{"kind","expense"}});
+    REQUIRE(filtered.at("moves").empty());REQUIRE(filtered.at("closingMinor")==1200);REQUIRE(filtered.at("totalCount")==1);REQUIRE(filtered.at("filteredCount")==0);
+}
+
+TEST_CASE("a full balance transfer can be replayed without moving money again", "[kassa][activity]") {
+    KassaFixture f;const auto till=f.kassa("Till","till",5000,"pc-1"),safe=f.kassa("Safe","treasury",0);
+    pos::ipc::Request request;request.method="cashAccounts.transfer";request.requestId=pos::crypto::uuid4();request.idempotencyKey=pos::crypto::uuid4();request.payload=pos::Json{{"fromId",till},{"toId",safe},{"amountMinor",5000}};
+    const auto first=f.fixture().server().callHandler(request);request.requestId=pos::crypto::uuid4();const auto replay=f.fixture().server().callHandler(request);
+    REQUIRE(replay.at("idempotentReplay")==true);REQUIRE(first.at("transferId")==replay.at("transferId"));REQUIRE(f.balance(till)==0);REQUIRE(f.balance(safe)==5000);
+    REQUIRE_THROWS_AS(f.call("cashAccounts.transfer",pos::Json{{"fromId",till},{"toId",safe},{"amountMinor",1}}),pos::PosError);
+}

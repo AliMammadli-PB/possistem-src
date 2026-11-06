@@ -111,6 +111,9 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
 
 
 
+
+
+
 /* POSSISTEM_SUNMI_v1 */
 /* POS_LIVE_ACCESS_v2 */
 /* POS_LIVE_ACCESS_v1 */
@@ -14867,7 +14870,7 @@ function UpdateBanner() {
     "button",
     {
       type: "button",
-      onClick: () => navigate("/settings"),
+      onClick: () => navigate("/settings?section=updates"),
       className: "w-full border-b border-gold/30 bg-gold/10 px-4 py-2 text-center text-sm text-gold transition hover:bg-gold/15",
       children: [
         label,
@@ -15027,7 +15030,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.15 · 8863256";
+const _PS_BUILD = "1.10.16 · a1bb91c";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -15803,204 +15806,7 @@ function formatTime$2(ms) {
     return String(ms);
   }
 }
-function AdminCashPage() {
-  const { t } = useI18n();
-  const [businessDayId, setBusinessDayId] = reactExports.useState(null);
-  const [movements, setMovements] = reactExports.useState([]);
-  const [loading, setLoading] = reactExports.useState(true);
-  const [saving, setSaving] = reactExports.useState(false);
-  const [kind, setKind] = reactExports.useState("cash_in");
-  const [amountRaw, setAmountRaw] = reactExports.useState("");
-  const [reason, setReason] = reactExports.useState("");
-  const [note, setNote] = reactExports.useState("");
-  const [accountId, setAccountId] = reactExports.useState(void 0);
-  const refresh = reactExports.useCallback(async () => {
-    const dayRes = await window.pos.businessDay.current();
-    if (!dayRes.success) {
-      toast(dayRes.error.message, "danger");
-      setLoading(false);
-      return;
-    }
-    const dayPayload = dayRes.data;
-    const day = dayPayload.businessDay ?? dayPayload;
-    const id = day && typeof day === "object" && "id" in day ? day.id : void 0;
-    if (!id || day.status && day.status !== "open") {
-      setBusinessDayId(null);
-      setMovements([]);
-      setLoading(false);
-      return;
-    }
-    setBusinessDayId(id);
-    const listRes = await window.pos.cash.list(id);
-    if (!listRes.success) {
-      toast(listRes.error.message, "danger");
-      setLoading(false);
-      return;
-    }
-    const data = listRes.data;
-    setMovements(data.movements ?? []);
-    setLoading(false);
-  }, []);
-  reactExports.useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  const submit = async () => {
-    const amountMinor = parseMoneyInput(amountRaw);
-    if (amountMinor == null || amountMinor <= 0) {
-      toast(t.cash.amountRequired, "danger");
-      return;
-    }
-    if (!reason.trim()) {
-      toast(t.cash.reasonRequired, "danger");
-      return;
-    }
-    setSaving(true);
-    const res = await window.pos.cash.movement(
-      {
-        kind,
-        amountMinor,
-        reason: reason.trim(),
-        note: note.trim() || void 0,
-        businessDayId: businessDayId ?? void 0,
-        accountId: accountId || ""
-      },
-      { idempotencyKey: newIdempotencyKey() }
-    );
-    setSaving(false);
-    if (!res.success) {
-      toast(res.error.message, "danger");
-      return;
-    }
-    toast(t.common.save, "success");
-    setAmountRaw("");
-    setReason("");
-    setNote("");
-    await refresh();
-  };
-  if (loading) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full items-center justify-center text-muted", children: t.common.loading });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-full flex-col overflow-hidden", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-hairline px-6 py-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: t.cash.title }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "gold-rule mt-3 w-28 opacity-50" })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto w-full max-w-4xl space-y-6 overflow-auto p-6", children: [
-      !businessDayId && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "glass rounded-2xl p-6 text-center text-muted", children: t.cash.noBusinessDay }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass rounded-2xl p-5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: t.cash.movement }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "gold-rule mt-2 w-20 opacity-50" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-[11px] leading-relaxed text-faint", children: psAdminText(
-          "Mədaxil: kassaya pul qoyulub. Məxaric: kassadan pul götürülüb. Xərc: kassadan ödəniş edilib (təchizatçı, kuryer). Xırda pul: kassadakı xırda pulun düzəlişi.",
-          "Giriş: kasaya para konuldu. Çıkış: kasadan para alındı. Gider: kasadan ödeme yapıldı. Bozuk para: kasadaki bozuk paranın düzeltmesi.",
-          "In: money added. Out: money taken. Expense: paid from the drawer. Float: correction to the change kept in the till."
-        ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: () => setKind("cash_in"),
-              className: `touch-target rounded-xl px-4 py-3 text-sm ${kind === "cash_in" ? "bg-gold/15 text-gold" : "bg-elevated text-muted"}`,
-              children: t.cash.cashIn
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: () => setKind("cash_out"),
-              className: `touch-target rounded-xl px-4 py-3 text-sm ${kind === "cash_out" ? "bg-gold/15 text-gold" : "bg-elevated text-muted"}`,
-              children: t.cash.cashOut
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: () => setKind("expense"),
-              className: `touch-target rounded-xl px-4 py-3 text-sm ${kind === "expense" ? "bg-gold/15 text-gold" : "bg-elevated text-muted"}`,
-              children: psAdminText("Xərc", "Gider", "Expense")
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: () => setKind("float_adjust"),
-              className: `touch-target rounded-xl px-4 py-3 text-sm ${kind === "float_adjust" ? "bg-gold/15 text-gold" : "bg-elevated text-muted"}`,
-              children: psAdminText("Xırda pul", "Bozuk para", "Float")
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 grid gap-3 sm:grid-cols-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: t.cash.amount }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                value: amountRaw,
-                onChange: (e) => setAmountRaw(e.target.value),
-                inputMode: "decimal",
-                className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50"
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: t.cash.reason }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                value: reason,
-                onChange: (e) => setReason(e.target.value),
-                className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50"
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm sm:col-span-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: t.cash.note }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                value: note,
-                onChange: (e) => setNote(e.target.value),
-                className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50"
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: jsxRuntimeExports.jsx(PsAccountSelect, { value: accountId, onChange: setAccountId }) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            type: "button",
-            disabled: saving || !businessDayId,
-            onClick: () => void submit(),
-            className: "touch-target mt-4 rounded-xl bg-gold/20 px-4 py-3 text-sm text-gold hover:bg-gold/30 disabled:opacity-50",
-            children: t.common.save
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass overflow-hidden rounded-2xl", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-b border-hairline px-5 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: t.cash.movements }) }),
-        movements.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "p-10 text-center text-muted", children: t.cash.empty }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "w-full text-left text-sm", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { className: "border-b border-hairline bg-elevated/80 text-xs uppercase tracking-wide text-faint", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 font-medium", children: t.cash.kind }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 font-medium", children: t.cash.amount }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 font-medium", children: t.cash.reason }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 font-medium", children: t.cash.time })
-          ] }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("tbody", { children: movements.map((m) => /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { className: "border-b border-hairline/60 last:border-0", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-cream", children: m.kind === "cash_in" ? t.cash.cashIn : m.kind === "cash_out" ? t.cash.cashOut : m.kind }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: m.amountMinor, className: "text-gold" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted", children: m.reason }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 tabular-nums text-faint", children: formatTime$2(m.createdAt) })
-          ] }, m.id)) })
-        ] })
-      ] })
-    ] })
-  ] });
-}
+function AdminCashPage(){const navigate=useNavigate();reactExports.useEffect(()=>{navigate('/operations?tab=kassa',{replace:true});},[navigate]);return null;}
 const __vite_glob_0_0 = "" + new URL("cat-alcohol-CPKxhsf0.png", import.meta.url).href;
 const __vite_glob_0_1 = "" + new URL("cat-beer-Ds2QZpI9.png", import.meta.url).href;
 const __vite_glob_0_2 = "" + new URL("cat-chicken-CY7pfRyM.png", import.meta.url).href;
@@ -23430,10 +23236,11 @@ function settingsSections(t) {
     { id: "screen", label: "Ekran və dil", hint: "Görünüş və touch", icon: SlidersHorizontal, tone: "purple" },
     { id: "printer", label: "Printer", hint: "Cihazları qoşun", icon: ReceiptText, tone: "green" },
     { id: "receipt", label: psAdminText("Çek", "Fiş", "Receipt"), hint: psAdminText("Loqo, QR və kağız", "Logo, QR ve kağıt", "Logo, QR and paper"), icon: FileText, tone: "blue" },
-    { id: "system", label: "Cihaz və sistem", hint: "POS və bağlantı", icon: Server, tone: "gray" },
+    { id: "updates", label: psAdminText("Yeniləmə","Güncelleme","Updates"), hint: psAdminText("Yeni versiyanı yoxlayın və quraşdırın","Yeni sürümü kontrol edin ve kurun","Check for a new version and install"), icon: Server, tone: "blue" },
+    { id: "system", label: psAdminText("Sistem","Sistem","System"), hint: psAdminText("Loglar və POS xidməti","Günlükler ve POS hizmeti","Logs and POS service"), icon: Server, tone: "gray" },
     { id: "backup", label: "Ehtiyat nüsxə", hint: "Backup və bərpa", icon: HardDrive, tone: "amber" },
     { id: "danger", label: "Təhlükəli zona", hint: "Sıfırla və çıxış", icon: TriangleAlert, tone: "red", danger: true }
-  ];
+  ].filter(section=>section.id!=="updates"||!psMarketMode()); /* MANAGEMENT_RESTAURANT_UPDATES */
 }
 
 function SettingsAccordion({ id, title, hint, children, danger = false }) {
@@ -25635,7 +25442,10 @@ function OpsKassalar() {
     void window.pos.settings.getAll().then(r => { if (live && r.success) setBranchWarning(r.data?.settings?.["branch.cloudConflict"] || ""); }).catch(() => {});
     return () => { live = false; };
   }, []);
-  const [transfer, setTransfer] = reactExports.useState(null);
+  /* MANAGEMENT_CASH_V1 */
+  const [transfer,setTransfer]=reactExports.useState(null),[transferError,setTransferError]=reactExports.useState('');
+  const transferIntent=reactExports.useRef(null),transferLock=reactExports.useRef(false);
+  const openTransfer=account=>{transferIntent.current=null;setTransferError('');setTransfer({fromId:account?.id||'',toId:'',value:'',note:''});};
   const [moves, setMoves] = reactExports.useState(null);
   const [confirmAsk, confirmDialog] = useConfirm();
   const hasPermission = useAuthStore((st) => st.hasPermission);
@@ -25667,10 +25477,14 @@ function OpsKassalar() {
     }, { idempotencyKey: newIdempotencyKey() }), form.id ? "Saxlanıldı" : "Kassa yaradıldı").then((ok) => { if (ok) setForm(null); });
   };
   const saveTransfer = () => {
-    if (!transfer.fromId || !transfer.toId || transfer.fromId === transfer.toId) { toast("İki fərqli kassa seçin", "danger"); return; }
-    if (!psStockInputValid(transfer.value) || opsMinor(transfer.value) <= 0) { toast("Məbləği yazın", "danger"); return; }
-    void run(window.pos.cashAccounts.transfer({ fromId: transfer.fromId, toId: transfer.toId, amountMinor: opsMinor(transfer.value), note: transfer.note.trim() },
-      { idempotencyKey: newIdempotencyKey() }), "Transfer edildi").then((ok) => { if (ok) setTransfer(null); });
+    if(transferLock.current||!canManage)return;
+    const amountMinor=opsMinor(transfer.value),from=data.accounts.find(a=>a.id===transfer.fromId);
+    if(!from||!transfer.toId||transfer.fromId===transfer.toId||!psStockInputValid(transfer.value)||!Number.isSafeInteger(amountMinor)||amountMinor<=0||amountMinor>Number(from.balanceMinor||0)){setTransferError(psAdminText('Kassaları və məbləği yoxlayın.','Kasaları ve tutarı kontrol edin.','Check the accounts and amount.'));return;}
+    const payload={fromId:transfer.fromId,toId:transfer.toId,amountMinor,note:transfer.note.trim()},signature=JSON.stringify(payload);
+    if(transferIntent.current?.signature!==signature)transferIntent.current={signature,key:newIdempotencyKey()};
+    transferLock.current=true;setTransferError('');
+    const request=Promise.resolve().then(()=>window.pos.cashAccounts.transfer(payload,{idempotencyKey:transferIntent.current.key})).then(result=>{if(!result.success)setTransferError(result.error?.message||'Transfer alınmadı');return result;}).catch(error=>{setTransferError(error?.message||'Bağlantı xətası');throw error;});
+    void run(request,'Transfer edildi').then(ok=>{if(ok){setTransfer(null);transferIntent.current=null;}}).finally(()=>{transferLock.current=false;});
   };
   const remove = async (a) => {
     if (!(await confirmAsk(psAdminText("Kassa silinsin? Növbəni bağlayın və qalığı transfer edin. Keçmiş hərəkətlər saxlanılır.","Kasa silinsin mi? Vardiyayı kapatın ve bakiyeyi aktarın. Geçmiş korunur.","Delete the till? Close its shift and transfer its balance first. History is preserved."), { danger: true }))) return;
@@ -25682,7 +25496,7 @@ function OpsKassalar() {
     h("p", { className: "mt-2 text-2xl font-bold tracking-tight text-cream", style: tone ? { color: tone } : null }, value),
     h("p", { className: "mt-1 text-[11px] text-muted" }, sub));
 
-  return h("div", { className: "space-y-4" },
+  return h("div", { className: "space-y-4 pm-cash-accounts" },
     branchWarning ? h("p", { role: "alert", className: "rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm" }, branchWarning) : null,
     !psMarketMode()?h(OpsButton,{tone:"quiet",onClick:()=>setShowTransferDocs(!showTransferDocs),children:showTransferDocs?"Köçürmə qaimələrini gizlət":"Köçürmə qaimələri"}):null,
     showTransferDocs?h(PsDocuments,{partyType:"cash-transfer",defaultType:"cash-transfer",onChanged:reload}):null,
@@ -25705,25 +25519,10 @@ function OpsKassalar() {
         jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",disabled:busy,onClick:()=>{const o=data.objects.find(o=>o.id===objectId);setObjForm({id:o.id,name:o.name});},children:psAdminText("Obyektə düzəliş","İşletmeyi düzenle","Edit location")}),
         jsxRuntimeExports.jsx(OpsButton,{tone:"danger",disabled:busy,onClick:async()=>{if(await confirmAsk(psAdminText("Obyekt silinsin? Bağlı kassaları və anbar qalığını əvvəlcə köçürün. Tarixçə saxlanılır.","İşletme silinsin mi? Önce kasaları ve stoku taşıyın. Geçmiş korunur.","Delete location? Move linked tills and stock first. History is preserved."),{danger:true})){if(await run(window.pos.cashAccounts.saveObject({id:objectId,active:false}),psAdminText("Silindi","Silindi","Deleted")))setObjectId("all");}},children:psAdminText("Obyekti sil","İşletmeyi sil","Delete location")})) : null,
       h("span", { className: "ml-auto" }),
-      canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setTransfer({ fromId: "", toId: "", value: "", note: "" }), children: "Kassalar arası transfer" }) : null,
+      canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => openTransfer(null), children: "Kassalar arası transfer" }) : null,
       canManage ? jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ name: "", kind: "till", objectId: objectId !== "all" && objectId !== "none" ? objectId : data.objects.length === 1 ? data.objects[0].id : "", terminalId: data.accounts.some((a) => a.terminalId === data.currentTerminalId) ? "" : data.currentTerminalId, opening: "" }), children: "+ Yeni kassa" }) : null),
 
-    accounts.length ? h("div", { className: "ps-kassa-grid" }, accounts.map((a) =>
-      h("article", { key: a.id, className: "ps-kassa-card ps-kassa-" + a.kind },
-        h("div", { className: "ps-kassa-head" },
-          h("b", null, a.name),
-          h("span", { className: "ps-kassa-kind" }, PS_KASSA_KINDS[a.kind])),
-        h("p", { className: "ps-kassa-meta" },
-          [a.objectName ? "Obyekt: " + a.objectName : "", a.kind === "till" ? (a.terminalId ? "Satış nöqtəsi: " + termName(a.terminalId) : "Satış nöqtəsi bağlanmayıb") : ""].filter(Boolean).join(" · ") || "—"),
-        h("p", { className: "ps-kassa-balance" }, formatMoney(a.balanceMinor ?? 0)),
-        a.kind === "till" ? h("p", { className: "ps-kassa-today" }, "Bu gün: nağd " + formatMoney(a.todayCashMinor ?? 0) + (data.accounts.some((b) => b.kind === "bank" && (!b.objectId || b.objectId === a.objectId)) ? "" : " · kart " + formatMoney(a.todayCardMinor ?? 0)))
-          : a.kind === "bank" ? h("p", { className: "ps-kassa-today" }, "Bu gün kart: " + formatMoney(a.todayCardMinor ?? 0)) : null,
-        h("div", { className: "flex flex-wrap gap-1" },
-          jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => void openMoves(a), children: "Hərəkətlər" }),
-          canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setForm({ id: a.id, name: a.name, kind: a.kind, objectId: a.objectId || "", terminalId: a.terminalId || "" }), children: "Redaktə" }) : null,
-          canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "danger", disabled: busy, onClick: () => void remove(a), children: psAdminText("Sil","Sil","Delete") }) : null))))
-      : h("p", { className: "ps-recipe-note" }, "Hələ kassa yoxdur. \"+ Yeni kassa\" ilə satış nöqtəsinin kassasını, xəzinəni və bankı yaradın."),
-
+    h(PsCashAccountsGrid,{accounts,data,busy,canManage,termName,onTransfer:openTransfer,onMoves:openMoves,onEdit:a=>setForm({id:a.id,name:a.name,kind:a.kind,objectId:a.objectId||'',terminalId:a.terminalId||''}),onRemove:remove}),
     moves ? jsxRuntimeExports.jsx(PsKassaMoves, { account: moves.account, kinds: MOVE, onClose: () => setMoves(null) }, moves.account.id) : null,
     false ? h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
       h("div", { className: "flex items-center justify-between gap-3" },
@@ -25761,17 +25560,7 @@ function OpsKassalar() {
         jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => { if (!objForm.name.trim()) { toast("Adı yazın", "danger"); return; } void run(window.pos.cashAccounts.saveObject({ ...(objForm.id?{id:objForm.id}:{}), name: objForm.name.trim() }), "Obyekt yaradıldı").then((ok) => { if (ok) setObjForm(null); }); }, children: "Yadda saxla" }),
         jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setObjForm(null), children: "İmtina" }))) }) : null,
 
-    transfer ? jsxRuntimeExports.jsx(PsAdminDialog, { title: "Kassalar arası transfer", onClose: () => setTransfer(null), busy, children: h("div", { className: "space-y-3" },
-      h("div", { className: "grid gap-2 sm:grid-cols-2" },
-        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Haradan"),
-          h("select", { value: transfer.fromId, className: field, onChange: (e) => setTransfer({ ...transfer, fromId: e.target.value }) }, h("option", { value: "" }, "Seçin…"), data.accounts.map(option))),
-        h("label", { className: "block text-sm" }, h("span", { className: "text-xs uppercase tracking-wide text-faint" }, "Haraya"),
-          h("select", { value: transfer.toId, className: field, onChange: (e) => setTransfer({ ...transfer, toId: e.target.value }) }, h("option", { value: "" }, "Seçin…"), data.accounts.filter((a) => a.id !== transfer.fromId).map(option))),
-        jsxRuntimeExports.jsx(OpsField, { label: "Məbləğ (₼)", value: transfer.value, onChange: (v) => setTransfer({ ...transfer, value: v }), placeholder: "0.00" }),
-        jsxRuntimeExports.jsx(OpsField, { label: "Qeyd", value: transfer.note, onChange: (v) => setTransfer({ ...transfer, note: v }), placeholder: "məs. axşam inkassasiya" })),
-      h("div", { className: "flex gap-2" },
-        jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: saveTransfer, children: "Transfer et" }),
-        jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setTransfer(null), children: "İmtina" }))) }) : null,
+    transfer ? h(PsCashTransferDialog,{form:transfer,onChange:next=>{setTransfer(next);setTransferError('');},accounts:data.accounts,busy,error:transferError,onClose:()=>setTransfer(null),onSave:saveTransfer}) : null,
     confirmDialog);
 }
 
@@ -27711,33 +27500,7 @@ function OpsIncome() {
 }
 
 /** Kassa movements for a period (default today), with search. */
-function PsKassaMoves({ account, kinds, onClose }) {
-  const h = psH;
-  const rg = usePsRange("day");
-  const [query, setQuery] = reactExports.useState("");
-  const [rows, setRows] = reactExports.useState(null);
-  reactExports.useEffect(() => {
-    let alive = true;
-    void psErp("cashAccounts.moves", { accountId: account.id, from: rg.from, to: rg.to }).then((r) => {
-      if (!alive) return;
-      if (r.success) setRows(r.data.moves ?? []); else toast(r.error.message, "danger");
-    });
-    return () => { alive = false; };
-  }, [account.id, rg.from, rg.to]);
-  const needle = query.trim().toLocaleLowerCase("az");
-  const shown = (rows ?? []).filter((e) => !needle || [e.note, kinds[e.kind] || e.kind, e.actorName].some((v) => String(v || "").toLocaleLowerCase("az").includes(needle)));
-  const sum = shown.reduce((t, e) => t + (Number(e.amountMinor) || 0), 0);
-  return h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
-    h("div", { className: "flex items-center justify-between gap-3" },
-      h("p", { className: "text-sm font-semibold text-cream" }, account.name + " — hərəkətlər (satışlardan başqa)"),
-      jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: onClose, children: "Bağla" })),
-    h("div", { className: "flex flex-wrap items-center gap-2" }, psRangeBar(rg), psSearchBox(query, setQuery, "Axtar: qeyd / növ / kim")),
-    rows === null ? h("p", { className: "text-sm text-muted" }, "Yüklənir…") : jsxRuntimeExports.jsx(OpsTable, { head: ["Tarix", "Növ", "Məbləğ", "Qeyd", "Kim"], empty: "Bu dövrdə hərəkət yoxdur",
-      rows: shown.map((e) => [opsWhen(e.createdAt), kinds[e.kind] || e.kind,
-        h("b", { style: { color: (e.amountMinor ?? 0) < 0 ? "var(--ps-danger)" : "var(--ps-ok)" } }, ((e.amountMinor ?? 0) < 0 ? "−" : "+") + formatMoney(Math.abs(e.amountMinor ?? 0))),
-        e.note || "—", e.actorName || "—"]) }),
-    shown.length ? h("p", { className: "text-xs text-muted" }, shown.length + " hərəkət · net " + formatMoney(sum)) : null);
-}
+function PsKassaMoves(props){return psH(PsCashActivity,props);}
 
 // --------------------------------------------------------------------- shell
 /* POS_BUSINESS_LINKS_v1 */
@@ -27879,7 +27642,7 @@ function OperationsPage() {
     { id: "delivery", label: "Çatdırılma", show: !psMarketMode() && hasPermission("delivery.view"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsDelivery, {}) },
     { id: "export", label: "İxrac", show: hasPermission("reports.export"), render: () => /* @__PURE__ */ jsxRuntimeExports.jsx(OpsExport, {}) }
   ].filter((tab) => !(psMarketMode() && (tab.id === "costing" || tab.id === "delivery")));
-  const tabs = _psTabs.filter((tab) => tab.show && _psArea(tab.id==='goods'||tab.id==='categories'||tab.id==='stocktake'||tab.id==='costing'?'/operations?tab=stock':'/operations?tab='+tab.id));
+  const tabs = _psTabs.filter((tab) => tab.show && _psArea(tab.id==='goods'||tab.id==='categories'||tab.id==='stocktake'||tab.id==='costing'?'/operations?tab=stock':psManagementAccessPath('/operations?tab='+tab.id)));
 
   const opsLocation = useLocation();
   const opsNavigate = useNavigate();
@@ -28092,7 +27855,7 @@ function usePsManagementLinks() {
     { to: "/operations?tab=vendors", label: "Partnyorlar", icon: Users, show: hasPermission("suppliers.view") || hasPermission("customers.view") },
     { to: "/operations?tab=delivery", label: "Çatdırılma", icon: Move, show: !psMarketMode() && hasPermission("delivery.view") },
     { to: "/operations?tab=sales", label: "Satışlar", icon: CircleDollarSign, show: hasPermission("sales.view") },
-    { to: "/admin/cash", label: t.nav.cash, icon: CircleDollarSign, show: hasPermission("cash.manage") },
+    { to: "/operations?tab=kassa", label: psAdminText("Kassalar","Kasalar","Cash accounts"), icon: CircleDollarSign, show: hasPermission("cash.manage") },
     { to: "/reconcile", label: t.nav.reconcile, icon: CircleDollarSign, show: hasPermission("payment.reconcile") },
     { to: "/audit", label: t.nav.audit, icon: ClipboardList, show: hasPermission("audit.view") },
     { to: "/settings/license", label: t.nav.license, icon: Key, show: hasPermission("settings.manage") },
@@ -28924,9 +28687,11 @@ function PsManagementSettingsContent() {
   const checkUpdates = async () => {
     setChecking(true);
     toast(t.settings.updateChecking, "info");
-    const res = await window.pos.updates.check();
+    let res;
+    try { res = await window.pos.updates.check(); } catch(error) { res={success:false,error:{message:error?.message||t.settings.updateError}}; }
     setChecking(false);
     if (!res.success) {
+      setUpdateStatus({state:"error",message:res.error.message});
       toast(res.error.message, "danger");
       return;
     }
@@ -28971,6 +28736,8 @@ function PsManagementSettingsContent() {
   };
   const updateLabel = () => {
     switch (updateStatus.state) {
+      /* MANAGEMENT_UPDATE_STATUS */ case "disabled":
+        return updateStatus.message || updateStatus.reason || psAdminText("Yeniləmə yalnız Setup ilə qurulmuş proqramda işləyir.","Güncelleme yalnızca kurulumla yüklenen uygulamada çalışır.","Updates work in the installed application.");
       case "not_configured":
         return updateStatus.reason ?? t.settings.updateError;
       case "checking":
@@ -29347,41 +29114,8 @@ function PsManagementSettingsContent() {
           sideMarginPx,setSideMarginPx,renderMode,setRenderMode,currencyDisplay,setCurrencyDisplay,
           savingPrint,previewing,onSave:()=>void savePrintTuning(),onPreview:()=>void runPreview()
         }) : null}),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsAccordion, { id: "system", title: t.settings.sectionSystem, hint: t.settings.sectionSystemHint, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass space-y-3 rounded-2xl p-5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: t.settings.updates }),
-        appVersion ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-cream", children: fill$1(t.settings.currentVersion, { version: appVersion }) }) : null,
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted", children: updateLabel() }),
-        updateStatus.state === "downloading" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-2 overflow-hidden rounded-full bg-elevated", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "div",
-          {
-            className: "h-full bg-gold transition-all",
-            style: { width: `${Math.min(100, updateStatus.percent ?? 0)}%` }
-          }
-        ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              disabled: checking,
-              onClick: () => void checkUpdates(),
-              className: "touch-target rounded-xl border border-hairline bg-elevated px-4 py-2 text-sm text-cream hover:border-gold/40 disabled:opacity-40",
-              children: checking ? t.settings.updateChecking : t.settings.checkUpdates
-            }
-          ),
-          updateStatus.state === "downloaded" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: () => void installUpdate(),
-              className: "touch-target rounded-xl border border-gold/40 bg-gold/15 px-4 py-2 text-sm text-gold",
-              children: t.settings.installUpdate
-            }
-          )
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "space-y-3", children: [
+      /* @__PURE__ */ /* MANAGEMENT_UPDATE_SECTION */ !psMarketMode() && settingsSection==="updates" && jsxRuntimeExports.jsx(PsUpdateSettingsPanel,{t,version:appVersion,status:updateStatus,checking,statusLabel:updateLabel(),onCheck:()=>void checkUpdates(),onInstall:()=>void installUpdate()}),
+jsxRuntimeExports.jsxs(SettingsAccordion,{id:"system",title:psAdminText("Proqram xidməti","Uygulama hizmeti","Application service"),hint:psAdminText("Logları açın və lazım olduqda POS nüvəsini yenidən başladın.","Günlükleri açın, gerekirse POS çekirdeğini yeniden başlatın.","Open logs or restart the POS service when necessary."),children:[jsxRuntimeExports.jsxs("section", { className: "space-y-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "button",
           {
@@ -29407,8 +29141,7 @@ function PsManagementSettingsContent() {
             ]
           }
         )
-      ] }),
-      ] }),
+      ] })]}),
       hasPermission("system.reset") || hasPermission("settings.manage") ? /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsAccordion, { id: "danger", title: t.settings.dangerZone, hint: t.settings.dangerZoneHint, danger: true, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted", children: t.settings.dangerZoneHint }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
@@ -31748,6 +31481,24 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -31968,7 +31719,7 @@ function psManagementGroups() {
 function psManagementModule(to) {
   const params = new URLSearchParams(to.split("?")[1] || "");
   const section = params.get("section");
-  if (to.split("?")[0] === "/settings" && section) return ["settings", { printer: "printer", receipt: "documents", "qr-orders": "qr", screen: "devices" }[section] || "settings"];
+  if (to.split("?")[0] === "/settings" && section) return ["settings", { printer: "printer", receipt: "documents", "qr-orders": "qr", screen: "devices", system: "devices", updates: "updates" }[section] || "settings"];
   const tab = params.get("tab");
   const modules = { stock: ["menu", "stock"], goods: ["menu", "goods"], categories: ["menu", "categories"], stocktake: ["menu", "stocktake"], costing: ["menu", "costing"], menuCatalog: ["menu", "menu"], sales: ["trade", "trade"], purchases: ["trade", "trade"], vendors: ["people", "partners"], objects: ["settings", "branches"], kassa: ["finance", "cash"], staff: ["people", "staff"], expenses: ["finance", "expenses"], documents: ["finance", "documents"], income: ["finance", "income"], delivery: ["people", "delivery"], export: ["finance", "export"] };
   const pages = { "/admin/catalog": ["menu", "menu"], "/branches": ["settings", "branches"], "/admin/staff": ["people", "staff"], "/admin/tables": ["people", "tables"], "/admin/gifts": ["people", "gifts"], "/refund": ["trade", "returns"], "/dashboard": ["finance", "reports"], "/admin/reports": ["finance", "reports"], "/admin/cash": ["finance", "cash"], "/reconcile": ["finance", "reconcile"], "/audit": ["finance", "audit"], "/settings": ["settings", "settings"], "/admin/backup": ["settings", "backup"], "/settings/license": ["settings", "license"], "/diagnostics": ["settings", "devices"] };
@@ -31982,6 +31733,7 @@ function PsDeliveryNavIcon() {
 }
 function psManagementAccessPath(to) {
   const tab = new URLSearchParams(to.split("?")[1] || "").get("tab");
+  if (tab === "kassa") return "/admin/cash";
   return ["goods", "categories", "stocktake", "costing"].includes(tab) ? "/operations?tab=stock" : to;
 }
 function PsManagementRail({ active, links }) {
@@ -32002,15 +31754,17 @@ function PsManagementHub({ links }) {
   }, [location.search]);
   const active = groups.some((g) => g.id === requested) ? requested : groups[0]?.id;
   const group = groups.find((g) => g.id === active);
-  const normal = (value) => String(value).toLocaleLowerCase("az").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
+  const normal = (value) => String(value).toLocaleLowerCase("az").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/ə/g, "e");
   const needle = normal(query.trim());
   const settingsLinks = [
     ["printer", psAdminText("Printerl\u0259r", "Yaz\u0131c\u0131lar", "Printers"), psAdminText("Printeri qo\u015Fun v\u0259 \xE7ap i\u015Fini se\xE7in", "Yaz\u0131c\u0131 ba\u011Flay\u0131n ve g\xF6revini se\xE7in", "Connect a printer and choose its purpose")],
     ["receipt", psAdminText("\xC7ek", "Fi\u015F", "Receipt"), psAdminText("\xC7ek loqosu, ka\u011F\u0131z v\u0259 QR", "Fi\u015F logosu, ka\u011F\u0131t ve QR", "Receipt logo, paper and QR")],
+    ["system", psAdminText("Sistem", "Sistem", "System"), psAdminText("Loglar v\u0259 POS xidm\u0259ti", "G\xFCnl\xFCkler ve POS hizmeti", "Logs and POS service")],
+    ["updates", psAdminText("Yenil\u0259m\u0259", "G\xFCncelleme", "Updates"), psAdminText("Yeni versiyan\u0131 yoxlay\u0131n v\u0259 qura\u015Fd\u0131r\u0131n", "Yeni s\xFCr\xFCm\xFC kontrol edin ve kurun", "Check for a new version and install")],
     ["screen", psAdminText("Ekran v\u0259 dil", "Ekran ve dil", "Display & language"), psAdminText("G\xF6r\xFCn\xFC\u015F\xFC v\u0259 dili d\u0259yi\u015Fin", "G\xF6r\xFCn\xFCm\xFC ve dili de\u011Fi\u015Ftirin", "Change the display and language")],
     ...!psMarketMode() ? [["qr-orders", psAdminText("QR sifari\u015Fl\u0259r", "QR sipari\u015Fler", "QR orders"), psAdminText("Menyu v\u0259 masa kodlar\u0131", "Men\xFC ve masa kodlar\u0131", "Menu and table codes")]] : []
-  ].map(([section, label, hint]) => ({ ...links.find((link) => link.to === "/settings"), to: "/settings?section=" + section, label, hint }));
-  const searchable = [...links, ...links.some((link) => link.to === "/settings") ? settingsLinks : []].map((link) => ({ ...link, ...link.to === "/admin/catalog" ? { label: psAdminText("Menyu", "Men\xFC", "Menu") } : {}, ...link.to === "/operations?tab=sales" || link.to === "/operations?tab=purchases" ? { label: psAdminText("Ticar\u0259t", "Ticaret", "Trade"), hint: psAdminText("Al\u0131\u015Flar v\u0259 sat\u0131\u015Flar", "Al\u0131\u015Flar ve sat\u0131\u015Flar", "Purchases and sales") } : {} }));
+  ].filter(([section]) => section !== "updates" || !psMarketMode()).map(([section, label, hint]) => ({ ...links.find((link) => link.to === "/settings"), to: "/settings?section=" + section, label, hint }));
+  const searchable = [...links, ...links.some((link) => link.to === "/settings") ? settingsLinks : []].map((link) => ({ ...link, ...link.to === "/admin/catalog" ? { label: psAdminText("Menyu", "Men\xFC", "Menu") } : {}, ...link.to === "/settings" ? { label: psAdminText("Restoran", "Restoran", "Restaurant"), hint: psAdminText("Hesab v\u0259 restoran m\u0259lumatlar\u0131", "Hesap ve restoran bilgileri", "Account and restaurant details") } : {}, ...link.to === "/operations?tab=sales" || link.to === "/operations?tab=purchases" ? { label: psAdminText("Ticar\u0259t", "Ticaret", "Trade"), hint: psAdminText("Al\u0131\u015Flar v\u0259 sat\u0131\u015Flar", "Al\u0131\u015Flar ve sat\u0131\u015Flar", "Purchases and sales") } : {} }));
   const trade = searchable.filter((link) => link.to === "/operations?tab=sales" || link.to === "/operations?tab=purchases");
   const tradeLink = trade.find((link) => !link.locked) || trade[0];
   const entries = searchable.filter((link) => !trade.includes(link) || link === tradeLink);
@@ -32027,7 +31781,7 @@ function PsManagementHub({ links }) {
   })), !shown.length && /* @__PURE__ */ psH("p", { className: "pm-no-results", role: "status" }, psAdminText("Uy\u011Fun b\xF6lm\u0259 tap\u0131lmad\u0131. Ba\u015Fqa s\xF6zl\u0259 axtar\u0131n.", "Uygun b\xF6l\xFCm bulunamad\u0131. Ba\u015Fka s\xF6zc\xFCk deneyin.", "No matching section. Try another word."))));
 }
 function psManagementHint(image) {
-  const hints = { menu: ["Menyunu v\u0259 qiym\u0259tl\u0259ri d\xFCz\u0259ldin", "Men\xFCy\xFC ve fiyatlar\u0131 d\xFCzenleyin", "Edit your menu and prices"], stock: ["Qal\u0131qlar\u0131 v\u0259 mal h\u0259r\u0259k\u0259tini izl\u0259yin", "Stok ve hareketleri izleyin", "Track stock and movements"], goods: ["Mallar v\u0259 xammal kartlar\u0131", "\xDCr\xFCn ve hammadde kartlar\u0131", "Products and ingredients"], categories: ["Ana v\u0259 alt kateqoriyalar", "Ana ve alt kategoriler", "Categories and subcategories"], stocktake: ["Faktiki qal\u0131\u011F\u0131 yoxlay\u0131n", "Ger\xE7ek stok miktar\u0131n\u0131 kontrol edin", "Check physical stock"], costing: ["T\u0259rkib, porsiya v\u0259 maya d\u0259y\u0259ri", "\u0130\xE7erik, porsiyon ve maliyet", "Ingredients, portions and cost"], trade: ["Al\u0131\u015Flar v\u0259 sat\u0131\u015Flar", "Al\u0131\u015Flar ve sat\u0131\u015Flar", "Purchases and sales"], staff: ["\u0130\u015F\xE7il\u0259r, icaz\u0259l\u0259r v\u0259 maa\u015Flar", "\xC7al\u0131\u015Fanlar, izinler ve maa\u015Flar", "Staff, permissions and salaries"], tables: ["Zallar v\u0259 masalar\u0131n d\xFCz\xFCl\xFC\u015F\xFC", "Salonlar ve masa d\xFCzeni", "Rooms and table layout"], delivery: ["Sifari\u015Fl\u0259r v\u0259 kuryerl\u0259r", "Sipari\u015Fler ve kuryeler", "Orders and couriers"], partners: ["T\u0259chizat\xE7\u0131lar v\u0259 m\xFC\u015Ft\u0259ril\u0259r", "Tedarik\xE7iler ve m\xFC\u015Fteriler", "Suppliers and customers"], cash: ["Kassalar v\u0259 pul h\u0259r\u0259k\u0259ti", "Kasalar ve para hareketi", "Cash accounts and movements"], documents: ["\xD6d\u0259ni\u015Fl\u0259rin vahid siyah\u0131s\u0131", "\xD6demelerin ortak listesi", "All payment documents"], reports: ["G\u0259lir v\u0259 sat\u0131\u015F g\xF6st\u0259ricil\u0259ri", "Gelir ve sat\u0131\u015F verileri", "Revenue and sales figures"], settings: ["Restoran, printer, \xE7ek v\u0259 sistem", "Restoran, yaz\u0131c\u0131, fi\u015F ve sistem", "Restaurant, printer, receipt and system"], branches: ["Obyektl\u0259r v\u0259 ba\u011Fl\u0131 kassalar", "\u0130\u015Fletmeler ve ba\u011Fl\u0131 kasalar", "Locations and connected tills"], backup: ["Yed\u0259kl\u0259yin v\u0259 b\u0259rpa edin", "Yedekleyin ve geri y\xFCkleyin", "Back up and restore"], license: ["\u0130stifad\u0259 h\xFCquqlar\u0131", "Kullan\u0131m haklar\u0131", "Usage permissions"], devices: ["Ba\u011Flant\u0131 v\u0259 cihaz yoxlamas\u0131", "Ba\u011Flant\u0131 ve cihaz kontrol\xFC", "Connections and device checks"], gifts: ["Kampaniya v\u0259 h\u0259diyy\u0259l\u0259r", "Kampanyalar ve hediyeler", "Campaigns and gifts"], returns: ["Sat\u0131\u015F\u0131 tap\u0131n v\u0259 qaytar\u0131n", "Sat\u0131\u015F\u0131 bulun ve iade edin", "Find and return a sale"], reconcile: ["\xD6d\u0259ni\u015Fl\u0259ri tutu\u015Fdurun", "\xD6demeleri kar\u015F\u0131la\u015Ft\u0131r\u0131n", "Reconcile payments"], audit: ["\u018Fm\u0259liyyat tarix\xE7\u0259si", "\u0130\u015Flem ge\xE7mi\u015Fi", "Activity history"], expenses: ["X\u0259rcl\u0259ri qeyd edin", "Giderleri kaydedin", "Record expenses"], income: ["Dig\u0259r g\u0259lirl\u0259ri qeyd edin", "Di\u011Fer gelirleri kaydedin", "Record other income"], export: ["M\u0259lumatlar\u0131 fayla \xE7\u0131xar\u0131n", "Verileri dosyaya aktar\u0131n", "Export your records"] };
+  const hints = { menu: ["Menyunu v\u0259 qiym\u0259tl\u0259ri d\xFCz\u0259ldin", "Men\xFCy\xFC ve fiyatlar\u0131 d\xFCzenleyin", "Edit your menu and prices"], stock: ["Qal\u0131qlar\u0131 v\u0259 mal h\u0259r\u0259k\u0259tini izl\u0259yin", "Stok ve hareketleri izleyin", "Track stock and movements"], goods: ["Mallar v\u0259 xammal kartlar\u0131", "\xDCr\xFCn ve hammadde kartlar\u0131", "Products and ingredients"], categories: ["Ana v\u0259 alt kateqoriyalar", "Ana ve alt kategoriler", "Categories and subcategories"], stocktake: ["Faktiki qal\u0131\u011F\u0131 yoxlay\u0131n", "Ger\xE7ek stok miktar\u0131n\u0131 kontrol edin", "Check physical stock"], costing: ["T\u0259rkib, porsiya v\u0259 maya d\u0259y\u0259ri", "\u0130\xE7erik, porsiyon ve maliyet", "Ingredients, portions and cost"], trade: ["Al\u0131\u015Flar v\u0259 sat\u0131\u015Flar", "Al\u0131\u015Flar ve sat\u0131\u015Flar", "Purchases and sales"], staff: ["\u0130\u015F\xE7il\u0259r, icaz\u0259l\u0259r v\u0259 maa\u015Flar", "\xC7al\u0131\u015Fanlar, izinler ve maa\u015Flar", "Staff, permissions and salaries"], tables: ["Zallar v\u0259 masalar\u0131n d\xFCz\xFCl\xFC\u015F\xFC", "Salonlar ve masa d\xFCzeni", "Rooms and table layout"], delivery: ["Sifari\u015Fl\u0259r v\u0259 kuryerl\u0259r", "Sipari\u015Fler ve kuryeler", "Orders and couriers"], partners: ["T\u0259chizat\xE7\u0131lar v\u0259 m\xFC\u015Ft\u0259ril\u0259r", "Tedarik\xE7iler ve m\xFC\u015Fteriler", "Suppliers and customers"], cash: ["Kassalar v\u0259 pul h\u0259r\u0259k\u0259ti", "Kasalar ve para hareketi", "Cash accounts and movements"], documents: ["\xD6d\u0259ni\u015Fl\u0259rin vahid siyah\u0131s\u0131", "\xD6demelerin ortak listesi", "All payment documents"], reports: ["G\u0259lir v\u0259 sat\u0131\u015F g\xF6st\u0259ricil\u0259ri", "Gelir ve sat\u0131\u015F verileri", "Revenue and sales figures"], updates: ["Yeni versiyan\u0131 yoxlay\u0131n v\u0259 qura\u015Fd\u0131r\u0131n", "Yeni s\xFCr\xFCm\xFC kontrol edin ve kurun", "Check for a new version and install"], settings: ["Restoran, printer, \xE7ek v\u0259 sistem", "Restoran, yaz\u0131c\u0131, fi\u015F ve sistem", "Restaurant, printer, receipt and system"], branches: ["Obyektl\u0259r v\u0259 ba\u011Fl\u0131 kassalar", "\u0130\u015Fletmeler ve ba\u011Fl\u0131 kasalar", "Locations and connected tills"], backup: ["Yed\u0259kl\u0259yin v\u0259 b\u0259rpa edin", "Yedekleyin ve geri y\xFCkleyin", "Back up and restore"], license: ["\u0130stifad\u0259 h\xFCquqlar\u0131", "Kullan\u0131m haklar\u0131", "Usage permissions"], devices: ["Ba\u011Flant\u0131 v\u0259 cihaz yoxlamas\u0131", "Ba\u011Flant\u0131 ve cihaz kontrol\xFC", "Connections and device checks"], gifts: ["Kampaniya v\u0259 h\u0259diyy\u0259l\u0259r", "Kampanyalar ve hediyeler", "Campaigns and gifts"], returns: ["Sat\u0131\u015F\u0131 tap\u0131n v\u0259 qaytar\u0131n", "Sat\u0131\u015F\u0131 bulun ve iade edin", "Find and return a sale"], reconcile: ["\xD6d\u0259ni\u015Fl\u0259ri tutu\u015Fdurun", "\xD6demeleri kar\u015F\u0131la\u015Ft\u0131r\u0131n", "Reconcile payments"], audit: ["\u018Fm\u0259liyyat tarix\xE7\u0259si", "\u0130\u015Flem ge\xE7mi\u015Fi", "Activity history"], expenses: ["X\u0259rcl\u0259ri qeyd edin", "Giderleri kaydedin", "Record expenses"], income: ["Dig\u0259r g\u0259lirl\u0259ri qeyd edin", "Di\u011Fer gelirleri kaydedin", "Record other income"], export: ["M\u0259lumatlar\u0131 fayla \xE7\u0131xar\u0131n", "Verileri dosyaya aktar\u0131n", "Export your records"] };
   return hints[image] ? psAdminText(...hints[image]) : "";
 }
 function AdminHubPage() {
@@ -32037,8 +31791,14 @@ function SettingsPage() {
   return /* @__PURE__ */ psH(PsManagementLayout, { links: usePsManagementLinks(), active: "settings" }, /* @__PURE__ */ psH(PsManagementSettingsContent, null));
 }
 function PsSettingsPicker({ sections, value, onChange }) {
-  const images = { "qr-orders": "qr", sunmi: "devices", restaurant: "branches", screen: "devices", printer: "printer", receipt: "documents", system: "devices", backup: "backup", danger: "license" };
-  return /* @__PURE__ */ psH("div", { className: "pm-settings-picker" }, /* @__PURE__ */ psH(PsModuleImage, { name: images[value] || "settings" }), /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, psAdminText("Parametrl\u0259r", "Ayarlar", "Settings")), /* @__PURE__ */ psH("p", null, psAdminText("D\u0259yi\u015Fm\u0259k ist\u0259diyiniz b\xF6lm\u0259ni se\xE7in", "D\xFCzenlemek istedi\u011Finiz b\xF6l\xFCm\xFC se\xE7in", "Choose the settings to edit"))), /* @__PURE__ */ psH("label", null, /* @__PURE__ */ psH("span", null, psAdminText("Parametr b\xF6lm\u0259si", "Ayar b\xF6l\xFCm\xFC", "Settings section")), /* @__PURE__ */ psH("select", { "aria-label": psAdminText("Parametr b\xF6lm\u0259si", "Ayar b\xF6l\xFCm\xFC", "Settings section"), value, onChange: (event) => onChange(event.target.value) }, sections.map((section) => /* @__PURE__ */ psH("option", { key: section.id, value: section.id }, section.label)))));
+  const images = { "qr-orders": "qr", sunmi: "devices", restaurant: "branches", screen: "devices", printer: "printer", receipt: "documents", system: "devices", updates: "updates", backup: "backup", danger: "license" };
+  const current = sections.find((section) => section.id === value);
+  return /* @__PURE__ */ psH("div", { className: "pm-settings-picker" }, /* @__PURE__ */ psH(PsModuleImage, { name: images[value] || "settings" }), /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, current?.label || psAdminText("Parametrl\u0259r", "Ayarlar", "Settings")), /* @__PURE__ */ psH("p", null, current?.hint || psAdminText("D\u0259yi\u015Fm\u0259k ist\u0259diyiniz b\xF6lm\u0259ni se\xE7in", "D\xFCzenlemek istedi\u011Finiz b\xF6l\xFCm\xFC se\xE7in", "Choose the settings to edit"))), /* @__PURE__ */ psH("label", null, /* @__PURE__ */ psH("span", null, psAdminText("Parametr b\xF6lm\u0259si", "Ayar b\xF6l\xFCm\xFC", "Settings section")), /* @__PURE__ */ psH("select", { "aria-label": psAdminText("Parametr b\xF6lm\u0259si", "Ayar b\xF6l\xFCm\xFC", "Settings section"), value, onChange: (event) => onChange(event.target.value) }, sections.map((section) => /* @__PURE__ */ psH("option", { key: section.id, value: section.id }, section.label)))));
+}
+function PsUpdateSettingsPanel({ version, status, checking, statusLabel, onCheck, onInstall, t }) {
+  const locked = checking || ["checking", "downloading", "downloaded", "disabled"].includes(status.state);
+  const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
+  return /* @__PURE__ */ psH("section", { className: "pm-update-panel", "aria-label": psAdminText("Yenil\u0259m\u0259 idar\u0259si", "G\xFCncelleme y\xF6netimi", "Update controls") }, /* @__PURE__ */ psH("div", { className: "pm-update-version" }, /* @__PURE__ */ psH("p", null, psAdminText("Qura\u015Fd\u0131r\u0131lm\u0131\u015F versiya", "Y\xFCkl\xFC s\xFCr\xFCm", "Installed version")), /* @__PURE__ */ psH("strong", null, version ? "v" + version : "\u2014")), /* @__PURE__ */ psH("p", { className: "pm-update-status is-" + status.state, role: "status", "aria-live": "polite", "data-update-state": status.state }, checking ? t.settings.updateChecking : statusLabel), status.state === "downloading" && /* @__PURE__ */ psH("div", { className: "pm-update-progress", role: "progressbar", "aria-label": psAdminText("Yenil\u0259m\u0259 endirilir", "G\xFCncelleme indiriliyor", "Downloading update"), "aria-valuenow": percent, "aria-valuemin": 0, "aria-valuemax": 100 }, /* @__PURE__ */ psH("span", { style: { width: percent + "%" } })), /* @__PURE__ */ psH("div", { className: "pm-update-actions" }, /* @__PURE__ */ psH("button", { type: "button", className: status.state === "downloaded" ? "" : "is-primary", disabled: locked, onClick: onCheck }, checking || status.state === "checking" ? t.settings.updateChecking : t.settings.checkUpdates), status.state === "downloaded" && /* @__PURE__ */ psH("button", { type: "button", className: "is-primary", onClick: onInstall }, t.settings.installUpdate)), status.state === "downloaded" && /* @__PURE__ */ psH("p", { className: "pm-update-note" }, psAdminText("Qura\u015Fd\u0131rma zaman\u0131 proqram yenid\u0259n ba\u015Flayacaq.", "Kurulum s\u0131ras\u0131nda uygulama yeniden ba\u015Flayacak.", "The application will restart during installation.")));
 }
 function PsOperationsWorkspace({ tabs, current, onSelect, children }) {
   const groupId = psManagementModule("/operations?tab=" + current.id)[0];
@@ -32074,6 +31834,74 @@ function PsOperationsWorkspace({ tabs, current, onSelect, children }) {
       if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) setMenuOpen(false);
     }
   } }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("h2", null, psAdminText("B\xF6lm\u0259l\u0259r", "B\xF6l\xFCmler", "Sections")), /* @__PURE__ */ psH("button", { type: "button", onClick: () => setMenuOpen(false) }, psAdminText("Ba\u011Fla", "Kapat", "Close"))), /* @__PURE__ */ psH("nav", { "aria-label": group.label }, choices()), /* @__PURE__ */ psH(Link, { to: "/admin?group=" + groupId, onClick: () => setMenuOpen(false) }, psAdminText("\u0130dar\u0259etm\u0259y\u0259 qay\u0131t", "Y\xF6netime d\xF6n", "Back to management"))));
+}
+function psCashKind(kind) {
+  return psAdminText(...{ till: ["Kassa", "Kasa", "Till"], bank: ["Bank", "Banka", "Bank"], treasury: ["X\u0259zin\u0259", "Hazine", "Treasury"] }[kind] || ["Kassa", "Kasa", "Account"]);
+}
+function psCashFacts(account) {
+  const n = (key) => Number(account[key]) || 0;
+  const known = (key) => typeof account[key] === "number";
+  if (account.kind === "treasury") return [
+    [psAdminText("Bu g\xFCn daxil / \xE7\u0131x\u0131\u015F", "Bug\xFCn giri\u015F / \xE7\u0131k\u0131\u015F", "Today in / out"), known("todayInMinor") ? formatMoney(n("todayInMinor")) + " / " + formatMoney(n("todayOutMinor")) : "\u2014"],
+    [psAdminText("\xDCmumi daxilolma", "Toplam giri\u015F", "Total receipts"), known("totalInMinor") ? formatMoney(n("totalInMinor")) : "\u2014"]
+  ];
+  return [
+    [account.kind === "bank" ? psAdminText("Bu g\xFCn kartla", "Bug\xFCn kartla", "Card receipts today") : psAdminText("Bu g\xFCn sat\u0131\u015F \xF6d\u0259ni\u015Fi", "Bug\xFCnk\xFC sat\u0131\u015F \xF6demesi", "Sales receipts today"), formatMoney(n("todayCashMinor") + n("todayCardMinor"))],
+    [account.kind === "bank" ? psAdminText("\xDCmumi kart \xF6d\u0259ni\u015Fi", "Toplam kart \xF6demesi", "Total card receipts") : psAdminText("\xDCmumi sat\u0131\u015F \xF6d\u0259ni\u015Fi", "Toplam sat\u0131\u015F \xF6demesi", "Total sales receipts"), known("totalCashMinor") && known("totalCardMinor") ? formatMoney(n("totalCashMinor") + n("totalCardMinor")) : "\u2014"]
+  ];
+}
+function PsCashAccountsGrid({ accounts, data, busy, canManage, termName, onTransfer, onMoves, onEdit, onRemove, onRegisterOpen }) {
+  const grid = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const close = (event) => grid.current?.querySelectorAll("details[open]").forEach((node) => {
+      if (!node.contains(event.target)) node.open = false;
+    });
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  const action = (event, fn) => {
+    const menu = event.currentTarget.closest("details");
+    if (menu) menu.open = false;
+    fn();
+  };
+  if (!accounts.length) return /* @__PURE__ */ psH("p", { className: "ps-recipe-note" }, psAdminText("H\u0259l\u0259 kassa yoxdur. \u201CYeni kassa\u201D il\u0259 sat\u0131\u015F kassas\u0131n\u0131, bank\u0131 v\u0259 ya x\u0259zin\u0259ni yarad\u0131n.", "Hen\xFCz kasa yok. \u201CYeni kasa\u201D ile sat\u0131\u015F kasas\u0131, banka veya hazine olu\u015Fturun.", "No accounts yet. Create a till, bank or treasury with \u201CNew account\u201D."));
+  return /* @__PURE__ */ psH("div", { className: "pm-cash-grid", ref: grid }, accounts.map((account) => /* @__PURE__ */ psH("article", { className: "pm-cash-card is-" + account.kind, key: account.id, "aria-label": account.name }, /* @__PURE__ */ psH("button", { type: "button", className: "pm-cash-card-main", "aria-label": account.name + " \u2014 " + (canManage ? psAdminText("Transfer a\xE7", "Transfer a\xE7", "Open transfer") : psAdminText("Pul h\u0259r\u0259k\u0259tl\u0259ri", "Para hareketleri", "Money movements")), disabled: busy, onClick: () => canManage ? onTransfer(account) : onMoves(account) }, /* @__PURE__ */ psH("span", { className: "pm-cash-card-heading" }, /* @__PURE__ */ psH("strong", null, account.name), /* @__PURE__ */ psH("span", { className: "pm-cash-kind" }, psCashKind(account.kind))), /* @__PURE__ */ psH("span", { className: "pm-cash-meta" }, [account.objectName, account.kind === "till" && account.terminalId ? termName(account.terminalId) : ""].filter(Boolean).join(" \xB7 ") || psAdminText("Obyektsiz", "\u0130\u015Fletmesiz", "No location")), /* @__PURE__ */ psH("span", { className: "pm-cash-balance-label" }, psAdminText("Cari balans", "G\xFCncel bakiye", "Current balance")), /* @__PURE__ */ psH("strong", { className: "pm-cash-balance" }, formatMoney(account.balanceMinor || 0)), /* @__PURE__ */ psH("span", { className: "pm-cash-facts" }, psCashFacts(account).map(([label, value]) => /* @__PURE__ */ psH("span", { key: label }, /* @__PURE__ */ psH("small", null, label), /* @__PURE__ */ psH("b", null, value))))), /* @__PURE__ */ psH("div", { className: "pm-cash-card-actions" }, canManage && /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button pm-cash-transfer", disabled: busy, onClick: () => onTransfer(account) }, psAdminText("Transfer", "Transfer", "Transfer"), " ", /* @__PURE__ */ psH("span", { "aria-hidden": "true" }, "\u2197")), /* @__PURE__ */ psH("details", { className: "pm-cash-menu", onKeyDown: (event) => {
+    if (event.key === "Escape") {
+      event.currentTarget.open = false;
+      event.currentTarget.querySelector("summary")?.focus();
+    }
+  } }, /* @__PURE__ */ psH("summary", { "aria-label": account.name + " \u2014 " + psAdminText("\u018Flav\u0259 \u0259m\u0259liyyatlar", "Di\u011Fer i\u015Flemler", "More actions") }, /* @__PURE__ */ psH("span", { "aria-hidden": "true" }, "\u22EF")), /* @__PURE__ */ psH("div", null, onRegisterOpen && account.kind === "till" && String(account.terminalId || "").startsWith("market-") && /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onRegisterOpen(account)) }, psAdminText("N\xF6vb\u0259 \xB7 X/Z", "Vardiya \xB7 X/Z", "Shift \xB7 X/Z")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onMoves(account)) }, psAdminText("Pul h\u0259r\u0259k\u0259tl\u0259ri", "Para hareketleri", "Money movements")), canManage && /* @__PURE__ */ psH(reactExports.Fragment, null, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onEdit(account)) }, psAdminText("Redakt\u0259 et", "D\xFCzenle", "Edit")), /* @__PURE__ */ psH("button", { type: "button", className: "is-danger", disabled: busy, onClick: (event) => action(event, () => onRemove(account)) }, psAdminText("Sil", "Sil", "Delete")))))))));
+}
+function PsCashTransferDialog({ form, onChange, accounts, busy, error, onClose, onSave }) {
+  const from = accounts.find((a) => a.id === form.fromId), available = Number(from?.balanceMinor) || 0, amount = opsMinor(form.value || "0");
+  const valid = !!from && !!form.toId && form.toId !== form.fromId && psStockInputValid(form.value) && Number.isSafeInteger(amount) && amount > 0 && amount <= available;
+  const option = (a) => /* @__PURE__ */ psH("option", { key: a.id, value: a.id }, [a.name, a.objectName, psCashKind(a.kind)].filter(Boolean).join(" \xB7 "), " \u2014 ", formatMoney(a.balanceMinor || 0));
+  return /* @__PURE__ */ psH(PsAdminDialog, { title: psAdminText("Kassalar aras\u0131 transfer", "Kasalar aras\u0131 transfer", "Transfer between accounts"), busy, onClose: () => {
+    if (!busy) onClose();
+  } }, /* @__PURE__ */ psH("form", { className: "pm-cash-transfer-form", onSubmit: (event) => {
+    event.preventDefault();
+    if (valid && !busy) onSave();
+  } }, /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-selects" }, /* @__PURE__ */ psH("label", null, psAdminText("Haradan", "Nereden", "From"), /* @__PURE__ */ psH("select", { value: form.fromId, disabled: busy, onChange: (event) => onChange({ ...form, fromId: event.target.value, toId: event.target.value === form.toId ? "" : form.toId, value: "" }) }, /* @__PURE__ */ psH("option", { value: "" }, psAdminText("Kassan\u0131 se\xE7in", "Kasa se\xE7in", "Choose account")), accounts.map(option))), /* @__PURE__ */ psH("label", null, psAdminText("Haraya", "Nereye", "To"), /* @__PURE__ */ psH("select", { value: form.toId, disabled: busy, onChange: (event) => onChange({ ...form, toId: event.target.value }) }, /* @__PURE__ */ psH("option", { value: "" }, psAdminText("Kassan\u0131 se\xE7in", "Kasa se\xE7in", "Choose account")), accounts.filter((a) => a.id !== form.fromId).map(option)))), from && /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-summary" }, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("span", null, psAdminText("K\xF6\xE7\xFCr\xFCl\u0259 bil\u0259n balans", "Aktar\u0131labilir bakiye", "Available balance")), /* @__PURE__ */ psH("strong", null, formatMoney(available))), psCashFacts(from).map(([label, value]) => /* @__PURE__ */ psH("div", { key: label }, /* @__PURE__ */ psH("span", null, label), /* @__PURE__ */ psH("b", null, value)))), /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-amount" }, /* @__PURE__ */ psH("label", null, psAdminText("M\u0259bl\u0259\u011F (\u20BC)", "Tutar (\u20BC)", "Amount (\u20BC)"), /* @__PURE__ */ psH("input", { inputMode: "decimal", value: form.value, disabled: busy, placeholder: "0.00", onChange: (event) => onChange({ ...form, value: event.target.value }) })), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", disabled: busy || !from || available <= 0, onClick: () => onChange({ ...form, value: (available / 100).toFixed(2) }) }, psAdminText("Ham\u0131s\u0131n\u0131 k\xF6\xE7\xFCr", "T\xFCm\xFCn\xFC aktar", "Transfer all"))), amount > available && from && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, psAdminText("M\u0259bl\u0259\u011F cari balansdan \xE7oxdur.", "Tutar g\xFCncel bakiyeyi a\u015F\u0131yor.", "The amount exceeds the current balance.")), /* @__PURE__ */ psH("label", null, psAdminText("Qeyd", "Not", "Note"), /* @__PURE__ */ psH("input", { value: form.note, disabled: busy, maxLength: 500, onChange: (event) => onChange({ ...form, note: event.target.value }) })), /* @__PURE__ */ psH("p", { className: "pm-cash-help" }, psAdminText("Transfer cari balansdan edilir. Sat\u0131\u015F \xF6d\u0259ni\u015Fi kassada qalan pul v\u0259 ya m\u0259nf\u0259\u0259t deyil.", "Transfer g\xFCncel bakiyeden yap\u0131l\u0131r. Sat\u0131\u015F \xF6demesi kasada kalan para veya k\xE2r de\u011Fildir.", "Transfers use the current balance. Sales receipts are not remaining funds or profit.")), error && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, error), /* @__PURE__ */ psH("div", { className: "pm-cash-dialog-actions" }, /* @__PURE__ */ psH("button", { type: "submit", className: "ps-ops-button", disabled: busy || !valid }, busy ? psAdminText("K\xF6\xE7\xFCr\xFCl\xFCr\u2026", "Aktar\u0131l\u0131yor\u2026", "Transferring\u2026") : psAdminText("Transfer et", "Transfer et", "Transfer")), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", disabled: busy, onClick: onClose }, psAdminText("\u0130mtina", "Vazge\xE7", "Cancel")))));
+}
+function PsCashActivity({ account, onClose }) {
+  const rg = usePsRange("day"), [query, setQuery] = reactExports.useState(""), [result, setResult] = reactExports.useState(null), [error, setError] = reactExports.useState(""), [retry, setRetry] = reactExports.useState(0);
+  reactExports.useEffect(() => {
+    let live = true;
+    setResult(null);
+    setError("");
+    void psErp("cashAccounts.moves", { accountId: account.id, from: rg.from, to: rg.to, includeSales: true }).then((r) => {
+      if (!r.success) throw Error(r.error?.message || "H\u0259r\u0259k\u0259tl\u0259r al\u0131nmad\u0131");
+      if (live) setResult(r.data);
+    }).catch((e) => {
+      if (live) setError(e.message);
+    });
+    return () => {
+      live = false;
+    };
+  }, [account.id, rg.from, rg.to, retry]);
+  const labels = { opening: psAdminText("\u0130lkin qal\u0131q", "A\xE7\u0131l\u0131\u015F bakiyesi", "Opening balance"), sale: psAdminText("Sat\u0131\u015F \xF6d\u0259ni\u015Fi", "Sat\u0131\u015F \xF6demesi", "Sales receipt"), refund: psAdminText("Qaytarma", "\u0130ade", "Refund"), transfer: psAdminText("Transfer", "Transfer", "Transfer"), salary: psAdminText("Maa\u015F", "Maa\u015F", "Salary"), supplier: psAdminText("T\u0259chizat\xE7\u0131 \xF6d\u0259ni\u015Fi", "Tedarik\xE7i \xF6demesi", "Supplier payment"), debt_in: psAdminText("Borc \xF6d\u0259ni\u015Fi", "Bor\xE7 \xF6demesi", "Debt payment"), expense: psAdminText("X\u0259rc", "Gider", "Expense"), cash_in: psAdminText("M\u0259daxil", "Giri\u015F", "Cash in"), cash_out: psAdminText("M\u0259xaric", "\xC7\u0131k\u0131\u015F", "Cash out"), float_adjust: psAdminText("D\xFCz\u0259li\u015F", "D\xFCzeltme", "Adjustment"), adjust: psAdminText("D\xFCz\u0259li\u015F", "D\xFCzeltme", "Adjustment"), correction: psAdminText("Qaim\u0259 d\xFCz\u0259li\u015Fi", "Belge d\xFCzeltmesi", "Document correction") };
+  const needle = query.trim().toLocaleLowerCase("az"), rows = (result?.moves || []).filter((row) => !needle || [row.note, row.actorName, labels[row.kind] || row.kind].some((value) => String(value || "").toLocaleLowerCase("az").includes(needle)));
+  return /* @__PURE__ */ psH("section", { className: "pm-cash-activity" }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h2", null, account.name, " \u2014 ", psAdminText("pul h\u0259r\u0259k\u0259tl\u0259ri", "para hareketleri", "money movements")), /* @__PURE__ */ psH("p", null, psAdminText("Sat\u0131\u015F, qaytarma, transfer, maa\u015F v\u0259 dig\u0259r pul giri\u015F-\xE7\u0131x\u0131\u015Flar\u0131.", "Sat\u0131\u015F, iade, transfer, maa\u015F ve di\u011Fer para giri\u015F-\xE7\u0131k\u0131\u015Flar\u0131.", "Sales, refunds, transfers, salaries and other money in and out."))), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", onClick: onClose }, psAdminText("Ba\u011Fla", "Kapat", "Close"))), /* @__PURE__ */ psH("div", { className: "pm-cash-activity-tools" }, psRangeBar(rg), psSearchBox(query, setQuery, psAdminText("Axtar: qeyd, n\xF6v v\u0259 ya \u0259m\u0259kda\u015F", "Ara: not, t\xFCr veya \xE7al\u0131\u015Fan", "Search note, type or employee"))), error ? /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, error, " ", /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", onClick: () => setRetry((v) => v + 1) }, psAdminText("Yenid\u0259n yoxla", "Tekrar dene", "Retry"))) : !result ? /* @__PURE__ */ psH("p", { role: "status" }, psAdminText("Y\xFCkl\u0259nir\u2026", "Y\xFCkleniyor\u2026", "Loading\u2026")) : /* @__PURE__ */ psH(reactExports.Fragment, null, result.includesSales ? /* @__PURE__ */ psH(reactExports.Fragment, null, /* @__PURE__ */ psH("dl", { className: "pm-cash-activity-summary" }, [[psAdminText("D\xF6vr\xFCn \u0259vv\u0259li", "D\xF6nem ba\u015F\u0131", "Period opening"), result.openingMinor], [psAdminText("Daxilolma", "Giri\u015F", "Money in"), result.inMinor], [psAdminText("\xC7\u0131x\u0131\u015F", "\xC7\u0131k\u0131\u015F", "Money out"), result.outMinor], [psAdminText("D\xF6vr\xFCn sonu", "D\xF6nem sonu", "Period closing"), result.closingMinor]].map(([label, value]) => /* @__PURE__ */ psH("div", { key: label }, /* @__PURE__ */ psH("dt", null, label), /* @__PURE__ */ psH("dd", null, formatMoney(value || 0))))), /* @__PURE__ */ psH("p", { className: "pm-cash-help" }, psAdminText("C\u0259ml\u0259r se\xE7ilmi\u015F d\xF6vr\xFCn b\xFCt\xFCn h\u0259r\u0259k\u0259tl\u0259rin\u0259 aiddir. Axtar\u0131\u015F yaln\u0131z siyah\u0131n\u0131 s\xFCz\xFCr.", "Toplamlar se\xE7ilen d\xF6nemin t\xFCm hareketlerini kapsar. Arama yaln\u0131zca listeyi s\xFCzer.", "Totals cover all movements in the selected period. Search filters the list only."))) : /* @__PURE__ */ psH("p", { className: "pm-cash-error" }, psAdminText("Bu POS-un k\xF6hn\u0259 versiyas\u0131 sat\u0131\u015Flar\u0131 siyah\u0131ya \u0259lav\u0259 etmir. Tam h\u0259r\u0259k\u0259tl\u0259r \xFC\xE7\xFCn POS-u yenil\u0259yin.", "Bu POS s\xFCr\xFCm\xFC sat\u0131\u015Flar\u0131 listeye eklemiyor. T\xFCm hareketler i\xE7in POS\u2019u g\xFCncelleyin.", "This older POS version omits sales. Update it to view all movements.")), result.limited && /* @__PURE__ */ psH("p", { className: "pm-cash-error" }, psAdminText("\u0130lk 5000 h\u0259r\u0259k\u0259t g\xF6st\u0259rilir. Daha q\u0131sa tarix aral\u0131\u011F\u0131 se\xE7in.", "\u0130lk 5000 hareket g\xF6steriliyor. Daha k\u0131sa tarih aral\u0131\u011F\u0131 se\xE7in.", "Showing the first 5,000 movements. Choose a shorter date range.")), /* @__PURE__ */ psH(OpsTable, { head: [psAdminText("Tarix", "Tarih", "Date"), psAdminText("N\xF6v", "T\xFCr", "Type"), psAdminText("M\u0259bl\u0259\u011F", "Tutar", "Amount"), psAdminText("Qeyd / qaim\u0259", "Not / belge", "Note / document"), psAdminText("\u018Fm\u0259kda\u015F", "\xC7al\u0131\u015Fan", "Employee")], empty: psAdminText("Bu d\xF6vrd\u0259 h\u0259r\u0259k\u0259t yoxdur", "Bu d\xF6nemde hareket yok", "No movements in this period"), rows: rows.map((row) => [opsWhen(row.createdAt), labels[row.kind] || row.kind, /* @__PURE__ */ psH("b", { className: (row.amountMinor || 0) < 0 ? "pm-cash-out" : "pm-cash-in" }, (row.amountMinor || 0) < 0 ? "\u2212" : "+", formatMoney(Math.abs(row.amountMinor || 0))), row.note || "\u2014", row.actorName || "\u2014"]) })));
 }
 
 /* MANAGEMENT_COMPONENTS_END */

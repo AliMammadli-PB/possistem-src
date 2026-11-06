@@ -16,6 +16,11 @@ const source=before?execFileSync('git',['show','HEAD:restoranpos/index-DAmHwBc4.
 const existing=fs.readFileSync(root+'/scripts/qa-admin-real-pages.mjs','utf8');
 const mock=existing.slice(existing.indexOf('const mock=`')+12,existing.indexOf('`;\nconst fixture='))+`\n
 qa.orders=[];qa.qrCalls=[];qa.decisions=[];qa.failQr=false;qa.holdNextInbox=false;
+qa.updateState={state:'idle'};qa.updateNext={state:'not_available'};qa.updateListeners=new Set();qa.updateChecks=0;qa.updateInstalls=0;
+qa.emitUpdate=state=>{qa.updateState=state;for(const fn of qa.updateListeners)fn(structuredClone(state))};
+window.pos.updates={status:async()=>structuredClone(qa.updateState),onStatus:fn=>{qa.updateListeners.add(fn);return()=>qa.updateListeners.delete(fn)},check:async()=>{qa.updateChecks++;if(qa.updateReject)throw Error('QA update connection failed');if(qa.updateHold)return await new Promise(resolve=>{qa.resolveUpdate=resolve});return {success:true,data:structuredClone(qa.updateNext)}},install:async()=>{qa.updateInstalls++;return {success:true}}};
+window.pos.app.info=async()=>({success:true,data:{version:'1.10.15'}});
+
 window.pos.inventory.levels=async()=>({success:true,data:{levels:[{id:'qa-tomato',name:'Pomidor',sku:'QA-1',qtyMilli:10000,minQtyMilli:5000,costMinor:300,unit:'kg'},{id:'qa-doner',name:'QA Dönər',sku:'QA-2',qtyMilli:-16000,minQtyMilli:0,costMinor:200,salePriceMinor:500,unit:'ədəd'}]}});
 window.possistemQr={call:async(method,payload)=>{
  qa.qrCalls.push(method);
@@ -80,6 +85,46 @@ try{
      assert.ok(await page.locator('.pm-module').count(),'Every group has destinations');
      await screenshot('group-'+(name==='Maliyyə'?'finance':name==='Parametrlər'?'settings':'people')+'-1536');
    }
+   assert.equal(await page.locator('.pm-module[href="#/settings"] strong').textContent(),'Restoran','No Settings card nested inside Settings');
+   await page.locator('.pm-module[href="#/settings?section=system"]').click();
+   await page.locator('.ps-settings-stack[data-section="system"]').waitFor();
+   assert.equal(await page.locator('.pm-update-panel').count(),0,'Updates separated from system service');
+   await open('/admin?group=settings');
+   await page.locator('.pm-module[href="#/settings?section=updates"]').click();
+   await page.locator('.ps-settings-stack[data-section="updates"]').waitFor();
+   assert.equal(await page.locator('.pm-settings-picker h1').textContent(),'Yeniləmə');
+   await page.waitForFunction(()=>document.querySelector('.pm-settings-picker img')?.naturalWidth>0);
+   await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).click();
+   await page.locator('[data-update-state="not_available"]').waitFor();assert.equal(await page.evaluate(()=>qa.updateChecks),1);
+   await page.evaluate(()=>{qa.updateReject=true});
+   await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).click();
+   await page.getByRole('status').filter({hasText:'QA update connection failed'}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).isDisabled(),false,'Failed IPC does not leave the button busy');
+   await page.evaluate(()=>{qa.updateReject=false;qa.updateHold=true});
+   await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).click();
+   await page.waitForFunction(()=>typeof qa.resolveUpdate==='function');
+   assert.equal(await page.getByRole('button',{name:'Yeniləmə yoxlanılır…',exact:true}).isDisabled(),true);
+   await page.evaluate(()=>{qa.updateHold=false;qa.resolveUpdate({success:true,data:{state:'available',version:'1.10.16'}})});
+   await page.locator('[data-update-state="available"]').waitFor();
+   await page.evaluate(()=>qa.emitUpdate({state:'downloading',version:'1.10.16',percent:42}));
+   await page.locator('[data-update-state="downloading"]').waitFor();
+   assert.equal(await page.getByRole('progressbar').getAttribute('aria-valuenow'),'42');
+   assert.match(await page.locator('[data-update-state="downloading"]').textContent(),/42/);
+   assert.equal(await page.getByRole('button',{name:'Yenidən başlat və quraşdır',exact:true}).count(),0,'No installation during download');
+   await page.evaluate(()=>qa.emitUpdate({state:'downloaded',version:'1.10.16'}));
+   await page.getByRole('button',{name:'Yenidən başlat və quraşdır',exact:true}).click();assert.equal(await page.evaluate(()=>qa.updateInstalls),1);
+   await screenshot('updates-ready-1536');
+   await page.evaluate(()=>location.hash='/admin?group=settings');
+   await page.getByRole('searchbox',{name:'Bölmə axtar'}).waitFor();
+   await page.getByRole('button',{name:/Yeniləmə endirilib/}).click();
+   await page.locator('.ps-settings-stack[data-section="updates"]').waitFor();assert.ok(page.url().includes('section=updates'),'Ready banner opens the update destination');
+   await page.evaluate(()=>qa.emitUpdate({state:'disabled',message:'QA: Setup ilə qurulmuş proqram tələb olunur'}));
+   await page.getByRole('status').filter({hasText:'QA: Setup'}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).isDisabled(),true,'Development-mode limitation is explicit');
+   await open('/admin?group=settings');
+   await page.getByRole('searchbox',{name:'Bölmə axtar'}).fill('yenileme');
+   assert.equal(await page.locator('.pm-module[href="#/settings?section=updates"]').count(),1,'Updates searchable without Azerbaijani diacritics');
+   await page.getByRole('searchbox').fill('');
    await page.getByRole('searchbox',{name:'Bölmə axtar'}).fill('kalkulyasiya');
    assert.equal(await page.locator('.pm-module').count(),1,'Calculation is directly searchable');
    await page.getByRole('searchbox').fill('zzyyzz');assert.equal(await page.locator('.pm-module').count(),0);await page.getByRole('status').waitFor();
@@ -92,7 +137,7 @@ try{
    assert.equal(await page.locator('.pm-module').filter({hasText:'Ticarət'}).count(),1,'One shared trade entry');
    await screenshot('trade-hub-1536');
    await page.locator('.pm-rail-link',{hasText:'Parametrlər'}).click();
-   await page.locator('.pm-module').filter({hasText:'Restoran, printer, çek və sistem'}).click();
+   await page.locator('.pm-module[href="#/settings"]').click();
    await page.locator('.pm-settings-picker select').waitFor();
    assert.equal(await page.locator('.category-bar').count(),0,'Second settings rail removed');
    await screenshot('settings-1536');
@@ -177,11 +222,15 @@ try{
    const layouts=[];
    for(const [width,height]of[[1536,816],[1366,735],[768,1024],[390,844]]){
      await page.setViewportSize({width,height});
-     for(const [name,route]of[['hub','/admin'],['settings','/settings?section=printer'],['stock','/operations?tab=stock']]){
+     for(const [name,route]of[['hub','/admin'],['settings','/settings?section=printer'],['stock','/operations?tab=stock'],['updates','/settings?section=updates']]){
        await open(route);
        const state=await page.evaluate(()=>({viewport:innerWidth,scroll:document.documentElement.scrollWidth,images:[...document.querySelectorAll('.pm-image')].every(image=>image.complete&&image.naturalWidth>0)}));
        assert.ok(state.scroll<=state.viewport+1,`${name} ${width} overflow ${JSON.stringify(state)}`);
        assert.ok(state.images,`${name} images load at ${width}`);
+       if(name==='updates'){
+         const panel=await page.locator('.pm-update-panel').boundingBox(),check=await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).boundingBox();
+         assert.ok(panel&&check&&panel.x>=0&&panel.x+panel.width<=width+1&&check.x+check.width<=width+1,`Update controls fit at ${width}`);
+       }
        layouts.push({name,width,height,...state});
        if(width===390||width===768)await screenshot(name+'-'+width);
        if(name==='stock'&&width<=900){
@@ -195,7 +244,7 @@ try{
      }
    }
    assert.deepEqual(errors,[],'No browser exceptions');
-   fs.writeFileSync(out+'/results.json',JSON.stringify({browser:await browser.version(),layouts,errors,printerAssignment:true,legacyTradeRoutes:true,hiddenNavigation:true,qrTransitions:true,drawer:true},null,2));
-   console.log('PASS: real AppShell delivery order; hidden permissions and modules; QR 0→1→2→0, reject/accept, network failure, stale account, revoked rights; drawer, routes and printer save; 12 layouts; '+await browser.version());
+   fs.writeFileSync(out+'/results.json',JSON.stringify({browser:await browser.version(),layouts,errors,printerAssignment:true,legacyTradeRoutes:true,hiddenNavigation:true,qrTransitions:true,drawer:true,updateControls:true},null,2));
+   console.log('PASS: update check/failure/progress/install/banner and explicit settings destinations; real AppShell delivery order; hidden permissions and modules; QR 0→1→2→0, reject/accept, network failure, stale account, revoked rights; drawer, routes and printer save; 16 layouts; '+await browser.version());
  }
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

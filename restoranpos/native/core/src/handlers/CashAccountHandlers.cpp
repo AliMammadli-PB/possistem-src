@@ -25,6 +25,54 @@
 namespace pos::handlers {
 namespace {
 
+/** Read-only unified ledger. Sales are projected, never posted a second time. */
+Json accountActivity(Context& ctx, const std::string& id, const Json& payload) {
+    auto account = ctx.db().prepare("SELECT kind,terminal_id,COALESCE(object_id,''),created_at FROM cash_accounts WHERE id=:id");
+    account.bind(":id",id); require(account.step(),"Kassa tapılmadı");
+    const auto kind=account.columnText(0), terminal=account.columnText(1), object=account.columnText(2);
+    const auto since=account.columnInt(3);
+    const auto from=getOr<std::int64_t>(payload,"from",0),to=getOr<std::int64_t>(payload,"to",nowMs()+86400000LL);
+    require(from>=0&&to>from,"Tarix aralığı düzgün deyil");
+    const auto method=kind=="bank"?std::string{"card"}:std::string{"cash"};
+    const auto scope=kind=="till"&&!terminal.empty()?std::string{"p.terminal_id = :terminal"}:kind=="bank"?services::CashService::bankScope(object):std::string{"0=1"};
+    auto refundScope=scope;
+    for(auto at=refundScope.find("p.terminal_id");at!=std::string::npos;at=refundScope.find("p.terminal_id",at+1))refundScope.replace(at,13,"r.terminal_id");
+    const std::string cte=R"SQL(WITH activity AS (
+      SELECT m.id,m.amount_minor AS amountMinor,m.kind,m.ref_type AS refType,m.ref_id AS refId,
+             COALESCE(m.note,'') AS note,COALESCE(u.full_name,'') AS actorName,m.created_at AS createdAt,'' AS method
+      FROM cash_account_moves m LEFT JOIN users u ON u.id=m.actor_user_id WHERE m.account_id=:id AND m.created_at<:to
+      UNION ALL
+      SELECT 'payment:'||p.id,
+        CASE WHEN p.method=:method THEN p.amount_minor+p.tip_minor WHEN p.method='mixed' THEN
+          COALESCE((SELECT SUM(t.amount_minor+t.tip_minor) FROM payment_tenders t WHERE t.payment_id=p.id AND t.method=:method),0) ELSE 0 END,
+        'sale','order',p.order_id,'Satış · '||COALESCE(o.order_number,p.id),COALESCE(u.full_name,''),p.created_at,:method
+      FROM payments p LEFT JOIN orders o ON o.id=p.order_id LEFT JOIN users u ON u.id=p.user_id
+      WHERE p.status='approved' AND p.created_at>=:since AND p.created_at<:to AND )SQL"+scope+R"SQL(
+      UNION ALL
+      SELECT 'refund:'||r.id,-r.amount_minor,'refund','order',r.order_id,
+        'Qaytarma · '||COALESCE(o.order_number,r.id)||CASE WHEN r.reason!='' THEN ' · '||r.reason ELSE '' END,
+        COALESCE(u.full_name,''),r.created_at,:method
+      FROM refunds r LEFT JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.actor_user_id
+      WHERE r.status='completed' AND r.method=:method AND r.created_at>=:since AND r.created_at<:to AND )SQL"+refundScope+R"SQL(
+    ))SQL";
+    const auto bind=[&](auto& stmt){stmt.bind(":id",id).bind(":method",method).bind(":since",since).bind(":to",to).bind(":from",from);if(scope.find(":terminal")!=std::string::npos)stmt.bind(":terminal",kind=="till"?terminal:object);};
+    auto totals=ctx.db().prepare(cte+R"SQL( SELECT
+      COALESCE(SUM(CASE WHEN createdAt<:from THEN amountMinor ELSE 0 END),0) AS openingMinor,
+      COALESCE(SUM(CASE WHEN createdAt>=:from AND amountMinor>0 THEN amountMinor ELSE 0 END),0) AS inMinor,
+      COALESCE(SUM(CASE WHEN createdAt>=:from AND amountMinor<0 THEN -amountMinor ELSE 0 END),0) AS outMinor,
+      COALESCE(SUM(amountMinor),0) AS closingMinor,
+      COUNT(CASE WHEN createdAt>=:from AND amountMinor!=0 THEN 1 END) AS totalCount FROM activity)SQL");
+    bind(totals); require(totals.step(),"Kassa cəmləri alınmadı");
+    const auto search=getOr<std::string>(payload,"search",""),filter=getOr<std::string>(payload,"kind","");
+    const std::string where=" WHERE createdAt>=:from AND amountMinor!=0 AND (:kind='' OR kind=:kind) AND (:q='' OR note LIKE :like OR actorName LIKE :like OR kind LIKE :like)";
+    const auto bindFilter=[&](auto& stmt){bind(stmt);stmt.bind(":kind",filter).bind(":q",search).bind(":like","%"+search+"%");};
+    auto count=ctx.db().prepare(cte+" SELECT COUNT(*) FROM activity"+where);bindFilter(count);count.step();const auto filtered=count.columnInt(0);
+    auto rows=ctx.db().prepare(cte+" SELECT * FROM activity"+where+" ORDER BY createdAt DESC,id DESC LIMIT 5000");bindFilter(rows);
+    return Json{{"accountId",id},{"includesSales",true},{"balanceMinor",services::CashService(ctx).accountBalance(id)},
+        {"openingMinor",totals.columnInt(0)},{"inMinor",totals.columnInt(1)},{"outMinor",totals.columnInt(2)},
+        {"closingMinor",totals.columnInt(3)},{"totalCount",totals.columnInt(4)},{"filteredCount",filtered},{"limited",filtered>5000},{"moves",rows.rows()}};
+}
+
 /** The branch's own warehouse, created (or an existing one of that name reused) on first need. */
 std::string ensureObjectWarehouse(Context& ctx, const std::string& objectId) {
     auto row = ctx.db().prepare("SELECT name, COALESCE(warehouse_id, '') FROM cash_objects WHERE id = :id");
@@ -420,6 +468,21 @@ void registerCashAccounts(const ContextPtr& ctx) {
                     const auto object = row.value("objectId", std::string{});
                     todayCard = cash.takingsFor("card", services::CashService::bankScope(object), object, from, to);
                 }
+                Money totalCash=0,totalCard=0;
+                const auto since=row.value("createdAt",std::int64_t{0});
+                if(kind=="till"&&!terminal.empty()){
+                    totalCash=cash.takingsFor("cash","p.terminal_id = :terminal",terminal,since,nowMs()+1);
+                    totalCard=cash.takingsFor("card","p.terminal_id = :terminal",terminal,since,nowMs()+1);
+                }else if(kind=="bank"){
+                    const auto object=row.value("objectId",std::string{});
+                    totalCard=cash.takingsFor("card",services::CashService::bankScope(object),object,since,nowMs()+1);
+                }
+                row["totalCashMinor"]=totalCash; row["totalCardMinor"]=totalCard;
+                if(kind=="treasury"){
+                    auto flow=ctx->db().prepare("SELECT COALESCE(SUM(CASE WHEN created_at>=:from AND created_at<:to AND amount_minor>0 THEN amount_minor ELSE 0 END),0),COALESCE(SUM(CASE WHEN created_at>=:from AND created_at<:to AND amount_minor<0 THEN -amount_minor ELSE 0 END),0),COALESCE(SUM(CASE WHEN kind!='opening' AND amount_minor>0 THEN amount_minor ELSE 0 END),0) FROM cash_account_moves WHERE account_id=:id");
+                    flow.bind(":id",id).bind(":from",from).bind(":to",to);flow.step();
+                    row["todayInMinor"]=flow.columnInt(0);row["todayOutMinor"]=flow.columnInt(1);row["totalInMinor"]=flow.columnInt(2);
+                }
                 row["todayCashMinor"] = todayCash;
                 row["todayCardMinor"] = todayCard;
             }
@@ -564,6 +627,7 @@ void registerCashAccounts(const ContextPtr& ctx) {
             ctx->requirePermission("cash.manage");
             const auto id = getOr<std::string>(request.payload, "accountId", "");
             require(!id.empty(), "accountId is required");
+            if(getOr<bool>(request.payload,"includeSales",false))return accountActivity(*ctx,id,request.payload);
             auto stmt = ctx->db().prepare(
                 "SELECT m.id, m.amount_minor AS amountMinor, m.kind, m.ref_type AS refType, m.note, "
                 "       u.full_name AS actorName, m.created_at AS createdAt "

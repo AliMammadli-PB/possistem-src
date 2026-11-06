@@ -73,10 +73,77 @@ edit('PsDeliveryStartButton',text=>{
   return text.slice(0,start)+`    h("button", {type:"button",className:"ps-ops-button ps-ops-button--gold ps-delivery-new",onClick:()=>setForm({name:"",phone:"",address:"",note:""})},psAdminText("+ Yeni sifariş","+ Yeni sipariş","+ New order")),\n`+text.slice(end);
 });
 edit('OpsDelivery',text=>text.includes('/* DELIVERY_CREATE_IN_PANEL */')?text:exact(text,'      h("span", { className: "ml-auto" }),','      h("span", { className: "ml-auto" }),\n      /* DELIVERY_CREATE_IN_PANEL */ h(PsDeliveryStartButton, {}),'));
+// Updates are a first-class settings destination; keep the existing updater IPC.
+edit('settingsSections',text=>{
+  text=text.replace('{ id: "system", label: "Cihaz və sistem", hint: "POS və bağlantı",', '{ id: "system", label: psAdminText("Sistem","Sistem","System"), hint: psAdminText("Loglar və POS xidməti","Günlükler ve POS hizmeti","Logs and POS service"),');
+  if(!text.includes('id: "updates"'))text=exact(text,'    { id: "system",', '    { id: "updates", label: psAdminText("Yeniləmə","Güncelleme","Updates"), hint: psAdminText("Yeni versiyanı yoxlayın və quraşdırın","Yeni sürümü kontrol edin ve kurun","Check for a new version and install"), icon: Server, tone: "blue" },\n    { id: "system",');
+  if(!text.includes('/* MANAGEMENT_RESTAURANT_UPDATES */'))text=exact(text,'  ];','  ].filter(section=>section.id!=="updates"||!psMarketMode()); /* MANAGEMENT_RESTAURANT_UPDATES */');
+  return text;
+});
+edit('PsManagementSettingsContent',text=>{
+  if(!text.includes('/* MANAGEMENT_UPDATE_SECTION */')){
+    const ast=ts.createSourceFile('settings.js',text,ts.ScriptTarget.Latest,true);
+    const property=(node,key)=>node.properties.find(p=>ts.isPropertyAssignment(p)&&p.name.getText(ast)===key)?.initializer;
+    let target;
+    const visit=node=>{if(ts.isCallExpression(node)&&node.arguments[0]?.getText(ast)==='SettingsAccordion'&&ts.isObjectLiteralExpression(node.arguments[1])&&property(node.arguments[1],'id')?.text==='system')target=node;ts.forEachChild(node,visit);};visit(ast);
+    if(!target)throw Error('System settings accordion missing');
+    const children=property(target.arguments[1],'children');
+    if(!children||!ts.isArrayLiteralExpression(children)||!children.elements[0].getText(ast).includes('t.settings.updates'))throw Error('System update panel changed');
+    const next=`/* MANAGEMENT_UPDATE_SECTION */ !psMarketMode() && settingsSection==="updates" && jsxRuntimeExports.jsx(PsUpdateSettingsPanel,{t,version:appVersion,status:updateStatus,checking,statusLabel:updateLabel(),onCheck:()=>void checkUpdates(),onInstall:()=>void installUpdate()}),\njsxRuntimeExports.jsxs(SettingsAccordion,{id:"system",title:psAdminText("Proqram xidməti","Uygulama hizmeti","Application service"),hint:psAdminText("Logları açın və lazım olduqda POS nüvəsini yenidən başladın.","Günlükleri açın, gerekirse POS çekirdeğini yeniden başlatın.","Open logs or restart the POS service when necessary."),children:[${children.elements.slice(1).map(node=>node.getText(ast)).join(',\n')}]})`;
+    text=text.slice(0,target.getStart(ast))+next+text.slice(target.end);
+  }
+  if(!text.includes('jsxRuntimeExports.jsx(PsUpdateSettingsPanel,')){
+    const ast=ts.createSourceFile('settings.js',text,ts.ScriptTarget.Latest,true);let old;
+    const visit=node=>{if(ts.isCallExpression(node)&&node.arguments[0]?.getText(ast)==='SettingsAccordion'&&ts.isObjectLiteralExpression(node.arguments[1])&&node.arguments[1].properties.some(p=>ts.isPropertyAssignment(p)&&p.name.getText(ast)==='id'&&p.initializer.text==='updates'))old=node;ts.forEachChild(node,visit);};visit(ast);
+    if(!old)throw Error('Updates settings slot missing');
+    text=text.slice(0,old.getStart(ast))+'!psMarketMode() && settingsSection==="updates" && jsxRuntimeExports.jsx(PsUpdateSettingsPanel,{t,version:appVersion,status:updateStatus,checking,statusLabel:updateLabel(),onCheck:()=>void checkUpdates(),onInstall:()=>void installUpdate()})'+text.slice(old.end);
+  }
+  if(!text.includes('/* MANAGEMENT_UPDATE_STATUS */')){
+    text=exact(text,'  const updateLabel = () => {\n    switch (updateStatus.state) {','  const updateLabel = () => {\n    switch (updateStatus.state) {\n      /* MANAGEMENT_UPDATE_STATUS */ case "disabled":\n        return updateStatus.message || updateStatus.reason || psAdminText("Yeniləmə yalnız Setup ilə qurulmuş proqramda işləyir.","Güncelleme yalnızca kurulumla yüklenen uygulamada çalışır.","Updates work in the installed application.");');
+    text=exact(text,'    const res = await window.pos.updates.check();','    let res;\n    try { res = await window.pos.updates.check(); } catch(error) { res={success:false,error:{message:error?.message||t.settings.updateError}}; }');
+    text=exact(text,'    if (!res.success) {\n      toast(res.error.message, "danger");\n      return;\n    }\n    const next = res.data;', '    if (!res.success) {\n      setUpdateStatus({state:"error",message:res.error.message});\n      toast(res.error.message, "danger");\n      return;\n    }\n    const next = res.data;');
+  }
+  return text;
+});
+edit('PsManagementSettingsContent',text=>text.includes('!psMarketMode() && settingsSection==="updates"')?text:text.replace('settingsSection==="updates" && jsxRuntimeExports.jsx(PsUpdateSettingsPanel,','!psMarketMode() && settingsSection==="updates" && jsxRuntimeExports.jsx(PsUpdateSettingsPanel,'));
+edit('UpdateBanner',text=>text.replace('navigate("/settings")','navigate("/settings?section=updates")'));
+// One cash workspace. Preserve the legacy route as a redirect, never a second form.
+edit('AdminCashPage',()=>`function AdminCashPage(){const navigate=useNavigate();reactExports.useEffect(()=>{navigate('/operations?tab=kassa',{replace:true});},[navigate]);return null;}`);
+edit('usePsManagementLinks',text=>text.replace('{ to: "/admin/cash", label: t.nav.cash,','{ to: "/operations?tab=kassa", label: psAdminText("Kassalar","Kasalar","Cash accounts"),'));
+edit('OperationsPage',text=>text.replace("'/operations?tab='+tab.id));","psManagementAccessPath('/operations?tab='+tab.id)));"));
+edit('PsKassaMoves',()=>`function PsKassaMoves(props){return psH(PsCashActivity,props);}`);
+edit('OpsKassalar',text=>{
+  if(text.includes('/* MANAGEMENT_CASH_V1 */'))return text;
+  text=exact(text,'  const [transfer, setTransfer] = reactExports.useState(null);',`  /* MANAGEMENT_CASH_V1 */
+  const [transfer,setTransfer]=reactExports.useState(null),[transferError,setTransferError]=reactExports.useState('');
+  const transferIntent=reactExports.useRef(null),transferLock=reactExports.useRef(false);
+  const openTransfer=account=>{transferIntent.current=null;setTransferError('');setTransfer({fromId:account?.id||'',toId:'',value:'',note:''});};`);
+  const start=text.indexOf('  const saveTransfer = () => {'),end=text.indexOf('  const remove = async',start);
+  if(start<0||end<0)throw Error('Cash transfer handler span changed');
+  text=text.slice(0,start)+`  const saveTransfer = () => {
+    if(transferLock.current||!canManage)return;
+    const amountMinor=opsMinor(transfer.value),from=data.accounts.find(a=>a.id===transfer.fromId);
+    if(!from||!transfer.toId||transfer.fromId===transfer.toId||!psStockInputValid(transfer.value)||!Number.isSafeInteger(amountMinor)||amountMinor<=0||amountMinor>Number(from.balanceMinor||0)){setTransferError(psAdminText('Kassaları və məbləği yoxlayın.','Kasaları ve tutarı kontrol edin.','Check the accounts and amount.'));return;}
+    const payload={fromId:transfer.fromId,toId:transfer.toId,amountMinor,note:transfer.note.trim()},signature=JSON.stringify(payload);
+    if(transferIntent.current?.signature!==signature)transferIntent.current={signature,key:newIdempotencyKey()};
+    transferLock.current=true;setTransferError('');
+    const request=Promise.resolve().then(()=>window.pos.cashAccounts.transfer(payload,{idempotencyKey:transferIntent.current.key})).then(result=>{if(!result.success)setTransferError(result.error?.message||'Transfer alınmadı');return result;}).catch(error=>{setTransferError(error?.message||'Bağlantı xətası');throw error;});
+    void run(request,'Transfer edildi').then(ok=>{if(ok){setTransfer(null);transferIntent.current=null;}}).finally(()=>{transferLock.current=false;});
+  };
+`+text.slice(end);
+  text=exact(text,'return h("div", { className: "space-y-4" },','return h("div", { className: "space-y-4 pm-cash-accounts" },');
+  text=exact(text,'onClick: () => setTransfer({ fromId: "", toId: "", value: "", note: "" })','onClick: () => openTransfer(null)');
+  const cards=text.indexOf('    accounts.length ? h("div", { className: "ps-kassa-grid" }'),moves=text.indexOf('    moves ? jsxRuntimeExports.jsx(PsKassaMoves',cards);
+  if(cards<0||moves<0)throw Error('Cash card span changed');
+  text=text.slice(0,cards)+`    h(PsCashAccountsGrid,{accounts,data,busy,canManage,termName,onTransfer:openTransfer,onMoves:openMoves,onEdit:a=>setForm({id:a.id,name:a.name,kind:a.kind,objectId:a.objectId||'',terminalId:a.terminalId||''}),onRemove:remove}),\n`+text.slice(moves);
+  const dialog=text.indexOf('    transfer ? jsxRuntimeExports.jsx(PsAdminDialog'),confirm=text.indexOf('    confirmDialog);',dialog);
+  if(dialog<0||confirm<0)throw Error('Cash transfer dialog span changed');
+  return text.slice(0,dialog)+`    transfer ? h(PsCashTransferDialog,{form:transfer,onChange:next=>{setTransfer(next);setTransferError('');},accounts:data.accounts,busy,error:transferError,onClose:()=>setTransfer(null),onSave:saveTransfer}) : null,\n`+text.slice(confirm);
+});
 const begin='/* MANAGEMENT_COMPONENTS_START */',end='/* MANAGEMENT_COMPONENTS_END */';
 const a=source.indexOf(begin);
 if(a>=0){const b=source.indexOf(end,a);if(b<0)throw Error('Management end marker missing');source=source.slice(0,a)+source.slice(b+end.length);}
-const compiled=await transform(fs.readFileSync(path.join(root,'management/components.jsx'),'utf8'),{loader:'jsx',target:'es2022',jsxFactory:'psH',jsxFragment:'reactExports.Fragment'});
+const compiled=await transform(['components.jsx','cash.jsx'].map(name=>fs.readFileSync(path.join(root,'management',name),'utf8')).join('\n'),{loader:'jsx',target:'es2022',jsxFactory:'psH',jsxFragment:'reactExports.Fragment'});
 source=source.trimEnd()+'\n'+begin+'\n'+compiled.code+'\n'+end+'\n';
 await transform(source,{loader:'js',target:'es2022'});
 fs.writeFileSync(file,source);

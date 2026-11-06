@@ -1,0 +1,6 @@
+{
+  "method": "built-in image_gen",
+  "prompt": "Use case: stylized-concept. Asset type: a small software update module illustration for a restaurant POS management app, exported as PNG with a genuinely transparent background. Subject: one compact blue-and-white desktop monitor with a white display showing a bold blue upward download/update arrow, surrounded partly by two chunky circular refresh arrows in cyan and royal blue. Friendly polished three-dimensional product icon, matching a family of blue-white-cyan glossy resin desktop application module illustrations. Simple legible silhouette at 28 px and 64 px, centred square composition, minimal parts, modest isometric angle, soft material highlights, no fine detail, no letters, no numbers, no text, no logo. Background must be fully transparent, including outside and between the arrows. No backdrop, no tile, no ground plane, no external shadow, no glow, no opaque white square.",
+  "source": "/home/panda/.codex/generated_images/01a0c31b-6ab6-7fe1-948d-5cde938b5ad5/exec-92694f0c-cc16-4ab3-a705-768e602e87f2.png",
+  "file": "assets/modules/updates.png"
+}
