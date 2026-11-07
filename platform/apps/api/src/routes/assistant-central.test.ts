@@ -1,16 +1,23 @@
 import test from 'node:test';import assert from 'node:assert/strict';import Fastify from 'fastify';import {PgDialect} from 'drizzle-orm/pg-core';import {centralAssistantRoutes} from './assistant-central.js';import {createHash,randomUUID} from 'node:crypto';
+import {allKeysFor} from './pos-permissions.js';
+import {createRequire} from 'node:module';
+import {mkdtempSync,writeFileSync,rmSync,existsSync,readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 const dialect=new PgDialect();
-function fixture(){const sessions=new Map<string,any>();let revision=0,entries:any[]=[];const owner=randomUUID();
+function fixture(restaurant=false){const target={id:randomUUID(),name:'Fixture restaurant',product:'restaurant',app_version:'1.10.21',last_seen_at:new Date()};const sessions=new Map<string,any>();let revision=0,entries:any[]=[];const owner=randomUUID();
  const execute=async(q:any)=>{const {sql:s,params:p}=dialect.sqlToQuery(q);
   if(s.includes('DELETE FROM assistant_sessions'))return[];
   if(s.includes('INSERT INTO assistant_sessions')){const [id,customer_id,secret_hash,surface,device_id,actor_id,capabilities,state]=p;sessions.set(String(id),{id,customer_id,secret_hash,surface,device_id,actor_id,capabilities:JSON.parse(String(capabilities)),state:JSON.parse(String(state))});return[];}
   if(s.includes('FROM assistant_sessions')){const r=sessions.get(String(p[0]));return r&&r.secret_hash===p[1]?[r]:[];}
   if(s.includes('assistant_knowledge_state s'))return[{revision,entries}];
   if(s.includes('UPDATE assistant_sessions SET state')){const r=sessions.get(String(p[2]));r.state=JSON.parse(String(p[0]));return[];}
-  if(s.includes('FROM devices d JOIN licenses'))return[];
+  if(s.includes('FROM devices d JOIN licenses'))return restaurant?[target]:[];
+  if(s.includes('SELECT active FROM customers'))return[{active:true}];
   throw Error('Unexpected test SQL '+s);
  };const db:any={execute,transaction:async(fn:any)=>fn(db)};const app=Fastify();app.decorate('db',db);app.decorateRequest('user',null);app.decorateRequest('customer',null);app.addHook('preHandler',async req=>{if(req.headers['x-fixture-owner'])req.customer={id:owner,email:'fixture@example.invalid',name:'Fixture',active:true};});
- return{app,sessions,owner,setKnowledge:(e:any[])=>{entries=e;revision++;}};
+ return{app,sessions,owner,target,setKnowledge:(e:any[])=>{entries=e;revision++;}};
 }
 test('real route contract: guest isolation, admin denial, same open session learns next request',async()=>{const f=fixture();await f.app.register(centralAssistantRoutes);
  try{const make=await f.app.inject({method:'POST',url:'/customer/assistant/v1/sessions',payload:{protocol:1,surface:'site'}});assert.equal(make.statusCode,200);const session=make.json();assert.equal(session.secret.length,64);
@@ -23,4 +30,29 @@ test('real route contract: guest isolation, admin denial, same open session lear
  assert.equal((await f.app.inject({method:'POST',url:'/customer/assistant/v1/sessions',payload:{protocol:1,surface:'restaurant'}})).statusCode,401);
  const doc=f.sessions.get(session.sessionId);assert.notEqual(doc.secret_hash,session.secret);assert.equal(doc.secret_hash,createHash('sha256').update(session.secret).digest('hex'));
  }finally{await f.app.close();}
+});
+
+// Always test the main-process source, plus the installed artefact when available.
+const desktop=fileURLToPath(new URL('../../../../../restoranpos/',import.meta.url));
+const desktopVersion=JSON.parse(readFileSync(path.join(desktop,'package.json'),'utf8')).version;
+const archive=path.join(desktop,'release-'+desktopVersion,'win-unpacked/resources/app.asar');
+for(const packaged of [false,true])test((packaged?'packaged '+desktopVersion:'main-process source')+' accepts the complete administrator permission catalogue',{skip:packaged&&!existsSync(archive)},async()=>{
+ const f=fixture(true);await f.app.register(centralAssistantRoutes);const temp=mkdtempSync(path.join(tmpdir(),'assistant-packaged-contract-'));
+ try{
+  const require=createRequire(import.meta.url);
+  const file=path.join(temp,'assistant-online.cjs');
+  if(packaged){const asar=require(path.join(desktop,'node_modules/@electron/asar'));writeFileSync(file,asar.extractFile(archive,'out/main/assistant-online.cjs'));}
+  else writeFileSync(file,readFileSync(path.join(desktop,'support/online-client.cjs')));
+  const {createAssistantClient}=require(file),permissions=allKeysFor('restaurant');
+  assert.ok(permissions.length>40,'Regression needs the full administrator role');
+  const client=createAssistantClient({credentials:async()=>({customerId:f.owner,deviceId:f.target.id,actorId:'usr-admin',token:'fixture-main-tenant',baseUrl:'https://possistem.az/pos/api',permissions:[...permissions,'unknown.future.permission']}),fetchImpl:async(url:string,options:RequestInit)=>{
+   const response=await f.app.inject({method:'POST',url:new URL(url).pathname.replace(/^\/pos\/api/,''),headers:{...options.headers,'x-fixture-owner':'fixture'} as Record<string,string>,payload:String(options.body)});
+   return new Response(response.body,{status:response.statusCode,headers:{'content-type':'application/json'}});
+  }});
+  const session=await client.request({action:'create',language:'az',tools:['catalogue','read']});
+  const document=f.sessions.get(session.sessionId);assert.ok(document.state.permissions.includes('inventory.view'));
+  assert.ok(document.state.permissions.length<=8);assert.ok(!document.state.permissions.includes('unknown.future.permission'));
+  const response=await client.request({action:'message',sessionId:session.sessionId,secret:session.secret,requestId:randomUUID(),text:'sa'});
+  assert.match(response.reply.body,/Salam/);console.log('Verified '+(packaged?'packaged':'source')+' client with '+permissions.length+' real administrator permissions.');
+ }finally{await f.app.close();rmSync(temp,{recursive:true,force:true});}
 });

@@ -24,14 +24,16 @@ export async function centralAssistantRoutes(app:FastifyInstance){
  const identity=(req:any)=>req.customer?.id||resolveTenantToken(String(req.headers.authorization||'').replace(/^Bearer\s+/i,''))?.customerId||null;
  const options={preHandler:async(req:any,reply:any)=>{const origin=req.headers.origin;if(origin&&origin!=='https://possistem.az'&&process.env.NODE_ENV==='production')return reply.code(403).send({error:'Origin not allowed'});},bodyLimit:1500000,config:{rateLimit:{max:120,timeWindow:'1 minute'}}};
  app.post('/customer/assistant/v1/sessions',options,async(req,reply)=>{
-  const body=parseBody(z.object({protocol:z.literal(1),surface:z.enum(['site','restaurant']),language:Lang.default('az'),deviceId:uuid.optional(),actorId:z.string().max(100).default(''),permissions:z.array(z.string().max(80)).max(40).default([]),tools:z.array(z.string().max(60)).max(30).default([])}),req.body,reply);if(!body)return;
+  // Main sends the full native role catalogue (65+ keys), not just assistant tools.
+  // Keep a bounded transport list; only supported assistant keys are retained below.
+  const body=parseBody(z.object({protocol:z.literal(1),surface:z.enum(['site','restaurant']),language:Lang.default('az'),deviceId:uuid.optional(),actorId:z.string().max(100).default(''),permissions:z.array(z.string().min(1).max(80)).max(1024).default([]),tools:z.array(z.string().max(60)).max(30).default([])}),req.body,reply);if(!body)return;
   const customerId=identity(req);if(body.surface==='restaurant'&&(!customerId||!req.headers.authorization))return reply.code(401).send({error:'Hesaba yenidən daxil olun.'});
   if(body.surface==='restaurant'){const [owner]=rows(await app.db.execute(sql`SELECT active FROM customers WHERE id=${customerId}::uuid`));if(!owner?.active)return reply.code(401).send({error:'Hesab aktiv deyil.'});}
   const devices=customerId?(await ownerBranchDevices(app,customerId)).filter(d=>d.product==='restaurant'):[];
   const target=body.deviceId?devices.find(d=>d.id===body.deviceId):devices.length===1?devices[0]:null;
   if(body.deviceId&&!target)return reply.code(403).send({error:'Kassa bu hesaba aid deyil.'});
   if(body.surface==='restaurant'&&!target)return reply.code(409).send({error:'Aktiv Restoran POS kassası tapılmadı.'});
-  const permissions=body.surface==='restaurant'?body.permissions.filter(p=>supported.includes(p)):target?supported:[];
+  const permissions=body.surface==='restaurant'?[...new Set(body.permissions)].filter(p=>supported.includes(p)):target?supported:[];
   const tools=body.surface==='restaurant'?body.tools.filter(t=>TOOLS.includes(t)):target?TOOLS.filter(t=>t!=='openPayment'):[];
   const doc=newDocument({surface:body.surface,language:body.language,permissions,tools});
   await app.db.execute(sql`DELETE FROM assistant_sessions WHERE id IN (SELECT id FROM assistant_sessions WHERE expires_at<now() ORDER BY expires_at LIMIT 200)`);
