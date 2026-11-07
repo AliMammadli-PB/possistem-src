@@ -1,7 +1,7 @@
 {
   "name": "possistem",
   "productName": "possistem",
-  "version": "1.10.19",
+  "version": "1.10.21",
   "description": "possistem restaurant POS (Electron + React + C++20 sidecar)",
   "author": "possistem",
   "license": "UNLICENSED",
@@ -66,7 +66,9 @@
     "test:update-first": "node --test update-first.test.cjs",
     "test:pin-entry": "node scripts/qa-pin1919.mjs",
     "install:newest-shortcut": "node scripts/install-newest-launcher.mjs",
-    "test:subscription-access": "node --test subscription/access.test.cjs"
+    "test:subscription-access": "node --test subscription/access.test.cjs",
+    "test:support": "node --test support/*.test.mjs",
+    "test:support:ui": "node scripts/qa-stock-assistant.cjs && node scripts/qa-support.cjs"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",

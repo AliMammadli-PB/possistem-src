@@ -1,4 +1,5 @@
 #include "pos/services/ReportService.hpp"
+#include "pos/services/SettledTenders.hpp"
 
 #include "pos/services/RefundService.hpp"
 
@@ -33,9 +34,9 @@ Json ReportService::buildCanonicalSnapshot(const std::string& businessDayId,
     const Money openingFloat = day.columnInt(2);
 
     auto sales = ctx_.db().prepare(
-        "SELECT method, COUNT(*) AS count, COALESCE(SUM(amount_minor), 0) AS totalMinor, "
+        "SELECT method, COUNT(DISTINCT id) AS count, COALESCE(SUM(amount_minor), 0) AS totalMinor, "
         "       COALESCE(SUM(tip_minor), 0) AS tipsMinor "
-        "FROM payments WHERE business_day_id = :day AND status = 'approved' "
+        "FROM " + kSettledTenderRows + " WHERE business_day_id = :day "
         "GROUP BY method");
     sales.bind(":day", businessDayId);
 
@@ -48,15 +49,16 @@ Json ReportService::buildCanonicalSnapshot(const std::string& businessDayId,
     const auto refundCount = refunds.columnInt(1);
 
     auto cashSales = ctx_.db().prepare(
-        "SELECT COALESCE(SUM(amount_minor), 0) FROM payments "
-        "WHERE business_day_id = :day AND status = 'approved' AND method = 'cash'");
+        "SELECT COALESCE(SUM(amount_minor), 0), COALESCE(SUM(tip_minor), 0) FROM " + kSettledTenderRows + " "
+        "WHERE business_day_id = :day AND method = 'cash'");
     cashSales.bind(":day", businessDayId);
     cashSales.step();
     const Money cashInSales = cashSales.columnInt(0);
+    const Money cashTips = cashSales.columnInt(1);
 
     auto cashMoves = ctx_.db().prepare(
         "SELECT kind, reason, COALESCE(SUM(amount_minor), 0) AS totalMinor, COUNT(*) AS count "
-        "FROM cash_movements WHERE business_day_id = :day GROUP BY kind, reason");
+        "FROM cash_movements WHERE business_day_id = :day AND deleted_at IS NULL GROUP BY kind, reason");
     cashMoves.bind(":day", businessDayId);
 
     Money cashInExtra = 0;
@@ -82,7 +84,7 @@ Json ReportService::buildCanonicalSnapshot(const std::string& businessDayId,
     const Money cashRefunded = cashRefunds.columnInt(0);
 
     const Money expectedCash =
-        openingFloat + cashInSales + cashInExtra - cashOutExtra - cashRefunded;
+        openingFloat + cashInSales + cashTips + cashInExtra - cashOutExtra - cashRefunded;
 
     auto orders = ctx_.db().prepare(
         "SELECT COUNT(*), COALESCE(SUM(total_minor), 0), COALESCE(SUM(discount_minor), 0), "
@@ -182,9 +184,9 @@ Json ReportService::periodSummary(Timestamp from, Timestamp to) {
     // Every figure below is keyed off when the money moved, so the receipt and
     // the screen can never disagree about which side of 09:00 a payment fell.
     auto sales = ctx_.db().prepare(
-        "SELECT method, COUNT(*) AS count, COALESCE(SUM(amount_minor), 0) AS totalMinor, "
+        "SELECT method, COUNT(DISTINCT id) AS count, COALESCE(SUM(amount_minor), 0) AS totalMinor, "
         "       COALESCE(SUM(tip_minor), 0) AS tipsMinor "
-        "FROM payments WHERE status = 'approved' AND created_at BETWEEN :from AND :to "
+        "FROM " + kSettledTenderRows + " WHERE created_at BETWEEN :from AND :to "
         "GROUP BY method");
     sales.bind(":from", from).bind(":to", to);
 
@@ -218,11 +220,12 @@ Json ReportService::periodSummary(Timestamp from, Timestamp to) {
     const auto refundCount = refunds.columnInt(1);
 
     auto cash = ctx_.db().prepare(
-        "SELECT COALESCE(SUM(amount_minor), 0) FROM payments "
-        "WHERE status = 'approved' AND method = 'cash' AND created_at BETWEEN :from AND :to");
+        "SELECT COALESCE(SUM(amount_minor), 0), COALESCE(SUM(tip_minor), 0) FROM " + kSettledTenderRows + " "
+        "WHERE method = 'cash' AND created_at BETWEEN :from AND :to");
     cash.bind(":from", from).bind(":to", to);
     cash.step();
     const Money cashSales = cash.columnInt(0);
+    const Money cashTips = cash.columnInt(1);
 
     auto cashBack = ctx_.db().prepare(
         "SELECT COALESCE(SUM(amount_minor), 0) FROM refunds "
@@ -233,7 +236,7 @@ Json ReportService::periodSummary(Timestamp from, Timestamp to) {
 
     auto orders = ctx_.db().prepare(
         "SELECT COUNT(DISTINCT order_id) FROM payments "
-        "WHERE status = 'approved' AND created_at BETWEEN :from AND :to");
+        "WHERE status IN ('approved','refunded') AND created_at BETWEEN :from AND :to");
     orders.bind(":from", from).bind(":to", to);
     orders.step();
     const auto orderCount = orders.columnInt(0);
@@ -250,8 +253,8 @@ Json ReportService::periodSummary(Timestamp from, Timestamp to) {
         "JOIN menu_items m ON m.id = i.product_id "
         "JOIN menu_categories c ON c.id = m.category_id "
         "WHERE i.status != 'voided' AND i.order_id IN ("
-        "    SELECT DISTINCT order_id FROM payments "
-        "    WHERE status = 'approved' AND created_at BETWEEN :from AND :to) "
+        "    SELECT DISTINCT order_id FROM " + kSettledTenderRows + " "
+        "    WHERE created_at BETWEEN :from AND :to) "
         "GROUP BY c.id ORDER BY revenueMinor DESC");
     byCategory.bind(":from", from).bind(":to", to);
 
@@ -276,7 +279,7 @@ Json ReportService::periodSummary(Timestamp from, Timestamp to) {
         {"cashDrawer",
          Json{{"cashSalesMinor", cashSales},
               {"cashRefundsMinor", cashRefunded},
-              {"expectedCashMinor", cashSales - cashRefunded}}},
+              {"expectedCashMinor", cashSales + cashTips - cashRefunded}}},
     };
 }
 
@@ -289,14 +292,14 @@ Json ReportService::periodBuckets(Timestamp from, Timestamp to, std::string_view
     auto stmt = ctx_.db().prepare(
         "SELECT strftime('" + format +
         "', created_at / 1000, 'unixepoch', 'localtime') AS bucket, "
-        "       COUNT(*) AS paymentCount, "
+        "       COUNT(DISTINCT id) AS paymentCount, "
         "       COALESCE(SUM(amount_minor), 0) AS totalMinor, "
         "       COALESCE(SUM(CASE WHEN method = 'cash' THEN amount_minor ELSE 0 END), 0) "
         "           AS cashMinor, "
         "       COALESCE(SUM(CASE WHEN method = 'card' THEN amount_minor ELSE 0 END), 0) "
         "           AS cardMinor, "
         "       COUNT(DISTINCT order_id) AS orderCount "
-        "FROM payments WHERE status = 'approved' AND created_at BETWEEN :from AND :to "
+        "FROM " + kSettledTenderRows + " WHERE created_at BETWEEN :from AND :to "
         "GROUP BY bucket ORDER BY bucket");
     stmt.bind(":from", from).bind(":to", to);
     return stmt.rows();

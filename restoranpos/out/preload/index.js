@@ -372,6 +372,7 @@ const api = {
    */
   /** Live support: ask the office for help and read the reply, from the till. */
   support: {
+    assistant: (payload) => call("support.assistant", payload),
     request: (message) => call("support.request", { message }),
     thread: () => call("support.active"),
     /** Downloads an attachment then asks the OS to open it. */

@@ -23,6 +23,7 @@
 #include "pos/services/LicenseService.hpp"
 #include "pos/services/RefundService.hpp"
 #include "pos/services/ReportService.hpp"
+#include "pos/services/SettledTenders.hpp"
 #include "pos/db/Database.hpp"
 #include "pos/db/Migrator.hpp"
 
@@ -148,29 +149,29 @@ void enqueueReportPrint(Context& ctx, const Json& report, const std::string& pri
  */
 Json runZClose(Context& ctx, const ipc::Request& request) {
     services::BusinessDayService days(ctx);
-
-    std::string id = getOr<std::string>(request.payload, "businessDayId", "");
-    if (id.empty()) {
-        const auto open = days.openBusinessDayId();
-        if (!open) {
-            throw PosError(std::string(protocol::err::kNotFound),
-                           "Bagliyacaq acig kassa gunu yoxdur");
-        }
-        id = *open;
-    }
-
     Json result;
     {
         db::Transaction txn(ctx.db());
-        result = days.closeZ(id, getOr<std::string>(request.payload, "note", ""));
+        services::Idempotency idem(ctx);
+        if (auto replay=idem.begin(request.idempotencyKey,request.method,request.payload)) {
+            txn.commit();
+            return *replay;
+        }
+        std::string id=getOr<std::string>(request.payload,"businessDayId","");
+        if(id.empty()) {
+            const auto open=days.openBusinessDayId();
+            if(!open)throw PosError(std::string(protocol::err::kNotFound),"Bagliyacaq acig kassa gunu yoxdur");
+            id=*open;
+        }
+        result=days.closeZ(id,getOr<std::string>(request.payload,"note",""));
+        idem.complete(request.idempotencyKey,result,"business_day",id);
         txn.commit();
     }
-
-    // Printing happens after the commit: a printer fault must never roll back a
-    // closed day, and the snapshot is already durable.
-    if (result.contains("zReport") && result["zReport"].is_object()) {
-        emitReportCreated(ctx, result["zReport"], "z");
-        enqueueReportPrint(ctx, result["zReport"], "z_report");
+    // A replay above returns before printing. Never close a newly opened day
+    // merely because a reply to yesterday's close was lost.
+    if(result.contains("zReport")&&result["zReport"].is_object()) {
+        emitReportCreated(ctx,result["zReport"],"z");
+        enqueueReportPrint(ctx,result["zReport"],"z_report");
     }
     return result;
 }
@@ -204,8 +205,8 @@ void registerSystem(const ContextPtr& ctx) {
                                    "                    ELSE 0 END), 0), "
                                    "       COALESCE(SUM(CASE WHEN method = 'card' THEN amount_minor "
                                    "                    ELSE 0 END), 0), "
-                                   "       COUNT(*) "
-                                   "FROM payments WHERE shift_id = :shiftId AND status = 'approved'");
+                                   "       COUNT(DISTINCT id) "
+                                   "FROM " + services::kSettledTenderRows + " WHERE shift_id = :shiftId");
                                totals.bind(":shiftId", shift.value("id", ""));
                                if (totals.step()) {
                                    shift["cashMinor"] = totals.columnInt(0);
@@ -291,8 +292,11 @@ void registerSystem(const ContextPtr& ctx) {
             }
 
             auto cash = ctx->db().prepare(
-                "SELECT COALESCE(SUM(amount_minor), 0) FROM payments "
-                "WHERE shift_id = :shiftId AND status = 'approved' AND method = 'cash'");
+                "SELECT COALESCE((SELECT SUM(amount_minor+tip_minor) FROM " + services::kSettledTenderRows + " "
+                "WHERE shift_id=:shiftId AND method='cash'),0) + "
+                "COALESCE((SELECT SUM(CASE WHEN kind IN ('cash_in','float_adjust') THEN amount_minor "
+                "WHEN kind IN ('cash_out','expense') THEN -amount_minor ELSE 0 END) "
+                "FROM cash_movements WHERE shift_id=:shiftId AND deleted_at IS NULL),0)");
             cash.bind(":shiftId", shiftId);
             const Money cashTaken = cash.step() ? cash.columnInt(0) : 0;
             const Money expected = openingFloat + cashTaken;
@@ -711,7 +715,7 @@ void registerSystem(const ContextPtr& ctx) {
 
                                auto sales = ctx->db().prepare(
                                    "SELECT COALESCE(SUM(amount_minor), 0), COUNT(*) "
-                                   "FROM payments WHERE status = 'approved' "
+                                   "FROM payments WHERE status IN ('approved','refunded') "
                                    "  AND business_day_id = :day");
                                sales.bind(":day", dayId);
                                sales.step();
@@ -803,9 +807,9 @@ void registerSystem(const ContextPtr& ctx) {
             const auto to = getOr<Timestamp>(request.payload, "to", nowMs());
 
             auto byMethod = ctx->db().prepare(
-                "SELECT method, COUNT(*) AS count, COALESCE(SUM(amount_minor), 0) AS totalMinor, "
+                "SELECT method, COUNT(DISTINCT id) AS count, COALESCE(SUM(amount_minor), 0) AS totalMinor, "
                 "       COALESCE(SUM(tip_minor), 0) AS tipsMinor "
-                "FROM payments WHERE status = 'approved' AND created_at BETWEEN :from AND :to "
+                "FROM " + services::kSettledTenderRows + " WHERE created_at BETWEEN :from AND :to "
                 "GROUP BY method");
             byMethod.bind(":from", from).bind(":to", to);
 
@@ -887,13 +891,17 @@ void registerSystem(const ContextPtr& ctx) {
         std::string(protocol::method::kBusinessDayOpen), [ctx](const ipc::Request& request) {
             ctx->requirePermission("businessDay.manage");
             db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            if(auto replay=idem.begin(request.idempotencyKey,request.method,request.payload)) {txn.commit();return *replay;}
             const auto state=services::BusinessDayService(*ctx).saleReadiness();
             require(state.at("reason") != "missing_register",state.at("message").get<std::string>());
             const auto day = services::BusinessDayService(*ctx).open(
                 getOr<Money>(request.payload, "openingFloatMinor", 0),
                 getOr<std::string>(request.payload, "note", ""));
+            const Json result{{"businessDay",day}};
+            idem.complete(request.idempotencyKey,result,"business_day",day.at("id").get<std::string>());
             txn.commit();
-            return Json{{"businessDay", day}};
+            return result;
         });
 
     server.registerHandler(
@@ -936,6 +944,8 @@ void registerSystem(const ContextPtr& ctx) {
             services::BusinessDayService days(*ctx);
 
             db::Transaction txn(ctx->db());
+            services::Idempotency idem(*ctx);
+            if(auto replay=idem.begin(request.idempotencyKey,request.method,request.payload)) {txn.commit();return *replay;}
 
             std::string id = getOr<std::string>(request.payload, "businessDayId", "");
             // Opening the till here is what makes "Z, then X" show an empty
@@ -947,6 +957,7 @@ void registerSystem(const ContextPtr& ctx) {
             }
 
             const auto report = services::ReportService(*ctx).createXReport(id);
+            idem.complete(request.idempotencyKey,report,"report_snapshot",report.at("snapshotId").get<std::string>());
             txn.commit();
 
             emitReportCreated(*ctx, report, "x");

@@ -4,6 +4,7 @@
  * follow-up buttons and a short conversation memory the client carries.
  */
 import { appendFile } from 'node:fs/promises';
+import {trainingReply} from '../lib/assistant/central-engine.mjs';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { sql } from 'drizzle-orm';
@@ -276,6 +277,9 @@ export async function assistantRoutes(app: FastifyInstance) {
     if (!body) return;
     reply.header('Cache-Control', 'no-store');
     try {
+      const [knowledge]=await rows<{entries:unknown[]}>(app.db,sql`SELECT coalesce(r.entries,'[]'::jsonb) AS entries FROM assistant_knowledge_state s LEFT JOIN assistant_knowledge_revisions r ON r.id=s.published_revision WHERE s.id=1`);
+      const taught=trainingReply(knowledge?.entries||[],body.text,body.language,'site');
+      if(taught)return{reply:{id:taught.id,text:taught.body,links:[],chips:[]},context:body.context||{}};
       return await assistantReply(app, body.text, body.language, req.customer?.id ?? null, body.context);
     } catch (error) {
       req.log.error({ err: error }, 'assistant_reply_failed');

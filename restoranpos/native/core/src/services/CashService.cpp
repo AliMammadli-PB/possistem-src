@@ -1,5 +1,6 @@
 #include <limits>
 #include "pos/services/CashService.hpp"
+#include "pos/services/SettledTenders.hpp"
 
 #include "pos/services/RefundService.hpp"
 
@@ -92,8 +93,8 @@ Money CashService::expectedCash(const std::string& businessDayId) {
     // Tips paid in cash are physically in the drawer, so they belong in the
     // expected figure - leaving them out made every count look short.
     auto cashSales = ctx_.db().prepare(
-        "SELECT COALESCE(SUM(amount_minor), 0) + COALESCE(SUM(tip_minor), 0) FROM payments "
-        "WHERE business_day_id = :day AND status IN ('approved','refunded') AND method = 'cash'");
+        "SELECT COALESCE(SUM(amount_minor), 0) + COALESCE(SUM(tip_minor), 0) FROM " + kSettledTenderRows + " "
+        "WHERE business_day_id = :day AND method = 'cash'");
     cashSales.bind(":day", businessDayId);
     cashSales.step();
     total += cashSales.columnInt(0);
@@ -102,7 +103,7 @@ Money CashService::expectedCash(const std::string& businessDayId) {
     // ledger below: counting both would take the money out of the drawer twice.
     auto moves = ctx_.db().prepare(
         "SELECT kind, COALESCE(SUM(amount_minor), 0) FROM cash_movements "
-        "WHERE business_day_id = :day AND reason != :refundReason GROUP BY kind");
+        "WHERE business_day_id = :day AND reason != :refundReason AND deleted_at IS NULL GROUP BY kind");
     moves.bind(":day", businessDayId).bind(":refundReason", std::string(kRefundMovementReason));
     while (moves.step()) {
         const auto kind = moves.columnText(0);
@@ -140,7 +141,7 @@ Money takings(handlers::Context& ctx, const std::string& method, const std::stri
         "  WHEN p.method = 'mixed' THEN COALESCE((SELECT SUM(t.amount_minor + t.tip_minor) "
         "    FROM payment_tenders t WHERE t.payment_id = p.id AND t.method = :method), 0) "
         "  ELSE 0 END), 0) FROM payments p "
-        "WHERE p.status = 'approved' AND p.created_at >= :since AND p.created_at < :until AND " + terminalsSql);
+        "WHERE p.status IN ('approved','refunded') AND p.created_at >= :since AND p.created_at < :until AND " + terminalsSql);
     paid.bind(":method", method).bind(":since", since).bind(":until", until);
     if (terminalsSql.find(":terminal") != std::string::npos) paid.bind(":terminal", terminal);
     paid.step();

@@ -20,7 +20,7 @@ function psManagementModule(to) {
 function PsModuleImage({name,className=''}) {
   return <img className={'pm-image '+className} src={'./assets/modules/'+name+'.png'} width="64" height="64" alt="" aria-hidden="true" draggable={false}/>;
 }
-function PsDeliveryNavIcon(){return <img className="pm-delivery-icon" src="./assets/modules/delivery-sidebar-white.png" width="28" height="28" alt="" aria-hidden="true" draggable={false}/>;}
+function PsDeliveryNavIcon(){return <span className="pm-delivery-icon" aria-hidden="true"><img className="pm-delivery-default" src="./assets/modules/delivery-outline-v2.png" width="28" height="28" alt="" draggable={false}/><img className="pm-delivery-selected" src="./assets/modules/delivery-outline-v2.png" width="28" height="28" alt="" draggable={false}/></span>;}
 function psManagementAccessPath(to){
   const tab=new URLSearchParams(to.split('?')[1]||'').get('tab');
   if(tab==='kassa')return '/admin/cash';
@@ -82,12 +82,38 @@ function psManagementHint(image) {
   const hints={menu:['Menyunu və qiymətləri düzəldin','Menüyü ve fiyatları düzenleyin','Edit your menu and prices'],stock:['Qalıqları və mal hərəkətini izləyin','Stok ve hareketleri izleyin','Track stock and movements'],goods:['Mallar və xammal kartları','Ürün ve hammadde kartları','Products and ingredients'],categories:['Ana və alt kateqoriyalar','Ana ve alt kategoriler','Categories and subcategories'],stocktake:['Faktiki qalığı yoxlayın','Gerçek stok miktarını kontrol edin','Check physical stock'],costing:['Tərkib, porsiya və maya dəyəri','İçerik, porsiyon ve maliyet','Ingredients, portions and cost'],trade:['Alışlar və satışlar','Alışlar ve satışlar','Purchases and sales'],staff:['İşçilər, icazələr və maaşlar','Çalışanlar, izinler ve maaşlar','Staff, permissions and salaries'],tables:['Zallar və masaların düzülüşü','Salonlar ve masa düzeni','Rooms and table layout'],delivery:['Sifarişlər və kuryerlər','Siparişler ve kuryeler','Orders and couriers'],partners:['Təchizatçılar və müştərilər','Tedarikçiler ve müşteriler','Suppliers and customers'],cash:['Kassalar və pul hərəkəti','Kasalar ve para hareketi','Cash accounts and movements'],documents:['Ödənişlərin vahid siyahısı','Ödemelerin ortak listesi','All payment documents'],reports:['Gəlir və satış göstəriciləri','Gelir ve satış verileri','Revenue and sales figures'],updates:['Yeni versiyanı yoxlayın və quraşdırın','Yeni sürümü kontrol edin ve kurun','Check for a new version and install'],settings:['Restoran, printer, çek və sistem','Restoran, yazıcı, fiş ve sistem','Restaurant, printer, receipt and system'],branches:['Obyektlər və bağlı kassalar','İşletmeler ve bağlı kasalar','Locations and connected tills'],backup:['Yedəkləyin və bərpa edin','Yedekleyin ve geri yükleyin','Back up and restore'],license:['İstifadə hüquqları','Kullanım hakları','Usage permissions'],devices:['Bağlantı və cihaz yoxlaması','Bağlantı ve cihaz kontrolü','Connections and device checks'],gifts:['Kampaniya və hədiyyələr','Kampanyalar ve hediyeler','Campaigns and gifts'],returns:['Satışı tapın və qaytarın','Satışı bulun ve iade edin','Find and return a sale'],reconcile:['Ödənişləri tutuşdurun','Ödemeleri karşılaştırın','Reconcile payments'],audit:['Əməliyyat tarixçəsi','İşlem geçmişi','Activity history'],expenses:['Xərcləri qeyd edin','Giderleri kaydedin','Record expenses'],income:['Digər gəlirləri qeyd edin','Diğer gelirleri kaydedin','Record other income'],export:['Məlumatları fayla çıxarın','Verileri dosyaya aktarın','Export your records']};
   return hints[image]?psAdminText(...hints[image]):'';
 }
+function PsFloorHeading({count,isDelivery=false}) {
+  const intro=reactExports.useRef(null),{lang}=useI18n();
+  reactExports.useLayoutEffect(()=>{
+    const header=intro.current?.closest('.pm-floor-header'),rail=header?.closest('.ps-shell')?.querySelector('.ps-touch-sidebar'),nav=rail?.querySelector(':scope > nav'),divider=nav?.previousElementSibling;
+    if(!header||!rail||!nav||!divider)return;
+    const property='--pm-floor-nav-gap',previous=nav.style.getPropertyValue(property);
+    let active=true,frame=null;
+    const request=window.requestAnimationFrame?.bind(window)||(fn=>setTimeout(fn,16)),cancel=window.cancelAnimationFrame?.bind(window)||clearTimeout;
+    const align=()=>{frame=null;if(!active)return;const first=nav.querySelector('a,button');if(!first)return;const margin=parseFloat(window.getComputedStyle(nav).marginTop)||0,gap=Math.max(0,margin+header.getBoundingClientRect().bottom-first.getBoundingClientRect().top-nav.scrollTop).toFixed(2)+'px';if(nav.style.getPropertyValue(property)!==gap)nav.style.setProperty(property,gap);};
+    const schedule=()=>{if(frame!==null)cancel(frame);frame=request(align);};
+    align();
+    const observer=typeof window.ResizeObserver==='function'?new window.ResizeObserver(schedule):null;
+    observer?.observe(header);observer?.observe(divider);if(rail.firstElementChild)observer?.observe(rail.firstElementChild);
+    window.addEventListener('resize',schedule);rail.addEventListener('transitionend',schedule);
+    document.fonts?.ready.then(()=>{if(active)schedule();});
+    return()=>{active=false;if(frame!==null)cancel(frame);observer?.disconnect();window.removeEventListener('resize',schedule);rail.removeEventListener('transitionend',schedule);if(previous)nav.style.setProperty(property,previous);else nav.style.removeProperty(property);};
+  },[count,lang,isDelivery]);
+  return <div className="pm-floor-intro" ref={intro}>
+    <div className="pm-floor-title-line"><h1>{isDelivery?psAdminText('Çatdırılma','Teslimat','Delivery'):psAdminText('Masalar','Masalar','Tables')}</h1></div>
+    {!isDelivery&&<ul className="pm-floor-legend" aria-label={psAdminText('Masa vəziyyətləri','Masa durumları','Table statuses')}>
+      <li title={psAdminText('Boş masa','Boş masa','Available table')}><img src="./assets/modules/table-status-free-v1.png" width="22" height="22" alt="" aria-hidden="true"/>{psAdminText('Boş','Boş','Available')}</li>
+      <li title={psAdminText('Aktiv hesab','Aktif hesap','Open bill')}><img src="./assets/modules/table-status-active-v1.png" width="22" height="22" alt="" aria-hidden="true"/>{psAdminText('Aktiv','Aktif','Open')}</li>
+      <li title={psAdminText('Çek çap olunub','Fiş yazdırıldı','Bill printed')}><img src="./assets/modules/table-status-receipt-v1.png" width="22" height="22" alt="" aria-hidden="true"/>{psAdminText('Çek','Fiş','Printed')}</li>
+    </ul>}
+  </div>;
+}
 function AdminHubPage(){return <PsManagementHub links={usePsManagementLinks()}/>;}
-function SettingsPage(){return <PsManagementLayout links={usePsManagementLinks()} active="settings"><PsManagementSettingsContent/></PsManagementLayout>;}
+function SettingsPage(){return <div className="pm-layout pm-layout-settings"><main className="pm-main"><PsManagementSettingsContent/></main></div>;}
 function PsSettingsPicker({sections,value,onChange}) {
   const images={'qr-orders':'qr',sunmi:'devices',restaurant:'branches',screen:'devices',printer:'printer',receipt:'documents',system:'devices',updates:'updates',backup:'backup',danger:'license'};
   const current=sections.find(section=>section.id===value);
-  return <div className="pm-settings-picker"><PsModuleImage name={images[value]||'settings'}/><div><h1>{current?.label||psAdminText('Parametrlər','Ayarlar','Settings')}</h1><p>{current?.hint||psAdminText('Dəyişmək istədiyiniz bölməni seçin','Düzenlemek istediğiniz bölümü seçin','Choose the settings to edit')}</p></div><label><span>{psAdminText('Parametr bölməsi','Ayar bölümü','Settings section')}</span><select aria-label={psAdminText('Parametr bölməsi','Ayar bölümü','Settings section')} value={value} onChange={event=>onChange(event.target.value)}>{sections.map(section=><option key={section.id} value={section.id}>{section.label}</option>)}</select></label></div>;
+  return <><aside className="pm-settings-picker"><Link className="pm-settings-back" to="/admin?group=settings">‹ {psAdminText('İdarəetmə','Yönetim','Management')}</Link><p className="pm-settings-caption">{psAdminText('Parametrlər','Ayarlar','Settings')}</p><nav aria-label={psAdminText('Parametr bölməsi','Ayar bölümü','Settings section')}>{sections.map(section=><button key={section.id} type="button" aria-current={section.id===value?'page':undefined} onClick={()=>onChange(section.id)}><PsModuleImage name={images[section.id]||'settings'}/><span>{section.label}</span></button>)}</nav></aside><header className="pm-settings-heading"><h1>{current?.label||psAdminText('Parametrlər','Ayarlar','Settings')}</h1>{current?.hint&&<p>{current.hint}</p>}</header></>;
 }
 function PsUpdateSettingsPanel({version,status,checking,statusLabel,onCheck,onInstall,t}) {
   const locked=checking||['checking','downloading','downloaded','disabled'].includes(status.state);
@@ -132,4 +158,47 @@ function PsOperationsWorkspace({tabs,current,onSelect,children}) {
       <header><h2>{psAdminText('Bölmələr','Bölümler','Sections')}</h2><button type="button" onClick={()=>setMenuOpen(false)}>{psAdminText('Bağla','Kapat','Close')}</button></header><nav aria-label={group.label}>{choices()}</nav><Link to={'/admin?group='+groupId} onClick={()=>setMenuOpen(false)}>{psAdminText('İdarəetməyə qayıt','Yönetime dön','Back to management')}</Link>
     </dialog>}
   </div>;
+}
+
+// Size each page from the actual product area, including cart visibility and rail expansion.
+// Keep pagination bounded even with a very large catalogue; no stock/payment behavior changes.
+function usePsSaleGrid(itemCount,loading,setPage) {
+  const ref=reactExports.useRef(null);
+  const previous=reactExports.useRef({columns:1,rows:1,cardHeight:100,capacity:1});
+  const [layout,setLayout]=reactExports.useState(previous.current);
+  reactExports.useLayoutEffect(()=>{
+    const section=ref.current;if(!section)return;
+    let active=true,frame=null;
+    const request=window.requestAnimationFrame?.bind(window)||(fn=>setTimeout(fn,16));
+    const cancel=window.cancelAnimationFrame?.bind(window)||clearTimeout;
+    const measure=()=>{
+      frame=null;if(!active)return;
+      const grid=section.querySelector('.pm-sale-fit');if(!grid)return;
+      const style=getComputedStyle(grid),font=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+      const horizontal=(parseFloat(style.paddingLeft)||0)+(parseFloat(style.paddingRight)||0);
+      const vertical=(parseFloat(style.paddingTop)||0)+(parseFloat(style.paddingBottom)||0);
+      const gap=parseFloat(style.gap)||8,cardHeight=Math.max(100,Math.ceil(font*6.25));
+      const columns=Math.max(1,Math.floor((grid.clientWidth-horizontal+gap)/(Math.max(140,font*8.75)+gap)));
+      const rows=Math.max(1,Math.floor((grid.clientHeight-vertical+gap)/(cardHeight+gap)));
+      const next={columns,rows,cardHeight,capacity:columns*rows},old=previous.current;
+      if(Object.keys(next).some(key=>next[key]!==old[key])){
+        previous.current=next;
+        setPage(page=>Math.floor(page*old.capacity/next.capacity));
+        setLayout(next);
+      }
+    };
+    const schedule=()=>{if(frame!==null)cancel(frame);frame=request(measure);};
+    measure();
+    const observer=typeof window.ResizeObserver==='function'?new window.ResizeObserver(schedule):null;
+    observer?.observe(section);
+    const grid=section.querySelector('.pm-sale-fit');if(grid)observer?.observe(grid);
+    window.addEventListener('resize',schedule);
+    document.fonts?.ready.then(()=>{if(active)schedule();});
+    return()=>{active=false;if(frame!==null)cancel(frame);observer?.disconnect();window.removeEventListener('resize',schedule);};
+  },[itemCount,loading,setPage]);
+  return {...layout,ref};
+}
+
+function PsPaymentLoadError({message,onRetry,onBack}) {
+  return <section className="pm-payment-load-error" role="alert"><h1>{psAdminText('Ödəniş ekranı açılmadı','Ödeme ekranı açılamadı','Payment screen could not open')}</h1><p>{message}</p><div><button type="button" onClick={onRetry}>{psAdminText('Yenidən yoxla','Tekrar dene','Retry')}</button><button type="button" onClick={onBack}>{psAdminText('Geri','Geri','Back')}</button></div></section>;
 }

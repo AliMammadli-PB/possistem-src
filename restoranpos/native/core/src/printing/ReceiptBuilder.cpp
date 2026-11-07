@@ -13,6 +13,7 @@
 #include "pos/printing/ReceiptFormatter.hpp"
 #include "pos/services/OrderService.hpp"
 #include "pos/services/ReportService.hpp"
+#include "pos/services/SettledTenders.hpp"
 
 namespace pos::printing {
 namespace {
@@ -632,15 +633,15 @@ RenderedReceipt ReceiptBuilder::shiftReport(const std::string& shiftId) {
 
     auto shift = ctx_.db().prepare(
         "SELECT s.opened_at, s.closed_at, s.opening_float_minor, s.closing_cash_minor, "
-        "       u.full_name FROM shifts s JOIN users u ON u.id = s.user_id WHERE s.id = :shiftId");
+        "       u.full_name,s.expected_cash_minor,s.variance_minor FROM shifts s JOIN users u ON u.id = s.user_id WHERE s.id = :shiftId");
     shift.bind(":shiftId", shiftId);
     if (!shift.step()) throw PosError::of(protocol::err::kNotFound);
 
     auto totals = ctx_.db().prepare(
         "SELECT COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount_minor ELSE 0 END), 0), "
         "       COALESCE(SUM(CASE WHEN p.method = 'card' THEN p.amount_minor ELSE 0 END), 0), "
-        "       COALESCE(SUM(p.tip_minor), 0), COUNT(*) "
-        "FROM payments p WHERE p.shift_id = :shiftId AND p.status = 'approved'");
+        "       COALESCE(SUM(p.tip_minor), 0), COUNT(DISTINCT p.id) "
+        "FROM " + services::kSettledTenderRows + " p WHERE p.shift_id = :shiftId");
     totals.bind(":shiftId", shiftId);
     totals.step();
 
@@ -648,6 +649,8 @@ RenderedReceipt ReceiptBuilder::shiftReport(const std::string& shiftId) {
     const Money card = totals.columnInt(1);
     const Money tips = totals.columnInt(2);
     const auto count = totals.columnInt(3);
+    auto back=ctx_.db().prepare("SELECT COALESCE(SUM(amount_minor),0) FROM cash_movements WHERE shift_id=:shift AND reason='refund' AND kind='cash_out' AND deleted_at IS NULL");
+    back.bind(":shift",shiftId);back.step();const Money cashRefund=back.columnInt(0);
 
     std::ostringstream out;
     out << layout::centerColumn(ctx_.setting("restaurant.name", ""), width)
@@ -666,7 +669,12 @@ RenderedReceipt ReceiptBuilder::shiftReport(const std::string& shiftId) {
     out << layout::renderKeyValue("Bəxşiş", money(tips), width) << "\n";
     out << layout::renderKeyValue("Əməliyyat sayı", std::to_string(count), width) << "\n";
     out << layout::renderSeparator('=', width) << "\n";
-    out << layout::renderKeyValue("CƏMİ", money(cash + card), width) << "\n";
+    out << layout::renderKeyValue("Satış cəmi", money(cash + card), width) << "\n";
+    out << layout::renderKeyValue("Nağd qaytarma", money(cashRefund), width) << "\n";
+    if(!shift.columnIsNull(5)) {
+        out << layout::renderKeyValue("Gözlənilən nağd", money(shift.columnInt(5)), width) << "\n";
+        out << layout::renderKeyValue("Kassa fərqi", money(shift.columnInt(6)), width) << "\n";
+    }
 
     receipt.text = out.str();
     receipt.totalMinor = cash + card;
@@ -676,7 +684,9 @@ RenderedReceipt ReceiptBuilder::shiftReport(const std::string& shiftId) {
                         {"cashMinor", cash},
                         {"cardMinor", card},
                         {"tipsMinor", tips},
-                        {"transactionCount", count}};
+                        {"transactionCount", count},
+                        {"cashRefundMinor",cashRefund},
+                        {"expectedCashMinor",shift.columnIsNull(5)?Json(nullptr):Json(shift.columnInt(5))}};
     return receipt;
 }
 

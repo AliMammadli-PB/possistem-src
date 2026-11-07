@@ -611,7 +611,18 @@ const CATALOGUE: Record<PosProduct, PermissionGroup[]> = {
 };
 
 export function catalogueFor(product: PosProduct): PermissionGroup[] {
-  return CATALOGUE[product] ?? [];
+  const groups = CATALOGUE[product] ?? [];
+  return product === 'restaurant' ? [...groups, {
+    key: 'business_documents', label: 'Kassa, maaş və əməliyyat qaimələri', permissions: [
+      { key: 'cash.accounts', label: 'Kassalar və köçürmələr' },
+      { key: 'salary.manage', label: 'Maaş və avans ödənişləri' },
+      { key: 'sales.view', label: 'Satış qaimələrinə baxış' },
+      { key: 'sales.edit', label: 'Satış qaiməsinə düzəliş' },
+      { key: 'sales.delete', label: 'Satış qaiməsini ləğv etmək' },
+      { key: 'purchases.edit', label: 'Alış qaiməsinə düzəliş' },
+      { key: 'purchases.delete', label: 'Alış qaiməsini ləğv etmək' },
+    ],
+  }] : groups;
 }
 
 /** Every key this product understands - the set an entitlement may draw from. */

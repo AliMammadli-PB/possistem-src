@@ -120,6 +120,7 @@ void registerInventory(const ContextPtr& ctx) {
             auto stmt = ctx->db().prepare(
                 "SELECT i.id, i.sku, i.name, i.unit, i.cost_minor AS costMinor, "
                 "       i.min_qty_milli AS minQtyMilli, i.barcode, i.active, "
+                "       CASE WHEN i.sku LIKE 'MENU-%' THEN MAX(i.updated_at, COALESCE((SELECT updated_at FROM menu_items WHERE id=substr(i.sku,6)),i.updated_at)) ELSE i.updated_at END AS updatedAt, "
                 "       CASE WHEN i.sku LIKE 'MENU-%' THEN COALESCE((SELECT m.price_minor FROM menu_items m "
                 "         WHERE m.id = substr(i.sku, 6)), i.sale_price_minor) "
                 "         ELSE i.sale_price_minor END AS salePriceMinor, "
@@ -131,12 +132,65 @@ void registerInventory(const ContextPtr& ctx) {
                 "WHERE i.active = 1 AND (:search = '' OR i.name LIKE :like OR i.sku LIKE :like) "
                 "ORDER BY i.name");
             stmt.bind(":search", search).bind(":like", "%" + search + "%");
-            return Json{{"ingredients", stmt.rows()}};
+            return Json{{"ingredients", stmt.rows()}, {"assistantToolsVersion", 1}};
         });
 
     server.registerHandler(
         std::string(protocol::method::kIngredientsSave), [ctx](const ipc::Request& request) {
             ctx->requirePermission("inventory.manage");
+
+            // Conversational edits are narrow, versioned patches. Never resubmit a full
+            // card and accidentally reset its barcode, costing, category or stock.
+            if (request.payload.contains("cardPatch")) {
+                const auto id = getOr<std::string>(request.payload, "id", "");
+                const auto patch = request.payload.at("cardPatch");
+                require(!id.empty() && patch.is_object() && !patch.empty(), "Məhsul və dəyişiklik tələb olunur");
+                for (const auto& entry : patch.items())
+                    require(entry.key() == "name" || entry.key() == "salePriceMinor", "Bu sahə köməkçidən dəyişdirilə bilməz");
+                require(request.payload.contains("expectedUpdatedAt") && request.payload.at("expectedUpdatedAt").is_number_integer(), "Məhsul kartını yenidən açın");
+                db::Transaction txn(ctx->db());
+                services::Idempotency idem(*ctx);
+                const auto key = getOr<std::string>(request.payload, "idempotencyKey", "");
+                require(!key.empty(), "Əməliyyat açarı tələb olunur");
+                if (auto replay = idem.begin(key, "ingredients.save", request.payload)) return *replay;
+                auto current = ctx->db().prepare("SELECT i.name, i.sku, CASE WHEN i.sku LIKE 'MENU-%' THEN MAX(i.updated_at,COALESCE((SELECT updated_at FROM menu_items WHERE id=substr(i.sku,6)),i.updated_at)) ELSE i.updated_at END, i.sale_price_minor FROM ingredients i WHERE i.id=:id AND i.active=1");
+                current.bind(":id", id);
+                require(current.step(), "Məhsul tapılmadı və ya silinib");
+                require(current.columnInt(2) == request.payload.at("expectedUpdatedAt").get<std::int64_t>(), "Məhsul başqa yerdə dəyişib. Yenidən seçin");
+                const auto sku = current.columnText(1), oldName = current.columnText(0);
+                const auto now = std::max(nowMs(), current.columnInt(2) + 1);
+                const auto name = patch.contains("name") ? getOr<std::string>(patch, "name", "") : oldName;
+                require(!name.empty() && name.size() <= 400, "Məhsulun adını düzgün yazın");
+                auto rename = ctx->db().prepare("UPDATE ingredients SET name=:name, updated_at=:now WHERE id=:id");
+                rename.bind(":name", name).bind(":now", now).bind(":id", id);rename.exec();
+                if (patch.contains("salePriceMinor")) {
+                    require(patch.at("salePriceMinor").is_number_integer(), "Qiymət düzgün məbləğ olmalıdır");
+                    const auto price = patch.at("salePriceMinor").get<std::int64_t>();
+                    require(price >= 0 && price <= 1000000000, "Qiymət düzgün məbləğ olmalıdır");
+                    auto sale = ctx->db().prepare("UPDATE ingredients SET sale_price_minor=:price WHERE id=:id");
+                    sale.bind(":price", price).bind(":id", id);sale.exec();
+                }
+                if (sku.rfind("MENU-", 0) == 0) {
+                    ctx->requirePermission("catalog.manage");
+                    const auto itemId = sku.substr(5);
+                    if (patch.contains("name")) {
+                        auto menu = ctx->db().prepare("UPDATE menu_items SET name_az=:name, updated_at=:now WHERE id=:id");
+                        menu.bind(":name", name).bind(":now", now).bind(":id", itemId);menu.exec();
+                    }
+                    if (patch.contains("salePriceMinor")) {
+                        const auto price = patch.at("salePriceMinor").get<std::int64_t>();
+                        auto old = ctx->db().prepare("SELECT price_minor FROM menu_items WHERE id=:id");old.bind(":id", itemId);
+                        if (old.step() && old.columnInt(0) != price) {
+                            auto hist=ctx->db().prepare("INSERT INTO menu_item_price_history (id,item_id,old_price_minor,new_price_minor,changed_by,reason,created_at) VALUES (:h,:id,:old,:new,:by,'assistant',:now)");
+                            hist.bind(":h",crypto::uuid4()).bind(":id",itemId).bind(":old",old.columnInt(0)).bind(":new",price).bindOptional(":by",ctx->session().userId).bind(":now",now);hist.exec();
+                            auto menu=ctx->db().prepare("UPDATE menu_items SET price_minor=:price,updated_at=:now WHERE id=:id");menu.bind(":price",price).bind(":now",now).bind(":id",itemId);menu.exec();
+                        }
+                    }
+                }
+                ctx->auditRequired("ingredient.assistant_patch", "ingredient", id, Json{{"beforeName",oldName},{"patch",patch}});
+                Json response{{"id",id},{"patched",true},{"updatedAt",now}};
+                idem.complete(key,response,"ingredient",id);txn.commit();return response;
+            }
 
             // A label may need a code without editing the good's stock, prices,
             // category or minimum. The transaction also serializes concurrent requests.
@@ -453,6 +507,12 @@ void registerInventory(const ContextPtr& ctx) {
             services::Idempotency idem(*ctx);
             const auto key = getOr<std::string>(request.payload, "idempotencyKey", "");
             if (auto replay = idem.begin(key, "inventory.adjust", request.payload)) return *replay;
+            if (request.payload.contains("expectedQtyMilli")) {
+                require(request.payload.at("expectedQtyMilli").is_number_integer(), "Qalığı yenidən yoxlayın");
+                auto qty=ctx->db().prepare("SELECT COALESCE((SELECT qty_milli FROM stock_levels WHERE ingredient_id=:id AND warehouse_id=:w),0)");
+                qty.bind(":id",ingredientId).bind(":w",warehouseFrom(*ctx,request.payload));qty.step();
+                require(qty.columnInt(0)==request.payload.at("expectedQtyMilli").get<std::int64_t>(), "Qalıq başqa əməliyyatdan sonra dəyişib. Yenidən yoxlayın");
+            }
             auto result = services::InventoryService(*ctx).move(
                 ingredientId, warehouseFrom(*ctx, request.payload), delta, "adjustment", "", reason);
             ctx->auditRequired("inventory.adjust", "ingredient", ingredientId,

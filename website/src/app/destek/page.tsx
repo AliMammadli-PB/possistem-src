@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { SupportPage } from '@/components/pages/SupportPage';
+import SupportEntry from './SupportEntry';
 
 export const metadata: Metadata = {
   title: 'Dəstək — possistem',
@@ -13,5 +13,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <SupportPage />;
+  return <SupportEntry />;
 }

@@ -73,6 +73,13 @@ Json RefundService::createRefund(const std::string& paymentId, Money amountMinor
 
     const std::string orderId = payment.columnText(1);
     const std::string method = payment.columnText(2);
+    // The current refund schema stores one payment method. A mixed refund needs
+    // explicit cash/card allocations and bank confirmation; recording it as one
+    // 'mixed' row would leave both ledgers wrong. Refuse before any write/capture.
+    if (method == "mixed") {
+        throw PosError(std::string(protocol::err::kValidation),
+                       "Qarışıq ödənişin qaytarılması üçün nağd və kart hissələri ayrıca uzlaşdırılmalıdır. Bu əməliyyat hələ dəstəklənmir.");
+    }
     const Money original = payment.columnInt(3);
     const std::string paidOnDay = payment.columnIsNull(5) ? "" : payment.columnText(5);
     const auto remaining = remainingRefundable(paymentId);

@@ -13,7 +13,7 @@ import { fold, type Lang } from './text.js';
 import { azn } from './facts.js';
 import { ownerBranchDevices, branchOnline, branchRpc } from '../../routes/cloud-branches.js';
 import { handleBotMessage } from '../bot/commands.js';
-import { searchProductsLive } from '../mysql.js';
+import { readRestaurantStock } from './restaurant-stock.js';
 import { adjustOwnedStock } from '../support-summary.js';
 
 type Row = Record<string, any>;
@@ -98,7 +98,7 @@ export function detectAccountIntent(raw: string): Intent | null {
     if (needle) return { kind: 'price_set', needle, raw: `qiymet ${needle} ${priceSet[2]!.replace(',', '.')}` };
   }
   // "anbarda məhsullarıma bax, list çıxar", "mallarımın siyahısı" — the owner's own catalogue, not a how-to.
-  if (/(mehsullarim|mallarim|mehsullarimi|mallarimi|mehsullarimin|mallarimin|(mehsul|mal|mallarin|mehsullarin) siyahi|siyahi(ni)? (cixar|ver|goster)|list(i|ini)? (cixar|ver|goster)|anbarda (ne|nə) var|anbarimda (ne|nə) var|butun (mallar|mehsullar)|my products|product list|список товаров)/.test(f)) return { kind: 'product_list' };
+  if (/(mehsullarim|mallarim|mehsullarimi|mallarimi|mehsullarimin|mallarimin|(mehsul|mal|mallarin|mehsullarin) siyahi|siyahi(ni)? (cixar|ver|goster)|list(i|ini)? (cixar|ver|goster)|anbarda (ne|nə) var|anbarimda (ne|nə) var|anbar(?:ima|imda|a|i|im|da)? (?:bax|goster|yoxla)|butun (mallar|mehsullar)|my products|product list|список товаров)/.test(f)) return { kind: 'product_list' };
   if (HOW_TO.test(f) && !/(qazancim|satisim|anbarim|kassam|qazandim|qazanmisam|satmisam|satdim)/.test(f)) return null;
 
   if (/abunel(iy|ik)(im|in)|lisenziyam|ne vaxt bitir|nece gun qalib|my subscription|when does my|моя подписка|когда заканчивается подписка/.test(f)) return { kind: 'subscription' };
@@ -314,7 +314,7 @@ export async function answerAccount(app: FastifyInstance, customerId: string | n
   }
 
   // Restaurant owners: the bot already knows how to read the live mirror and drive the till.
-  if (restaurantOnly || intent.kind === 'code' || intent.kind === 'cancel' || ((intent.kind === 'x_report' || intent.kind === 'z_report' || intent.kind === 'tables' || intent.kind === 'staff' || intent.kind === 'last_report' || intent.kind === 'price_set') && restaurant.length > 0)) {
+  if (restaurantOnly && intent.kind !== 'product_list' || intent.kind === 'code' || intent.kind === 'cancel' || ((intent.kind === 'x_report' || intent.kind === 'z_report' || intent.kind === 'tables' || intent.kind === 'staff' || intent.kind === 'last_report' || intent.kind === 'price_set') && restaurant.length > 0)) {
     const command = intent.kind === 'sales' || intent.kind === 'cash' || intent.kind === 'checks' ? (intent.kind === 'sales' && intent.period === 'yesterday' ? 'hesabat dunen' : 'satis')
       : intent.kind === 'profit' ? 'umumi'
         : intent.kind === 'top' ? 'top'
@@ -366,9 +366,10 @@ export async function answerAccount(app: FastifyInstance, customerId: string | n
 
   if (intent.kind === 'product_list') {
     if (restaurantOnly) {
-      const list = await searchProductsLive(customerId, '', 60);
-      if (!list.length) return { id: 'acc_product_list', text: pick(lang, 'Restoran kassasından serverə hələ menyu məlumatı gəlməyib. Kassanı açıq və internetə bağlı saxlayın.', 'No menu data has reached the server from the restaurant till yet.', 'Меню с ресторанной кассы ещё не поступило на сервер.') };
-      return { id: 'acc_product_list', text: `${pick(lang, 'Menyunuz', 'Your menu', 'Ваше меню')} (${list.length}):\n${list.map((p) => `• ${p.name} — ${azn(num(p.price_minor))}${num(p.sold_out) ? pick(lang, ' · bitib', ' · sold out', ' · закончилось') : ''}`).join('\n')}` };
+      const stock = await readRestaurantStock(restaurant, d => branchOnline(d as unknown as Row), (d, method, payload) => liveCall(app, customerId, d as Device, method, payload));
+      const lines = stock.sections.map(section => `${section.branch} · ${section.warehouse}:\n${section.products.map(p => `• ${p.name}: ${p.qtyMilli === null ? pick(lang, 'qalıq alınmadı', 'stock unavailable', 'остаток недоступен') : (p.qtyMilli / 1000).toLocaleString(lang === 'en' ? 'en-GB' : lang === 'ru' ? 'ru-RU' : 'az-AZ', {maximumFractionDigits: 3}) + ' ' + p.unit}`).join('\n') || pick(lang, 'Məhsul yoxdur.', 'No products.', 'Нет товаров.')}${section.more ? pick(lang, '\n…davamı portalda.', '\n…more in the portal.', '\n…продолжение в портале.') : ''}`);
+      const unavailable = stock.unavailable.length ? pick(lang, `\nMəlumat alınmayan kassalar: ${stock.unavailable.join(', ')}. Bu kassaların qalığını sıfır saymayın.`, `\nUnavailable tills: ${stock.unavailable.join(', ')}. Their stock is unknown, not zero.`, `\nНедоступные кассы: ${stock.unavailable.join(', ')}. Их остаток неизвестен, а не нулевой.`) : '';
+      return { id: 'acc_product_list', text: `${pick(lang, 'Anbarınız · kassadan canlı oxunuş', 'Your inventory · live till reading', 'Ваш склад · данные с кассы')}\n${lines.join('\n\n')}${unavailable}\n${pick(lang, 'Yoxlanıldı', 'Checked', 'Проверено')}: ${when(Date.now(), lang)}`, links: [link('/pos/app/anbar?tab=goods', 'Anbarı aç', 'Open inventory', 'Открыть склад')] };
     }
     const rowsList = rows(await app.db.execute(sql`
       SELECT COALESCE(p.payload#>>'{name,az}', p.payload->>'name', p.product_id) AS name, p.payload->>'barcode' AS barcode,

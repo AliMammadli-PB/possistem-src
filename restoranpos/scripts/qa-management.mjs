@@ -73,9 +73,13 @@ try{
    await page.locator('.ps-touch-sidebar nav>a',{hasText:'Çatdırılma'}).click();
    await page.locator('.pm-operations[data-module="delivery"]').waitFor();
    assert.deepEqual(await selectedMain(),['Çatdırılma'],'Delivery does not also select management');
+   assert.equal(await page.locator('.ps-nav-on .pm-delivery-selected').isVisible(),true,'Blue icon is visible on the selected light surface');
+   assert.equal(await page.locator('.ps-nav-on .pm-delivery-default').isVisible(),false,'White icon is hidden when selected');
+   await screenshot('delivery-selected-1536');
    await page.locator('.ps-touch-sidebar nav>a',{hasText:'İdarə'}).click();
    await page.locator('.pm-module').first().waitFor();
    assert.deepEqual(await selectedMain(),['İdarə'],'Returning to management clears delivery selection');
+   assert.equal(await page.locator('.ps-nav-off .pm-delivery-default').isVisible(),true,'White icon returns on the blue sidebar');
    await page.mouse.move(900,300);await page.clock.fastForward(400);
    await page.locator('.pm-module').first().waitFor();
    await screenshot('hub-1536');
@@ -92,7 +96,7 @@ try{
    await open('/admin?group=settings');
    await page.locator('.pm-module[href="#/settings?section=updates"]').click();
    await page.locator('.ps-settings-stack[data-section="updates"]').waitFor();
-   assert.equal(await page.locator('.pm-settings-picker h1').textContent(),'Yeniləmə');
+   assert.equal(await page.locator('.pm-settings-heading h1').textContent(),'Yeniləmə');
    await page.waitForFunction(()=>document.querySelector('.pm-settings-picker img')?.naturalWidth>0);
    await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).click();
    await page.locator('[data-update-state="not_available"]').waitFor();assert.equal(await page.evaluate(()=>qa.updateChecks),1);
@@ -138,10 +142,15 @@ try{
    await screenshot('trade-hub-1536');
    await page.locator('.pm-rail-link',{hasText:'Parametrlər'}).click();
    await page.locator('.pm-module[href="#/settings"]').click();
-   await page.locator('.pm-settings-picker select').waitFor();
+   await page.getByRole('navigation',{name:'Parametr bölməsi',exact:true}).waitFor();
+   assert.equal(await page.locator('.pm-settings-picker select').count(),0,'No settings dropdown');
+   await page.getByRole('navigation',{name:'Parametr bölməsi',exact:true}).getByRole('button',{name:'Printer',exact:true}).focus();
+   await page.keyboard.press('Enter');
+   await page.locator('.ps-settings-stack[data-section="printer"]').waitFor();
+   await page.getByRole('navigation',{name:'Parametr bölməsi',exact:true}).getByRole('button',{name:'Restoran',exact:true}).click();
    assert.equal(await page.locator('.category-bar').count(),0,'Second settings rail removed');
    await screenshot('settings-1536');
-   await page.getByLabel('Parametr bölməsi',{exact:true}).selectOption('printer');
+   await page.getByRole('navigation',{name:'Parametr bölməsi',exact:true}).getByRole('button',{name:'Printer',exact:true}).click();
    await page.locator('.ps-settings-stack[data-section="printer"]').waitFor();
    assert.ok(page.url().includes('section=printer'));
    await screenshot('printer-1536');
@@ -151,9 +160,9 @@ try{
    await page.locator('.ps-printer-section').getByRole('checkbox',{name:'Kassa',exact:true}).check();
    await page.locator('.ps-printer-section').getByRole('button',{name:'Yadda saxla',exact:true}).click();
    assert.ok(await page.evaluate(()=>qa.settingWrites.some(row=>row.key==='kitchen.stations'&&JSON.parse(row.value).some(station=>station.name==='Kassa'&&station.roles.includes('receipt')))),'Existing printer assignment still saves');
-   await page.getByLabel('Parametr bölməsi',{exact:true}).selectOption('screen');
+   await page.getByRole('navigation',{name:'Parametr bölməsi',exact:true}).getByRole('button',{name:'Ekran və dil',exact:true}).click();
    await screenshot('screen-1536');
-   await open('/settings?section=receipt');assert.equal(await page.getByLabel('Parametr bölməsi',{exact:true}).inputValue(),'receipt','Settings deep link');
+   await open('/settings?section=receipt');assert.equal(await page.getByRole('navigation',{name:'Parametr bölməsi',exact:true}).getByRole('button',{name:'Çek',exact:true}).getAttribute('aria-current'),'page','Settings deep link');
    await open('/operations?tab=stock');await page.locator('.ps-stock-metric').first().waitFor();
    await page.getByText(/Mənfi qalıq:/).waitFor();
    assert.deepEqual(await selectedMain(),['İdarə'],'Stock remains within management');
@@ -228,6 +237,13 @@ try{
        const state=await page.evaluate(()=>({viewport:innerWidth,scroll:document.documentElement.scrollWidth,images:[...document.querySelectorAll('.pm-image')].every(image=>image.complete&&image.naturalWidth>0)}));
        assert.ok(state.scroll<=state.viewport+1,`${name} ${width} overflow ${JSON.stringify(state)}`);
        assert.ok(state.images,`${name} images load at ${width}`);
+       if(name==='settings'||name==='updates'){
+         const shell=await page.locator('.settings-shell').boundingBox();
+         for(const selector of ['.pm-settings-picker','.ps-settings-stack']){
+           const box=await page.locator(selector).boundingBox();assert.ok(box&&box.width>180&&box.x>=0&&box.x+box.width<=width+1,`${selector} fits at ${width}: ${JSON.stringify(box)}`);
+           if(width<=900)assert.ok(Math.abs(box.width-shell.width)<2,`${selector} uses the available mobile width`);
+         }
+       }
        if(name==='updates'){
          const panel=await page.locator('.pm-update-panel').boundingBox(),check=await page.getByRole('button',{name:'Yeniləməni yoxla',exact:true}).boundingBox();
          assert.ok(panel&&check&&panel.x>=0&&panel.x+panel.width<=width+1&&check.x+check.width<=width+1,`Update controls fit at ${width}`);

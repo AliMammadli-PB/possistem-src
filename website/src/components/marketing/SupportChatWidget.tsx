@@ -1,14 +1,14 @@
  'use client';
 /*
- * Website support chat. Answers come from the server assistant (POST /pos/api/customer/assistant/reply,
- * source: /opt/possistem-pos-control/.security-build-20261024/apps/api/src/lib/assistant + routes/assistant.ts).
- * lib/support-conversation.ts is only the offline fallback. Contact order: bot → live agent → WhatsApp after 5 min.
+ * Website support chat. Answers come from the server assistant (POST /pos/api/customer/assistant/v1/message,
+ * source: platform/apps/api/src/lib/assistant + routes/assistant-central.ts).
+ * The assistant is online-only; no bundled answer fallback. Contact order: bot → live agent → WhatsApp after 5 min.
  * Edit THIS file in place — rebuilding from an older copy drops the server assistant, the agent hand-over and ratings.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useCustomerSession } from '@/components/providers/CustomerSessionProvider';
 import { useI18n } from '@/components/providers/I18nProvider';
-import { getConversationReply, type ConversationReply } from '@/lib/support-conversation';
+import { type ConversationReply } from '@/lib/support-conversation';
 import { whatsappSupportUrl } from '@/lib/whatsapp';
 import { SupportMessageFeedback, SupportReport } from './SupportReport';
 import { Close, ArrowRight } from './DesignIcons';
@@ -54,7 +54,7 @@ const COPY = {
 };
 
 const HELP_COPY = {
- az: { thinking:'Cavab hazırlanır…',launcherLabel:'Dəstək',launcherHint:'Sualınız var?',clear:'Yeni söhbət',open:'Texniki dəstək',title:'Possistem köməkçisi',subtitle:'Proqram, quraşdırma və hesabınız üzrə kömək',helper:'Avtomatik köməkçi',assistant:'Köməkçi',agent:'Əməkdaşa yaz',back:'Köməkçiyə qayıt',intro:'Salam, sizə necə kömək edə bilərəm?',notice:'Bilik bazası ilə cavab verir. Daxil olsanız, öz satış və anbar rəqəmlərinizi göstərir; dəyişikliyi yalnız sizin təsdiqinizlə edir.',placeholder:'Sualınızı yazın…',more:'Təlimatı aç',handoff:'Yazışmanı nəzərdən keçirin və göndərin. Yalnız göndərdikdən sonra dəstək sorğusu yaranacaq.',context:'Köməkçi ilə söhbətdən:',safe:'Şifrə və PIN göndərməyin.',questions:['Proqramı necə quraşdırım?','Printer çek çap etmir','Bugünkü satışım','Sən nə edə bilirsən?'],sent:'Mesaj göndərildi.',limit:'Söhbət uzanıb. Davam etmək üçün əməkdaşa yazın və ya Yeni söhbət seçin.',confirmLabel:'Hesab şifrəsi',confirm:'Təsdiqlə',cancel:'Ləğv et',cancelled:'Ləğv edildi. Heç nə dəyişmədi.',rateLabel:'Cavab necə idi?',rate:{bad:'Pis',fine:'Normal',good:'Yaxşı'},rateIcon:{bad:'👎',fine:'😐',good:'👍'},rateThanks:'Təşəkkürlər!',rateThanksBad:'Təşəkkürlər, qeyd etdik — komandamız bu cavaba baxacaq.',rateNotePh:'Nə səhv idi? (istəyə bağlı)',rateNoteSend:'Göndər',busy:'Hazırda bütün əməkdaşlarımız məşğuldur. Zəhmət olmasa WhatsApp nömrəmiz ilə əlaqə saxlayın: 051 333 35 55. Sorğunuz burada da qalır — əməkdaş boşalan kimi cavab verəcək.',busyLink:'WhatsApp-a yaz' },
+ az: { thinking:'Düşünürəm…',launcherLabel:'Köməkçi',launcherHint:'Sualınız var?',clear:'Yeni söhbət',open:'Köməkçi',title:'Possistem köməkçisi',subtitle:'Sual verin, hesabınızdakı məlumatları yoxlayaq',helper:'Avtomatik köməkçi',assistant:'Köməkçi',agent:'Əməkdaşa yaz',back:'Köməkçiyə qayıt',intro:'Salam, sizə necə kömək edə bilərəm?',notice:'Bilik bazası ilə cavab verir. Daxil olsanız, öz satış və anbar rəqəmlərinizi göstərir; dəyişikliyi yalnız sizin təsdiqinizlə edir.',placeholder:'Sualınızı yazın…',more:'Təlimatı aç',handoff:'Yazışmanı nəzərdən keçirin və göndərin. Yalnız göndərdikdən sonra dəstək sorğusu yaranacaq.',context:'Köməkçi ilə söhbətdən:',safe:'Şifrə və PIN göndərməyin.',questions:['Anbarımda nə var?','Bugünkü satışım','Printer çek çap etmir','Sən nə edə bilirsən?'],sent:'Mesaj göndərildi.',limit:'Söhbət uzanıb. Davam etmək üçün əməkdaşa yazın və ya Yeni söhbət seçin.',confirmLabel:'Hesab şifrəsi',confirm:'Təsdiqlə',cancel:'Ləğv et',cancelled:'Ləğv edildi. Heç nə dəyişmədi.',rateLabel:'Cavab necə idi?',rate:{bad:'Pis',fine:'Normal',good:'Yaxşı'},rateIcon:{bad:'👎',fine:'😐',good:'👍'},rateThanks:'Təşəkkürlər!',rateThanksBad:'Təşəkkürlər, qeyd etdik — komandamız bu cavaba baxacaq.',rateNotePh:'Nə səhv idi? (istəyə bağlı)',rateNoteSend:'Göndər',busy:'Hazırda bütün əməkdaşlarımız məşğuldur. Zəhmət olmasa WhatsApp nömrəmiz ilə əlaqə saxlayın: 051 333 35 55. Sorğunuz burada da qalır — əməkdaş boşalan kimi cavab verəcək.',busyLink:'WhatsApp-a yaz' },
  en: { thinking:'Preparing a reply…',launcherLabel:'Support',launcherHint:'Need a hand?',clear:'New conversation',open:'Technical support',title:'Possistem assistant',subtitle:'Help with the software, setup and your account',helper:'Automated assistant',assistant:'Assistant',agent:'Contact an agent',back:'Back to assistant',intro:'Hello! How can I help?',notice:'Answers from the knowledge base. When you sign in it shows your own sales and stock; it changes data only after you confirm.',placeholder:'Ask a question…',more:'Open guide',handoff:'Review the conversation and send it. A support ticket is created only after you send.',context:'From the assistant conversation:',safe:'Do not send passwords or PINs.',questions:['How do I install the app?','My printer does not print','Today’s sales','What can you do?'],sent:'Message sent.',limit:'This conversation is long. Contact an agent or choose New conversation to continue.',confirmLabel:'Account password',confirm:'Confirm',cancel:'Cancel',cancelled:'Cancelled. Nothing changed.',rateLabel:'How was this answer?',rate:{bad:'Bad',fine:'Fine',good:'Good'},rateIcon:{bad:'👎',fine:'😐',good:'👍'},rateThanks:'Thanks!',rateThanksBad:'Thanks, noted — our team will review this answer.',rateNotePh:'What was wrong? (optional)',rateNoteSend:'Send',busy:'All our agents are busy right now. Please contact us on WhatsApp: 051 333 35 55. Your request stays here too — an agent will reply as soon as one is free.',busyLink:'Message on WhatsApp' },
  ru: { thinking:'Готовлю ответ…',launcherLabel:'Поддержка',launcherHint:'Есть вопрос?',clear:'Новая беседа',open:'Техническая поддержка',title:'Помощник Possistem',subtitle:'Помощь по программе, установке и аккаунту',helper:'Автоматический помощник',assistant:'Помощник',agent:'Написать специалисту',back:'Вернуться к помощнику',intro:'Здравствуйте! Чем помочь?',notice:'Отвечает по базе знаний. После входа показывает ваши продажи и склад; меняет данные только с вашим подтверждением.',placeholder:'Задайте вопрос…',more:'Открыть инструкцию',handoff:'Проверьте переписку и отправьте. Обращение создаётся только после отправки.',context:'Из переписки с помощником:',safe:'Не отправляйте пароли и PIN.',questions:['Как установить приложение?','Принтер не печатает','Продажи сегодня','Что ты умеешь?'],sent:'Сообщение отправлено.',limit:'Переписка слишком длинная. Напишите специалисту или начните новую беседу.',confirmLabel:'Пароль аккаунта',confirm:'Подтвердить',cancel:'Отмена',cancelled:'Отменено. Ничего не изменено.',rateLabel:'Как вам ответ?',rate:{bad:'Плохо',fine:'Нормально',good:'Хорошо'},rateIcon:{bad:'👎',fine:'😐',good:'👍'},rateThanks:'Спасибо!',rateThanksBad:'Спасибо, отметили — команда проверит этот ответ.',rateNotePh:'Что было не так? (необязательно)',rateNoteSend:'Отправить',busy:'Сейчас все специалисты заняты. Пожалуйста, свяжитесь с нами в WhatsApp: 051 333 35 55. Запрос остаётся и здесь — специалист ответит, как только освободится.',busyLink:'Написать в WhatsApp' },
 };
@@ -76,7 +76,7 @@ export function SupportChatWidget() {
  useEffect(()=>{let alive=true;const pull=()=>void fetch('/pos/api/public/support/availability',{cache:'no-store'}).then(r=>r.ok?r.json():undefined).then(v=>{if(alive&&v)setAvailability(v);}).catch(()=>{});if(open){pull();const timer=setInterval(pull,60000);return()=>{alive=false;clearInterval(timer);};}return()=>{alive=false;};},[open]);
  const pendingReply=useRef<ReturnType<typeof setTimeout>|null>(null),answering=useRef(false);
  useEffect(()=>()=>{if(pendingReply.current)clearTimeout(pendingReply.current);},[]);
- const clearConversation=()=>{if(pendingReply.current)clearTimeout(pendingReply.current);pendingReply.current=null;answering.current=false;setThinking(false);setPendingHandoff(false);setLocal([]);setDraft('');assistantCtx.current={};pendingAsk.current=null;setConfirmPwd('');setRateNote('');sessionKey.current=newKey();startedAt.current=new Date().toISOString();input.current?.focus();};
+ const clearConversation=()=>{centralSession.current=null;chatEpoch.current++;if(pendingReply.current)clearTimeout(pendingReply.current);pendingReply.current=null;answering.current=false;setThinking(false);setPendingHandoff(false);setLocal([]);setDraft('');assistantCtx.current={};pendingAsk.current=null;setConfirmPwd('');setRateNote('');sessionKey.current=newKey();startedAt.current=new Date().toISOString();input.current?.focus();};
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[email,setEmail]=useState(''),[password,setPassword]=useState('');
  const list=useRef<HTMLDivElement>(null),input=useRef<HTMLTextAreaElement>(null),panel=useRef<HTMLElement>(null),fab=useRef<HTMLButtonElement>(null);
  const previousFocus=useRef<HTMLElement|null>(null),sending=useRef(false),sequence=useRef(0),identity=useRef(session.customerId),hydrated=useRef('');
@@ -99,7 +99,7 @@ export function SupportChatWidget() {
  useEffect(()=>{const key=CHAT_KEY(session.customerId);if(hydrated.current!==key)return;writeChat(key,{local,mode,startedAt:startedAt.current,sessionKey:sessionKey.current});},[local,mode,session.customerId]);
  useEffect(()=>{
   const key=CHAT_KEY(session.customerId);
-  if(hydrated.current===key)return;
+  if(hydrated.current===key)return;centralSession.current=null;chatEpoch.current++;
   if(identity.current!==session.customerId){const previous=identity.current;identity.current=session.customerId;setTicket(null);setMessages([]);setUnread(false);setError('');if(previous){setAgentDraft('');setPendingHandoff(false);}}
   const saved=readChat(key);
   if(saved){setLocal(saved.local);setMode(saved.mode);sequence.current=saved.local.reduce((max,m)=>Math.max(max,m.id),0);if(saved.startedAt)startedAt.current=saved.startedAt;if(saved.sessionKey)sessionKey.current=saved.sessionKey;}
@@ -138,31 +138,33 @@ export function SupportChatWidget() {
    window.setTimeout(()=>{const target=previousFocus.current?.isConnected&&previousFocus.current.tagName!=='BODY'?previousFocus.current:fab.current;target?.focus({preventScroll:true});},0);
   };
  },[open]);
+ const centralSession=useRef<{sessionId:string;secret:string}|null>(null),chatEpoch=useRef(0);
  const assistantCtx=useRef<AssistantContext>({}),pendingAsk=useRef<string|null>(null);
+ useEffect(()=>{centralSession.current=null;chatEpoch.current++;answering.current=false;setThinking(false);},[language]);
  const [confirmPwd,setConfirmPwd]=useState('');
  const helperSays=(body:string,extra:Partial<LocalMessage>={})=>setLocal(old=>[...old,{id:++sequence.current,author:'helper',body,createdAt:new Date().toISOString(),...extra}]);
  const ask=(text:string,label?:string)=>{
   const body=text.trim().slice(0,1000);if(!body||local.length>=100||answering.current)return;
   const plain=body.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ə/g,'e').replace(/ı/g,'i').toLowerCase();
   if(/^(live\s*agent|canli\s*(destek|emekdas)|operator)$/i.test(plain)){setLocal(old=>[...old,{id:++sequence.current,author:'me',body,createdAt:new Date().toISOString()}]);setDraft('');handoff();return;}
-  answering.current=true;setThinking(true);setDraft('');
+  answering.current=true;setThinking(true);setDraft('');setError('');
   setLocal(old=>[...old,{id:++sequence.current,author:'me',body:label||body,createdAt:new Date().toISOString()}]);
-  const history=local;
+  const epoch=chatEpoch.current;
   void (async()=>{
    try{
-    const res=await fetch('/pos/api/customer/assistant/reply',{method:'POST',credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',...(session.csrfToken?{'x-csrf-token':session.csrfToken}:{})},body:JSON.stringify({text:body,language,context:assistantCtx.current})});
-    if(!res.ok)throw new Error(String(res.status));
-    const data=await res.json() as {reply:ServerReply;context?:AssistantContext};
-    assistantCtx.current=data.context??{};
-    const r=data.reply;
-    if(r.handoff){handoff();return;}
-    if(r.needLogin)pendingAsk.current=body;
-    helperSays(r.text,{links:r.links,chips:r.chips,confirm:r.confirm,needLogin:r.needLogin,replyId:r.id});
-   }catch{
-    // Server unreachable: the bundled rules still answer the common questions.
-    const reply=getConversationReply(body,language,history);
-    helperSays(reply.id==='account'?'Hesab məlumatını indi oxuya bilmədim. Bir az sonra yenidən yazın.':reply.body,{reply});
-   }finally{answering.current=false;setThinking(false);}
+    const post=async(path:string,payload:unknown)=>{const res=await fetch('/pos/api/customer/assistant/v1/'+path,{method:'POST',credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',...(session.csrfToken?{'x-csrf-token':session.csrfToken}:{})},body:JSON.stringify(payload),signal:AbortSignal.timeout(30000)});const data=await res.json();if(!res.ok)throw Error(data.error||c.offline);if(epoch!==chatEpoch.current)throw Error('STALE_CHAT');return data;};
+    if(!centralSession.current)centralSession.current=await post('sessions',{protocol:1,surface:'site',language});
+    const data=await post('message',{...centralSession.current,requestId:newKey(),text:body});
+    if(epoch!==chatEpoch.current)return;
+    if(data.task)throw Error('Bu əməliyyat üçün Restoran POS-dan istifadə edin.');
+    const answer=data.reply;
+    if(answer?.reply?.handoff){handoff();return;}
+    if(answer?.reply?.needLogin)pendingAsk.current=body;
+    helperSays(answer.body,{links:answer.reply?.links,chips:[...(answer.choices||[]).map((v:{label:string;value:string})=>({label:v.label,send:v.value})),...(answer.reply?.chips||[])],needLogin:answer.reply?.needLogin,replyId:answer.reply?.id||'central'});
+   }catch(e){
+    if(epoch!==chatEpoch.current)return;centralSession.current=null;
+    setError(language==='az'?'Köməkçi ilə əlaqə alınmadı. Əməliyyat avtomatik təkrarlanmır; dəyişiklik təsdiqləmisinizsə əvvəl nəticəni yoxlayın.':language==='ru'?'Нет связи с помощником. Операции не повторяются автоматически; проверьте результат подтверждённого изменения.':'The assistant is unavailable. Actions are not retried automatically; check the result of any confirmed change.');setDraft(body);
+   }finally{if(epoch===chatEpoch.current){answering.current=false;setThinking(false);}}
   })();
  };
  const [rateNote,setRateNote]=useState('');
@@ -267,7 +269,7 @@ export function SupportChatWidget() {
      </form>:<><p className="support-conversation-status" role="status">{status}</p>{messages.map(m=>{const file=m.meta?.attachment;const href=file?.id?`/pos/api/customer/support/attachments/${file.id}`:'';const image=Boolean(file&&((file.mimeType??'').startsWith('image/')||/\.(png|jpe?g|gif|webp)$/i.test(file.fileName??'')));const caption=file&&m.body.trim()===`📎 ${file.fileName}`?'':m.body;return <div key={m.id} className={`support-msg is-${m.authorKind==='customer'?'me':m.authorKind==='admin'?'agent':'system'}`}><small>{m.authorKind==='admin'?c.support+' · ':''}{time(m.createdAt)}</small>{caption?<p>{caption}</p>:null}{href?<a className="support-file" href={href} target="_blank" rel="noreferrer">{image?<img src={href} alt={file?.fileName??'Şəkil'}/>:(file?.fileName??'Faylı aç')}</a>:null}</div>;})}{agentsBusy&&<div className="support-msg is-helper" role="status"><p>{h.busy}</p><div className="support-links"><a href={whatsappSupportUrl(language)} target="_blank" rel="noreferrer">{h.busyLink}<ArrowRight/></a></div></div>}</>}
     </>}
    </div>
-   {error&&<p className="support-error" role="alert">{error}</p>}
+   {error&&<div className="support-error" role="alert"><p>{error}</p>{mode==='assistant'&&<button className="support-choice" type="button" disabled={thinking||!draft.trim()} onClick={()=>ask(draft)}>{language==='az'?'Yenidən yoxla':language==='ru'?'Повторить':'Try again'}</button>}</div>}
    {(mode==='assistant'||session.authenticated)&&compose(mode==='assistant')}
   </section>}
  </>;

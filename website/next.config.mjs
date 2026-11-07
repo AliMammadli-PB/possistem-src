@@ -6,7 +6,7 @@ const nextConfig = {
     unoptimized: true,
     dangerouslyAllowSVG: false,
   },
-  async redirects(){return ['/pricing','/qiymet','/qiymetler','/paketler','/package-builder','/plans'].map(source=>({source,destination:'/mehsul/avadanliq/',permanent:false}));},
+  async redirects(){return [...['/pricing','/qiymet','/qiymetler','/paketler','/package-builder','/plans'].map(source=>({source,destination:'/mehsul/avadanliq/',permanent:false})),...['/elaqe','/contact'].map(source=>({source,destination:'/melumatlar/#elaqe',permanent:false})),...['/privacy','/mexfilik-siyaseti'].map(source=>({source,destination:'/mexfilik/',permanent:true}))];},
   async headers() {
     return [
       {source:'/:path*',headers:[{key:'X-Content-Type-Options',value:'nosniff'},{key:'Referrer-Policy',value:'strict-origin-when-cross-origin'},{key:'Content-Security-Policy',value:"frame-ancestors 'self'; base-uri 'self'; object-src 'none'"},{key:'Permissions-Policy',value:'camera=(), microphone=(), geolocation=()'}]},
