@@ -71,7 +71,7 @@ async function render(app: FastifyInstance, entry: Entry, lang: Lang, customerId
   return entry.offerAgent ? offerAgent(reply, lang) : reply;
 }
 
-const GREETING = /^(salam|slm|sa|selam|salamlar|salam aleykum|salam eleykum|salamaleykum|aleykum salam|hello|hi|hey|good (morning|afternoon|evening)|sabahiniz xeyir|sabahin xeyir|axsaminiz xeyir|axsamin xeyir|gunortaniz xeyir|привет|здравствуйте|добрый (день|вечер)|доброе утро)\b\s*/;
+const GREETING = /^(salam|slm|sa|sea|seaa|selam|salamlar|salam aleykum|salam eleykum|salamaleykum|aleykum salam|hello|hi|hey|good (morning|afternoon|evening)|sabahiniz xeyir|sabahin xeyir|axsaminiz xeyir|axsamin xeyir|gunortaniz xeyir|привет|здравствуйте|добрый (день|вечер)|доброе утро)\b\s*/;
 
 function smallTalk(f: string, lang: Lang): AssistantReply | 'greet-prefix' | null {
   const r = (id: string, text: string, chips: string[] = []): AssistantReply => ({ id, text, links: [], chips: chipsFor(chips, lang) });

@@ -13,7 +13,7 @@ export function interpret(input){
  const text=normalize(input);
  if(/^(legv( et)?|imtina|dayan|vaz kec|cancel|iptal)$/.test(text))return{intent:'cancel',query:''};
  if(/^(tesdiq( et|le|leyirem)?|beli|he|onayla|evet|confirm|yes)$/.test(text))return{intent:'confirm',query:''};
- if(/^(salam|sa|slm|salamlar|selam|merhaba|hello|hi|hey|sabahiniz xeyir|axsaminiz xeyir)( necesen| necesiz| nasilsin| how are you)?$/.test(text)||/^(necesen|necesiz|yaxsiyam|ela|normalam|sag ol|sagol|cox sag ol|tesekkur\w*|thanks|thank you|helelik|bye|how are you|nasilsin)$/.test(text))return{intent:'social',query:''};
+ if(/^(salam|sa|sea|seaa|slm|salamlar|selam|merhaba|hello|hi|hey|sabahiniz xeyir|axsaminiz xeyir)( necesen| necesiz| nasilsin| how are you)?$/.test(text)||/^(necesen|necesiz|yaxsiyam|ela|normalam|sag ol|sagol|cox sag ol|tesekkur\w*|thanks|thank you|helelik|bye|how are you|nasilsin)$/.test(text))return{intent:'social',query:''};
  if(/ne bacar|ne ede bil|ne is gor|nece komek|what can you do|ne yapabil/.test(text))return{intent:'capabilities',query:''};
  if(/\b(abone\w*|abune\w*|abonman\w*|subscription|lisenz\w*|lisenziy\w*)\b/.test(text))return{intent:'subscription',query:'',pay:/odenis|odemek|odey|kart.*bagla|pay/.test(text)};
  if(/\b(masa\w*|stol\w*|tables?)\b/.test(text)&&!/deyis|kocur|yarat|birlesdir|transfer/.test(text))return{intent:'tables',query:''};

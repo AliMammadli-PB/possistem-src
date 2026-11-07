@@ -23,6 +23,7 @@ test('real route contract: guest isolation, admin denial, same open session lear
  try{const make=await f.app.inject({method:'POST',url:'/customer/assistant/v1/sessions',payload:{protocol:1,surface:'site'}});assert.equal(make.statusCode,200);const session=make.json();assert.equal(session.secret.length,64);
  const req=(text:string,extra:any={})=>f.app.inject({method:'POST',url:'/customer/assistant/v1/message',payload:{sessionId:session.sessionId,secret:session.secret,requestId:randomUUID(),text},...extra});
  assert.equal((await req('salam')).statusCode,200);
+ for(const alias of ['sea','seaa','SEA!']){const out=await req(alias);assert.equal(out.statusCode,200);assert.match(out.json().reply.body,/Salam! Buyurun/);}
  f.setKnowledge([{id:randomUUID(),language:'az',scope:'both',active:true,patterns:['necesen'],answer:'Yeni sayt cavabı'}]);assert.equal((await req('necesen')).json().reply.body,'Yeni sayt cavabı');
  assert.equal((await req('salam',{headers:{'x-fixture-owner':'other'}})).statusCode,404);
  const bad=await f.app.inject({method:'POST',url:'/customer/assistant/v1/message',payload:{sessionId:session.sessionId,secret:'wrong-secret'.repeat(5),requestId:randomUUID(),text:'salam'}});assert.equal(bad.statusCode,404);
@@ -52,7 +53,7 @@ for(const packaged of [false,true])test((packaged?'packaged '+desktopVersion:'ma
   const session=await client.request({action:'create',language:'az',tools:['catalogue','read']});
   const document=f.sessions.get(session.sessionId);assert.ok(document.state.permissions.includes('inventory.view'));
   assert.ok(document.state.permissions.length<=8);assert.ok(!document.state.permissions.includes('unknown.future.permission'));
-  const response=await client.request({action:'message',sessionId:session.sessionId,secret:session.secret,requestId:randomUUID(),text:'sa'});
-  assert.match(response.reply.body,/Salam/);console.log('Verified '+(packaged?'packaged':'source')+' client with '+permissions.length+' real administrator permissions.');
+  for(const text of ['sa','sea','seaa']){const response=await client.request({action:'message',sessionId:session.sessionId,secret:session.secret,requestId:randomUUID(),text});assert.match(response.reply.body,/Salam! Buyurun/);}
+  console.log('Verified '+(packaged?'packaged':'source')+' client with '+permissions.length+' real administrator permissions.');
  }finally{await f.app.close();rmSync(temp,{recursive:true,force:true});}
 });
