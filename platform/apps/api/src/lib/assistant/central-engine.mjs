@@ -2,10 +2,11 @@ import {createHash,randomUUID} from 'node:crypto';
 import {createConversation} from './runtime/conversation.mjs';
 import {interpret} from './runtime/stock-assistant.mjs';
 export const PROTOCOL=1;
-export const TOOLS=['catalogue','read','save','overview','sales','cash','subscription','openPayment','tables','tableOrder','setupRaw','setupMenu','setupRecipe','setupCreateRaw','setupCreateMenu','setupSaveRecipe'];
-export const WRITES=new Set(['save','setupCreateRaw','setupCreateMenu','setupSaveRecipe']);
+export const TOOLS=['catalogue','read','save','overview','sales','cash','subscription','openPayment','tables','tableOrder','setupRaw','setupMenu','setupRecipe','setupCreateRaw','setupCreateMenu','setupSaveRecipe','setupTables','setupCreateTable'];
+export const WRITES=new Set(['save','setupCreateRaw','setupCreateMenu','setupSaveRecipe','setupCreateTable']);
 const clone=x=>JSON.parse(JSON.stringify(x));
-export const digest=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
+export const canonical=x=>JSON.parse(JSON.stringify(x,(_key,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.keys(value).sort().map(k=>[k,value[k]])):value));
+export const digest=x=>createHash('sha256').update(JSON.stringify(canonical(x))).digest('hex');
 const key=(turn,index)=>{const h=digest([turn,index]);return `${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;};
 const trainingFold=x=>String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ə/g,'e').replace(/ı/g,'i').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 const typo=(a,b)=>{if(Math.abs(a.length-b.length)>1)return false;let i=0,j=0,miss=0;while(i<a.length&&j<b.length){if(a[i]===b[j]){i++;j++;continue;}if(++miss>1)return false;if(a.length>=b.length)i++;if(b.length>=a.length)j++;}return miss+(i<a.length||j<b.length?1:0)<=1;};
@@ -24,7 +25,7 @@ export async function advance(document,event,{revision,entries=[],help}){
   if(doc.receipts?.[event.requestId])return{document:doc,result:doc.receipts[event.requestId]};
   if(doc.turn)throw Error('TURN_IN_PROGRESS');
   if(doc.history.length>=100)throw Error('SESSION_FULL');
-  const recheck=doc.revision!==revision&&!!(doc.state?.approval||doc.state?.setup?.flow?.stage==='confirm');
+  const recheck=(doc.revision!==revision||doc.approvalFormat!==1)&&!!(doc.state?.approval||doc.state?.setup?.flow?.stage==='confirm');
   doc.revision=revision;doc.turn={id:event.requestId,text:event.text,results:[],help:null,revision,recheck};
  }else{
   const pending=doc.turn?.pending;
@@ -35,10 +36,10 @@ export async function advance(document,event,{revision,entries=[],help}){
  }
  const turn=doc.turn;let cursor=0,keys=0;
  if(!turn.help){const trained=trainingReply(entries,turn.text,doc.language,doc.surface);turn.help=trained||await help(turn.text,doc.history)||{id:'unknown',body:'Hansı işi görmək istədiyinizi dəqiqləşdirin.',links:[],chips:[]};}
- if(doc.surface==='site'&&!doc.tools.length&&['overview','lookup','tables','subscription','cash','sales','edit','product_create','recipe_create'].includes(interpret(turn.text).intent)){const answer={body:turn.help.body,choices:[],reply:turn.help};const result={protocol:1,requestId:turn.id,revision:doc.revision,reply:answer,approval:null};doc.receipts=doc.receipts||{};doc.receipts[turn.id]=result;doc.history.push({author:'me',body:turn.text},{author:'helper',body:answer.body});doc.last={requestId:turn.id,result};doc.turn=null;return{document:doc,result};}
- const proxy={setupPermissions:()=>({raw:doc.permissions.includes('inventory.manage')&&doc.permissions.includes('inventory.view'),menu:doc.permissions.includes('catalog.manage')&&doc.permissions.includes('inventory.view'),recipe:doc.permissions.includes('recipes.manage')&&doc.permissions.includes('inventory.view')})};
+ if(doc.surface==='site'&&!doc.tools.length&&['overview','lookup','tables','subscription','cash','sales','edit','product_create','recipe_create','table_create'].includes(interpret(turn.text).intent)){const answer={body:turn.help.body,choices:[],reply:turn.help};const result={protocol:1,requestId:turn.id,revision:doc.revision,reply:answer,approval:null};doc.receipts=doc.receipts||{};doc.receipts[turn.id]=result;doc.history.push({author:'me',body:turn.text},{author:'helper',body:answer.body});doc.last={requestId:turn.id,result};doc.turn=null;return{document:doc,result};}
+ const proxy={setupPermissions:()=>({table:doc.permissions.includes('tables.layout')&&doc.tools.includes('setupTables')&&doc.tools.includes('setupCreateTable'),raw:doc.permissions.includes('inventory.manage')&&doc.permissions.includes('inventory.view'),menu:doc.permissions.includes('catalog.manage')&&doc.permissions.includes('inventory.view'),recipe:doc.permissions.includes('recipes.manage')&&doc.permissions.includes('inventory.view')})};
  for(const name of TOOLS)proxy[name]=async(...params)=>{
-  const args=clone(params.filter(p=>typeof p!=='function'));const index=cursor++;
+  const args=canonical(params.filter(p=>typeof p!=='function'));const index=cursor++;
   const recorded=turn.results[index];
   if(recorded){if(recorded.name!==name||digest(recorded.args)!==digest(args))throw Error('CONTINUATION_MISMATCH');if(recorded.error)throw Error(recorded.error);return recorded.value;}
   if(!doc.tools.includes(name))throw Error('Bu imkan bu hesabda və ya cihazda əlçatan deyil.');
@@ -50,7 +51,7 @@ export async function advance(document,event,{revision,entries=[],help}){
  try{answer=turn.recheck?await chat.recheck():await chat.send(turn.text,doc.history);}catch(e){if(!e.pendingTool)throw e;return{document:doc,result:{protocol:1,requestId:turn.id,revision:doc.revision,task:e.pendingTool}};}
  // Published training is authoritative for informational replies, never for a write flow.
  const trained=trainingReply(entries,turn.text,doc.language,doc.surface);if(trained&&!chat.approval()&&!doc.state?.pending&&!doc.state?.setup?.flow)answer={body:trained.body,choices:[],reply:trained};
- doc.state=chat.snapshot();const result={protocol:1,requestId:turn.id,revision:doc.revision,reply:answer,approval:chat.approval()};
+ doc.state=chat.snapshot();doc.approvalFormat=1;const result={protocol:1,requestId:turn.id,revision:doc.revision,reply:answer,approval:canonical(chat.approval())};
  doc.history.push({author:'me',body:turn.text},{author:'helper',body:answer.body});doc.last={requestId:turn.id,result};doc.receipts=doc.receipts||{};doc.receipts[turn.id]=result;doc.turn=null;
  return{document:doc,result};
 }

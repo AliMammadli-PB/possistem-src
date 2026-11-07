@@ -2465,10 +2465,6 @@ html body .ps-pin-layout-1930 .ps-staff-pin-error,html body .ps-pin-layout-1930 
 
 
 
-
-
-
-
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}

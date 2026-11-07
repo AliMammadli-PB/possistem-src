@@ -89,8 +89,8 @@ ${t('Yoxlanıldı','Kontrol edildi','Checked')}: ${new Date(snapshot.readAt).toL
   const knowledge=await help?.(raw,history);
   if(plan.intent==='cancel'||picked?.value==='cancel'){setup.cancel();clear();selected=null;return result(t('Ləğv etdim. Başqa nə edək?','İptal ettim. Başka ne yapalım?','Cancelled. What else can I help with?'));}
   if(plan.intent==='social'||plan.intent==='unknown'&&!pending&&!setup.active&&['greeting','thanks','wellbeing','farewell','identity','about','invite','resolved'].includes(knowledge?.id))return result(compactHelp(knowledge),[],knowledge);
-  if(['recipe_create','product_create'].includes(plan.intent)){clear();selected=null;lastOverview=null;const answer=await setup.start(plan,valid);return result(answer.body,answer.choices);}
-  if(setup.active&&(plan.intent==='unknown'||plan.intent==='confirm'||raw.startsWith('setup:')||setup.pricePrompt&&plan.intent==='lookup'&&/qiymet/.test(text))){const answer=await setup.send(raw,valid);if(answer)return result(answer.body,answer.choices);}
+  if(['recipe_create','product_create','table_create'].includes(plan.intent)){clear();selected=null;lastOverview=null;const answer=await setup.start(plan,valid);return result(answer.body,answer.choices);}
+  if(setup.active&&(plan.intent==='unknown'||plan.intent==='confirm'||raw.startsWith('setup:')||setup.tablePrompt&&plan.intent==='tables'||setup.pricePrompt&&plan.intent==='lookup'&&/qiymet/.test(text))){const answer=await setup.send(raw,valid);if(answer)return result(answer.body,answer.choices);}
   if(picked?.value.startsWith('overview:')){const [,store,low,offset]=raw.split(':');if(pending?.kind!=='reason')clear();return showOverview(store,low==='1',Number(offset),valid);}
   if(plan.intent==='overview'){
    if(pending?.kind!=='reason'){clear();selected=null;}

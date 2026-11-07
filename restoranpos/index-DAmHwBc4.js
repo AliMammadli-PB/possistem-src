@@ -46,7 +46,9 @@ var PsStockAssistant = (() => {
     };
     const menu = async () => {
       need("inventory.view");
-      const [p, c] = await Promise.all([api.catalog.list({ includeDrafts: has("catalog.manage") }), api.catalog.categories()]);
+      const catalogue = api.products || api.catalog;
+      if (!catalogue?.list || !catalogue?.categories) throw Error("Menyu ba\u011Flant\u0131s\u0131 bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil. T\u0259tbiqi yenil\u0259yin v\u0259 yenid\u0259n yoxlay\u0131n.");
+      const [p, c] = await Promise.all([catalogue.list({ includeDrafts: has("catalog.manage") }), catalogue.categories()]);
       return { products: list(dataOf2(p), "products").map((p2) => ({ ...p2, name: p2.nameAz || p2.name || p2.nameEn || "" })), categories: list(dataOf2(c), "categories").map((c2) => ({ ...c2, name: c2.nameAz || c2.name || "" })) };
     };
     const recipe = async (menuItemId) => {
@@ -56,6 +58,27 @@ var PsStockAssistant = (() => {
       const data = dataOf2(r), lines = list(data, "lines"), components = list(data, "components");
       const self = goods.find((p) => p.sku === "MENU-" + menuItemId);
       return { lines, components, placeholder: components.length === 0 && lines.length === 1 && self?.id === lines[0].ingredientId && lines[0].qtyMilli === 1e3 };
+    };
+    const tableData = async () => {
+      need("tables.layout");
+      const data = dataOf2(await api.tables.list());
+      return { areas: list(data, "areas").map((a) => ({ id: a.id, nameAz: a.nameAz || a.name })), tables: list(data, "tables").map((t) => ({ id: t.id, label: t.label, areaId: t.areaId, seats: t.seats })) };
+    };
+    const createTable = async (draft, key, valid = () => true) => {
+      need("tables.layout");
+      const current = await tableData();
+      const existing = current.tables.find((t) => t.id === draft.id);
+      if (existing) {
+        if (existing.label !== draft.name || existing.areaId !== draft.areaId || existing.seats !== draft.seats) throw Error("Masa plan\u0131 d\u0259yi\u015Fib. Yenid\u0259n yoxlay\u0131n.");
+        return { id: existing.id, replayed: true };
+      }
+      if (!current.areas.some((a) => a.id === draft.areaId)) throw Error("Se\xE7ilmi\u015F zal art\u0131q m\xF6vcud deyil.");
+      if (current.tables.some((t) => t.areaId === draft.areaId && normalize3(t.label) === normalize3(draft.name))) throw Error("Bu zalda eyni adl\u0131 masa art\u0131q var. \u0130kinci n\xFCsx\u0259 yarad\u0131lmad\u0131.");
+      if (!valid()) throw Error("stale conversation");
+      const saved = dataOf2(await api.tables.upsertTable({ id: draft.id, areaId: draft.areaId, label: draft.name, seats: draft.seats, shape: "square" }, { idempotencyKey: key }));
+      const checked = await tableData();
+      if (!checked.tables.some((t) => t.id === draft.id && t.label === draft.name && t.areaId === draft.areaId)) throw Error("Masa saxlanmas\u0131n\u0131 t\u0259sdiql\u0259m\u0259k al\u0131nmad\u0131. Masalardan yoxlay\u0131n; avtomatik t\u0259krarlanmayacaq.");
+      return saved;
     };
     const fingerprint = (r) => JSON.stringify({ lines: r.lines.map((l) => [l.ingredientId, l.qtyMilli]).sort(), components: r.components.map((l) => [l.menuItemId, l.qtyMilli]).sort() });
     const createRaw = async (draft, key, valid = () => true) => {
@@ -95,7 +118,7 @@ var PsStockAssistant = (() => {
       if (!valid()) throw Error("stale conversation");
       return dataOf2(await api.inventory.saveRecipe(draft.product.id, wanted.lines, []));
     };
-    return { setupPermissions: () => ({ raw: has("inventory.view") && has("inventory.manage"), menu: has("inventory.view") && has("catalog.manage"), recipe: has("inventory.view") && has("recipes.manage") }), setupRaw: raw, setupMenu: menu, setupRecipe: recipe, setupCreateRaw: createRaw, setupCreateMenu: createMenu, setupSaveRecipe: saveRecipe };
+    return { setupTables: tableData, setupCreateTable: createTable, setupPermissions: () => ({ table: has("tables.layout"), raw: has("inventory.view") && has("inventory.manage"), menu: has("inventory.view") && has("catalog.manage"), recipe: has("inventory.view") && has("recipes.manage") }), setupRaw: raw, setupMenu: menu, setupRecipe: recipe, setupCreateRaw: createRaw, setupCreateMenu: createMenu, setupSaveRecipe: saveRecipe };
   }
 
   // support/local-tools.mjs
@@ -260,13 +283,14 @@ var PsStockAssistant = (() => {
   }
 
   // support/online.mjs
-  var methods = ["catalogue", "read", "save", "overview", "sales", "cash", "subscription", "openPayment", "tables", "tableOrder", "setupRaw", "setupMenu", "setupRecipe", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe"];
-  var writes = /* @__PURE__ */ new Set(["save", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe"]);
+  var methods = ["catalogue", "read", "save", "overview", "sales", "cash", "subscription", "openPayment", "tables", "tableOrder", "setupRaw", "setupMenu", "setupRecipe", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupTables", "setupCreateTable"];
+  var stable = (x) => JSON.stringify(x, (_key, value) => value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map((k) => [k, value[k]])) : value);
+  var writes = /* @__PURE__ */ new Set(["save", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupCreateTable"]);
   var normalize2 = (x) => String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ə/g, "e").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ç/g, "c").trim();
   function createOnlineConversation({ api, has, billing, transport, language = "az" }) {
     const tools = createTools(api, has, { billing });
     let session = null, approval = null, locked = false;
-    const permissions = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage"].filter(has);
+    const permissions = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout"].filter(has);
     const call = async (action, payload) => {
       const r = await transport({ action, ...payload });
       if (!r?.success) throw Error(r?.error?.message || "Serverl\u0259 \u0259laq\u0259 yoxdur. Yenid\u0259n yoxlay\u0131n.");
@@ -289,12 +313,12 @@ var PsStockAssistant = (() => {
           const task = response.task;
           if (task.protocol !== 1 || !methods.includes(task.name) || !Array.isArray(task.args) || task.args.length > 5) throw Error("Server uy\u011Fun olmayan \u0259m\u0259liyyat ist\u0259di.");
           const write = writes.has(task.name);
-          if (write && (!/^(confirm|tesdiq( et|le|leyirem)?|beli|he|yes|setup:save)$/.test(normalize2(input)) || !approved || approved.name !== task.name || JSON.stringify(approved.args) !== JSON.stringify(task.args))) throw Error("D\u0259yi\u015Fiklik \u0259vv\u0259lc\u0259d\u0259n g\xF6st\u0259ril\u0259n planla uy\u011Fun deyil. Yenid\u0259n plan qurun.");
+          if (write && (!/^(confirm|tesdiq( et|le|leyirem)?|beli|he|yes|setup:save)$/.test(normalize2(input)) || !approved || approved.name !== task.name || stable(approved.args) !== stable(task.args))) throw Error("D\u0259yi\u015Fiklik \u0259vv\u0259lc\u0259d\u0259n g\xF6st\u0259ril\u0259n planla uy\u011Fun deyil. Yenid\u0259n plan qurun.");
           if (task.name === "openPayment" && input !== "subscription:pay") throw Error("\xD6d\u0259ni\u015F a\xE7maq \xFC\xE7\xFCn d\xFCym\u0259ni se\xE7in.");
           let outcome;
           try {
             sentWrite = sentWrite || write;
-            const value = await tools[task.name](...task.args, ...["openPayment", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe"].includes(task.name) ? [valid] : []);
+            const value = await tools[task.name](...task.args, ...["openPayment", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupCreateTable"].includes(task.name) ? [valid] : []);
             outcome = { value };
           } catch (e) {
             outcome = { error: e.message || "Yerli \u0259m\u0259liyyat al\u0131nmad\u0131." };
@@ -344,6 +368,8 @@ var PsStockAssistant = (() => {
 
 
 
+
+
 /* MANAGEMENT_UNIFIED_V1 */
 function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  const h=psH,{lang}=useI18n(),L=(a,t,e)=>psBizText(lang,a,t,e);
@@ -354,6 +380,8 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü ('+unit+')','Boyut ('+unit+')','Size ('+unit+')'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
  h('button',{type:'button',disabled:rows.length>=24,onClick:()=>onChange([...rows,{size:'',price:price||''}])},L('+ Ölçü əlavə et','+ Boyut ekle','+ Add size'))):null);
 }
+
+
 
 
 
@@ -15251,7 +15279,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.21 · 7644192";
+const _PS_BUILD = "1.10.22 · 7644192";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -31787,6 +31815,18 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -31994,6 +32034,12 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
+
+
+
+
+
+
 
 
 
@@ -32347,7 +32393,7 @@ function SupportPage() {
   const [mode, setMode] = reactExports.useState("assistant"), [messages, setMessages] = reactExports.useState([]), [local, setLocal] = reactExports.useState([]), [draft, setDraft] = reactExports.useState(""), [busy, setBusy] = reactExports.useState(false), [error, setError] = reactExports.useState("");
   const [failedInput, setFailedInput] = reactExports.useState("");
   const [copied, setCopied] = reactExports.useState(""), [copying, setCopying] = reactExports.useState(false), copyTimer = reactExports.useRef(null), copyLock = reactExports.useRef(false);
-  const owner = useAuthStore((s) => s.session?.userId), has = useAuthStore((s) => s.hasPermission) || (() => false), rights = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage"].map((key) => has(key)).join(",");
+  const owner = useAuthStore((s) => s.session?.userId), has = useAuthStore((s) => s.hasPermission) || (() => false), rights = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout"].map((key) => has(key)).join(",");
   const chat = reactExports.useMemo(() => PsStockAssistant.createOnlineConversation({ language: lang, api: window.pos, has: (key) => useAuthStore.getState?.()?.hasPermission?.(key) ?? has(key), billing: window.possistemBilling, transport: (payload) => window.pos.support.assistant(payload) }), [owner, rights, lang]);
   const locked = reactExports.useRef(false), list = reactExports.useRef(null), composer = reactExports.useRef(null), epoch = reactExports.useRef(0), modeRef = reactExports.useRef(mode);
   modeRef.current = mode;

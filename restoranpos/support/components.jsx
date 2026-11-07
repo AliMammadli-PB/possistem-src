@@ -3,7 +3,7 @@ function SupportPage(){
  const [mode,setMode]=reactExports.useState('assistant'),[messages,setMessages]=reactExports.useState([]),[local,setLocal]=reactExports.useState([]),[draft,setDraft]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false),[error,setError]=reactExports.useState('');
  const [failedInput,setFailedInput]=reactExports.useState('');
  const [copied,setCopied]=reactExports.useState(''),[copying,setCopying]=reactExports.useState(false),copyTimer=reactExports.useRef(null),copyLock=reactExports.useRef(false);
- const owner=useAuthStore(s=>s.session?.userId),has=useAuthStore(s=>s.hasPermission)||(()=>false),rights=['inventory.view','inventory.manage','inventory.adjust','catalog.manage','reports.view','cash.accounts','order.view','recipes.manage'].map(key=>has(key)).join(',');
+ const owner=useAuthStore(s=>s.session?.userId),has=useAuthStore(s=>s.hasPermission)||(()=>false),rights=['inventory.view','inventory.manage','inventory.adjust','catalog.manage','reports.view','cash.accounts','order.view','recipes.manage','tables.layout'].map(key=>has(key)).join(',');
  const chat=reactExports.useMemo(()=>PsStockAssistant.createOnlineConversation({language:lang,api:window.pos,has:key=>useAuthStore.getState?.()?.hasPermission?.(key)??has(key),billing:window.possistemBilling,transport:payload=>window.pos.support.assistant(payload)}),[owner,rights,lang]);
  const locked=reactExports.useRef(false),list=reactExports.useRef(null),composer=reactExports.useRef(null),epoch=reactExports.useRef(0),modeRef=reactExports.useRef(mode);modeRef.current=mode;
  const id=()=>globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2);

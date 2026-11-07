@@ -17,7 +17,7 @@ const uuid=z.string().uuid(),Lang=z.enum(['az','en','ru','tr']);
 const Entry=z.object({id:uuid,title:z.string().trim().min(1).max(120),language:Lang,patterns:z.array(z.string().trim().min(2).max(200)).min(1).max(30),answer:z.string().trim().min(1).max(4000),scope:z.enum(['site','restaurant','both']),active:z.boolean().default(true)});
 const Entries=z.array(Entry).max(300).refine(items=>new Set(items.map(e=>e.id)).size===items.length,'Təlim ID-ləri təkrar ola bilməz.');
 const SessionKey={sessionId:uuid,secret:z.string().min(32).max(128)};
-const supported=['inventory.view','inventory.manage','inventory.adjust','catalog.manage','reports.view','cash.accounts','order.view','recipes.manage'];
+const supported=['inventory.view','inventory.manage','inventory.adjust','catalog.manage','reports.view','cash.accounts','order.view','recipes.manage','tables.layout'];
 async function published(db:any){const [r]=rows(await db.execute(sql`SELECT coalesce(s.published_revision,0)::integer AS revision,coalesce(r.entries,'[]'::jsonb) AS entries FROM assistant_knowledge_state s LEFT JOIN assistant_knowledge_revisions r ON r.id=s.published_revision WHERE s.id=1`));return r||{revision:0,entries:[]};}
 export async function centralAssistantRoutes(app:FastifyInstance){
  app.addHook('onSend',async(_req,reply,payload)=>{reply.header('Cache-Control','private, no-store');return payload;});
@@ -34,7 +34,7 @@ export async function centralAssistantRoutes(app:FastifyInstance){
   if(body.deviceId&&!target)return reply.code(403).send({error:'Kassa bu hesaba aid deyil.'});
   if(body.surface==='restaurant'&&!target)return reply.code(409).send({error:'Aktiv Restoran POS kassası tapılmadı.'});
   const permissions=body.surface==='restaurant'?[...new Set(body.permissions)].filter(p=>supported.includes(p)):target?supported:[];
-  const tools=body.surface==='restaurant'?body.tools.filter(t=>TOOLS.includes(t)):target?TOOLS.filter(t=>t!=='openPayment'):[];
+  const tools=body.surface==='restaurant'?body.tools.filter(t=>TOOLS.includes(t)):target?TOOLS.filter(t=>!['openPayment','setupTables','setupCreateTable'].includes(t)):[];
   const doc=newDocument({surface:body.surface,language:body.language,permissions,tools});
   await app.db.execute(sql`DELETE FROM assistant_sessions WHERE id IN (SELECT id FROM assistant_sessions WHERE expires_at<now() ORDER BY expires_at LIMIT 200)`);
   const id=randomUUID(),secret=randomBytes(32).toString('hex');
@@ -42,7 +42,7 @@ export async function centralAssistantRoutes(app:FastifyInstance){
   return{protocol:1,sessionId:id,secret,devices:body.surface==='site'?devices.map(d=>({id:d.id,name:d.name})):[]};
  });
  const run=async(req:any,reply:any,type:'message'|'result')=>{
-  const schema=type==='message'?z.object({...SessionKey,requestId:uuid,text:z.string().trim().min(1).max(1000)}):z.object({...SessionKey,requestId:uuid,taskId:uuid,outcome:z.union([z.object({value:z.unknown()}),z.object({error:z.string().max(1000)})])});
+  const schema=type==='message'?z.object({...SessionKey,requestId:uuid,text:z.string().trim().min(1).max(1000)}):z.object({...SessionKey,requestId:uuid,taskId:uuid,outcome:z.union([z.object({value:z.unknown()}).strict().refine(v=>Object.prototype.hasOwnProperty.call(v,'value')),z.object({error:z.string().min(1).max(1000)}).strict()])});
   const body:any=parseBody<any,any>(schema,req.body,reply);if(!body)return;
   try{return await app.db.transaction(async tx=>{
    const [session]=rows(await tx.execute(sql`SELECT * FROM assistant_sessions WHERE id=${body.sessionId}::uuid AND secret_hash=${hash(body.secret)} AND expires_at>now() FOR UPDATE`));
@@ -54,7 +54,7 @@ export async function centralAssistantRoutes(app:FastifyInstance){
    const knowledge=await published(tx);let doc=session.state;
    if(type==='message'&&body.text.startsWith('#device:')&&session.surface==='site'){
     const chosen=devices.find(d=>d.id===body.text.slice(8)&&d.product==='restaurant');if(!chosen)return reply.code(403).send({error:'Kassa tapılmadı.'});
-    doc=newDocument({surface:'site',language:doc.language,permissions:supported,tools:TOOLS.filter(t=>t!=='openPayment')});
+    doc=newDocument({surface:'site',language:doc.language,permissions:supported,tools:TOOLS.filter(t=>!['openPayment','setupTables','setupCreateTable'].includes(t))});
     await tx.execute(sql`UPDATE assistant_sessions SET device_id=${chosen.id}::uuid,state=${JSON.stringify(doc)}::jsonb WHERE id=${session.id}::uuid`);
     return{protocol:1,reply:{body:`${chosen.name} seçildi. Nə etmək istəyirsiniz?`,choices:[]}};
    }

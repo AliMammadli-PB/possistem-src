@@ -55,3 +55,16 @@ test('an incomplete recipe response cannot be mistaken for an empty recipe',asyn
 test('a capability question does not become a product name inside a creation draft',async()=>{
  const f=fixture();await f.chat.send('yeni mehsul yarat');await f.chat.send('setup:raw');await f.chat.send('sen ne bacarirsan');await f.chat.send('Duz');assert.equal(f.writes.length,0);const plan=await f.chat.send('setup:unit:kg');assert.match(plan.body,/Duz · kg/);assert.doesNotMatch(plan.body,/sen ne bacarirsan/);
 });
+
+test('generic recipe creation asks for a dish, never looks for a dish named yeni',async()=>{const f=fixture();assert.equal(interpret('yeni kalkulasiya mehsulu yarat mene').name,'');assert.equal(interpret('Yeni Pizza üçün kalkulyasiya yarat').name,'yeni pizza');assert.match((await f.chat.send('yeni kalkulasiya mehsulu yarat mene')).body,/hansı menyu/);assert.equal(f.writes.length,0);});
+test('menu catalogue failures have an actionable response, never an undefined products crash',async()=>{const f=fixture();f.api.catalog.list=async()=>({success:false,error:{message:'Menyu bağlantısı kəsilib'}});assert.match((await f.chat.send('yeni kalkulasiya mehsulu yarat mene')).body,/Menyu bağlantısı kəsilib/);assert.equal(f.writes.length,0);});
+test('table creation requires layout permission, preserves the chosen area and checks duplicates and revocation',async()=>{
+ const f=fixture(),tables=[],areas=[{id:'area',nameAz:'Zal'}];f.api.tables={list:async()=>({success:true,data:{areas,tables}}),upsertTable:async p=>{tables.push(p);return{success:true,data:p};}};
+ assert.match((await f.chat.send('yeni masa yarat')).body,/tables.layout/);assert.equal(tables.length,0);
+ f.permissions.add('tables.layout');await f.chat.send('zal adinda masa yarat mene');await f.chat.send('setup:area:area');await f.chat.send('4');assert.equal(tables.length,0);
+ f.permissions.delete('tables.layout');assert.match((await f.chat.send('confirm')).body,/icazəniz yoxdur/);assert.equal(tables.length,0);
+ f.permissions.add('tables.layout');assert.match((await f.chat.send('confirm')).body,/zal yaradıldı/);assert.equal(tables.length,1);assert.equal(tables[0].areaId,'area');assert.equal(tables[0].seats,4);
+ await f.chat.send('confirm');assert.equal(tables.length,1);
+ await f.chat.send('zal adinda masa yarat');assert.match((await f.chat.send('setup:area:area')).body,/eyni adlı/);assert.equal(tables.length,1);
+ await f.chat.send('cancel');assert.equal(tables.length,1);
+});

@@ -16,11 +16,13 @@ export function interpret(input){
  if(/^(salam|sa|sea|seaa|slm|salamlar|selam|merhaba|hello|hi|hey|sabahiniz xeyir|axsaminiz xeyir)( necesen| necesiz| nasilsin| how are you)?$/.test(text)||/^(necesen|necesiz|yaxsiyam|ela|normalam|sag ol|sagol|cox sag ol|tesekkur\w*|thanks|thank you|helelik|bye|how are you|nasilsin)$/.test(text))return{intent:'social',query:''};
  if(/ne bacar|ne ede bil|ne is gor|nece komek|what can you do|ne yapabil/.test(text))return{intent:'capabilities',query:''};
  if(/\b(abone\w*|abune\w*|abonman\w*|subscription|lisenz\w*|lisenziy\w*)\b/.test(text))return{intent:'subscription',query:'',pay:/odenis|odemek|odey|kart.*bagla|pay/.test(text)};
+ if(/\b(masa\w*|stol\w*|tables?)\b/.test(text)&&/yarat|elave et/.test(text))return{intent:'table_create',name:String(input).match(/(?:^|\s)(.+?)\s+ad[ıi]nda\s+masa/i)?.[1]?.replace(/^(?:m[eə]n[eə]\s+)?(?:yeni\s+)?/i,'').trim()||'',query:''};
  if(/\b(masa\w*|stol\w*|tables?)\b/.test(text)&&!/deyis|kocur|yarat|birlesdir|transfer/.test(text))return{intent:'tables',query:''};
  const recipeWord=/kalkul\w*|kalqul\w*|resept\w*|recipe|terkib/;
  if(recipeWord.test(text)&&/yarat|yig|hazirla|elave|qur|isteyirem/.test(text)){
   const named=text.match(/(?:kalkul\w*|resept\w*) (?:yarat\w* )?(.+?) adinda/)?.[1]||text.match(/^(.+?) (?:ucun )?(?:kalkul\w*|resept\w*)/)?.[1]||'';
-  return{intent:'recipe_create',name:named.replace(/\s+ucun$/,'').trim(),query:''};
+  const name=named.replace(/\s+ucun$/,'').replace(/^mene\s+/,'').trim();
+  return{intent:'recipe_create',name:/^(?:(?:yeni|bir|mene|menim ucun)\s*)+$/.test(name)?'':name,query:''};
  }
  if(/(?:yeni (?:mehsul|mal|xammal|yemek)|(?:mehsul|mal|xammal|yemek) yarat)/.test(text)&&/yarat|elave|isteyirem/.test(text))return{intent:'product_create',query:''};
  if(/problem|islemir|acilmir|gorunmur|xeta|printer|cap et|internet|sifre|giris|demo|paket|lisenziya/.test(text))return{intent:'help',query:''};
