@@ -1,0 +1,21 @@
+// The owner's recipe chat of 2026-11-08: show a dish's recipe, "lahmacunun içinə un qoy", and "unun kilosu 3 manat".
+import test from 'node:test';import assert from 'node:assert/strict';
+import {chat} from './owner-chat-harness.mjs';
+const unknown=async()=>({id:'unknown',body:'Sualınızı tam başa düşmədim.',links:[],chips:[]});
+test('"donerin kalkulasiyasini goster mene" shows the recipe, or says there is none and offers to create it',async()=>{const c=chat({help:unknown});
+ const none=await c.send('donerin kalkulasiyasini goster mene');assert.match(none.body,/doner üçün kalkulyasiya hələ yazılmayıb/);assert.ok(none.choices.some(x=>x.value==='doner kalkulyasiya yarat'));
+ c.state.recipes['m-dn']=[{ingredientId:'i-un',qtyMilli:150},{ingredientId:'i-et',qtyMilli:100}];
+ const shown=await c.send('donerin kalkulasiyasini goster mene');assert.match(shown.body,/Kalkulyasiya · doner · 1 porsiya\n• Un: 0,15 kq · 0,18 ₼\n• Qiymə: 0,1 kq · 1,40 ₼\nMaya dəyəri: 1,58 ₼ · satış qiyməti 5,00 ₼ · qazanc 3,42 ₼/);});
+test('the pasted chat: inside an open doner recipe, "lahmacunun içinə un qoy … unun kilosunu 3 manat elə" starts lahmacun with flour and explains the cost',async()=>{const c=chat({help:unknown});
+ await c.send('yeni kalkulasiya yarat');await c.send('doner');
+ const r=await c.send('indi lahmacunun icine un qoy kalkulasiya yarat unun kilosunuda 3 manat ele');
+ assert.match(r.body,/lahmacun kalkulyasiyasına Un əlavə edirəm/);assert.match(r.body,/1 porsiya lahmacun üçün Un miqdarını yazın/);assert.match(r.body,/“Un” üçün maya \(alış\) qiymətini 3,00 ₼ \/ kq/);assert.match(r.body,/İndiki maya qiyməti: 1,20 ₼/);assert.doesNotMatch(r.body,/tapmadım/);
+ await c.send('0,2 kq');const plan=await c.send('Təsdiq et');assert.match(plan.body,/lahmacun\n• Un: 0,2 kq/);await c.send('Təsdiq et');assert.deepEqual(c.state.recipes['m-lh'],[{ingredientId:'i-un',qtyMilli:200}]);});
+test('two named ingredients are asked one after the other; an unknown one is named',async()=>{const c=chat({help:unknown});
+ const r=await c.send('lahmacunun icine un, qiyme ve sogan qoy');assert.match(r.body,/Un miqdarını/);
+ const next=await c.send('0,1 kq');assert.match(next.body,/Qiymə miqdarını/);const last=await c.send('80 qram');assert.match(last.body,/“sogan” anbarda tapılmadı/);});
+test('a dish missing from the menu keeps the named ingredient through creating the dish',async()=>{const c=chat({help:unknown,menu:false});
+ const offer=await c.send('lahmacunun icine un qoy kalkulasiya yarat');assert.equal(offer.choices[0].value,'setup:new-menu');
+ await c.send('ozun et');await c.send('Yeməklər');await c.send('3');const done=await c.send('Təsdiq et');assert.match(done.body,/lahmacun yaradıldı/);assert.match(done.body,/Un miqdarını/);});
+test('"unun kilosunu 3 manat elə" on its own starts a goods receipt at that price, nothing changes before confirmation',async()=>{const c=chat({help:unknown});const r=await c.send('unun kilosunu 3 manat ele');
+ assert.match(r.body,/Maya qiyməti mal qəbulu ilə yenilənir/);assert.match(r.body,/Neçə kq Un alınıb\?/);assert.equal(c.state.ingredients.find(i=>i.id==='i-un').costMinor,120);});

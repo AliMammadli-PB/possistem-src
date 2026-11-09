@@ -108,3 +108,23 @@ TEST_CASE("archiving an empty area clears invisible drafts on all of its tables"
     REQUIRE(order.step());
     REQUIRE(order.columnText(0) == "voided");
 }
+
+namespace {
+pos::Json assistantSnapshot(ServiceFixture& f,const std::string& id){auto q=f.db().prepare("SELECT id,label,area_id AS areaId,seats,shape,sort_order AS sortOrder,updated_at AS updatedAt FROM restaurant_tables WHERE id=:id");q.bind(":id",id);REQUIRE(q.step());return q.row();}
+pos::Json guardedCall(ServiceFixture& f,std::string_view method,const pos::Json& payload,const std::string& key){pos::ipc::Request r;r.requestId=pos::crypto::uuid4();r.method=std::string(method);r.payload=payload;r.idempotencyKey=key;return f.server().callHandler(r);}
+int activeTable(ServiceFixture& f,const std::string& id){auto q=f.db().prepare("SELECT active FROM restaurant_tables WHERE id=:id");q.bind(":id",id);REQUIRE(q.step());return static_cast<int>(q.columnInt(0));}
+}
+TEST_CASE("assistant archive atomically rejects a newly busy table", "[table][assistant]"){
+ ServiceFixture f;pos::handlers::registerTables(f.contextPtr());const pos::Json p{{"assistantGuard",true},{"assistantExpectedTables",pos::Json::array({assistantSnapshot(f,"tbl-01"),assistantSnapshot(f,"tbl-02")})}};const auto order=insertDraft(f,"tbl-02",false);
+ REQUIRE_THROWS_AS(guardedCall(f,pos::protocol::method::kTablesArchiveTable,p,"busy-batch"),pos::PosError);REQUIRE(activeTable(f,"tbl-01")==1);REQUIRE(activeTable(f,"tbl-02")==1);auto q=f.db().prepare("SELECT status FROM orders WHERE id=:id");q.bind(":id",order);REQUIRE(q.step());REQUIRE(q.columnText(0)=="draft");
+}
+TEST_CASE("assistant archive keeps historical orders and replays once", "[table][assistant]"){
+ ServiceFixture f;pos::handlers::registerTables(f.contextPtr());const auto history=insertDraft(f,"tbl-01",false);f.db().exec("UPDATE orders SET status='closed' WHERE table_id='tbl-01'");const pos::Json p{{"assistantGuard",true},{"assistantExpectedTables",pos::Json::array({assistantSnapshot(f,"tbl-01"),assistantSnapshot(f,"tbl-02")})}};
+ REQUIRE(guardedCall(f,pos::protocol::method::kTablesArchiveTable,p,"one-batch")["archivedCount"]==2);const auto replay=guardedCall(f,pos::protocol::method::kTablesArchiveTable,p,"one-batch");REQUIRE(replay["archivedCount"]==2);REQUIRE(replay["idempotentReplay"]==true);REQUIRE(activeTable(f,"tbl-01")==0);auto q=f.db().prepare("SELECT COUNT(*) FROM orders WHERE id=:id");q.bind(":id",history);REQUIRE(q.step());REQUIRE(q.columnInt(0)==1);
+}
+TEST_CASE("assistant archive checks stale state and native authentication", "[table][assistant]"){
+ ServiceFixture f;pos::handlers::registerTables(f.contextPtr());const pos::Json p{{"assistantGuard",true},{"assistantExpectedTables",pos::Json::array({assistantSnapshot(f,"tbl-01"),assistantSnapshot(f,"tbl-02")})}};f.db().exec("UPDATE restaurant_tables SET label='Changed' WHERE id='tbl-02'");REQUIRE_THROWS_AS(guardedCall(f,pos::protocol::method::kTablesArchiveTable,p,"stale-batch"),pos::PosError);REQUIRE(activeTable(f,"tbl-01")==1);f.ctx().session().authenticated=false;REQUIRE_THROWS_AS(guardedCall(f,pos::protocol::method::kTablesArchiveTable,p,"no-auth"),pos::PosError);REQUIRE(activeTable(f,"tbl-01")==1);
+}
+TEST_CASE("assistant table edits compare snapshots and protect open accounts", "[table][assistant]"){
+ ServiceFixture f;pos::handlers::registerTables(f.contextPtr());const auto old=assistantSnapshot(f,"tbl-01");pos::Json p{{"id","tbl-01"},{"label","VIP"},{"areaId","area-vip"},{"seats",6},{"shape",old["shape"]},{"sortOrder",old["sortOrder"]},{"assistantGuard",true},{"assistantExpected",old}};const auto saved=guardedCall(f,pos::protocol::method::kTablesUpsertTable,p,"edit-once");REQUIRE(saved["label"]=="VIP");REQUIRE(saved["seats"]==6);REQUIRE(saved["areaId"]=="area-vip");REQUIRE(guardedCall(f,pos::protocol::method::kTablesUpsertTable,p,"edit-once")["idempotentReplay"]==true);REQUIRE_THROWS_AS(guardedCall(f,pos::protocol::method::kTablesUpsertTable,p,"stale-edit"),pos::PosError);p["assistantExpected"]=assistantSnapshot(f,"tbl-01");p["label"]="Busy";insertDraft(f,"tbl-01",false);REQUIRE_THROWS_AS(guardedCall(f,pos::protocol::method::kTablesUpsertTable,p,"busy-edit"),pos::PosError);REQUIRE(assistantSnapshot(f,"tbl-01")["label"]=="VIP");
+}

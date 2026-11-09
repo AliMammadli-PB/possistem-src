@@ -14,6 +14,7 @@
 #include "pos/printing/ReceiptBuilder.hpp"
 #include "pos/printing/PrinterAssignments.hpp"
 #include "pos/protocol_generated.hpp"
+#include "pos/services/AssistantQuery.hpp"
 #include "pos/services/BusinessDayService.hpp"
 #include "pos/services/CashService.hpp"
 #include "pos/services/DataWipe.hpp"
@@ -963,6 +964,13 @@ void registerSystem(const ContextPtr& ctx) {
             emitReportCreated(*ctx, report, "x");
             enqueueReportPrint(*ctx, report, "x_report");
             return report;
+        });
+
+    // The assistant's read-only questions ("which waiter sold most last week"). See AssistantQuery.hpp for the limits.
+    server.registerHandler(
+        std::string(protocol::method::kAssistantQuery), [ctx](const ipc::Request& request) {
+            ctx->requirePermission("reports.view");
+            return services::runAssistantQuery(ctx->db().path(), getOr<std::string>(request.payload, "sql", ""));
         });
 
     server.registerHandler(

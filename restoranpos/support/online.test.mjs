@@ -24,3 +24,11 @@ test('a changed approved payload is rejected even with reordered keys',async()=>
  let next=0;const chat=createOnlineConversation({api:{},has:()=>true,transport:async p=>({success:true,data:p.action==='create'?{sessionId:randomUUID(),secret:'x'.repeat(64)}:next++===0?{reply:{body:'Review'},approval:{name:'setupCreateRaw',args:[{name:'A',unit:'kg'},'k']}}:{task:{protocol:1,id:randomUUID(),name:'setupCreateRaw',args:[{unit:'kg',name:'B'},'k']}}})});
  await chat.send('mehsul yarat');await assert.rejects(()=>chat.send('confirm'),/planla uyğun deyil/);
 });
+test('server unreachable: the main transport says so with the reason and nothing runs on the till',async()=>{
+ const who={token:'t',customerId:'c',deviceId:'d',actorId:'a',permissions:[],baseUrl:'https://possistem.az/pos/api'};
+ for(const failure of [Object.assign(new TypeError('fetch failed'),{cause:{code:'ENOTFOUND'}}),new DOMException('timed out','TimeoutError')]){
+  const client=createAssistantClient({credentials:async()=>who,fetchImpl:async()=>{throw failure;}});
+  await assert.rejects(()=>client.request({action:'create',language:'az',tools:[]}),/^Error: Köməkçi serverinə \(possistem\.az\) qoşulmaq alınmadı \((?:ENOTFOUND|25 saniyə cavab gəlmədi)\)\. Köməkçi yalnız serverlə əlaqə olanda işləyir; bir az sonra yenidən yoxlayın\.$/);
+ }
+ let writes=0;const chat=createOnlineConversation({api:{inventory:{adjust:async()=>{writes++;}}},has:()=>true,transport:async()=>({success:false,error:{message:'Köməkçi serverinə (possistem.az) qoşulmaq alınmadı (ENOTFOUND). Köməkçi yalnız serverlə əlaqə olanda işləyir; bir az sonra yenidən yoxlayın.'}})});
+ await assert.rejects(()=>chat.send('doneri 5 eded artir'),/Heç bir əmr icra olunmadı, kassada heç nə dəyişmədi\./);assert.equal(writes,0);});

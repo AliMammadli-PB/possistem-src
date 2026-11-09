@@ -1,4 +1,5 @@
 #include <vector>
+#include <set>
 
 #include "pos/Crypto.hpp"
 #include "pos/Error.hpp"
@@ -21,7 +22,7 @@ namespace {
 constexpr const char* kTableQuery =
     "SELECT t.id, t.area_id AS areaId, a.name_az AS areaName, t.label, t.seats, t.status, "
     "       t.pos_x AS posX, t.pos_y AS posY, t.width, t.height, t.shape, "
-    "       t.merged_into_id AS mergedIntoId, t.sort_order AS sortOrder, "
+    "       t.merged_into_id AS mergedIntoId, t.sort_order AS sortOrder, t.updated_at AS updatedAt, "
     "       o.id AS orderId, o.order_number AS orderNumber, o.guest_count AS guestCount, "
     "       o.total_minor AS totalMinor, o.paid_minor AS paidMinor, o.status AS orderStatus, "
     "       o.opened_at AS openedAt, u.full_name AS waiterName, u.color AS waiterColor, "
@@ -43,6 +44,27 @@ constexpr const char* kTableQuery =
     "     AND o.status IN ('draft','open','sent','partially_paid') "
     "LEFT JOIN users u ON u.id = o.user_id "
     "WHERE t.active = 1 ";
+
+// Assistant edits are compared and applied in the same SQLite transaction.
+Json assistantTableRow(Context& ctx, const std::string& id) {
+    auto row = ctx.db().prepare("SELECT id, label, area_id AS areaId, seats, shape, sort_order AS sortOrder, updated_at AS updatedAt FROM restaurant_tables WHERE id = :id AND active = 1");
+    row.bind(":id", id);
+    if (!row.step()) throw PosError(std::string(protocol::err::kConflict), "Masa artıq mövcud deyil. Planı yenidən yoxlayın.");
+    return row.row();
+}
+void verifyAssistantTable(Context& ctx, const Json& expected) {
+    require(expected.is_object() && expected.contains("id") && expected["id"].is_string(), "Masa planı düzgün deyil");
+    const auto id = expected["id"].get<std::string>();
+    const auto current = assistantTableRow(ctx, id);
+    for (const auto* field : {"id", "label", "areaId", "seats", "shape", "sortOrder", "updatedAt"}) {
+        require(expected.contains(field), "Masa planı natamamdır");
+        if (expected[field] != current[field]) throw PosError(std::string(protocol::err::kConflict), "Masa dəyişib. Planı yenidən təsdiqləyin.");
+    }
+    require(current["areaId"] != "area-delivery", "Çatdırılma hesabı masa planından silinə bilməz");
+    auto open = ctx.db().prepare("SELECT COUNT(*) FROM orders WHERE table_id = :id AND status IN ('draft','open','sent','partially_paid')");
+    open.bind(":id", id);
+    if (open.step() && open.columnInt(0) > 0) throw PosError(std::string(protocol::err::kConflict), "Masanın açıq hesabı var. Əvvəl hesabı bağlayın.");
+}
 
 }  // namespace
 
@@ -75,7 +97,7 @@ void registerTables(const ContextPtr& ctx) {
             }
         }
 
-        return Json{{"areas", areas.rows()}, {"tables", rows}, {"serverTime", nowMs()}};
+        return Json{{"areas", areas.rows()}, {"tables", rows}, {"serverTime", nowMs()}, {"assistantLayoutVersion", 1}};
     });
 
     server.registerHandler(
@@ -765,6 +787,19 @@ void registerTables(const ContextPtr& ctx) {
             const auto now = nowMs();
 
             db::Transaction txn(ctx->db());
+            const bool guarded = getOr<bool>(request.payload, "assistantGuard", false);
+            services::Idempotency idem(*ctx);
+            if (guarded) {
+                require(!request.idempotencyKey.empty(), "Idempotency key is required");
+                if (auto replay = idem.begin(request.idempotencyKey, request.method, request.payload)) { txn.commit(); return *replay; }
+                require(request.payload.contains("assistantExpected"), "Masa planı tələb olunur");
+                verifyAssistantTable(*ctx, request.payload["assistantExpected"]);
+                require(request.payload["assistantExpected"]["id"] == id, "Masa planı uyğun deyil");
+                require(areaId != "area-delivery" && seats <= 100 && label.size() <= 240, "Masa məlumatı düzgün deyil");
+                auto duplicate = ctx->db().prepare("SELECT id FROM restaurant_tables WHERE active = 1 AND area_id = :area AND label = :label COLLATE NOCASE AND id <> :id");
+                duplicate.bind(":area", areaId).bind(":label", label).bind(":id", id);
+                if (duplicate.step()) throw PosError(std::string(protocol::err::kConflict), "Bu zalda eyni adlı masa var.");
+            }
             auto areaOk = ctx->db().prepare(
                 "SELECT id FROM restaurant_areas WHERE id = :id AND active = 1");
             areaOk.bind(":id", areaId);
@@ -808,6 +843,14 @@ void registerTables(const ContextPtr& ctx) {
                 ins.exec();
             }
             ctx->audit("tables.upsertTable", "restaurant_table", id, request.payload);
+            if (guarded) {
+                auto load = ctx->db().prepare(std::string(kTableQuery) + "AND t.id = :id");
+                load.bind(":id", id); require(load.step(), "Masa tapılmadı"); const auto result = load.row();
+                idem.complete(request.idempotencyKey, result, "restaurant_table", id);
+                txn.commit();
+                ctx->server().emitEvent(protocol::event::kTablesUpdated, Json{{"tableIds", {id}}});
+                return result;
+            }
             txn.commit();
 
             ctx->server().emitEvent(protocol::event::kTablesUpdated, Json{{"tableIds", {id}}});
@@ -820,6 +863,31 @@ void registerTables(const ContextPtr& ctx) {
     server.registerHandler(
         std::string(protocol::method::kTablesArchiveTable), [ctx](const ipc::Request& request) {
             ctx->requirePermission("tables.layout");
+            if (getOr<bool>(request.payload, "assistantGuard", false)) {
+                require(request.payload.contains("assistantExpectedTables") && request.payload["assistantExpectedTables"].is_array(), "Masa planı tələb olunur");
+                const auto& expected = request.payload["assistantExpectedTables"];
+                require(!expected.empty() && expected.size() <= 200 && !request.idempotencyKey.empty(), "1–200 masa və əməliyyat açarı tələb olunur");
+                db::Transaction txn(ctx->db());
+                services::Idempotency idem(*ctx);
+                if (auto replay = idem.begin(request.idempotencyKey, request.method, request.payload)) { txn.commit(); return *replay; }
+                std::set<std::string> ids;
+                for (const auto& table : expected) {
+                    verifyAssistantTable(*ctx, table);
+                    require(ids.insert(table["id"].get<std::string>()).second, "Masa təkrarlanır");
+                }
+                Json archived = Json::array();
+                for (const auto& id : ids) {
+                    auto update = ctx->db().prepare("UPDATE restaurant_tables SET active = 0, updated_at = :now WHERE id = :id");
+                    update.bind(":now", nowMs()).bind(":id", id); update.exec();
+                    ctx->audit("tables.archiveTable", "restaurant_table", id, Json{{"source", "assistant"}});
+                    archived.push_back(id);
+                }
+                const Json result{{"archivedIds", archived}, {"archivedCount", archived.size()}};
+                idem.complete(request.idempotencyKey, result, "restaurant_table", *ids.begin());
+                txn.commit();
+                ctx->server().emitEvent(protocol::event::kTablesUpdated, Json{{"tableIds", archived}});
+                return result;
+            }
             const auto tableId = getOr<std::string>(request.payload, "tableId", "");
             require(!tableId.empty(), "tableId is required");
 

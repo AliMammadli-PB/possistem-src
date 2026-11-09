@@ -1,0 +1,26 @@
+// Several requests in one message, typos answered with "did you mean", and misses flagged for the admin's complaint list.
+import test from 'node:test';import assert from 'node:assert/strict';
+import {chat} from './owner-chat-harness.mjs';
+const unknown=async()=>({id:'unknown',body:'Sualınızı tam başa düşmədim.',links:[],chips:[]});
+test('three requests in one message get three answers in order',async()=>{const c=chat({help:unknown});
+ const r=await c.send('anbarda ne var, bugunku satis ve aciq masalar ne qeder isleyib');
+ assert.match(r.body,/Mesajınızda 3 istək var/);assert.match(r.body,/1\) anbarda ne var\nAnbar: “bu”/);assert.match(r.body,/2\) bugunku satis\nSatış hesabatı/);assert.match(r.body,/3\) aciq masalar ne qeder isleyib\nAçıq masalar/);assert.ok(!r.missed);});
+test('a misspelt request is asked back, and runs only after "yes"',async()=>{const c=chat({help:unknown});
+ const ask=await c.send('anbrda ne var');assert.match(ask.body,/Bunu demək istəyirdiniz: “anbarda ne var”\?/);assert.doesNotMatch(ask.body,/Anbar: “bu”/);
+ assert.match((await c.send('Bəli, “anbarda ne var”')).body,/Anbar: “bu”/);
+ const no=await c.send('stkumda ne var');assert.match(no.body,/“stokumda ne var”/);assert.ok((await c.send('typo:no')).missed);});
+test('typos inside a multi-request are read through and named',async()=>{const c=chat({help:unknown});
+ const r=await c.send('salam anbrda ne var ve satislr ne qederdir');assert.match(r.body,/Mesajınızda 2 istək var/);assert.match(r.body,/«anbrda ne var» → «anbarda ne var»/);assert.match(r.body,/Satış hesabatı/);});
+test('two changes in one message: the first is planned, the second waits and is offered after confirmation',async()=>{const c=chat({help:unknown});
+ const r=await c.send('bugunku satisi goster, panda masasini sil ve doner 16 eded artir');assert.match(r.body,/Satış hesabatı/);assert.match(r.body,/1 masa silinəcək:\n11 · panda/);assert.match(r.body,/növbəti: «doner 16 eded artir»/);
+ const done=await c.send('Təsdiq et');assert.match(done.body,/1 masa silindi/);assert.match(done.body,/Sıradakı istəyiniz: «doner 16 eded artir»/);
+ const next=await c.send('queue:next');assert.match(next.body,/-16 ədəd → 0 ədəd/);});
+test('a product typo is offered as "did you mean"',async()=>{const c=chat({help:unknown});const r=await c.send('donr qaligi nece');
+ assert.match(r.body,/Bunu demək istəyirdiniz: .*doner\?/);assert.ok(r.choices.some(x=>x.label==='doner'));});
+test('an answer that did not understand is flagged for the admin, normal answers are not',async()=>{const c=chat({help:unknown});
+ assert.equal((await c.send('trump kimdir')).missed,true);assert.ok(!(await c.send('anbarda ne var')).missed);});
+test('"masa 1 və masa 2" or product lists are not split into separate requests',async()=>{const c=chat({help:unknown});
+ assert.doesNotMatch((await c.send('kola ve fanta qiymeti')).body,/Mesajınızda/);});
+test('a question at the reason step is not saved as the reason; "kimdir" after a product search leaves the search',async()=>{const c=chat({help:unknown});
+ await c.send('doner 16 eded artir');const r=await c.send('stkumda ne var');assert.match(r.body,/səbəbini gözləyirəm/);assert.equal(c.state.levels['i-dn'],-16000);
+ await c.send('Ləğv et');await c.send('donr qaligi nece');const who=await c.send('trump kimdir');assert.doesNotMatch(who.body,/adında məhsul tapmadım/);assert.equal(who.missed,true);});

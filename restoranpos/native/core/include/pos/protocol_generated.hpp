@@ -308,6 +308,7 @@ inline constexpr std::string_view kReportsTopProducts = "reports.topProducts";
 inline constexpr std::string_view kReportsSalesSummary = "reports.salesSummary";
 inline constexpr std::string_view kReportsPeriod = "reports.period";
 inline constexpr std::string_view kReportsRemotePeriod = "reports.remotePeriod";
+inline constexpr std::string_view kAssistantQuery = "assistant.query";
 inline constexpr std::string_view kReportsX = "reports.x";
 inline constexpr std::string_view kReportsZ = "reports.z";
 inline constexpr std::string_view kReportsList = "reports.list";

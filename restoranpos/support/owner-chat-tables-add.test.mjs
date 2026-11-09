@@ -1,0 +1,30 @@
+// "pandanın içinə 5 masa əlavə et", "10 masa əlavə et", "yeni zal yarat, ora əlavə et": several tables under one confirmation.
+import test from 'node:test';import assert from 'node:assert/strict';
+import {chat} from './owner-chat-harness.mjs';
+const unknown=async()=>({id:'unknown',body:'Sualınızı tam başa düşmədim.',links:[],chips:[]});
+const inArea=(c,name)=>{const area=c.state.areas.find(a=>a.nameAz===name);return area?c.state.tables.filter(t=>t.areaId===area.id).map(t=>t.label):[];};
+test('a missing area is offered, created, then its tables are planned and added after each confirmation',async()=>{const c=chat({help:unknown});
+ const r=await c.send('pandanin icine 5 eded masa elave et');assert.match(r.body,/“panda” adlı zal yoxdur/);assert.ok(r.choices.some(x=>x.value==='tableops:newarea'&&/“panda” zalını yarat/.test(x.label)));
+ const area=await c.send('tableops:newarea');assert.match(area.body,/Yeni zal: panda\. Yaradım\? Sonra ora 5 masa əlavə edəcəm\./);assert.equal(c.state.areas.length,1,'nothing before confirmation');
+ const plan=await c.send('Təsdiq et');assert.match(plan.body,/panda zalı yaradıldı\.\npanda zalına 5 masa əlavə ediləcək:\nMasa 1, Masa 2, Masa 3, Masa 4, Masa 5/);assert.equal(inArea(c,'panda').length,0);
+ const done=await c.send('Təsdiq et');assert.match(done.body,/5 masa əlavə olundu \(panda\)/);assert.deepEqual(inArea(c,'panda'),['Masa 1','Masa 2','Masa 3','Masa 4','Masa 5']);});
+test('"10 masa elave et" with one area continues its numbering',async()=>{const c=chat({help:unknown});
+ const plan=await c.send('10 masa elave et');assert.match(plan.body,/11 zalına 10 masa əlavə ediləcək:\nMasa 3, Masa 4/);await c.send('Təsdiq et');assert.equal(inArea(c,'11').length,13);});
+test('the pasted chat: "10 masa elave et" → "yeni zal yarat ora elave et" → "panda" → two confirmations',async()=>{const c=chat({help:unknown});c.state.areas.push({id:'a12',nameAz:'Bağ'});
+ assert.match((await c.send('10 masa elave et')).body,/10 masanı hansı zala əlavə edək\?/);
+ assert.match((await c.send('yeni zal yarat ora elave et')).body,/Yeni zalın adını yazın\. Sonra ora 10 masa əlavə edəcəm\./);
+ assert.match((await c.send('panda')).body,/Yeni zal: panda\. Yaradım\?/);assert.match((await c.send('Təsdiq et')).body,/panda zalına 10 masa əlavə ediləcək/);
+ await c.send('Təsdiq et');assert.equal(inArea(c,'panda').length,10);});
+test('with Groq on: an answer to an open step goes to the step, a known new request still interrupts it',async()=>{
+ const seen=[];const understand=async text=>{seen.push(text);return text==='bugun ne qeder satmisiq'?{kind:'commands',commands:['bugünkü satış'],unsupported:[],reply:''}:{kind:'commands',commands:[],unsupported:[],reply:''};};
+ const c=chat({help:unknown,understand});c.state.areas.push({id:'a12',nameAz:'Bağ'});
+ await c.send('10 masa elave et');await c.send('tableops:newarea');assert.match((await c.send('panda')).body,/Yeni zal: panda/);assert.ok(!seen.includes('panda'),'an answer is not sent to Groq');
+ assert.match((await c.send('Təsdiq et')).body,/panda zalına 10 masa/);
+ const sales=await c.send('bugun ne qeder satmisiq');assert.match(sales.body,/Satış hesabatı/);assert.equal(c.state.tables.filter(t=>t.areaId!=='a11').length,0,'the open table plan was dropped, nothing created');
+ assert.match((await c.send('anbarda ne var')).body,/Anbar/);assert.ok(seen.includes('anbarda ne var'),'short messages go to Groq too');});
+test('"Təsdiq et" while the area is still being chosen is not taken as an area name',async()=>{const c=chat({help:unknown});c.state.areas.push({id:'a12',nameAz:'Bağ'});
+ await c.send('10 masa elave et');const r=await c.send('Təsdiq et');assert.match(r.body,/Əvvəl zalı seçin/);assert.doesNotMatch(r.body,/“Təsdiq et”/);});
+test('"bütün masalarımı sil" stays with the rules when Groq has no command for it',async()=>{const c=chat({help:unknown,understand:async()=>({kind:'commands',commands:[],unsupported:['butun masalarimi sil'],reply:''})});
+ assert.match((await c.send('butun masalarimi sil')).body,/3 masadan 2-də açıq hesab/);});
+test('when Groq agrees with a clear rule reading, the rules’ fuller answer stays',async()=>{const c=chat({help:unknown,understand:async()=>({kind:'commands',commands:['boş masaları sil'],unsupported:[],reply:''})});
+ const r=await c.send('butun masalarimi sil');assert.match(r.body,/3 masadan 2-də açıq hesab/);assert.ok(!r.ai);});

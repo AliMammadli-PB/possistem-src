@@ -13,8 +13,12 @@ if(!main.includes(bridgeMarker)){
  main+='\n'+bridgeMarker+'\nlet _psAssistantClient=null;async function _psAssistantOnline(payload){try{if(!_psAssistantClient)_psAssistantClient=require("./assistant-online.cjs").createAssistantClient({credentials:async()=>{const tenant=ft(),device=await J(),staff=ce();if(!tenant||!device||tenant.customerId!==device.customerId||!staff?.userId)throw Error("Hesaba yenidən daxil olun.");return{token:tenant.token,baseUrl:device.baseUrl,customerId:tenant.customerId,deviceId:device.deviceId,actorId:staff.userId,permissions:staff.permissions||[]};}});return y(await _psAssistantClient.request(payload));}catch(e){return d("E_ASSISTANT_ONLINE",e.message||"Köməkçi serveri əlçatan deyil.");}}\n';
  fs.writeFileSync(path.join(root,'index.js'),main);
 }
+// The assistant's read-only data questions (core method assistant.query, see AssistantQuery.hpp).
+if(!preload.includes('assistantQuery: (sql)')){const anchor='  reports: {';if(preload.split(anchor).length!==2)throw Error('Reports preload anchor changed');preload=preload.replace(anchor,anchor+'\n    assistantQuery: (sql) => call("assistant.query", { sql }),');fs.writeFileSync(pre,preload);}
 if(!preload.includes('assistant: (payload)')){const anchor='support: {';if(preload.split(anchor).length!==2)throw Error('Assistant preload anchor changed');preload=preload.replace(anchor,anchor+'\n    assistant: (payload) => call("support.assistant", payload),');fs.writeFileSync(pre,preload);}
+if(!preload.includes('assistantArchive: (payload')){const anchor='tables: {';if(preload.split(anchor).length!==2)throw Error('Table preload anchor changed');preload=preload.replace(anchor,anchor+'\n    assistantArchive: (payload, options) => call("tables.archiveTable", {...payload,assistantGuard:true}, options),\n    assistantUpdate: (payload, options) => call("tables.upsertTable", {...payload,assistantGuard:true}, options),');fs.writeFileSync(pre,preload);}
 fs.copyFileSync(path.join(root,'support/online-client.cjs'),path.join(root,'out/main/assistant-online.cjs'));
+fs.copyFileSync(path.join(root,'support/history-store.cjs'),path.join(root,'out/main/history-store.cjs'));
 
 const file=path.join(root,'index-DAmHwBc4.js');let source=fs.readFileSync(file,'utf8');source=source.replace(/\/\* SUPPORT_KNOWLEDGE_START \*\/[\s\S]*?\/\* SUPPORT_KNOWLEDGE_END \*\//,'');
 const stock=await build({entryPoints:[path.join(root,'support/online.mjs')],bundle:true,write:false,format:'iife',globalName:'PsStockAssistant',target:'es2020'});

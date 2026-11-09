@@ -117,6 +117,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-object-login.mjs',
   'apply-restaurant-documents-access.mjs',
   'apply-restaurant-bootstrap-login.mjs',
+  'apply-restaurant-home-tables.mjs',
   'apply-restaurant-platform-auth.mjs',
   'apply-restaurant-platform-pin.mjs',
   'apply-restaurant-buildstamp.mjs',

@@ -24,8 +24,140 @@ var PsStockAssistant = (() => {
     chatTranscript: () => chatTranscript,
     copyChatText: () => copyChatText,
     createOnlineConversation: () => createOnlineConversation,
-    normalize: () => normalize2
+    normalize: () => normalize2,
+    openLocalConversation: () => openLocalConversation
   });
+
+  // support/printer-tools.mjs
+  function createPrinterTools(api, has) {
+    const need = () => {
+      if (!has("receipt.print") || !has("printer.manage")) throw Error("Printer s\u0131na\u011F\u0131 \xFC\xE7\xFCn printer idar\u0259si v\u0259 \xE7ap icaz\u0259si laz\u0131md\u0131r.");
+    };
+    const data = (r) => {
+      if (!r?.success) throw Error(r?.error?.message || "Printer m\u0259lumat\u0131 al\u0131nmad\u0131.");
+      return r.data;
+    };
+    const virtual = (name) => /^(?:auto|virtual|spool|offline|pdf|none|disabled)(?::|$)/i.test(name) || /microsoft print to pdf|onenote|xps document/i.test(name);
+    const list = async () => {
+      need();
+      if (typeof api.print?.printers !== "function") throw Error("Printer ba\u011Flant\u0131s\u0131 \xFC\xE7\xFCn NEWEST-i tam ba\u011Flay\u0131b a\xE7\u0131n.");
+      const result = data(await api.print.printers());
+      if (!Array.isArray(result?.printers)) throw Error("Printer siyah\u0131s\u0131 al\u0131nmad\u0131.");
+      const targets = result.printers.map((p) => typeof p === "string" ? p : p.name || p.target).filter((p) => typeof p === "string" && p && !virtual(p));
+      const current = typeof result.receipt === "string" ? result.receipt : "";
+      if (current && !virtual(current)) targets.push(current);
+      return { current, printers: [...new Set(targets)].map((target) => ({ target, name: target })) };
+    };
+    const test = async (plan, key, valid = () => true) => {
+      need();
+      const fresh = await list();
+      if (!fresh.printers.some((p) => p.target === plan.target)) throw Error("Se\xE7ilmi\u015F printer art\u0131q m\xF6vcud deyil. Yenid\u0259n se\xE7in.");
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib. S\u0131naq \xE7eki g\xF6nd\u0259rilm\u0259di.");
+      if (typeof api.print?.enqueue !== "function") throw Error("Printer s\u0131na\u011F\u0131 bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil.");
+      const job = data(await api.print.enqueue({ kind: "test_page", printer: plan.target, exactTarget: true, idempotencyKey: key }, { idempotencyKey: key }));
+      if (!job || typeof (job.id || job.jobId) !== "string" || typeof job.status !== "string") throw Error("Printer cavab\u0131 al\u0131nmad\u0131. Parametrl\u0259r \u2192 Printerd\u0259 n\xF6vb\u0259ni yoxlay\u0131n; avtomatik t\u0259krarlam\u0131ram.");
+      return { id: job.id || job.jobId, status: job.status, lastError: job.lastError || "", printer: job.printer || plan.target };
+    };
+    return { printerPermissions: () => ({ enabled: typeof api.print?.printers === "function" && typeof api.print?.enqueue === "function", print: has("receipt.print") && has("printer.manage") }), printerList: list, printerTest: test };
+  }
+
+  // support/table-tools.mjs
+  function createTableTools(api, has, { normalize: normalize3 }) {
+    const need = () => {
+      if (!has("tables.layout")) throw Error("Masa plan\u0131n\u0131 d\u0259yi\u015Fm\u0259k \xFC\xE7\xFCn icaz\u0259niz yoxdur.");
+    };
+    const data = (r) => {
+      if (!r?.success) throw Error(r?.error?.message || "Masa m\u0259lumat\u0131 al\u0131nmad\u0131.");
+      return r.data;
+    };
+    const layout = async () => {
+      need();
+      const value = data(await api.tables.list());
+      if (!Array.isArray(value?.tables) || !Array.isArray(value?.areas)) throw Error("Masa siyah\u0131s\u0131 al\u0131nmad\u0131.");
+      return { version: Number(value.assistantLayoutVersion) || 0, supported: typeof api.tables.assistantArchive === "function" && typeof api.tables.assistantUpdate === "function", areas: value.areas.filter((a) => a.id !== "area-delivery").map((a) => ({ id: a.id, name: a.nameAz || a.name })), tables: value.tables.filter((t) => t.areaId !== "area-delivery").map((t) => ({ id: t.id, label: t.label, areaId: t.areaId, seats: t.seats, shape: t.shape, sortOrder: t.sortOrder, updatedAt: t.updatedAt, busy: !!t.orderId })) };
+    };
+    const fields = ["id", "label", "areaId", "seats", "shape", "sortOrder", "updatedAt"];
+    const expected = (t) => Object.fromEntries(fields.map((k) => [k, t[k]]));
+    const same = (a, b) => fields.every((k) => a?.[k] === b?.[k]);
+    const apply = async (draft, key, valid = () => true) => {
+      need();
+      const current = await layout();
+      if (current.version < 1 || !current.supported) throw Error("Bu \u0259m\u0259liyyat \xFC\xE7\xFCn NEWEST-i yenid\u0259n a\xE7\u0131n.");
+      if (!Array.isArray(draft.rows) || !draft.rows.length || draft.rows.length > 200 || new Set(draft.rows.map((r) => r.id)).size !== draft.rows.length) throw Error("Masa plan\u0131 d\xFCzg\xFCn deyil.");
+      for (const row of draft.rows) {
+        const fresh = current.tables.find((t) => t.id === row.id);
+        if (!fresh || fresh.busy || !same(fresh, row)) throw Error("Masa d\u0259yi\u015Fib v\u0259 ya a\xE7\u0131q hesab\u0131 var. Yeni plan qurun.");
+      }
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      let result;
+      if (draft.kind === "delete") result = data(await api.tables.assistantArchive({ assistantExpectedTables: draft.rows.map(expected), idempotencyKey: key }, { idempotencyKey: key }));
+      else if (draft.kind === "edit" && draft.rows.length === 1) {
+        const row = draft.rows[0], wanted = { ...row };
+        if (draft.field === "name") {
+          if (typeof draft.value !== "string" || !draft.value.trim() || draft.value.length > 100) throw Error("Masa ad\u0131 d\xFCzg\xFCn deyil.");
+          wanted.label = draft.value.trim();
+        } else if (draft.field === "seats") {
+          if (!Number.isInteger(draft.value) || draft.value < 1 || draft.value > 100) throw Error("Yer say\u0131 1\u2013100 olmal\u0131d\u0131r.");
+          wanted.seats = draft.value;
+        } else if (draft.field === "area") {
+          if (!current.areas.some((a) => a.id === draft.value)) throw Error("Zal art\u0131q m\xF6vcud deyil.");
+          wanted.areaId = draft.value;
+        } else throw Error("D\u0259yi\u015Fiklik n\xF6v\xFC d\xFCzg\xFCn deyil.");
+        if (current.tables.some((t) => t.id !== row.id && t.areaId === wanted.areaId && normalize3(t.label) === normalize3(wanted.label))) throw Error("Bu zalda eyni adl\u0131 masa var.");
+        if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+        result = data(await api.tables.assistantUpdate({ id: row.id, label: wanted.label, areaId: wanted.areaId, seats: wanted.seats, shape: row.shape, sortOrder: row.sortOrder, assistantExpected: expected(row), idempotencyKey: key }, { idempotencyKey: key }));
+      } else throw Error("Masa \u0259m\u0259liyyat\u0131 d\xFCzg\xFCn deyil.");
+      const checked = await layout();
+      if (draft.kind === "delete") {
+        if (draft.rows.some((r) => checked.tables.some((t) => t.id === r.id))) throw Error("Silinm\u0259 n\u0259tic\u0259sini Masa idar\u0259sind\u0259n yoxlay\u0131n. \u018Fm\u0259liyyat avtomatik t\u0259krarlanmayacaq.");
+      } else {
+        const now = checked.tables.find((t) => t.id === draft.rows[0].id), field = { name: "label", seats: "seats", area: "areaId" }[draft.field];
+        if (now?.[field] !== draft.value) throw Error("D\u0259yi\u015Fiklik n\u0259tic\u0259sini Masa idar\u0259sind\u0259n yoxlay\u0131n.");
+      }
+      return result;
+    };
+    const createArea = async (draft, key, valid = () => true) => {
+      need();
+      const current = await layout();
+      if (current.version < 1 || !current.supported) throw Error("NEWEST-i yenid\u0259n a\xE7\u0131n.");
+      if (typeof draft.name !== "string" || !draft.name.trim() || draft.name.length > 100) throw Error("Zal ad\u0131 d\xFCzg\xFCn deyil.");
+      const old = current.areas.find((a) => a.id === draft.id);
+      if (old) {
+        if (old.name !== draft.name) throw Error("Zal plan\u0131 d\u0259yi\u015Fib.");
+        return { id: old.id, replayed: true };
+      }
+      if (current.areas.some((a) => normalize3(a.name) === normalize3(draft.name))) throw Error("Bu adda zal art\u0131q var.");
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      const result = data(await api.tables.upsertArea({ id: draft.id, nameAz: draft.name, nameTr: draft.name, nameEn: draft.name, idempotencyKey: key }, { idempotencyKey: key }));
+      const check = await layout();
+      if (!check.areas.some((a) => a.id === draft.id && a.name === draft.name)) throw Error("Zal\u0131n yarad\u0131lmas\u0131n\u0131 t\u0259sdiql\u0259m\u0259k al\u0131nmad\u0131. Masa idar\u0259sind\u0259n yoxlay\u0131n.");
+      return result;
+    };
+    const createMany = async (draft, valid = () => true) => {
+      need();
+      const current = await layout();
+      if (!Array.isArray(draft?.rows) || !draft.rows.length || draft.rows.length > 50 || new Set(draft.rows.map((r) => r.id)).size !== draft.rows.length) throw Error("Masa plan\u0131 d\xFCzg\xFCn deyil.");
+      if (!current.areas.some((a) => a.id === draft.areaId)) throw Error("Zal art\u0131q m\xF6vcud deyil. Yeni plan qurun.");
+      for (const row of draft.rows) {
+        if (typeof row.id !== "string" || typeof row.key !== "string" || typeof row.label !== "string" || !row.label.trim() || row.label.length > 100 || !Number.isInteger(row.seats) || row.seats < 1 || row.seats > 100) throw Error("Masa plan\u0131 d\xFCzg\xFCn deyil.");
+        const mine = current.tables.find((t) => t.id === row.id);
+        if (mine) {
+          if (mine.label !== row.label || mine.areaId !== draft.areaId) throw Error("Masa plan\u0131 d\u0259yi\u015Fib. Yeni plan qurun.");
+          continue;
+        }
+        if (current.tables.some((t) => t.areaId === draft.areaId && normalize3(t.label) === normalize3(row.label))) throw Error(`\u201C${row.label}\u201D adl\u0131 masa bu zalda art\u0131q var. Yeni plan qurun.`);
+      }
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      for (const row of draft.rows) {
+        if (current.tables.some((t) => t.id === row.id)) continue;
+        data(await api.tables.upsertTable({ id: row.id, areaId: draft.areaId, label: row.label, seats: row.seats, shape: "square", idempotencyKey: row.key }, { idempotencyKey: row.key }));
+      }
+      const checked = await layout(), missing = draft.rows.filter((r) => !checked.tables.some((t) => t.id === r.id));
+      if (missing.length) throw Error(`${draft.rows.length - missing.length} masa yarad\u0131ld\u0131, ${missing.length} yarad\u0131lmad\u0131. Masa idar\u0259sind\u0259n yoxlay\u0131n; \u0259m\u0259liyyat avtomatik t\u0259krarlanmayacaq.`);
+      return { created: draft.rows.length };
+    };
+    return { tablePermissions: () => ({ write: has("tables.layout"), enabled: typeof api.tables?.assistantArchive === "function" && typeof api.tables?.assistantUpdate === "function", many: typeof api.tables?.upsertTable === "function" }), tableLayout: layout, tableApply: apply, tableCreateArea: createArea, tableCreateMany: createMany };
+  }
 
   // support/setup-tools.mjs
   function createSetupTools(api, has, { normalize: normalize3 }) {
@@ -151,13 +283,13 @@ var PsStockAssistant = (() => {
       const data = dataOf(goods), warehouseData = dataOf(stores);
       return { products: requireList(data?.ingredients, "M\u0259hsul siyah\u0131s\u0131").filter((p) => p.active !== 0 && p.active !== false), warehouses: requireList(warehouseData?.warehouses, "Anbar siyah\u0131s\u0131"), homeWarehouseId: warehouseData.homeWarehouseId || "", version: Number(data.assistantToolsVersion) || 0 };
     };
-    const read = async (id, warehouseId) => {
-      const current = await catalogue(), product = current.products.find((row) => row.id === id);
+    const read = async (id2, warehouseId) => {
+      const current = await catalogue(), product = current.products.find((row) => row.id === id2);
       if (!product) throw Error("M\u0259hsul art\u0131q m\xF6vcud deyil. Siyah\u0131dan yenid\u0259n se\xE7in.");
       const warehouse = current.warehouses.find((row) => row.id === warehouseId);
       if (!warehouse) throw Error("Qal\u0131\u011F\u0131 g\xF6rm\u0259k \xFC\xE7\xFCn anbar se\xE7in.");
       const levels = dataOf(await api.inventory.levels(warehouseId));
-      const level = requireList(levels?.levels, "Anbar qal\u0131\u011F\u0131").find((row) => row.id === id || row.ingredientId === id);
+      const level = requireList(levels?.levels, "Anbar qal\u0131\u011F\u0131").find((row) => row.id === id2 || row.ingredientId === id2);
       if (!level || !Number.isSafeInteger(level.qtyMilli)) throw Error("Bu m\u0259hsulun qal\u0131q m\u0259lumat\u0131 al\u0131nmad\u0131. S\u0131f\u0131r qal\u0131q kimi q\u0259bul etm\u0259yin.");
       return { product, warehouse, qtyMilli: Number(level.qtyMilli), version: current.version, readAt: (/* @__PURE__ */ new Date()).toISOString() };
     };
@@ -188,8 +320,7 @@ var PsStockAssistant = (() => {
       const byId = new Map(levels.map((row) => [row.id || row.ingredientId, row]));
       return { warehouse, readAt: (/* @__PURE__ */ new Date()).toISOString(), products: current.products.map((product) => ({ ...product, qtyMilli: Number.isSafeInteger(byId.get(product.id)?.qtyMilli) ? byId.get(product.id).qtyMilli : null })) };
     };
-    const sales = async (period) => {
-      need("reports.view");
+    const range = (period) => {
       const now = Date.now(), offset = 4 * 36e5, local = new Date(now + offset);
       let from = Math.floor((now + offset) / 864e5) * 864e5 - offset, to = now;
       if (period === "yesterday") {
@@ -197,6 +328,18 @@ var PsStockAssistant = (() => {
         from -= 864e5;
       } else if (period === "week") from -= (local.getUTCDay() + 6) % 7 * 864e5;
       else if (period === "month") from = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) - offset;
+      else if (period === "lastmonth") {
+        to = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) - offset - 1;
+        from = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - 1, 1) - offset;
+      } else if (period === "lastweek") {
+        to = from - (local.getUTCDay() + 6) % 7 * 864e5 - 1;
+        from = to + 1 - 7 * 864e5;
+      }
+      return { from, to };
+    };
+    const sales = async (period) => {
+      need("reports.view");
+      const { from, to } = range(period);
       const report = dataOf(await api.reports.period({ from, to }));
       if (!report?.sales || !Number.isSafeInteger(report.sales.netMinor) || !Number.isSafeInteger(report.sales.grossMinor) || !Number.isSafeInteger(report.sales.refundMinor)) throw Error("Sat\u0131\u015F hesabat\u0131 d\xFCzg\xFCn al\u0131nmad\u0131.");
       return { report, from, to };
@@ -236,7 +379,93 @@ var PsStockAssistant = (() => {
       const data = dataOf(await api.orders.get(table.orderId));
       return { table, items: requireList(data?.items, "Masa m\u0259hsullar\u0131").filter((i) => i.status !== "voided") };
     };
-    return { catalogue, read, save, overview, sales, cash, subscription, openPayment, tables, tableOrder, ...createSetupTools(api, has, { normalize }) };
+    const reportX = async (key, valid = () => true) => {
+      need("reports.x");
+      if (typeof api.reports?.x !== "function") throw Error("X hesabat\u0131 bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil.");
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      const r = dataOf(await api.reports.x("", { idempotencyKey: key }));
+      if (!r?.canonical?.sales) throw Error("X hesabat\u0131 al\u0131nmad\u0131.");
+      return { sequenceNo: r.sequenceNo, businessDate: r.canonical.businessDate, sales: r.canonical.sales, orders: r.canonical.orders || null, cash: r.canonical.cash || null, openTableCount: r.canonical.openTableCount || 0, openTablesTotalMinor: r.canonical.openTablesTotalMinor || 0 };
+    };
+    const zReadiness = async () => {
+      need("reports.z");
+      if (typeof api.businessDay?.readiness !== "function") throw Error("Z hesabat\u0131 bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil.");
+      return dataOf(await api.businessDay.readiness(""));
+    };
+    const reportZ = async (key, valid = () => true) => {
+      need("reports.z");
+      const ready = dataOf(await api.businessDay.readiness(""));
+      if (!ready?.ready) throw Error("G\xFCn h\u0259l\u0259 ba\u011Flanma\u011Fa haz\u0131r deyil. Yenid\u0259n yoxlay\u0131n.");
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      const r = dataOf(await api.reports.z("", "K\xF6m\u0259k\xE7i il\u0259 ba\u011Fland\u0131", { idempotencyKey: key }));
+      if (!r?.canonical?.sales) throw Error("Z hesabat\u0131 al\u0131nmad\u0131. G\xFCn\xFCn v\u0259ziyy\u0259tini \u0130dar\u0259 panelind\u0259n yoxlay\u0131n.");
+      return { sequenceNo: r.sequenceNo, businessDate: r.canonical.businessDate, sales: r.canonical.sales, orders: r.canonical.orders || null, cash: r.canonical.cash || null };
+    };
+    const savePdfTable = async (doc) => {
+      if (typeof api.files?.savePdf !== "function") throw Error("PDF yaratmaq \xFC\xE7\xFCn Restoran POS-un yeni versiyas\u0131 laz\u0131md\u0131r.");
+      const esc = (v) => String(v ?? "\u2014").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const cell = (v) => typeof v === "number" ? v.toLocaleString("az-AZ", { maximumFractionDigits: 3 }) : v;
+      const columns = Array.isArray(doc?.columns) ? doc.columns.slice(0, 12) : [], rows = Array.isArray(doc?.rows) ? doc.rows.slice(0, 500) : [];
+      const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#12325b;margin:28px}h1{font-size:20px;margin:0 0 4px}p{margin:2px 0 12px;color:#526b8a;font-size:12px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #cbd9ef;padding:5px 7px;text-align:left}th{background:#eef3fb}tr:nth-child(even) td{background:#f8fafd}.foot{margin-top:14px;font-size:10px;color:#7a8ca5}.total td{font-weight:700;background:#eef3fb}</style></head><body><h1>${esc(doc.title)}</h1><p>${esc(doc.subtitle || "")}</p><table><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((v) => `<td>${esc(cell(v))}</td>`).join("")}</tr>`).join("")}${Array.isArray(doc.total) ? `<tr class="total">${doc.total.map((v) => `<td>${esc(cell(v))}</td>`).join("")}</tr>` : ""}</tbody></table><div class="foot">Possistem Restoran POS \xB7 k\xF6m\u0259k\xE7i il\u0259 haz\u0131rlan\u0131b \xB7 ${esc((/* @__PURE__ */ new Date()).toLocaleString("az-AZ"))}</div></body></html>`;
+      const name = String(doc.filename || "possistem-hesabat").replace(/[\\/:*?"<>|]+/g, "-").trim().slice(0, 80) + ".pdf";
+      const out = dataOf(await api.files.savePdf(name, html));
+      return { canceled: !!out?.canceled, path: out?.path || "", bytes: out?.bytes || 0 };
+    };
+    const topProducts = async (limit = 10) => {
+      need("reports.view");
+      return requireList(dataOf(await api.reports.topProducts(Math.min(20, Math.max(1, Number(limit) || 10))))?.products, "\u018Fn \xE7ox sat\u0131lanlar");
+    };
+    const purchases = async () => {
+      need("suppliers.view");
+      if (typeof api.suppliers?.purchases !== "function") throw Error("Qaim\u0259l\u0259r bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil.");
+      return requireList(dataOf(await api.suppliers.purchases())?.purchases, "Qaim\u0259l\u0259r").slice(0, 200).map((p) => ({ id: p.id, number: p.number, supplierName: p.supplierName, warehouseName: p.warehouseName, status: p.status, totalMinor: p.totalMinor, dueMinor: p.dueMinor, invoiceNo: p.invoiceNo, createdAt: p.createdAt, receivedAt: p.receivedAt }));
+    };
+    const courierReport = async (period) => {
+      need("delivery.view");
+      if (typeof api.delivery?.courierReport !== "function") throw Error("Kuryer hesabat\u0131 bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil.");
+      const { from, to } = range(period);
+      const data = dataOf(await api.delivery.courierReport({ from, to }));
+      return { from, to, couriers: requireList(data?.couriers, "Kuryerl\u0259r") };
+    };
+    const stockValue = async (warehouseId) => {
+      need("inventory.view");
+      const data = dataOf(await api.inventory.valuation(warehouseId || ""));
+      if (!Number.isSafeInteger(data?.totalMinor)) throw Error("Anbar\u0131n d\u0259y\u0259ri al\u0131nmad\u0131.");
+      return { totalMinor: data.totalMinor, lines: data.lines, method: data.method };
+    };
+    const writeOff = async (draft, key, valid = () => true) => {
+      need("inventory.adjust");
+      if (!draft?.ingredientId || !Number.isSafeInteger(draft.qtyMilli) || draft.qtyMilli <= 0 || draft.qtyMilli > 1e9 || typeof draft.reason !== "string" || !draft.reason.trim() || draft.reason.length > 200) throw Error("Silinm\u0259 plan\u0131 d\xFCzg\xFCn deyil.");
+      const now = await read(draft.ingredientId, draft.warehouseId);
+      if (now.qtyMilli !== draft.expectedQtyMilli) throw Error("Qal\u0131q d\u0259yi\u015Fib. Yeni plan qurun.");
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      return dataOf(await api.inventory.waste({ ingredientId: draft.ingredientId, warehouseId: draft.warehouseId, qtyMilli: draft.qtyMilli, reason: draft.reason.trim(), idempotencyKey: key }));
+    };
+    const suppliersList = async () => {
+      need("suppliers.view");
+      return requireList(dataOf(await api.suppliers.list())?.suppliers, "T\u0259dar\xFCk\xE7\xFCl\u0259r").filter((x) => x.active !== 0 && x.active !== false).map((x) => ({ id: x.id, name: x.name }));
+    };
+    const receiveGoods = async (draft, valid = () => true) => {
+      need("suppliers.manage");
+      need("suppliers.receive");
+      if (!draft?.supplierId || !Array.isArray(draft.lines) || !draft.lines.length || draft.lines.length > 20 || typeof draft.key !== "string" || typeof draft.receiveKey !== "string") throw Error("Mal q\u0259bulu plan\u0131 d\xFCzg\xFCn deyil.");
+      for (const l of draft.lines) if (!l.ingredientId || !Number.isSafeInteger(l.qtyMilli) || l.qtyMilli <= 0 || !Number.isSafeInteger(l.unitCostMinor) || l.unitCostMinor < 0) throw Error("Mal q\u0259bulu s\u0259tri d\xFCzg\xFCn deyil.");
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      const saved = dataOf(await api.suppliers.savePurchase({ supplierId: draft.supplierId, warehouseId: draft.warehouseId || "", note: "K\xF6m\u0259k\xE7i il\u0259 yaz\u0131l\u0131b", draft: false, lines: draft.lines.map((l) => ({ ingredientId: l.ingredientId, qtyMilli: l.qtyMilli, unitCostMinor: l.unitCostMinor })), idempotencyKey: draft.key }));
+      if (!saved?.id) throw Error("Al\u0131\u015F qaim\u0259si yarad\u0131lmad\u0131.");
+      if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+      const received = dataOf(await api.suppliers.receiveLines({ purchaseId: saved.id, idempotencyKey: draft.receiveKey }, { idempotencyKey: draft.receiveKey }));
+      return { purchaseId: saved.id, totalMinor: saved.totalMinor, received };
+    };
+    const dataQuery = async (sql) => {
+      need("reports.view");
+      if (typeof api.reports?.assistantQuery !== "function") throw Error("Bu sual \xFC\xE7\xFCn Restoran POS-un yeni versiyas\u0131 laz\u0131md\u0131r.");
+      if (typeof sql !== "string" || !/^\s*(?:select|with)\b/i.test(sql) || sql.length > 4e3) throw Error("Yaln\u0131z oxuyan sor\u011Fu icra olunur.");
+      const data = dataOf(await api.reports.assistantQuery(sql));
+      if (!Array.isArray(data?.columns) || !Array.isArray(data?.rows)) throw Error("M\u0259lumat al\u0131nmad\u0131.");
+      return data;
+    };
+    return { catalogue, read, save, overview, sales, cash, subscription, openPayment, tables, tableOrder, dataQuery, savePdfTable, zReadiness, reportZ, writeOff, suppliersList, receiveGoods, reportX, topProducts, purchases, courierReport, stockValue, ...createSetupTools(api, has, { normalize }), ...createTableTools(api, has, { normalize }), ...createPrinterTools(api, has) };
   }
 
   // support/clipboard.mjs
@@ -282,66 +511,235 @@ var PsStockAssistant = (() => {
     }
   }
 
+  // support/persistent-chat.mjs
+  var cache = /* @__PURE__ */ new Map();
+  var keys = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout"];
+  var id = () => crypto.randomUUID();
+  var clone = (x) => JSON.parse(JSON.stringify(x));
+  async function openLocalConversation(options) {
+    const { transport, has, language = "az", valid = () => true } = options;
+    const call = async (payload) => {
+      const r = await transport(payload);
+      if (!r?.success) throw Error(r?.error?.message || "Lokal s\xF6hb\u0259t saxlanmad\u0131.");
+      return r.data;
+    };
+    const { scope, record } = await call({ action: "history:load" });
+    if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+    const key = JSON.stringify([scope, keys.filter(has), language]), old = cache.get(key);
+    if (old?.valid() && old.generation() === record.generation) return old;
+    let generation = record.generation, saved = new Set(record.messages.map((m) => m.id)), queue = Promise.resolve(), timer;
+    let online = createOnlineConversation({ ...options, initialState: record.interrupted ? null : record.online });
+    let state = { messages: record.messages, draft: record.draft || "", mode: record.mode || "assistant", busy: false, error: "", failedInput: "", choicesActive: !!online.snapshot().session, reported: Array.isArray(record.online?.reported) ? record.online.reported : [] };
+    const listeners = /* @__PURE__ */ new Set(), emit = () => {
+      for (const f of listeners) f(state);
+    };
+    const update = (patch) => {
+      state = { ...state, ...patch };
+      emit();
+    };
+    const persist = (interrupted = false) => {
+      const snapshot = clone({ messages: state.messages, draft: state.draft, mode: state.mode, online: { ...online.snapshot(), reported: state.reported }, interrupted }), version = generation;
+      const work = async () => {
+        if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+        const pending = snapshot.messages.filter((m) => !saved.has(m.id));
+        for (let i = 0; i < Math.max(1, pending.length); i += 10) {
+          const messages = pending.slice(i, i + 10);
+          await call({ action: "history:save", scope, record: { ...snapshot, messages, generation: version } });
+          for (const m of messages) saved.add(m.id);
+        }
+      };
+      queue = queue.catch(() => {
+      }).then(work);
+      return queue;
+    };
+    const append = (author, body, extra = {}) => update({ messages: [...state.messages, { id: id(), author, body, createdAt: (/* @__PURE__ */ new Date()).toISOString(), ...extra }] });
+    if (record.interrupted) {
+      append("helper", "\u018Fvv\u0259lki sor\u011Fu yar\u0131m\xE7\u0131q qal\u0131b. Mesajlar\u0131n\u0131z saxlan\u0131l\u0131b. D\u0259yi\u015Fiklik etmi\u015Fdinizs\u0259, n\u0259tic\u0259ni m\xFCvafiq b\xF6lm\u0259d\u0259n yoxlay\u0131n; \u0259m\u0259liyyat avtomatik t\u0259krarlanmayacaq.");
+    }
+    const controller = {
+      valid,
+      generation: () => generation,
+      get: () => state,
+      subscribe(fn) {
+        listeners.add(fn);
+        fn(state);
+        return () => listeners.delete(fn);
+      },
+      setDraft(value) {
+        update({ draft: value });
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          persist(state.busy).catch((e) => update({ error: e.message }));
+        }, 200);
+      },
+      setMode(mode) {
+        update({ mode });
+        persist(state.busy).catch((e) => update({ error: e.message }));
+      },
+      async send(input, display = input) {
+        const value = input.trim();
+        if (!value || state.busy) return;
+        if (!valid()) {
+          update({ error: "Hesab d\u0259yi\u015Fib." });
+          return;
+        }
+        if (globalThis.navigator?.onLine === false) {
+          update({ error: "\u0130nternet yoxdur. K\xF6m\u0259k\xE7i yaln\u0131z internet olanda i\u015Fl\u0259yir. Mesaj g\xF6nd\u0259rilm\u0259di.", failedInput: value });
+          return;
+        }
+        clearTimeout(timer);
+        update({ busy: true, error: "", draft: "", failedInput: "", choicesActive: false });
+        append("me", display);
+        try {
+          await persist(true);
+          const [answer] = await Promise.all([online.send(value, state.messages.slice(-100), valid), new Promise((resolve) => setTimeout(resolve, 650))]);
+          if (!valid()) return;
+          append("helper", answer.body, { reply: answer.reply, choices: answer.choices, ...answer.ai ? { ai: true } : {} });
+          update({ choicesActive: !!online.snapshot().session });
+        } catch (e) {
+          if (valid()) update({ error: e.message || String(e), failedInput: value });
+        } finally {
+          if (valid()) {
+            try {
+              await persist(false);
+            } catch (e) {
+              update({ error: e.message || "S\xF6hb\u0259t saxlanmad\u0131." });
+            }
+            update({ busy: false });
+          }
+        }
+      },
+      async report(messageId) {
+        const index = state.messages.findIndex((m) => m.id === messageId);
+        if (index < 0 || state.messages[index].author !== "helper" || state.reported.includes(messageId)) return;
+        if (globalThis.navigator?.onLine === false) {
+          update({ error: "\u0130nternet yoxdur. \u015Eikay\u0259t g\xF6nd\u0259rilm\u0259di." });
+          return;
+        }
+        const reported = [...state.reported, messageId], from = Math.max(0, index - 60);
+        const transcript = state.messages.slice(from, index + 20).map((m) => ({ author: m.author, body: String(m.body || "\u2014").slice(0, 16e3), ...m.createdAt ? { createdAt: m.createdAt } : {}, ...reported.includes(m.id) ? { reported: true } : {} }));
+        try {
+          await online.report(generation, transcript);
+          update({ reported, error: "" });
+          await persist(state.busy);
+        } catch (e) {
+          update({ error: "\u015Eikay\u0259t g\xF6nd\u0259rilm\u0259di: " + (e.message || e) });
+        }
+      },
+      async clear() {
+        if (state.busy) return;
+        clearTimeout(timer);
+        update({ busy: true });
+        try {
+          await queue.catch(() => {
+          });
+          const result = await call({ action: "history:clear", scope, generation });
+          generation = result.record.generation;
+          saved = /* @__PURE__ */ new Set();
+          online = createOnlineConversation(options);
+          update({ messages: [], draft: "", error: "", failedInput: "", choicesActive: false, reported: [] });
+        } finally {
+          update({ busy: false });
+        }
+      }
+    };
+    cache.set(key, controller);
+    if (record.interrupted) await persist(false).catch((e) => update({ error: e.message }));
+    return controller;
+  }
+
   // support/online.mjs
-  var methods = ["catalogue", "read", "save", "overview", "sales", "cash", "subscription", "openPayment", "tables", "tableOrder", "setupRaw", "setupMenu", "setupRecipe", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupTables", "setupCreateTable"];
+  var methods = ["catalogue", "read", "save", "overview", "sales", "cash", "subscription", "openPayment", "tables", "tableOrder", "setupRaw", "setupMenu", "setupRecipe", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupTables", "setupCreateTable", "tableLayout", "tableApply", "tableCreateArea", "tableCreateMany", "printerList", "printerTest", "reportX", "topProducts", "purchases", "courierReport", "stockValue", "writeOff", "suppliersList", "receiveGoods", "dataQuery", "zReadiness", "reportZ", "savePdfTable"];
   var stable = (x) => JSON.stringify(x, (_key, value) => value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map((k) => [k, value[k]])) : value);
-  var writes = /* @__PURE__ */ new Set(["save", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupCreateTable"]);
+  var writes = /* @__PURE__ */ new Set(["save", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupCreateTable", "tableApply", "tableCreateArea", "tableCreateMany", "printerTest", "reportX", "writeOff", "receiveGoods", "reportZ"]);
   var normalize2 = (x) => String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ə/g, "e").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ç/g, "c").trim();
-  function createOnlineConversation({ api, has, billing, transport, language = "az" }) {
+  function createOnlineConversation({ api, has, billing, transport, language = "az", initialState = null }) {
     const tools = createTools(api, has, { billing });
-    let session = null, approval = null, locked = false;
-    const permissions = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout"].filter(has);
+    let session = null, approval = null, locked = false, startedAt = 0;
+    const permissions = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout", "receipt.print", "printer.manage", "reports.x", "suppliers.view", "delivery.view", "suppliers.manage", "suppliers.receive", "reports.z"].filter(has);
     const call = async (action, payload) => {
       const r = await transport({ action, ...payload });
       if (!r?.success) throw Error(r?.error?.message || "Serverl\u0259 \u0259laq\u0259 yoxdur. Yenid\u0259n yoxlay\u0131n.");
       return r.data;
     };
-    return { async send(input, history = [], valid = () => true) {
-      if (locked) throw Error("Cavab haz\u0131rlan\u0131r.");
-      locked = true;
-      let sentWrite = false;
-      try {
-        if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
-        if (!session) session = await call("create", { protocol: 1, language, permissions, tools: methods });
-        const approved = approval;
-        approval = null;
-        const requestId = crypto.randomUUID();
-        let response = await call("message", { sessionId: session.sessionId, secret: session.secret, requestId, text: input });
-        for (let step = 0; response.task; step++) {
-          if (step >= 24) throw Error("\u018Fm\u0259liyyat \xE7ox uzand\u0131. He\xE7 bir yeni \u0259m\u0259liyyat g\xF6nd\u0259rilm\u0259di.");
+    if (stable(initialState?.tools || []) === stable(methods) && initialState?.session && Date.now() - initialState.startedAt < 23 * 60 * 60 * 1e3 && initialState.language === language && stable(initialState.permissions) === stable(permissions)) {
+      session = initialState.session;
+      approval = initialState.approval;
+      startedAt = initialState.startedAt;
+    }
+    return {
+      snapshot: () => ({ session, approval, startedAt, permissions, language, tools: methods }),
+      // "Səhv cavab": the conversation goes to the admin's complaint list; no till data is read or changed.
+      report: (chatKey, transcript, comment = "") => call("report", { chatKey, language, comment, transcript }),
+      async send(input, history = [], valid = () => true) {
+        if (locked) throw Error("Cavab haz\u0131rlan\u0131r.");
+        locked = true;
+        let sentWrite = false, lastWrite = "";
+        try {
           if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
-          const task = response.task;
-          if (task.protocol !== 1 || !methods.includes(task.name) || !Array.isArray(task.args) || task.args.length > 5) throw Error("Server uy\u011Fun olmayan \u0259m\u0259liyyat ist\u0259di.");
-          const write = writes.has(task.name);
-          if (write && (!/^(confirm|tesdiq( et|le|leyirem)?|beli|he|yes|setup:save)$/.test(normalize2(input)) || !approved || approved.name !== task.name || stable(approved.args) !== stable(task.args))) throw Error("D\u0259yi\u015Fiklik \u0259vv\u0259lc\u0259d\u0259n g\xF6st\u0259ril\u0259n planla uy\u011Fun deyil. Yenid\u0259n plan qurun.");
-          if (task.name === "openPayment" && input !== "subscription:pay") throw Error("\xD6d\u0259ni\u015F a\xE7maq \xFC\xE7\xFCn d\xFCym\u0259ni se\xE7in.");
-          let outcome;
-          try {
-            sentWrite = sentWrite || write;
-            const value = await tools[task.name](...task.args, ...["openPayment", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupCreateTable"].includes(task.name) ? [valid] : []);
-            outcome = { value };
-          } catch (e) {
-            outcome = { error: e.message || "Yerli \u0259m\u0259liyyat al\u0131nmad\u0131." };
+          if (!session) {
+            session = await call("create", { protocol: 1, language, permissions, tools: methods });
+            startedAt = Date.now();
+          }
+          const approved = approval;
+          approval = null;
+          const requestId = crypto.randomUUID();
+          let response = await call("message", { sessionId: session.sessionId, secret: session.secret, requestId, text: input });
+          for (let step = 0; response.task; step++) {
+            if (step >= 24) throw Error("\u018Fm\u0259liyyat \xE7ox uzand\u0131. He\xE7 bir yeni \u0259m\u0259liyyat g\xF6nd\u0259rilm\u0259di.");
+            if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+            const task = response.task;
+            if (task.protocol !== 1 || !methods.includes(task.name) || !Array.isArray(task.args) || task.args.length > 5) throw Error("Server uy\u011Fun olmayan \u0259m\u0259liyyat ist\u0259di.");
+            const write = writes.has(task.name);
+            if (write && (!/^(confirm|tesdiq( et|le|leyirem)?|beli|he|yes|setup:save)$/.test(normalize2(input)) || !approved || approved.name !== task.name || stable(approved.args) !== stable(task.args))) throw Error("D\u0259yi\u015Fiklik \u0259vv\u0259lc\u0259d\u0259n g\xF6st\u0259ril\u0259n planla uy\u011Fun deyil. Yenid\u0259n plan qurun.");
+            if (task.name === "openPayment" && input !== "subscription:pay") throw Error("\xD6d\u0259ni\u015F a\xE7maq \xFC\xE7\xFCn d\xFCym\u0259ni se\xE7in.");
+            let outcome;
+            try {
+              sentWrite = sentWrite || write;
+              if (write) lastWrite = task.name;
+              const value = await tools[task.name](...task.args, ...["openPayment", "setupCreateRaw", "setupCreateMenu", "setupSaveRecipe", "setupCreateTable", "tableApply", "tableCreateArea", "tableCreateMany", "printerTest", "reportX", "writeOff", "receiveGoods", "reportZ"].includes(task.name) ? [valid] : []);
+              outcome = { value };
+            } catch (e) {
+              outcome = { error: e.message || "Yerli \u0259m\u0259liyyat al\u0131nmad\u0131." };
+            }
+            if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
+            response = await call("result", { sessionId: session.sessionId, secret: session.secret, requestId, taskId: task.id, outcome });
           }
           if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
-          response = await call("result", { sessionId: session.sessionId, secret: session.secret, requestId, taskId: task.id, outcome });
+          approval = response.approval || null;
+          return response.reply;
+        } catch (e) {
+          session = null;
+          approval = null;
+          throw Error((e.message || "Ba\u011Flant\u0131 yoxdur.") + (!sentWrite && /^(?:İnternet yoxdur|Köməkçi serverinə)/.test(e.message || "") ? " He\xE7 bir \u0259mr icra olunmad\u0131, kassada he\xE7 n\u0259 d\u0259yi\u015Fm\u0259di." : "") + (sentWrite ? " N\u0259tic\u0259ni " + (lastWrite === "printerTest" ? "Parametrl\u0259r \u2192 Printerd\u0259n" : ["tableApply", "tableCreateArea", "setupCreateTable"].includes(lastWrite) ? "Masa idar\u0259sind\u0259n" : lastWrite === "setupSaveRecipe" ? "Kalkulyasiyadan" : "Anbardan") + " yoxlay\u0131n; \u0259m\u0259liyyat avtomatik t\u0259krarlanmayacaq." : ""));
+        } finally {
+          locked = false;
         }
-        if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
-        approval = response.approval || null;
-        return response.reply;
-      } catch (e) {
-        session = null;
-        approval = null;
-        throw Error((e.message || "Ba\u011Flant\u0131 yoxdur.") + (sentWrite ? " N\u0259tic\u0259ni Anbardan yoxlay\u0131n; d\u0259yi\u015Fiklik avtomatik t\u0259krarlanmayacaq." : ""));
-      } finally {
-        locked = false;
       }
-    } };
+    };
   }
   return __toCommonJS(online_exports);
 })();
 
 /* SUPPORT_KNOWLEDGE_END */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -380,6 +778,24 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü ('+unit+')','Boyut ('+unit+')','Size ('+unit+')'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
  h('button',{type:'button',disabled:rows.length>=24,onClick:()=>onChange([...rows,{size:'',price:price||''}])},L('+ Ölçü əlavə et','+ Boyut ekle','+ Add size'))):null);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15129,7 +15545,8 @@ function homeRouteForRole(session) {
     : [];
   const can = (key) => perms.includes(key);
   /* POS_BOOTSTRAP_LOGIN_198 */
-  if (role === "administrator") return "/admin";
+  /* POS_HOME_TABLES_1108 */
+  if (role === "administrator") return "/tables";
 
   if (perms.length) {
     // Ordered by how much of the shift is spent there. An administrator holds
@@ -15279,7 +15696,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.22 · 7644192";
+const _PS_BUILD = "1.10.23 · e05e2ea";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -31827,6 +32244,114 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -32034,6 +32559,60 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -32391,14 +32970,21 @@ function PsDeliveryTable({ head, rows, empty }) {
 function SupportPage() {
   const { lang = "az" } = useI18n(), t = (az, tr, en) => lang === "tr" ? tr : lang === "en" ? en : az;
   const [mode, setMode] = reactExports.useState("assistant"), [messages, setMessages] = reactExports.useState([]), [local, setLocal] = reactExports.useState([]), [draft, setDraft] = reactExports.useState(""), [busy, setBusy] = reactExports.useState(false), [error, setError] = reactExports.useState("");
-  const [failedInput, setFailedInput] = reactExports.useState("");
+  const [failedInput, setFailedInput] = reactExports.useState(""), [online, setOnline] = reactExports.useState(navigator.onLine !== false);
+  reactExports.useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
   const [copied, setCopied] = reactExports.useState(""), [copying, setCopying] = reactExports.useState(false), copyTimer = reactExports.useRef(null), copyLock = reactExports.useRef(false);
-  const owner = useAuthStore((s) => s.session?.userId), has = useAuthStore((s) => s.hasPermission) || (() => false), rights = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout"].map((key) => has(key)).join(",");
-  const chat = reactExports.useMemo(() => PsStockAssistant.createOnlineConversation({ language: lang, api: window.pos, has: (key) => useAuthStore.getState?.()?.hasPermission?.(key) ?? has(key), billing: window.possistemBilling, transport: (payload) => window.pos.support.assistant(payload) }), [owner, rights, lang]);
+  const session = useAuthStore((s) => s.session), owner = session?.userId, has = useAuthStore((s) => s.hasPermission) || (() => false), rights = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout", "receipt.print", "printer.manage", "reports.x", "suppliers.view", "delivery.view", "suppliers.manage", "suppliers.receive", "reports.z"].map((key) => has(key)).join(",");
+  const chat = reactExports.useRef(null), [loading, setLoading] = reactExports.useState(true), [askClear, setAskClear] = reactExports.useState(false), [choicesActive, setChoicesActive] = reactExports.useState(false), [reported, setReported] = reactExports.useState([]);
   const locked = reactExports.useRef(false), list = reactExports.useRef(null), composer = reactExports.useRef(null), epoch = reactExports.useRef(0), modeRef = reactExports.useRef(mode);
   modeRef.current = mode;
-  const id = () => globalThis.crypto?.randomUUID?.() || Date.now() + "-" + Math.random().toString(36).slice(2);
-  const add = (author, body, extra = {}) => setLocal((old) => [...old, { id: id(), author, body, ...extra }].slice(-100));
   const pull = async () => {
     const current = epoch.current;
     try {
@@ -32411,61 +32997,103 @@ function SupportPage() {
     }
   };
   reactExports.useEffect(() => {
-    epoch.current++;
-    locked.current = false;
-    setBusy(false);
-    setMessages([]);
+    const current = ++epoch.current;
+    let unsubscribe;
+    chat.current = null;
+    setLoading(true);
     setLocal([]);
     setDraft("");
     setError("");
+    setMessages([]);
+    setBusy(false);
+    setAskClear(false);
     setCopied("");
     setCopying(false);
     copyLock.current = false;
-    clearTimeout(copyTimer.current);
+    locked.current = false;
+    const valid = () => useAuthStore.getState?.()?.session === session && ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout", "receipt.print", "printer.manage", "reports.x", "suppliers.view", "delivery.view", "suppliers.manage", "suppliers.receive", "reports.z"].map((k) => useAuthStore.getState?.()?.hasPermission?.(k) ?? has(k)).join(",") === rights;
+    void PsStockAssistant.openLocalConversation({ language: lang, api: window.pos, has: (key) => useAuthStore.getState?.()?.hasPermission?.(key) ?? has(key), billing: window.possistemBilling, transport: (payload) => window.pos.support.assistant(payload), valid }).then((controller) => {
+      if (current !== epoch.current) return;
+      chat.current = controller;
+      unsubscribe = controller.subscribe((state) => {
+        setLocal(state.messages);
+        setDraft(state.draft);
+        setMode(state.mode);
+        setBusy(state.busy);
+        setError(state.error);
+        setFailedInput(state.failedInput);
+        setChoicesActive(state.choicesActive);
+        setReported(state.reported || []);
+      });
+      setLoading(false);
+    }).catch((e) => {
+      if (current === epoch.current) {
+        setError(e.message || String(e));
+        setLoading(false);
+      }
+    });
     void pull();
     const timer = setInterval(() => {
       if (!document.hidden) void pull();
     }, 5e3);
     return () => {
       epoch.current++;
+      unsubscribe?.();
       clearInterval(timer);
       clearTimeout(copyTimer.current);
     };
-  }, [chat]);
+  }, [session, rights, lang]);
+  const editDraft = (value) => {
+    setDraft(value);
+    chat.current?.setDraft(value);
+  };
+  const switchMode = (value) => {
+    chat.current?.setMode(value);
+    setMode(value);
+    setError("");
+    setCopied("");
+    if (value === "agent") void pull();
+  };
+  const clearChat = async () => {
+    const current = epoch.current;
+    try {
+      await chat.current?.clear();
+      if (current === epoch.current) setAskClear(false);
+    } catch (e) {
+      if (current === epoch.current) setError(e.message || String(e));
+    }
+  };
   reactExports.useEffect(() => {
     list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "auto" });
   }, [messages, local, mode, busy, error]);
   const send = (input = draft, display = input) => {
     const value = input.trim();
-    if (!value || locked.current) return;
+    if (!value || locked.current || busy || loading || !chat.current) return;
+    if (mode === "assistant" && !/^(live agent|operator|canli destek|emekdas)$/i.test(PsStockAssistant.normalize(value))) {
+      void chat.current.send(value, display);
+      return;
+    }
     locked.current = true;
     setBusy(true);
     setError("");
-    const current = epoch.current, valid = () => epoch.current === current;
+    const current = epoch.current;
     void (async () => {
       try {
-        if (mode === "assistant" && !/^(live agent|operator|canli destek|emekdas)$/i.test(PsStockAssistant.normalize(value))) {
-          add("me", display);
-          setDraft("");
-          const [answer] = await Promise.all([chat.send(value, local.map((m) => ({ author: m.author, body: m.body, reply: m.reply })), valid), new Promise((resolve) => setTimeout(resolve, 650))]);
-          if (valid()) add("helper", answer.body, { reply: answer.reply, choices: answer.choices });
-        } else {
-          const transcript = mode === "assistant" ? local.slice(-12).map((m) => (m.author === "me" ? "M\xFC\u015Ft\u0259ri: " : "K\xF6m\u0259k\xE7i: ") + m.body).join("\n") : "";
-          const body = transcript ? ("POS k\xF6m\u0259k\xE7isind\u0259n y\xF6nl\u0259ndirm\u0259\n" + transcript + "\nM\xFC\u015Ft\u0259ri: " + value).slice(-4e3) : value;
-          const r = await window.pos.support.request(body);
-          if (!valid()) return;
-          if (!r.success) throw Error(r.error?.message || t("Mesaj g\xF6nd\u0259rilm\u0259di", "Mesaj g\xF6nderilemedi", "Message was not sent"));
-          setMode("agent");
-          setDraft("");
-          await pull();
-        }
+        const transcript = mode === "assistant" ? local.slice(-12).map((m) => (m.author === "me" ? "M\xFC\u015Ft\u0259ri: " : "K\xF6m\u0259k\xE7i: ") + m.body).join("\n") : "";
+        const body = transcript ? ("POS k\xF6m\u0259k\xE7isind\u0259n y\xF6nl\u0259ndirm\u0259\n" + transcript + "\nM\xFC\u015Ft\u0259ri: " + value).slice(-4e3) : value;
+        const r = await window.pos.support.request(body);
+        if (current !== epoch.current) return;
+        if (!r.success) throw Error(r.error?.message || t("Mesaj g\xF6nd\u0259rilm\u0259di", "Mesaj g\xF6nderilemedi", "Message was not sent"));
+        switchMode("agent");
+        editDraft("");
+        await pull();
       } catch (e) {
-        if (valid()) {
+        if (current === epoch.current) {
           setFailedInput(value);
           setError(e.message || String(e));
         }
       } finally {
-        if (valid()) {
+        if (current === epoch.current) {
           locked.current = false;
           setBusy(false);
         }
@@ -32493,32 +33121,23 @@ function SupportPage() {
       }
     }
   };
-  const rows = mode === "agent" ? messages : local, lastAdmin = messages.filter((m) => m.authorKind === "admin").at(-1);
+  const offline = !online && mode === "assistant", scopeValid = chat.current?.valid() ?? false, rows = !scopeValid ? [] : mode === "agent" ? messages : local, lastAdmin = messages.filter((m) => m.authorKind === "admin").at(-1);
   reactExports.useEffect(() => {
     if (!busy && local.length) composer.current?.focus({ preventScroll: true });
   }, [busy, local.length]);
-  return /* @__PURE__ */ psH("section", { className: "ps-support-page" }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("p", { className: "ps-support-caption" }, t("Anbar, sat\u0131\u015F v\u0259 kassa bar\u0259d\u0259 soru\u015Fun. \u0130caz\u0259li m\u0259lumatlar\u0131n\u0131za bax\u0131m.", "Stok, sat\u0131\u015F ve kasa hakk\u0131nda sorun. Yetkili verilerinizi kontrol edeyim.", "Ask about inventory, sales and cash. I can check your permitted data."))), /* @__PURE__ */ psH("div", { className: "ps-support-header-actions" }, /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-all", disabled: copying || !rows.length, onClick: () => copy(PsStockAssistant.chatTranscript(rows, lang), "all") }, copied === "all" ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("S\xF6hb\u0259ti kopyala", "Sohbeti kopyala", "Copy conversation")), /* @__PURE__ */ psH("div", { role: "tablist", "aria-label": t("D\u0259st\u0259k n\xF6v\xFC", "Destek t\xFCr\xFC", "Support type") }, /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "assistant", onClick: () => {
-    setMode("assistant");
-    setError("");
-    setCopied("");
-  } }, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "agent", onClick: () => {
-    setMode("agent");
-    setError("");
-    setCopied("");
-    void pull();
-  } }, t("\u018Fm\u0259kda\u015F", "Temsilci", "Agent"), lastAdmin && /* @__PURE__ */ psH("span", null, " \xB7 ", t("Cavab var", "Yan\u0131t var", "New reply")))))), /* @__PURE__ */ psH("div", { className: "ps-support-messages", ref: list, role: "log", "aria-live": "polite", "aria-busy": busy }, !rows.length && /* @__PURE__ */ psH("div", { className: "ps-support-welcome" }, /* @__PURE__ */ psH("p", null, mode === "assistant" ? t("Salam! Siz\u0259 nec\u0259 k\xF6m\u0259k ed\u0259 bil\u0259r\u0259m?", "Merhaba! Nas\u0131l yard\u0131mc\u0131 olabilirim?", "Hello! How can I help?") : t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131na mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Destek temsilcisine mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Write your message to the support team.")), mode === "assistant" && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, ["Anbar\u0131mda n\u0259 var?", "Bug\xFCnk\xFC sat\u0131\u015F", "Kassada n\u0259 q\u0259d\u0259r pul var?"].map((value) => /* @__PURE__ */ psH("button", { key: value, disabled: busy, onClick: () => send(value) }, value)))), rows.map((m, i) => /* @__PURE__ */ psH("article", { key: m.id || i, className: m.author === "me" || m.authorKind === "customer" ? "is-me" : "is-helper" }, /* @__PURE__ */ psH("small", null, m.author === "me" || m.authorKind === "customer" ? t("Siz", "Siz", "You") : m.authorKind === "admin" ? t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131", "Destek temsilcisi", "Support agent") : t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("p", null, m.body), m.meta?.attachment && /* @__PURE__ */ psH("p", null, t("\u018Flav\u0259 fayl", "Ek dosya", "Attachment"), ": ", m.meta.attachment.fileName), m.createdAt && /* @__PURE__ */ psH("time", { dateTime: m.createdAt }, new Date(m.createdAt).toLocaleString(lang === "en" ? "en-GB" : lang === "tr" ? "tr-TR" : "az-AZ")), mode === "assistant" && m.choices?.length > 0 && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, m.choices.map((choice) => /* @__PURE__ */ psH("button", { key: choice.value, type: "button", disabled: busy || i !== local.length - 1, onClick: () => send(choice.value, choice.label) }, choice.label))), /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-message", "aria-label": t("Mesaj\u0131 kopyala", "Mesaj\u0131 kopyala", "Copy message"), disabled: copying, onClick: () => copy(PsStockAssistant.chatTranscript([m], lang, false), "message:" + i) }, copied === "message:" + i ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("Kopyala", "Kopyala", "Copy")))), busy && /* @__PURE__ */ psH("div", { role: "status", className: "ps-support-thinking", "aria-label": t("D\xFC\u015F\xFCn\xFCr\u0259m, cavab haz\u0131rlan\u0131r", "D\xFC\u015F\xFCn\xFCyorum, yan\u0131t haz\u0131rlan\u0131yor", "Thinking, preparing a response") }, /* @__PURE__ */ psH("span", { className: "ps-support-thinking-dots", "aria-hidden": "true" }, /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null)), /* @__PURE__ */ psH("span", null, mode === "assistant" ? t("D\xFC\u015F\xFCn\xFCr\u0259m\u2026", "D\xFC\u015F\xFCn\xFCyorum\u2026", "Thinking\u2026") : t("G\xF6nd\u0259rilir\u2026", "G\xF6nderiliyor\u2026", "Sending\u2026")))), /* @__PURE__ */ psH("span", { role: "status", className: "ps-support-copy-status" }, copied ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : ""), error && /* @__PURE__ */ psH("div", { role: "alert", className: "ps-support-error" }, error, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => {
-    setDraft(failedInput);
+  return /* @__PURE__ */ psH("section", { className: "ps-support-page" }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("p", { className: "ps-support-caption" }, t("Anbar, sat\u0131\u015F v\u0259 kassa bar\u0259d\u0259 soru\u015Fun. \u0130caz\u0259li m\u0259lumatlar\u0131n\u0131za bax\u0131m.", "Stok, sat\u0131\u015F ve kasa hakk\u0131nda sorun. Yetkili verilerinizi kontrol edeyim.", "Ask about inventory, sales and cash. I can check your permitted data."))), /* @__PURE__ */ psH("div", { className: "ps-support-header-actions" }, /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-all", disabled: copying || !rows.length, onClick: () => copy(PsStockAssistant.chatTranscript(rows, lang), "all") }, copied === "all" ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("S\xF6hb\u0259ti kopyala", "Sohbeti kopyala", "Copy conversation")), mode === "assistant" && /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-clear", disabled: busy || loading || !scopeValid || !local.length, onClick: () => setAskClear(true) }, t("S\xF6hb\u0259ti sil", "Sohbeti sil", "Delete conversation")), /* @__PURE__ */ psH("div", { role: "tablist", "aria-label": t("D\u0259st\u0259k n\xF6v\xFC", "Destek t\xFCr\xFC", "Support type") }, /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "assistant", onClick: () => switchMode("assistant") }, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "agent", onClick: () => switchMode("agent") }, t("\u018Fm\u0259kda\u015F", "Temsilci", "Agent"), lastAdmin && /* @__PURE__ */ psH("span", null, " \xB7 ", t("Cavab var", "Yan\u0131t var", "New reply")))))), offline && /* @__PURE__ */ psH("div", { role: "status", className: "ps-support-offline" }, t("\u0130nternet yoxdur. K\xF6m\u0259k\xE7i yaln\u0131z internet olanda i\u015Fl\u0259yir; internet qay\u0131danda yaza bil\u0259rsiniz.", "\u0130nternet yok. Yard\u0131mc\u0131 yaln\u0131zca internet varken \xE7al\u0131\u015F\u0131r.", "No internet. The assistant works only online; you can write again when it is back.")), askClear && /* @__PURE__ */ psH("div", { className: "ps-support-delete-confirm", role: "alertdialog", "aria-label": t("S\xF6hb\u0259ti sil", "Sohbeti sil", "Delete conversation") }, /* @__PURE__ */ psH("p", null, t("Bu komp\xFCterd\u0259 saxlanan k\xF6m\u0259k\xE7i s\xF6hb\u0259ti silinsin?", "Bu bilgisayardaki yard\u0131mc\u0131 sohbeti silinsin mi?", "Delete the assistant conversation saved on this computer?")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => void clearChat() }, t("Sil", "Sil", "Delete")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => setAskClear(false) }, t("L\u0259\u011Fv et", "\u0130ptal", "Cancel"))), /* @__PURE__ */ psH("div", { className: "ps-support-messages", ref: list, role: "log", "aria-live": "polite", "aria-busy": busy }, loading && /* @__PURE__ */ psH("p", { role: "status" }, t("S\xF6hb\u0259t a\xE7\u0131l\u0131r\u2026", "Sohbet a\xE7\u0131l\u0131yor\u2026", "Loading conversation\u2026")), !loading && !rows.length && /* @__PURE__ */ psH("div", { className: "ps-support-welcome" }, /* @__PURE__ */ psH("p", null, mode === "assistant" ? t("Salam! Siz\u0259 nec\u0259 k\xF6m\u0259k ed\u0259 bil\u0259r\u0259m?", "Merhaba! Nas\u0131l yard\u0131mc\u0131 olabilirim?", "Hello! How can I help?") : t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131na mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Destek temsilcisine mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Write your message to the support team.")), mode === "assistant" && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, ["Anbar\u0131mda n\u0259 var?", "Bug\xFCnk\xFC sat\u0131\u015F", "Kassada n\u0259 q\u0259d\u0259r pul var?"].map((value) => /* @__PURE__ */ psH("button", { key: value, disabled: busy || offline, onClick: () => send(value) }, value)))), rows.map((m, i) => /* @__PURE__ */ psH("article", { key: m.id || i, className: m.author === "me" || m.authorKind === "customer" ? "is-me" : "is-helper" }, /* @__PURE__ */ psH("small", null, m.author === "me" || m.authorKind === "customer" ? t("Siz", "Siz", "You") : m.authorKind === "admin" ? t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131", "Destek temsilcisi", "Support agent") : t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant"), m.ai && /* @__PURE__ */ psH("span", { className: "ps-support-ai", title: t("Bu sual\u0131 s\xFCni intellekt (Groq) oxudu", "Bu soruyu yapay zek\xE2 (Groq) okudu", "This question was read by AI (Groq)") }, "AI")), /* @__PURE__ */ psH("p", null, m.body), m.meta?.attachment && /* @__PURE__ */ psH("p", null, t("\u018Flav\u0259 fayl", "Ek dosya", "Attachment"), ": ", m.meta.attachment.fileName), m.createdAt && /* @__PURE__ */ psH("time", { dateTime: m.createdAt }, new Date(m.createdAt).toLocaleString(lang === "en" ? "en-GB" : lang === "tr" ? "tr-TR" : "az-AZ")), mode === "assistant" && m.choices?.length > 0 && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, m.choices.map((choice) => /* @__PURE__ */ psH("button", { key: choice.value, type: "button", disabled: busy || offline || !choicesActive || i !== local.length - 1, onClick: () => choice.value.startsWith("nav:") ? void (window.location.hash = "#" + choice.value.slice(4)) : send(choice.value, choice.label) }, choice.label))), mode === "assistant" && m.author === "helper" && m.id && /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-report", disabled: busy || offline || reported.includes(m.id), "aria-label": t("Bu cavab\u0131 s\u0259hv kimi bildir", "Bu yan\u0131t\u0131 hatal\u0131 olarak bildir", "Report this answer as wrong"), onClick: () => void chat.current?.report(m.id) }, reported.includes(m.id) ? t("Bildirildi \u2713", "Bildirildi \u2713", "Reported \u2713") : t("\u{1F44E} S\u0259hv cavab", "\u{1F44E} Hatal\u0131 yan\u0131t", "\u{1F44E} Wrong answer")), /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-message", "aria-label": t("Mesaj\u0131 kopyala", "Mesaj\u0131 kopyala", "Copy message"), disabled: copying, onClick: () => copy(PsStockAssistant.chatTranscript([m], lang, false), "message:" + i) }, copied === "message:" + i ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("Kopyala", "Kopyala", "Copy")))), busy && /* @__PURE__ */ psH("div", { role: "status", className: "ps-support-thinking", "aria-label": t("D\xFC\u015F\xFCn\xFCr\u0259m, cavab haz\u0131rlan\u0131r", "D\xFC\u015F\xFCn\xFCyorum, yan\u0131t haz\u0131rlan\u0131yor", "Thinking, preparing a response") }, /* @__PURE__ */ psH("span", { className: "ps-support-thinking-dots", "aria-hidden": "true" }, /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null)), /* @__PURE__ */ psH("span", null, mode === "assistant" ? t("D\xFC\u015F\xFCn\xFCr\u0259m\u2026", "D\xFC\u015F\xFCn\xFCyorum\u2026", "Thinking\u2026") : t("G\xF6nd\u0259rilir\u2026", "G\xF6nderiliyor\u2026", "Sending\u2026")))), /* @__PURE__ */ psH("span", { role: "status", className: "ps-support-copy-status" }, copied ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : ""), error && /* @__PURE__ */ psH("div", { role: "alert", className: "ps-support-error" }, error, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => {
+    editDraft(failedInput);
     setError("");
     composer.current?.focus();
   } }, t("Yenid\u0259n yoxla", "Yeniden dene", "Try again"))), /* @__PURE__ */ psH("form", { onSubmit: (e) => {
     e.preventDefault();
     send();
-  } }, /* @__PURE__ */ psH("textarea", { ref: composer, "aria-label": t("Mesaj", "Mesaj", "Message"), rows: "2", maxLength: "4000", value: draft, disabled: busy, onChange: (e) => setDraft(e.target.value), placeholder: t("Mesaj\u0131n\u0131z\u0131 yaz\u0131n\u2026", "Mesaj\u0131n\u0131z\u0131 yaz\u0131n\u2026", "Write a message\u2026"), onKeyDown: (e) => {
+  } }, /* @__PURE__ */ psH("textarea", { ref: composer, "aria-label": t("Mesaj", "Mesaj", "Message"), rows: "2", maxLength: "4000", value: draft, disabled: busy || loading || offline || !chat.current, onChange: (e) => editDraft(e.target.value), placeholder: t("Mesaj\u0131n\u0131z\u0131 yaz\u0131n\u2026", "Mesaj\u0131n\u0131z\u0131 yaz\u0131n\u2026", "Write a message\u2026"), onKeyDown: (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       send();
     }
-  } }), /* @__PURE__ */ psH("button", { type: "submit", disabled: busy || !draft.trim() }, busy ? "\u2026" : t("G\xF6nd\u0259r", "G\xF6nder", "Send"))));
+  } }), /* @__PURE__ */ psH("button", { type: "submit", disabled: busy || loading || offline || !chat.current || !draft.trim() }, busy ? "\u2026" : t("G\xF6nd\u0259r", "G\xF6nder", "Send"))));
 }
 
 /* SUPPORT_COMPONENTS_END */

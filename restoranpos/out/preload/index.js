@@ -260,6 +260,8 @@ const api = {
     setAvailability: (productId, available) => call("catalog.setAvailability", { productId, available })
   },
   tables: {
+    assistantArchive: (payload, options) => call("tables.archiveTable", {...payload,assistantGuard:true}, options),
+    assistantUpdate: (payload, options) => call("tables.upsertTable", {...payload,assistantGuard:true}, options),
     list: () => call("tables.list"),
     get: (tableId) => call("tables.get", { tableId }),
     setStatus: (tableId, status) => call("tables.setStatus", { tableId, status }),
@@ -486,6 +488,7 @@ const api = {
     list: (params) => call("audit.list", params)
   },
   reports: {
+    assistantQuery: (sql) => call("assistant.query", { sql }),
     dashboard: () => call("reports.dashboard"),
     topProducts: (limit) => call("reports.topProducts", { limit }),
     salesSummary: (params) => call("reports.salesSummary", params),

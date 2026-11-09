@@ -987,6 +987,12 @@
       "auth": false,
       "timeout": 15000
     },
+    "$comment.assistantQuery": "The assistant's read-only window: one SELECT on a separate read-only connection, business tables only, secrets (PIN hashes, card digits, bank references, idempotency keys) refused, 200 rows and about 2 seconds at most. Writes never go this way; they use the confirmed tools.",
+    "assistant.query": {
+      "auth": true,
+      "perm": "reports.view",
+      "timeout": 5000
+    },
     "$comment.reports": "X/Z drain the print queue inline, so these need the print budget (printTimeoutMs) plus room, not defaultTimeoutMs. At 3s a slow printer timed out the IPC call while the report itself had already been committed - and the owner's WhatsApp alert, which hangs off a successful result, never fired.",
     "reports.x": {
       "auth": true,

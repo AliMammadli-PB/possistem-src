@@ -12,7 +12,12 @@ try{
  assert.ok(api.products?.list,'Acceptance must exercise the real preload, not an invented api.catalog');
  const jsonb=value=>JSON.parse(JSON.stringify(value,(_k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort((a,b)=>a.length-b.length||a.localeCompare(b)).map(k=>[k,v[k]])):v));
 
- let document;const transport=async p=>{if(p.action==='create'){document=newDocument({surface:'restaurant',tools:p.tools,permissions:p.permissions});return{success:true,data:{sessionId:randomUUID(),secret:'qa-session-secret'}};}const event=p.action==='message'?{type:'message',requestId:p.requestId,text:p.text}:{type:'result',requestId:p.requestId,taskId:p.taskId,outcome:p.outcome};const out=await advance(jsonb(document),event,{revision:1,help:async()=>({id:'unknown',body:'Hansı işi görək?'})});document=jsonb(out.document);return{success:true,data:out.result};};const chat=createOnlineConversation({api,has:()=>true,transport});const send=async input=>{const r=await chat.send(input);console.log(input+' -> '+r.body.slice(0,140));return r};
+ let document;const transport=async p=>{if(p.action==='create'){document=newDocument({surface:'restaurant',tools:p.tools,permissions:p.permissions});return{success:true,data:{sessionId:randomUUID(),secret:'qa-session-secret'}};}const event=p.action==='message'?{type:'message',requestId:p.requestId,text:p.text}:{type:'result',requestId:p.requestId,taskId:p.taskId,outcome:p.outcome};const out=await advance(jsonb(document),event,{revision:1,help:async()=>({id:'unknown',body:'Hansı işi görək?'})});document=jsonb(out.document);return{success:true,data:out.result};};let chat=createOnlineConversation({api,has:()=>true,transport});const send=async input=>{const r=await chat.send(input);console.log(input+' -> '+r.body.slice(0,140));return r};
+ const named=await send('anbarda kalkulasiya yarat adi lahmacun olsun');assert.match(named.body,/lahmacun/);assert.doesNotMatch(named.body,/“anbarda”/);
+ await send('kalkulasiya yarat');await send('yeni mehsul yarat');await send('setup:raw');await send('QA Lahmacun');await send('ədəd');
+ assert.equal((await data('ingredients.list')).ingredients.filter(p=>p.name==='QA Lahmacun').length,0);
+ const createdMaterial=await send('Təsdiq et');assert.match(createdMaterial.body,/QA Lahmacun yaradıldı/);assert.match(createdMaterial.body,/hansı menyu/);assert.doesNotMatch(createdMaterial.body,/undefined|Cannot read/);
+ await send('Təsdiq et');assert.equal((await data('ingredients.list')).ingredients.filter(p=>p.name==='QA Lahmacun').length,1);await send('cancel');
  await send('yeni mehsul yarat');await send('setup:raw');await send('QA Un');await send('setup:unit:kg');await send('confirm');
  let goods=(await data('ingredients.list')).ingredients;const flour=goods.find(p=>p.name==='QA Un');assert.ok(flour);assert.equal(flour.unit,'kg');
  await data('catalog.upsertCategory',{nameAz:'QA Yeməklər'});
@@ -38,5 +43,19 @@ try{
  assert.equal((await data('tables.list')).tables.filter(t=>t.label==='zal').length,0);
  assert.match((await send('confirm')).body,/zal yaradıldı/);await send('confirm');
  assert.equal((await data('tables.list')).tables.filter(t=>t.label==='zal'&&t.areaId===area.id).length,1);
- console.log('PASS: existing native core created one raw material, one priced menu dish and the user-selected 250 g recipe; recipe creation consumed no stock. Protected tools version: '+capability+'. Confirmed stock/price changes, stale balance protection and duplicate confirmations checked when supported. Disposable DB: '+dir+'/qa.db');
+ const printerBefore=await data('print.jobs',{limit:10});const printerPreview=await send('printeri test et');assert.match(printerPreview.body,/sınaq çeki|qoşulmuş printer|Qoşulmuş printer/);assert.doesNotMatch(printerPreview.body,/Kataloqdakı printerlər/);await send('cancel');const printerAfter=await data('print.jobs',{limit:10});assert.deepEqual(printerAfter.jobs,printerBefore.jobs,'A printer request without approval must not create a job');
+ const inventoryList=await send('anbarda mehsullarimin siyahisini ver');assert.match(inventoryList.body,/QA Un/);assert.doesNotMatch(inventoryList.body,/daxil olun/);
+ chat=createOnlineConversation({api,has:()=>true,transport}); // Separate acceptance scenario; production sessions are limited to 50 turns.
+ const layout=await data('tables.list');assert.equal(layout.assistantLayoutVersion,1);assert.equal(typeof api.tables.assistantArchive,'function');assert.equal(typeof api.tables.assistantUpdate,'function');
+ const target=layout.tables.find(t=>t.label==='zal'&&t.areaId===area.id);assert.ok(target);
+ await send('masa zal adini VIP et');assert.equal((await data('tables.list')).tables.find(t=>t.id===target.id).label,'zal');
+ assert.match((await send('confirm')).body,/dəyişdirildi/);assert.equal((await data('tables.list')).tables.find(t=>t.id===target.id).label,'VIP');
+ await send('masa vip 6 neferlik et');await send('confirm');assert.equal((await data('tables.list')).tables.find(t=>t.id===target.id).seats,6);
+ await send('yeni zal yarat');await send('QA Bağ');await send('confirm');const garden=(await data('tables.list')).areas.find(a=>a.nameAz==='QA Bağ');assert.ok(garden);
+ await send('masa VIP i basqa zala kecir');let pick=await send('tableops:pick:'+target.id);assert.ok(pick.choices.some(c=>c.value==='tableops:area:'+garden.id));await send('tableops:area:'+garden.id);await send('confirm');assert.equal((await data('tables.list')).tables.find(t=>t.id===target.id).areaId,garden.id);
+ const allBefore=(await data('tables.list')).tables;const physical=allBefore.filter(t=>t.areaId!=='area-delivery');assert.ok(physical.length>0);assert.ok(physical.every(t=>!t.orderId));
+ assert.match((await send('ne qeder masa qalib')).body,new RegExp('Cəmi '+physical.length+' masa'));
+ const preview=await send('butun bos masalari sil');assert.match(preview.body,/masa silinəcək/);assert.equal((await data('tables.list')).tables.length,allBefore.length);
+ assert.match((await send('confirm')).body,/silindi/);assert.equal((await data('tables.list')).tables.filter(t=>t.areaId!=='area-delivery').length,0);await send('confirm');assert.equal((await data('tables.list')).tables.filter(t=>t.areaId!=='area-delivery').length,0);
+ console.log('PASS: real assembled preload + central transport + native core: raw/menu/recipe creation, stock/price corrections, guarded table rename/seats/move, area creation, accurate table count and atomic bulk archive after confirmation. JSONB replay, stale balance and duplicate confirmations checked. Customer data unchanged. Disposable DB: '+dir+'/qa.db');
 }finally{clearTimeout(startTimer);child.stdin.end();child.kill()}

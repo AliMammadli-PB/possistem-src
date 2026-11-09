@@ -71,16 +71,16 @@ async function render(app: FastifyInstance, entry: Entry, lang: Lang, customerId
   return entry.offerAgent ? offerAgent(reply, lang) : reply;
 }
 
-const GREETING = /^(salam|slm|sa|sea|seaa|selam|salamlar|salam aleykum|salam eleykum|salamaleykum|aleykum salam|hello|hi|hey|good (morning|afternoon|evening)|sabahiniz xeyir|sabahin xeyir|axsaminiz xeyir|axsamin xeyir|gunortaniz xeyir|привет|здравствуйте|добрый (день|вечер)|доброе утро)\b\s*/;
+const GREETING = /^(salam|slm|sa|sea|seaa|selam|salamlar|merhaba|salam aleykum|salam eleykum|salamaleykum|aleykum salam|hello|hi|hey|good (morning|afternoon|evening)|sabahiniz xeyir|sabahin xeyir|axsaminiz xeyir|axsamin xeyir|gunortaniz xeyir|привет|здравствуйте|добрый (день|вечер)|доброе утро)\b\s*/;
 
 function smallTalk(f: string, lang: Lang): AssistantReply | 'greet-prefix' | null {
   const r = (id: string, text: string, chips: string[] = []): AssistantReply => ({ id, text, links: [], chips: chipsFor(chips, lang) });
   const rest = f.replace(GREETING, '').trim();
-  if (GREETING.test(f) && (!rest || /^(necesen|necesiz|necesiniz|ne var ne yox|how are you|как дела|qardas|xanim|bey)$/.test(rest))) {
+  if (GREETING.test(f) && (!rest || /^(necesen|necesiz|necesiniz|nasilsin|nasilsiniz|ne var ne yox|how are you|как дела|qardas|xanim|bey)$/.test(rest))) {
     return r('greeting', say(lang, 'Salam! Buyurun, sizə necə kömək edə bilərəm? Proqram, quraşdırma, avadanlıq və ya hesabınızdakı satış haqqında soruşa bilərsiniz.', 'Hello! How can I help? Ask about the software, installation, hardware or your own sales.', 'Здравствуйте! Чем помочь? Спросите о программе, установке, оборудовании или своих продажах.'), ['products', 'install', 'pricing', 'assistant_skills']);
   }
   if (GREETING.test(f) && rest) return 'greet-prefix';
-  if (/^(sen |siz |bes siz |bes sen )?(necesen|necesiz|necesiniz|netersen|ne var ne yox|how are you|как дела|как ты)( sen| siz)?$/.test(f)) {
+  if (/^(sen |siz |bes siz |bes sen )?(necesen|necesiz|necesiniz|nasilsin|nasilsiniz|netersen|ne var ne yox|how are you|как дела|как ты)( sen| siz)?$/.test(f)) {
     return r('wellbeing', say(lang, 'Çox sağ olun, yaxşıyam! Siz necəsiniz? Possistem ilə bağlı nə sualınız var?', 'I’m well, thank you! How can I help with Possistem?', 'Спасибо, всё хорошо! Чем помочь с Possistem?'));
   }
   if (/^(yaxsiyam|yaxsiyiq|ela|normalam|normal|pis deyil|fine|good|хорошо|нормально)( cox sag ol| sagol| tesekkurler| thanks)?$/.test(f)) {
