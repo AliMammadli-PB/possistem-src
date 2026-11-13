@@ -45,7 +45,7 @@ Server yalnız `hold/apply/release` əməliyyatını imzalanmış cihaz növbəs
 - Native: `restoranpos/native/core/src/handlers/QrPaymentHandlers.inc`.
 - Electron: `restoranpos/qr-payments`, `scripts/apply-restaurant-table-payments.mjs`; assemble siyahısına daxildir.
 
-1.10.29 buraxılışı üçün installer və sayt/API yayımı hazırlanır. Canlı QR kart tutulmaları ayrıca bağlı saxlanılır. Aktivləşdirmə üçün systemd əlavə EnvironmentFile faylı `/var/lib/possistem-pos-control/table-payments.env` içindəki `TABLE_QR_PAYMENTS_ENABLED` bayrağı və restoranın təsdiqlənmiş merchant sazlaması birlikdə tələb olunur. Canlı tətbiq sırası: yedək → 0061 miqrasiyası → API/admin/website → yerli POS sınağı → restoranın merchant açarları/callback → uyğun kassada kiçik real ödəniş və qaytarma uzlaşdırması → həmin restoran üçün aktivlik. Eyni anda bütün restoranlarda açmayın.
+1.10.29 installer, sayt/API və admin yayımı 13 noyabr 2026-da tamamlandı. Canlı QR kart tutulmaları ayrıca bağlı saxlanılır. Aktivləşdirmə üçün systemd əlavə EnvironmentFile faylı `/var/lib/possistem-pos-control/table-payments.env` içindəki `TABLE_QR_PAYMENTS_ENABLED` bayrağı və restoranın təsdiqlənmiş merchant sazlaması birlikdə tələb olunur. Canlı tətbiq sırası: yedək → 0061 miqrasiyası → API/admin/website → yerli POS sınağı → restoranın merchant açarları/callback → uyğun kassada kiçik real ödəniş və qaytarma uzlaşdırması → həmin restoran üçün aktivlik. Eyni anda bütün restoranlarda açmayın.
 
 ## Yoxlama dəlilləri
 
