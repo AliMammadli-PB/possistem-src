@@ -812,6 +812,7 @@ var PsStockAssistant = (() => {
 
 
 
+
 /* MANAGEMENT_UNIFIED_V1 */
 function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  const h=psH,{lang}=useI18n(),L=(a,t,e)=>psBizText(lang,a,t,e);
@@ -22283,6 +22284,7 @@ function PsTableQrPayment({orderId,onUpdated}){
 
 
 
+
 function PaymentPage() {
   const { orderId = "" } = useParams();
   const { t } = useI18n();
@@ -24001,6 +24003,7 @@ function PsQrInbox(){
  return h(reactExports.Fragment,null,pending.length>0&&h("button",{type:"button",className:"ps-qr-inbox-toggle ps-nav "+(open?"ps-nav-on":"ps-nav-off"),"aria-haspopup":"dialog","aria-expanded":open,"aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders")+(pending.length?' · '+pending.length:''),title:psQrText("QR sifarişlər","QR siparişler","QR orders"),onClick:()=>{setOpen(true);void load()}},h("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.8,"aria-hidden":"true"},h("path",{d:"M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h2v2h-2z M19 15h2 M15 19v2 M19 19h2v2h-2z"})),h("span",{className:"ps-touch-nav-label"},psQrText("QR sifarişlər","QR siparişler","QR orders")),pending.length>0&&h("b",{"aria-hidden":"true"},pending.length>99?'99+':pending.length)),open&&requireReactDom().createPortal(h("div",{className:"ps-qr-overlay",onClick:e=>{if(e.target===e.currentTarget)setOpen(false)}},h("section",{className:"ps-qr-inbox",ref:dialogRef,role:"dialog","aria-modal":"true","aria-label":psQrText("QR sifarişlər","QR siparişler","QR orders"),onKeyDown:e=>{if(e.key==='Escape')setOpen(false)}},h("header",{className:"ps-qr-heading"},h("h2",null,psQrText("QR sifarişlər","QR siparişler","QR orders")),h("button",{onClick:()=>setOpen(false)},psQrText("Bağla","Kapat","Close"))),error&&h("p",{className:"ps-qr-error",role:"alert"},error),h("button",{onClick:load},psQrText("Yenilə","Yenile","Refresh")),!orders.length&&h("p",null,psQrText("Hələ QR sifariş yoxdur.","Henüz QR sipariş yok.","No QR orders yet.")),...orders.map(o=>h("article",{key:o.id,className:"ps-qr-order"},h("div",{className:"ps-qr-heading"},h("h3",null,o.tableLabel),h("span",null,new Date(o.createdAt).toLocaleString())),h("ul",null,...o.lines.map((l,i)=>h("li",{key:i},h("strong",null,l.qty+' × '+l.name),h("span",null,psQrMoney(l.lineTotalMinor)),l.selected?.length>0&&h("small",null,l.selected.map(m=>m.name).join(', ')),l.note&&h("small",null,l.note)))),o.note&&h("p",null,o.note),h("p",null,psQrText("Məhsullar: ","Ürünler: ","Items: ")+psQrMoney(o.subtotalMinor)),o.reason&&h("p",{className:"ps-qr-error"},o.reason),['pending','accepting'].includes(o.status)?h("div",{className:"ps-qr-actions"},h("button",{className:"primary",disabled:!!busy||(o.status==='accepting'&&Date.parse(o.claimUntil)>Date.now()),onClick:()=>decide(o,'accept')},psQrText("Qəbul et və hesabı aç","Kabul et ve hesabı aç","Accept and open bill")),o.status==='pending'&&h(reactExports.Fragment,null,h("input",{placeholder:psQrText("İmtina səbəbi","Ret nedeni","Rejection reason"),value:reason[o.id]||"",onChange:e=>setReason({...reason,[o.id]:e.target.value})}),h("button",{disabled:!!busy||!(reason[o.id]||'').trim(),onClick:()=>decide(o,'reject')},psQrText("İmtina et","Reddet","Reject")))):h("span",{className:"ps-qr-state"},({accepted:psQrText("Qəbul edilib","Kabul edildi","Accepted"),rejected:psQrText("İmtina edilib","Reddedildi","Rejected"),expired:psQrText("Müddəti bitib","Süresi doldu","Expired")})[o.status]||o.status))))),document.body));
 }
 
+function PsQr3dIcon(props){return psH("img",{...props,src:"./qr3d-icon.png",alt:"",width:28,height:28,style:{width:28,height:28,objectFit:"contain"}});}
 function settingsSections(t) {
   return [
     ...(!window.__psMarketMode?[{id:"qr-orders",label:psAdminText("QR sifariş və 3D","QR sipariş ve 3D","QR orders and 3D"),hint:psAdminText("Menyu, masa kodları və 3D modellər","Menü, masa kodları ve 3D modeller","Menu, table codes and 3D models"),icon:PsQr3dIcon,tone:"blue"}]:[]),
@@ -28495,7 +28498,7 @@ function PsAdminFrame({ children }) {
   const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["Partnyorlar", "Partnerler", "Partners"], sales: ["Satışlar", "Satışlar", "Sales"], purchases: ["Alışlar", "Alımlar", "Purchases"], objects: ["Obyektlər", "Şubeler", "Branches"], kassa: ["Kassalar", "Kasalar", "Tills"], staff: ["İşçilər","Personel","Staff"], salary: ["Maaşlar", "Maaşlar", "Salaries"], expenses: ["Xərclər", "Giderler", "Expenses"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
   const title = pathname === "/operations" ? psAdminText(...ops[new URLSearchParams(search).get("tab")] || ops.stock) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
-  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, jsxRuntimeExports.jsx(PsWorkspaceNav,{}), /* LOCAL_NO_WORKSPACE_TABS */ pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
+  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, /* LOCAL_NO_WORKSPACE_TABS */ pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
 }
 function PsAdminHub({ links }) {
   const [query, setQuery] = reactExports.useState("");
@@ -32775,6 +32778,9 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
+
+
+
 
 
 
