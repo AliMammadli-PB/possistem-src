@@ -4,7 +4,7 @@ import {createSetupConversation} from './setup-conversation.mjs';
 import {createStockOps} from './stock-ops.mjs';
 import {isCommand,periodBounds} from '../understand.mjs';
 import {screensFor,SCREENS} from './app-map.mjs';
-import {interpret,normalize,rankProducts,parseDecimal,parseQuantity,quantityInStockUnit,compactHelp,suggestCorrection,splitRequests,findByName} from './stock-assistant.mjs';
+import {interpret,normalize,nameVariants,rankProducts,parseDecimal,parseQuantity,quantityInStockUnit,compactHelp,suggestCorrection,splitRequests,findByName} from './stock-assistant.mjs';
 
 // Conversation owns the pending operation. The UI only renders messages and choices.
 export function createConversation({tools,help,understand=null,askSql=null,profile=null,language='az',makeKey=()=>crypto.randomUUID()}){
@@ -19,6 +19,10 @@ export function createConversation({tools,help,understand=null,askSql=null,profi
  const miss=answer=>({...answer,missed:true});
  const clear=()=>{pending=null;approval=null;choices=[];};
  const result=(body,options=[],reply)=>{choices=options;return{body,choices:options,reply};};
+ // out.printer: a target, '' (none set: no paper) or null (an older till that cannot tell).
+ const printedNote=printer=>printer===''?t('Hesabat qeydə alındı, amma çek printeri seçilməyib, ona görə kağız çıxmadı. Printer üçün “printeri tap” yazın; hesabatı sonra İdarə panelindən təkrar çap etmək olar.','Rapor kaydedildi ama yazıcı seçilmemiş.','Recorded, but no receipt printer is set, so nothing was printed.'):t('Hesabat qeydə alındı və çek printerinə göndərildi.','Rapor kaydedildi ve yazdırıldı.','Recorded and sent to the printer.');
+ const unsavedNote=d=>t(`“${d.name}” kalkulyasiyası saxlanmadı${d.lines.length?` (seçilmiş tərkib: ${d.lines.join(', ')})`:', tərkib seçilməmişdi'}. Kalkulyasiya yalnız “Planı göstər” → “Təsdiq et”dən sonra saxlanır. Davam etmək üçün “${d.name} üçün kalkulyasiya yarat” yazın.`,`“${d.name}” reçetesi kaydedilmedi.`,`The “${d.name}” recipe was not saved.`);
+ const stockCards=items=>items.filter(p=>p&&p.name).slice(0,24).map(p=>({title:p.name,meta:p.qtyMilli===null||p.qtyMilli===undefined?'':fmt(p.qtyMilli,1000)+' '+(p.unit||''),tone:p.qtyMilli!==null&&p.qtyMilli<=0?'out':p.qtyMilli!==null&&p.qtyMilli<=Number(p.minQtyMilli||0)?'low':'',value:'nav:/operations?tab=stock&q='+encodeURIComponent(p.name)}));
  const choice=(label,value=label)=>({label,value});
  const cancel=t('Ləğv et','İptal','Cancel'),confirm=t('Təsdiq et','Onayla','Confirm');
  const fields={name:t('Adını dəyiş','Adını değiştir','Change name'),price:t('Satış qiymətini dəyiş','Satış fiyatını değiştir','Change price'),quantity:t('Qalığı düzəlt','Stoku düzelt','Set stock')};
@@ -92,10 +96,12 @@ export function createConversation({tools,help,understand=null,askSql=null,profi
   const notes=[];
   if(!low&&offset===0&&negative.length)notes.push(t(`Mənfi qalıq (${negative.map(p=>p.name).join(', ')}) o deməkdir ki, satış anbara qəbul ediləndən çox olub: ya alış (mal qəbulu) yazılmayıb, ya da faktiki sayım fərqlidir. Düzəltmək üçün, məsələn, “${negative[0].name} ${Math.abs(negative[0].qtyMilli/1000)} ${negative[0].unit} artır” yazın; təsdiqinizdən əvvəl plan göstərəcəyəm.`,`Negatif stok (${negative.map(p=>p.name).join(', ')}): satış girişten fazla. Alış yazılmamış veya sayım farklı.`,`Negative stock (${negative.map(p=>p.name).join(', ')}) means more was sold than received: a purchase is missing or the count differs.`));
   if(!low&&!negativeOnly&&offset===0&&zero.length)notes.push(t(`Bitənlər: ${zero.map(p=>p.name).join(', ')}. Yeni alış lazımdırsa, Təchizat → Mal qəbulu bölməsindən daxil edin.`,`Bitenler: ${zero.map(p=>p.name).join(', ')}.`,`Out of stock: ${zero.map(p=>p.name).join(', ')}.`));
-  return result(`${t('Anbar','Depo','Warehouse')}: “${snapshot.warehouse.name}” · ${t('canlı məlumat','canlı veri','live data')}, ${time} (${t('Bakı vaxtı','Bakü saati','Baku time')})
+  const answer=result(`${t('Anbar','Depo','Warehouse')}: “${snapshot.warehouse.name}” · ${t('canlı məlumat','canlı veri','live data')}, ${time} (${t('Bakı vaxtı','Bakü saati','Baku time')})
 ${t(`Cəmi ${all.length} mal: ${inStock.length}-də qalıq var, ${zero.length} bitib, ${negative.length} mənfidədir.`,`Toplam ${all.length} ürün: ${inStock.length} stokta, ${zero.length} bitti, ${negative.length} negatif.`,`${all.length} items: ${inStock.length} in stock, ${zero.length} out, ${negative.length} negative.`)}${low?'\n'+t('Yalnız bitən və minimum həddə çatanlar:','Yalnızca biten ve minimumdakiler:','Only out-of-stock and minimum-level items:'):negativeOnly?'\n'+t('Yalnız mənfi qalıqda olanlar:','Yalnızca negatif stoktakiler:','Only items with negative stock:'):''}
 
 ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.','Negatif stokta ürün yok.','No item has negative stock.'):t('Bu seçimə uyğun məhsul yoxdur.','Bu seçime uygun ürün yok.','No products match this selection.')}${products.length>12?`\n(${offset+1}–${Math.min(offset+12,products.length)} / ${products.length})`:''}${notes.length?'\n\n'+notes.join('\n\n'):''}`, [ ...(offset>0?[choice(t('Əvvəlki','Önceki','Previous'),`overview:${store}:${mode}:${Math.max(0,offset-12)}`)]:[]),...(offset+12<products.length?[choice(t('Növbəti məhsullar','Sonraki ürünler','Next products'),`overview:${store}:${mode}:${offset+12}`)]:[]),...(mode?[choice(t('Bütün məhsullar','Tüm ürünler','All products'),`overview:${store}:0:0`)]:[]),...(mode!==1?[choice(t('Bitən / minimum qalıq','Tükenen / minimum stok','Out / minimum stock'),`overview:${store}:1:0`)]:[]),...(negativeOnly&&products.length===1?[choice(t(`${products[0].name} qalığını düzəlt`,`${products[0].name} stokunu düzelt`,`Fix ${products[0].name} stock`),`${products[0].name} qalığını dəyiş`)]:[])]);
+  // Each listed item is a card that opens the stock screen on it.
+  return{...answer,cards:stockCards(shown)};
  };
  const overview=async(mode,valid)=>{const data=await tools.catalogue();if(!valid())throw Error('stale conversation');const stores=data.warehouses.filter(w=>w.active!==0&&w.active!==false);const store=stores.find(w=>w.id===data.homeWarehouseId)||(stores.length===1?stores[0]:null);if(store)return showOverview(store.id,mode,0,valid);return result(t('Hansı anbara baxaq?','Hangi depoya bakalım?','Which warehouse should I check?'),stores.map(w=>choice(w.name,`overview:${w.id}:${mode}:0`)));};
  const scope=()=>t('Bu sualın cavabını verə bilmirəm: mən Possistem köməkçisiyəm və yalnız restoranınızın işi ilə kömək edirəm — satış və kassa, masalar və açıq hesablar, anbar qalığı, menyu və kalkulyasiya, printer, abunəlik. Sualınızı bu mövzularda bir cümlə ilə yazın, məsələn: “bugünkü satış”, “açıq masalar nə qədər işləyib”, “anbarda mənfi olanları göstər”.','Bu soruyu cevaplayamam: yalnızca restoranınızın işleriyle (satış, masalar, depo, reçete, yazıcı, abonelik) yardım ediyorum.','I can’t answer that: I only help with your restaurant’s work — sales, tables, stock, recipes, printer and subscription.');
@@ -109,18 +115,21 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
   return result(body,[],reply);
  };
  // Several requests in one message: read-only answers first, then the first change as a plan; further changes wait their turn.
+ let interrupting=false;
+ const QUESTIONS=new Set(['sales','cash','tables','subscription','overview','top_products','courier_report','purchases','stock_value','x_report','z_report','pdf_report','data_question','identity','profile','capabilities','open_screen']);
  const WRITES=new Set(['z_report','waste','receive','x_report','edit','table_delete','table_edit','area_create','tables_add','recipe_create','product_create','table_create','stock_add','printer_test']);
  async function many(parts,history,valid,inner=false){
   const greeting=parts.some(p=>/^(?:salam|slm|sa|merhaba|hello)$/.test(normalize(p))),notes=[];
   const asks=parts.filter(p=>!/^(?:salam|slm|sa|merhaba|hello)$/.test(normalize(p))).map(p=>{if(interpret(p).intent!=='unknown')return p;const fixed=suggestCorrection(p);if(fixed&&interpret(fixed).intent!=='unknown'){notes.push(`«${p}» → «${fixed}»`);return fixed;}return p;});
   if(asks.length<2||asks.some(p=>['unknown','help','social','cancel','confirm'].includes(interpret(p).intent)))return null;
   const reads=asks.filter(p=>!WRITES.has(interpret(p).intent)),changes=asks.filter(p=>WRITES.has(interpret(p).intent)),out=[];let n=0,last=null;
-  for(const p of reads){const a=await respond(p,history,valid,true);out.push(`${++n}) ${p}\n${a.body}`);}
+  const cards=[],files=[];
+  for(const p of reads){const a=await respond(p,history,valid,true);out.push(`${++n}) ${p}\n${a.body}`);cards.push(...(a.cards||[]));files.push(...(a.files||[]));}
   if(changes.length){last=await respond(changes[0],history,valid,true);out.push(`${++n}) ${changes[0]}\n${last.body}`);}
   queue=changes.slice(1);
   const head=(greeting?t('Salam! ','Merhaba! ','Hello! '):'')+t(`Mesajınızda ${asks.length} istək var, sırayla cavab verirəm.`,`Mesajınızda ${asks.length} istek var, sırayla yanıtlıyorum.`,`Your message has ${asks.length} requests; answering in order.`)+(notes.length?'\n'+t(`Yazı səhvlərini belə başa düşdüm: ${notes.join(', ')}.`,`Yazım hatalarını böyle anladım: ${notes.join(', ')}.`,`I read typos as: ${notes.join(', ')}.`):'');
   const tail=queue.length?'\n\n'+t(`Dəyişiklikləri bir-bir edirəm, çünki hər birini ayrıca təsdiq etməlisiniz. Bu plandan sonra növbəti: ${queue.map(q=>'«'+q+'»').join(', ')}.`,`Değişiklikleri tek tek yapıyorum. Sırada: ${queue.map(q=>'«'+q+'»').join(', ')}.`,`Changes go one at a time. Next: ${queue.map(q=>'«'+q+'»').join(', ')}.`):'';
-  return result(head+'\n\n'+out.join('\n\n')+tail,last?last.choices:[]);
+  return{...result(head+'\n\n'+out.join('\n\n')+tail,last?last.choices:[]),...(files.length?{files}:{}),...(cards.length?{cards:cards.slice(0,24)}:{})};
  }
  // The core lets the assistant change only a card's name and sale price; a cost wish is explained, not attempted.
  async function costNote({name,value},valid){
@@ -169,7 +178,7 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
     // SUM over nothing is one row of NULLs: that is "no data", not a dash.
     if(data.rows.length&&data.rows.every(r=>r.every(v=>v===null||v===undefined)))data={...data,rows:[]};
     const lines=data.rows.slice(0,20).map((row,i)=>data.columns.length===1?`• ${cell(row[0])}`:`${i+1}. `+data.columns.map((c,j)=>`${c}: ${cell(row[j])}`).join(' · '));
-    lastData={title:String(q.explain||question).replace(/[.\s]+$/,'').slice(0,80),sql:q.sql};
+    lastData={title:String(q.explain||question).replace(/[.\s]+$/,'').slice(0,80),sql:q.sql,question:String(question).trim()};
     return{...result((q.explain?q.explain+'\n\n':'')+(data.rows.length?lines.join('\n')+(data.rows.length>20||data.truncated?'\n'+t(`… daha çox sətir var; sualı daraldın.`,'… daha fazla satır var.','… more rows.'):''):t('Bu suala uyğun məlumat tapılmadı.','Uygun veri yok.','No matching data.'))+'\n'+t('Canlı məlumat, yalnız oxunub; heç nə dəyişməyib.','Canlı veri, yalnızca okundu.','Live data, read only.'),data.rows.length?[choice(t('📄 PDF kimi yüklə','📄 PDF olarak indir','📄 Download as PDF'),'pdf:last')]:[]),ai:true};
  }
  async function respond(input,history,valid,inner=false){
@@ -181,6 +190,15 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
   if(!inner&&!picked&&pending?.kind==='product'&&text.split(' ').length>=3&&plan.intent!=='unknown')pending=null;
   // A new sentence of several requests ("1 masada nə var, masa 99-u sil, …") is not an answer to the open step: that step is dropped, the message read afresh.
   if(!inner&&!picked&&!idle()&&text.split(' ').length>=6&&raw.split(/,(?!\d)|;|\n/).filter(p=>normalize(p).split(' ').length>=2).length>=2){printerOps.cancel();tableOps.cancel();setup.cancel();stockOps.cancel();clear();selected=null;}
+  // A whole new question typed while a step waits ("bütün qazancıma bax" during a recipe) is not the step's answer:
+  // when Groq does not read it as the answer, it is answered like any message and the step stays open to come back to.
+  if(!interrupting&&!inner&&!picked&&!idle()&&understand&&!QUESTIONS.has(plan.intent)&&text.split(' ').length>=3&&!/^[+-]?\d+(?:[.,]\d+)?\s*\p{L}{0,6}$/u.test(raw)){
+   const r=await understand(raw);
+   if(r&&r.kind!=='answer'&&(r.kind!=='commands'||(r.commands||[]).length+(r.unsupported||[]).length>0)){interrupting=true;try{const answer=await respond(raw,history,valid,inner);
+    if(setup.active&&!answer.choices.some(c=>c.value==='setup:resume'||c.value.startsWith('setup:')))return{...answer,body:answer.body+'\n\n'+setup.hint(),choices:[...answer.choices,choice(t('Yaradılmaya qayıt','Oluşturmaya dön','Resume creation'),'setup:resume')]};return answer;}finally{interrupting=false;}}
+  }
+  // "təkrar", "yenidən": the last request again.
+  if(!inner&&!picked&&/^(?:tekrar\w*|yeniden(?: et| yoxla)?|bir daha|yene)$/.test(text)){const last=[...history].reverse().find(m=>m.author==='me'&&!/^(?:tekrar\w*|yeniden(?: et| yoxla)?|bir daha|yene)$/.test(normalize(m.body)));if(last)return respond(last.body,history,valid,inner);}
   if(picked?.value==='queue:next'&&queue.length){const next=queue.shift();return respond(next,history,valid,inner);}
   if(picked?.value==='queue:clear'){queue=[];return result(t('Yaxşı, qalan istəkləri buraxdım. Başqa nə edək?','Tamam, kalan istekleri bıraktım.','OK, I dropped the remaining requests.'));}
   if(picked?.value==='typo:no')return miss(result(t('Yaxşı, onda sualı başqa sözlə yazın. Mən satış, masalar, anbar, kalkulyasiya, printer və abunəlik üzrə kömək edirəm.','Tamam, soruyu başka sözlerle yazın.','OK, please rephrase the question.')));
@@ -192,9 +210,9 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
   const weak=plan.multi||plan.intent==='unknown'||plan.intent==='help'&&(!knowledge||['unknown','clarify'].includes(knowledge.id))||plan.intent==='lookup'&&text.split(' ').length>=6||plan.intent==='tables'&&!plan.money&&!plan.count&&!plan.table&&!/\b(?:goster\w*|siyahi\w*|bax|list\w*|var|butun|hamisi\w*|bos|aciq)\b/.test(text);
   // A plan waiting only for "Təsdiq et" asks for no typed answer, so a typed message there is read like any other.
   const onlyConfirm=!!approval&&!pending&&!setup.active&&!tableOps.active&&!printerOps.active&&!stockOps.active;
-  if(!inner&&!picked&&(idle()||onlyConfirm)&&understand&&!['cancel','confirm','social'].includes(plan.intent)&&!/^[+-]?\d+(?:[.,]\d+)?\s*\p{L}{0,6}$/u.test(raw)&&!/^[a-z]+:[\w:.-]+$/i.test(raw)){
+  if(!inner&&!picked&&(idle()||onlyConfirm||interrupting)&&understand&&!['cancel','confirm','social'].includes(plan.intent)&&!/^[+-]?\d+(?:[.,]\d+)?\s*\p{L}{0,6}$/u.test(raw)&&!/^[a-z]+:[\w:.-]+$/i.test(raw)){
    // A copy: the reading is kept for replays of this turn, so nothing below may change the original.
-   const reading=structuredClone(await understand()),usable=c=>isCommand(c)&&!['unknown','help','social','cancel','confirm'].includes(interpret(c).intent);
+   const reading=structuredClone(await understand(raw)),usable=c=>isCommand(c)&&!['unknown','help','social','cancel','confirm'].includes(interpret(c).intent);
    // Groq sometimes files one of our own forms ("printeri test et") under unsupported; that is a command, not a refusal.
    // "salam sən kimsən", "restoranımın adı": requests the rules know by heart are commands too, in our own form.
    const known={identity:'sən kimsən',profile:'restoranımın adı nədir'};
@@ -238,10 +256,10 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
   if(!inner&&!picked&&idle()&&plan.intent!=='cancel'){const parts=splitRequests(raw);if(parts.length){const answer=await many(parts,history,valid);if(answer)return answer;}}
   // A misspelt request is offered back as a question; nothing runs until the person agrees.
   if(!inner&&!picked&&idle()&&plan.intent==='unknown'&&(!knowledge||['unknown','clarify'].includes(knowledge.id))){const fixed=suggestCorrection(raw);if(fixed&&interpret(fixed).intent!=='unknown')return result(t(`Bunu demək istəyirdiniz: “${fixed}”?`,`Bunu mu demek istediniz: “${fixed}”?`,`Did you mean: “${fixed}”?`),[choice(t(`Bəli, “${fixed}”`,`Evet, “${fixed}”`,`Yes, “${fixed}”`),fixed),choice(t('Xeyr, başqa şey','Hayır, başka','No, something else'),'typo:no')]);}
-  if(plan.intent==='cancel'||picked?.value==='cancel'){queue=[];printerOps.cancel();tableOps.cancel();setup.cancel();stockOps.cancel();clear();selected=null;return result(t('Ləğv etdim. Başqa nə edək?','İptal ettim. Başka ne yapalım?','Cancelled. What else can I help with?'));}
+  if(plan.intent==='cancel'||picked?.value==='cancel'){const dropped=setup.draft();if(dropped){queue=[];printerOps.cancel();tableOps.cancel();setup.cancel();stockOps.cancel();clear();selected=null;return result(unsavedNote(dropped)+' '+t('Başqa nə edək?','Başka ne yapalım?','What else?'));}queue=[];printerOps.cancel();tableOps.cancel();setup.cancel();stockOps.cancel();clear();selected=null;return result(t('Ləğv etdim. Başqa nə edək?','İptal ettim. Başka ne yapalım?','Cancelled. What else can I help with?'));}
   if(plan.intent==='social'||plan.intent==='unknown'&&!pending&&!setup.active&&!tableOps.active&&!printerOps.active&&['greeting','thanks','wellbeing','farewell','identity','about','invite','resolved'].includes(knowledge?.id))return result(compactHelp(knowledge),[],knowledge);
   if(plan.intent==='printer_test'){tableOps.cancel();setup.cancel();clear();const answer=await printerOps.start(valid);return result(answer.body,answer.choices);}
-  if(printerOps.active&&(raw.startsWith('printer:')||plan.intent==='confirm')){const answer=await printerOps.send(raw,valid);return result(answer.body,answer.choices);}
+  if(printerOps.active&&(raw.startsWith('printer:')||plan.intent==='confirm'||printerOps.searching&&/^(?:ozun tap|ozun axtar|tap|axtar\w*|he|beli|ok|olar|yeniden axtar)$/.test(text))){const answer=await printerOps.send(raw,valid);return result(answer.body,answer.choices);}
   if(printerOps.active&&plan.intent!=='social')printerOps.cancel();
   if(plan.intent==='recipe_context'){const answer=setup.explainRecipe();return result(answer.body,answer.choices);}
   // "Yeni zal yarat, ora əlavə et" answers "which area for the tables?" instead of starting over.
@@ -249,7 +267,11 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
   if(['table_delete','table_edit','area_create','tables_add'].includes(plan.intent)){setup.cancel();clear();selected=null;lastOverview=null;const answer=await tableOps.start(plan,valid);return result(answer.body,answer.choices);}
   if(tableOps.active&&(raw.startsWith('tableops:')||plan.intent==='unknown'||plan.intent==='confirm')){const answer=await tableOps.send(raw,valid);if(answer)return result(answer.body,answer.choices);}
   if(tableOps.active&&plan.intent!=='social')tableOps.cancel();
+  // The dish whose recipe is being written right now: show that draft and offer to save it, not "no recipe yet".
+  const sameDraft=name=>{const d=setup.draft();return d&&nameVariants(name||'').includes(normalize(d.name))?d:null;};
+  if(plan.intent==='recipe_show'&&sameDraft(plan.name)){const answer=setup.reviewDraft();if(answer)return result(answer.body,answer.choices);}
   if(plan.intent==='recipe_show'){clear();return showRecipe(plan.name,valid);}
+  if(plan.intent==='recipe_create'&&sameDraft(plan.name)){const answer=setup.continueDraft();if(answer)return result(answer.body,answer.choices);}
   // "Xarab olub" answering "niyə silinir?" names no item: it answers the open step.
   const stockAnswer=stockOps.active&&['waste','receive'].includes(plan.intent)&&!plan.name;
   if(['waste','receive'].includes(plan.intent)&&!stockAnswer){tableOps.cancel();setup.cancel();printerOps.cancel();clear();selected=null;const answer=await stockOps.start(plan,valid);return result(answer.body,answer.choices);}
@@ -257,7 +279,9 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
   if(stockOps.active&&plan.intent!=='social')stockOps.cancel();
   // "unun kilosu 3 manat": the cost price changes through a goods receipt, so that is what the assistant offers.
   if(plan.intent==='cost'){clear();const answer=await stockOps.start({intent:'receive',name:plan.name,price:plan.value},valid);return result(t('Maya qiyməti mal qəbulu ilə yenilənir: alışı qaimə ilə yazıram, qalıq artır və maya qiyməti yeni qiymətə keçir.\n','Maliyet mal kabulü ile güncellenir.\n','The cost price is updated by a goods receipt.\n')+answer.body,answer.choices);}
-  if(['recipe_create','product_create','table_create'].includes(plan.intent)){clear();selected=null;lastOverview=null;const answer=await setup.start(plan,valid);if(plan.cost)answer.body+='\n\n'+await costNote(plan.cost,valid);return result(answer.body,answer.choices);}
+  if(['recipe_create','product_create','table_create'].includes(plan.intent)){const dropped=setup.draft();clear();selected=null;lastOverview=null;const answer=await setup.start(plan,valid);if(plan.cost)answer.body+='\n\n'+await costNote(plan.cost,valid);
+   // A recipe left half-way is never saved: say so instead of letting it look done.
+   if(dropped&&!(plan.intent==='recipe_create'&&normalize(plan.name||'')===normalize(dropped.name)))answer.body=unsavedNote(dropped)+'\n\n'+answer.body;return result(answer.body,answer.choices);}
   if(setup.active&&(plan.intent==='unknown'||plan.intent==='confirm'||raw.startsWith('setup:')||setup.tablePrompt&&plan.intent==='tables'||setup.pricePrompt&&plan.intent==='lookup'&&/qiymet/.test(text))){const answer=await setup.send(raw,valid);if(answer)return result(answer.body,answer.choices);}
   if(picked?.value.startsWith('overview:')){const [,store,low,offset]=raw.split(':');if(pending?.kind!=='reason')clear();return showOverview(store,Number(low)||0,Number(offset),valid);}
   if(plan.intent==='overview'){
@@ -267,7 +291,7 @@ ${products.length?lines.join('\n'):negativeOnly?t('Mənfi qalıqda mal yoxdur.',
    if(plan.low)answer.body+='\n'+t('Minimum həddi olmayan mallardan yalnız sıfır və mənfi qalıqlar göstərilir.','Minimumu olmayan ürünlerde yalnız sıfır/negatif stok gösterilir.','Items without a minimum threshold are listed only when stock is zero or negative.');
    if(pending?.kind==='reason'&&selected){answer.body+='\n\n'+t(`${selected.product.name} · ${selected.warehouse.name}: gözləyən qalıq düzəlişiniz saxlanılıb. Səbəbi yazın və ya Ləğv et seçin.`, 'Bekleyen stok taslağı saklandı. Neden yazın veya iptal edin.','Your pending stock correction is kept. Enter a reason or cancel.');answer.choices.push(choice(cancel,'cancel'));}
    if(setup.active){answer.body+='\n\n'+setup.hint();answer.choices.push(choice(t('Yaradılmaya qayıt','Oluşturmaya dön','Resume creation'),'setup:resume'));}
-   return result(answer.body,answer.choices);
+   return{...result(answer.body,answer.choices),...(answer.cards?{cards:answer.cards}:{})};
   }
   if(plan.intent==='recall'){
    const mine=(history||[]).filter(m=>m.author==='me'&&!/^#|^[a-z]+:/.test(m.body||'')),said=mine.at(-1),answer=[...(history||[])].reverse().find(m=>m.author==='helper')?.body||'';
@@ -315,7 +339,9 @@ ${t('Canlı yerli hesabat; xalis satış mənfəət deyil.','Canlı yerel rapor;
    const total=data.columns.map((c,i)=>i===0?t('Cəmi','Toplam','Total'):/\(₼\)|^Say$|^Sifariş$/.test(c)?Math.round(data.rows.reduce((n,r)=>n+(Number(r[i])||0),0)*100)/100:'');
    const out=await tools.savePdfTable({filename:title,title,subtitle:t(`Hazırlandı: ${b.date} · ${data.rows.length} sətir`,`Hazırlandı: ${b.date}`,`Prepared ${b.date}`),columns:data.columns,rows:data.rows,total:total.some((v,i)=>i&&v!=='')?total:null});if(!valid())throw Error('stale conversation');
    const sums=data.columns.map((c,i)=>/\(₼\)/.test(c)?`${c.replace(/\s*\(₼\)/,'')}: ${fmt(Math.round(Number(total[i])*100),100)} ₼`:'').filter(Boolean).join(' · ');
-   return result(out.canceled?t('PDF saxlanmadı: saxlama pəncərəsi bağlandı. Yenidən istəsəniz, təkrar yazın.','PDF kaydedilmedi.','The PDF was not saved.'):t(`PDF hazırdır: ${out.path}\n${title} · ${data.rows.length} sətir${sums?'\n'+sums:''}\nFaylı həmin qovluqdan açıb çap edə və ya göndərə bilərsiniz.`,`PDF hazır: ${out.path}`,`PDF saved: ${out.path}`));
+   if(out.canceled)return result(t('PDF saxlanmadı: saxlama pəncərəsi bağlandı. Yenidən istəsəniz, təkrar yazın.','PDF kaydedilmedi.','The PDF was not saved.'));
+   // The file itself is shown as a card under the answer (open, show in folder, save elsewhere).
+   return{...result(t(`PDF hazırdır: ${title} · ${data.rows.length} sətir${sums?'\n'+sums:''}`,`PDF hazır: ${title}`,`PDF ready: ${title}`)),files:[{name:out.name||title+'.pdf',path:out.path,bytes:out.bytes,kind:'pdf'}]};
   }
   // An "open" button pressed on a till that cannot navigate yet arrives here as text: name the place instead.
   if(picked?.value.startsWith('nav:')){const where=SCREENS.find(x=>'nav:'+x.route===raw);return result(where?t(`Bu bölmə: ${where.where}.`,where.where,where.where):t('Bu bölməni proqramın İdarə menyusundan açın.','İdarə menüsünden açın.','Open it from the İdarə menu.'));}
@@ -392,13 +418,13 @@ Hələ edə bilmədiklərim: işçi yaratmaq, endirim kampaniyası, geri qaytarm
   if(plan.intent==='help'){clear();if(/anbar|stok|qaliq/.test(text)&&/problem|islemir|xeta/.test(text))return result(t('Anbarda hansı problem var: qalıq səhvdir, məhsul görünmür, yoxsa giriş/çıxış alınmır? Məhsulun adını və gözlədiyiniz qalığı yazın.','Depoda sorun nedir: stok yanlış mı, ürün görünmüyor mu, giriş/çıkış yapılamıyor mu?','What is wrong in inventory: incorrect stock, a missing product or a failed movement? Tell me the item and expected quantity.'));return fallback(raw,history);}
   if((plan.intent==='confirm'||picked?.value==='confirm')&&approval?.kind==='tool'){
    const op=approval;const out=await tools[op.name](...op.args,valid);if(!valid())throw Error('stale conversation');clear();
-   if(op.name==='reportZ'){const s=out.sales||{};return result(`${t('Z hesabatı','Z raporu','Z report')} №${out.sequenceNo??'—'} · ${out.businessDate||''}\n${t('Ümumi satış','Brüt','Gross')}: ${fmt(s.grossMinor,100)} ₼ · ${t('Qaytarma','İade','Refunds')}: ${fmt(s.refundMinor,100)} ₼ · ${t('Xalis','Net','Net')}: ${fmt(s.netMinor,100)} ₼${(s.byMethod||[]).length?'\n'+s.byMethod.map(m=>`• ${({cash:'Nağd',card:'Kart',account:'Hesaba (nisyə)',mixed:'Qarışıq'})[m.method]||m.method}: ${fmt(m.totalMinor,100)} ₼ (${m.count})`).join('\n'):''}${out.cash?`\n${t('Kassada gözlənilən nağd','Beklenen nakit','Expected cash')}: ${fmt(out.cash.expectedCashMinor,100)} ₼`:''}\n${t('Kassa günü bağlandı və hesabat çap olundu. Sonrakı satış üçün kassanı yenidən açın.','Gün kapandı.','The day is closed.')}`);}
+   if(op.name==='reportZ'){const s=out.sales||{};return result(`${t('Z hesabatı','Z raporu','Z report')} №${out.sequenceNo??'—'} · ${out.businessDate||''}\n${t('Ümumi satış','Brüt','Gross')}: ${fmt(s.grossMinor,100)} ₼ · ${t('Qaytarma','İade','Refunds')}: ${fmt(s.refundMinor,100)} ₼ · ${t('Xalis','Net','Net')}: ${fmt(s.netMinor,100)} ₼${(s.byMethod||[]).length?'\n'+s.byMethod.map(m=>`• ${({cash:'Nağd',card:'Kart',account:'Hesaba (nisyə)',mixed:'Qarışıq'})[m.method]||m.method}: ${fmt(m.totalMinor,100)} ₼ (${m.count})`).join('\n'):''}${out.cash?`\n${t('Kassada gözlənilən nağd','Beklenen nakit','Expected cash')}: ${fmt(out.cash.expectedCashMinor,100)} ₼`:''}\n${t('Kassa günü bağlandı.','Gün kapandı.','The day is closed.')} ${printedNote(out.printer)} ${t('Sonrakı satış üçün kassanı yenidən açın.','','')}`);}
    const methods={cash:'Nağd',card:'Kart',account:'Hesaba (nisyə)',mixed:'Qarışıq'},s=out.sales||{};
    return result(`${t('X hesabatı','X raporu','X report')} №${out.sequenceNo??'—'} · ${out.businessDate||''}
 ${t('Ümumi satış','Brüt satış','Gross')}: ${fmt(s.grossMinor,100)} ₼
 ${t('Qaytarma','İade','Refunds')}: ${fmt(s.refundMinor,100)} ₼
 ${t('Xalis satış','Net satış','Net')}: ${fmt(s.netMinor,100)} ₼${(s.byMethod||[]).length?'\n'+s.byMethod.map(m=>`• ${methods[m.method]||m.method}: ${fmt(m.totalMinor,100)} ₼ (${m.count})`).join('\n'):''}${out.orders?`\n${t('Sifariş','Sipariş','Orders')}: ${out.orders.count}${Number(out.orders.discountMinor)?` · ${t('endirim','indirim','discount')} ${fmt(out.orders.discountMinor,100)} ₼`:''}`:''}${out.cash?`\n${t('Kassada gözlənilən nağd','Kasada beklenen nakit','Expected cash')}: ${fmt(out.cash.expectedCashMinor,100)} ₼`:''}${out.openTableCount?`\n${t(`Açıq masalar: ${out.openTableCount} (${fmt(out.openTablesTotalMinor,100)} ₼), hələ satışa düşməyib.`,`Açık masalar: ${out.openTableCount}.`,`Open tables: ${out.openTableCount}.`)}`:''}
-${t('Hesabat qeydə alındı və çek printerinə göndərildi. Gün bağlanmadı.','Rapor kaydedildi ve yazdırıldı.','Recorded and sent to the printer.')}${out.businessDate&&out.businessDate<new Date(Date.now()+4*3600000).toISOString().slice(0,10)?'\n'+t(`Diqqət: kassa günü ${new Date(out.businessDate+'T12:00:00Z').toLocaleDateString('az-AZ',{day:'numeric',month:'long'})} tarixindən bəri bağlanmayıb, ona görə bu hesabat həmin gündən bu ana qədər olan satışı göstərir. Günü Z hesabatı ilə bağlayın (İdarə paneli).`,`Kasa günü ${out.businessDate} tarihinden beri kapanmadı.`,`The business day has been open since ${out.businessDate}.`):''}`);
+${printedNote(out.printer)} ${t('Gün bağlanmadı.','Gün kapanmadı.','The day stays open.')}${out.businessDate&&out.businessDate<new Date(Date.now()+4*3600000).toISOString().slice(0,10)?'\n'+t(`Diqqət: kassa günü ${new Date(out.businessDate+'T12:00:00Z').toLocaleDateString('az-AZ',{day:'numeric',month:'long'})} tarixindən bəri bağlanmayıb, ona görə bu hesabat həmin gündən bu ana qədər olan satışı göstərir. Günü Z hesabatı ilə bağlayın (İdarə paneli).`,`Kasa günü ${out.businessDate} tarihinden beri kapanmadı.`,`The business day has been open since ${out.businessDate}.`):''}`);
   }
   if(plan.intent==='confirm'||picked?.value==='confirm'){
    if(!approval)return result(t('Hazırda təsdiq gözləyən dəyişiklik yoxdur.','Onay bekleyen değişiklik yok.','There is no change waiting for confirmation.'));
@@ -450,6 +476,9 @@ ${t('Hesabat qeydə alındı və çek printerinə göndərildi. Gün bağlanmad�
  }
  return{async recheck(){if(approval?.kind==='tool'){approval={...approval,args:[makeKey()]};return result(t('Təlim yenilənib. Planı yenidən təsdiqləyin.','Planı yeniden onaylayın.','Please confirm the plan again.'),[choice(confirm,'confirm'),choice(cancel,'cancel')]);}if(approval){const op=approval;await fresh(op.snapshot.product,op.snapshot.warehouse.id,()=>true);const r=preview(op.field,op.value,op.reason);r.body="Təlim yenilənib. Planı yenidən yoxlayın.\n"+r.body;return r;}if(printerOps.active)return printerOps.recheck(()=>true);if(stockOps.active)return stockOps.recheck(()=>true);if(tableOps.active)return tableOps.recheck(()=>true);return setup.recheck(()=>true);},snapshot:()=>({lastOverview,selected,pending,approval,choices,queue,lastData,setup:setup.snapshot(),table:tableOps.snapshot(),printer:printerOps.snapshot(),stock:stockOps.snapshot()}),restore:s=>{if(!s)return;({lastOverview=null,selected=null,pending=null,approval=null,choices=[],queue=[],lastData=null}=s);setup.restore(s.setup);tableOps.restore(s.table);printerOps.restore(s.printer);stockOps.restore(s.stock)},approval:()=>approval?approval.kind==='tool'?{name:approval.name,args:approval.args}:{name:'save',args:[approval.snapshot,approval.field,approval.value,approval.reason,approval.key]}:setup.approval()||tableOps.approval()||printerOps.approval()||stockOps.approval(),async send(input,history=[],valid=()=>true){
   if(locked)return result(t('Bir az gözləyin…','Biraz bekleyin…','Please wait…'));locked=true;
-  try{const answer=await respond(input,history,valid);if(queue.length&&idle()&&!/^(?:Mesajınızda|Mesajınızda|Your message)/.test(answer.body)){answer.body+='\n\n'+t(`Sıradakı istəyiniz: «${queue[0]}». Davam edək?`,`Sıradaki isteğiniz: «${queue[0]}». Devam edelim mi?`,`Next request: «${queue[0]}». Continue?`);answer.choices=[...answer.choices,choice(t(`Davam: ${queue[0]}`,`Devam: ${queue[0]}`,`Continue: ${queue[0]}`),'queue:next'),choice(t('Qalanını burax','Kalanını bırak','Drop the rest'),'queue:clear')];choices=answer.choices;}return answer;}catch(error){if(error?.pendingTool)throw error;if(/qorunan redaktəni dəstəkləmir/.test(error?.message||'')){clear();return result(t('İstəyinizi başa düşdüm, amma hazırda işləyən köhnə POS nüvəsi köməkçi ilə təhlükəsiz redaktəni dəstəkləmir. Məlumat dəyişməyib. Yeni nüvə build edilənədək Anbar bölməsindən düzəliş edin.','İsteğinizi anladım, ancak mevcut eski çekirdek güvenli yardımcı düzenlemesini desteklemiyor. Veri değişmedi.','I understood the request, but this older core does not support protected assistant edits. Nothing changed. Use Inventory until the new core is built.'));}return result(error?.message||String(error),approval?[choice(confirm,'confirm'),choice(cancel,'cancel')]:[]);}finally{locked=false;}
+  try{const before=selected,answer=await respond(input,history,valid);
+   // Answers that name things carry cards to open them: the product looked at, the subscription, the screen a data question is about.
+   if(!answer.cards&&!answer.files){const plan=interpret(String(input)),cards=plan.intent==='subscription'?[{title:t('Lisenziya və abunəlik','Lisans ve abonelik','Licence and subscription'),meta:t('İdarə → Parametrlər → Lisenziya','Yönetim → Ayarlar','Management → Settings'),value:'nav:/settings/license'}]:selected&&selected!==before&&selected.product?.name?stockCards([{name:selected.product.name,qtyMilli:selected.qtyMilli??selected.level?.qtyMilli??null,unit:selected.product.unit,minQtyMilli:selected.product.minQtyMilli}]):lastData&&lastData.question===String(input).trim()?screensFor(lastData.question).map(d=>({title:d.label.replace(/^↗ /,''),meta:d.where,value:d.value})):[];if(cards.length)answer.cards=cards;}
+   if(queue.length&&idle()&&!/^(?:Mesajınızda|Mesajınızda|Your message)/.test(answer.body)){answer.body+='\n\n'+t(`Sıradakı istəyiniz: «${queue[0]}». Davam edək?`,`Sıradaki isteğiniz: «${queue[0]}». Devam edelim mi?`,`Next request: «${queue[0]}». Continue?`);answer.choices=[...answer.choices,choice(t(`Davam: ${queue[0]}`,`Devam: ${queue[0]}`,`Continue: ${queue[0]}`),'queue:next'),choice(t('Qalanını burax','Kalanını bırak','Drop the rest'),'queue:clear')];choices=answer.choices;}return answer;}catch(error){if(error?.pendingTool)throw error;if(/qorunan redaktəni dəstəkləmir/.test(error?.message||'')){clear();return result(t('İstəyinizi başa düşdüm, amma hazırda işləyən köhnə POS nüvəsi köməkçi ilə təhlükəsiz redaktəni dəstəkləmir. Məlumat dəyişməyib. Yeni nüvə build edilənədək Anbar bölməsindən düzəliş edin.','İsteğinizi anladım, ancak mevcut eski çekirdek güvenli yardımcı düzenlemesini desteklemiyor. Veri değişmedi.','I understood the request, but this older core does not support protected assistant edits. Nothing changed. Use Inventory until the new core is built.'));}return result(error?.message||String(error),approval?[choice(confirm,'confirm'),choice(cancel,'cancel')]:[]);}finally{locked=false;}
  }};
 }

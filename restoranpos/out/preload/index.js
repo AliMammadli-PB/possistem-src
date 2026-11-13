@@ -100,7 +100,10 @@ const api = {
     saveText: (filename, text) => call("files.saveText", { filename, text }),
     saveBinary: (filename, base64) => call("files.saveBinary", { filename, base64 }, { timeoutMs: 60000 }),
     /** Renders HTML to PDF in a hidden window, so the till keeps working. */
-    savePdf: (filename, html) => call("files.savePdf", { filename, html }, { timeoutMs: 60000 })
+    savePdf: (filename, html) => call("files.savePdf", { filename, html }, { timeoutMs: 60000 }),
+    /* ASSISTANT_FILES_1110 */
+    assistantPdf: (filename, html) => call("files.assistantPdf", { filename, html }, { timeoutMs: 60000 }),
+    assistantOpen: (path, action) => call("files.assistantOpen", { path, action }, { timeoutMs: 60000 })
   },
 
   inventory: {
@@ -567,8 +570,11 @@ async function _sunmiPrepareRefund(payload,market=false){
 electron.contextBridge.exposeInMainWorld("possistemBilling",{status:()=>electron.ipcRenderer.invoke(IPC.invoke,{method:"billing.status",payload:{},options:{timeoutMs:15000}}),open:()=>electron.ipcRenderer.invoke(IPC.invoke,{method:"billing.open",payload:{},options:{timeoutMs:15000}})});
 
 /* POSSISTEM_QR_ORDERS_1 */
-electron.contextBridge.exposeInMainWorld("possistemQr",{call:(method,payload)=>["qr.config","qr.inbox","qr.decision"].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:60000}}):Promise.resolve({success:false,error:{message:"Not allowed"}})});
+electron.contextBridge.exposeInMainWorld("possistemQr",{call:(method,payload)=>["qr.config","qr.inbox","qr.decision","qr.open3d"].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:60000}}):Promise.resolve({success:false,error:{message:"Not allowed"}})});
 
 /* POSSISTEM_PRELOAD_1917 */
 electron.contextBridge.exposeInMainWorld('possistemAccess',{check:(fresh=false,verify=false)=>electron.ipcRenderer.invoke(IPC.invoke,{method:'billing.access',payload:{fresh,verify},options:{timeoutMs:20000}})});
 electron.contextBridge.exposeInMainWorld('posPrinterNetwork',{call:(method,payload)=>['print.xprinterDiscover','print.xprinterConfigure','print.xprinterFirewall'].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:method==='print.xprinterFirewall'?180000:60000}}):Promise.resolve({success:false,error:{message:'Not allowed'}})});
+
+/* TABLE_QR_PAYMENT_MAIN_V1 */
+electron.contextBridge.exposeInMainWorld("possistemTablePay",{call:(method,payload)=>["qr.payments.ready","qr.payments.open","qr.payments.stop","qr.payments.status"].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:60000}}):Promise.resolve({success:false,error:{message:"Not allowed"}})});

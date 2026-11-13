@@ -606,7 +606,10 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
             out << "     Yer: " << item.value("seat", 0) << "\n";
         }
         const std::string course = getOr<std::string>(item, "course", "");
-        if (!course.empty()) out << "     Kurs: " << course << "\n";
+        // The kitchen reads Azerbaijani: the stored course codes are English.
+        const std::string courseAz = course == "starter" ? "Başlanğıc" : course == "main" ? "Əsas yemək"
+                                     : course == "dessert" ? "Desert" : course == "drink" ? "İçki" : course;
+        if (!course.empty()) out << "     Kurs: " << courseAz << "\n";
     }
 
     out << "\n" << layout::renderSeparator('=', width) << "\n";

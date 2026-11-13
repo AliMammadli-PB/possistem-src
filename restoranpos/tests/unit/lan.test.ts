@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const main = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
-const block = main.slice(main.indexOf('/* POS_LAN_v1 */\nvar _psLan'));
+// Later main-process features (cloud branches/updater) are not the LAN block.
+const block = main.slice(main.indexOf('/* POS_LAN_v1 */\nvar _psLan'), main.indexOf('/* POS_CLOUD_BRANCHES_v1 */'));
 const KEY = 'k'.repeat(64);
 
 type Result = { success: boolean; data: unknown; error: { code: string; message: string } | null };
@@ -34,7 +35,9 @@ const core = Object.assign(new EventEmitter(), {
   },
 });
 const scope = {
-  require: createRequire(import.meta.url), m: path, W: crypto, Bt: os, p: fs,
+  // Relative main-process modules resolve from the assembled application,
+  // just as they do inside app.asar, rather than from tests/unit/.
+  require: createRequire(path.join(ROOT, 'out/main/index.js')), m: path, W: crypto, Bt: os, p: fs,
   Wt: () => fs.mkdtempSync(path.join(os.tmpdir(), 'lan-')),
   c: { BrowserWindow: { getAllWindows: () => [] }, app: { whenReady: () => Promise.reject() } },
   v: { info() {}, warn() {} },

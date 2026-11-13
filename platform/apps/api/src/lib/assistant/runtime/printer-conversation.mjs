@@ -20,8 +20,19 @@ Yoxlayın:
 3. Printerin IP ünvanı dəyişməyib? Parametrlər → Printer bölməsində yenidən axtarın.`;
   if(/paper|kağız|cover|qapaq/i.test(e))return`Səbəb: printerdə kağız bitib və ya qapaq açıqdır (printerin cavabı: “${e}”). Yeni rulonu taxın, qapağı bağlayın; növbədəki çek özü çıxacaq.`;
   return e?`Printerin cavabı: ${e}`:'';};
- const preview=()=>{flow.stage='confirm';return reply(`Printer: ${nameOf(flow.target)}\nBu printerə 1 sınaq çeki göndərəcəyəm: üzərində restoranın adı, tarix və “Sınaq çeki” yazısı olacaq. Satış, ödəniş və printer ayarları dəyişməyəcək, kassaya heç nə yazılmayacaq.\nTəsdiq edirsiniz?`,[choice('Təsdiq et','confirm')]);};
- const choose=data=>{flow.stage='pick';flow.targets=data.printers;return reply(data.printers.length?'Hansı qoşulmuş printeri yoxlayaq?':'Qoşulmuş printer tapılmadı. Parametrlər → Printer bölməsində printeri qoşub seçin. Bu, mağazadakı model siyahısı deyil.',data.printers.map(p=>choice(nameOf(p.name),'printer:target:'+encodeURIComponent(p.target))));};
+ const preview=()=>{flow.stage='confirm';return reply(`Printer: ${nameOf(flow.target)}\nBu printerə 1 sınaq çeki göndərəcəyəm: bu, nümunə çekdir: restoranın adı, tarix, iki nümunə məhsul, yekun məbləğ və “R-PREVIEW” kodu. Azərbaycan hərflərinin və ₼ işarəsinin düz çıxdığını da buradan görəcəksiniz. Satış, ödəniş və printer ayarları dəyişməyəcək, kassaya heç nə yazılmayacaq.\nTəsdiq edirsiniz?`,[choice('Təsdiq et','confirm')]);};
+ const settingsDoor=choice('↗ Printer ayarları','nav:/settings?section=printer');
+ const choose=data=>{flow.stage='pick';flow.targets=data.printers;
+  // Nothing installed: offer to look on the network ourselves rather than ending the conversation.
+  if(!data.printers.length){flow.stage='none';return reply(tools.printerPermissions?.().discover?'Kassa heç bir printer görmür. USB printer Windows-da quraşdırılmalıdır (sürücüsü ilə), sonra burada görünür.\nŞəbəkəyə (kabel və ya Wi-Fi) qoşulmuş Xprinter-i özüm axtarım?':'Kassa heç bir printer görmür. USB printer Windows-da quraşdırılmalıdır (sürücüsü ilə); şəbəkə printerini Parametrlər → Printer bölməsində axtarıb seçin.',[...(tools.printerPermissions?.().discover?[choice('Şəbəkədə axtar','printer:discover')]:[]),settingsDoor]);}
+  return reply('Hansı printeri yoxlayaq?',data.printers.map(p=>choice(nameOf(p.name),'printer:target:'+encodeURIComponent(p.target))));};
+ async function discover(valid){
+  const found=await tools.printerDiscover();if(!valid())throw Error('Hesab dəyişib.');
+  if(!found.printers.length){flow.stage='none';return reply('Şəbəkədə printer tapılmadı.\nYoxlayın: printer açıqdır, kabeli routerə taxılıb və ya eyni Wi-Fi-dadır; kompüterin firewall-u axtarışa icazə verir. USB printerdirsə, Windows-da quraşdırın.\nYenidən axtarım?',[choice('Yenidən axtar','printer:discover'),settingsDoor]);}
+  flow.found=true;flow.targets=found.printers;
+  if(found.printers.length===1){flow.target=found.printers[0].target;const r=preview();return{...r,body:`Şəbəkədə 1 printer tapdım.\n`+r.body};}
+  flow.stage='pick';return reply(`Şəbəkədə ${found.printers.length} printer tapdım. Hansını yoxlayaq?`,found.printers.map(p=>choice(nameOf(p.name),'printer:target:'+encodeURIComponent(p.target))));
+ }
  async function start(valid){
   const caps=tools.printerPermissions?.();
   if(!caps?.enabled)return{body:'Siz printerdən sınaq çeki istəyirsiniz. Mağazanın model siyahısı bu əmri yerinə yetirmir. Bu imkan üçün NEWEST-i tam bağlayıb yenidən açın; Parametrlər → Printer → Sınaq çeki bölməsindən də istifadə edə bilərsiniz.',choices:[]};
@@ -34,6 +45,9 @@ Yoxlayın:
  }
  async function send(raw,valid){
   if(!flow)return{body:'Yeni printer sınağı istəyin.',choices:[]};
+  if(raw==='printer:discover'||flow.stage==='none'&&/^(?:ozun tap|ozun axtar|tap|axtar\w*|he|hə|beli|bəli|ok|olar|yenidən axtar|yeniden axtar)$/.test(normalize(raw)))return discover(valid);
+  // A found network printer becomes the receipt printer only after its own confirmation.
+  if(flow.stage==='use'&&(raw==='printer:use'||/^(confirm|tesdiq( et|le|leyirem)?|beli|he|yes)$/.test(normalize(raw)))){const target=flow.target;await tools.printerUse(target,flow.key);if(!valid())throw Error('Hesab dəyişib.');flow=null;return{body:`${nameOf(target)} indi çek printeridir. X, Z və müştəri çekləri bu printerə gedəcək. Dəyişmək üçün Parametrlər → Printer bölməsinə keçin.`,choices:[]};}
   if(raw.startsWith('printer:target:')){
    if(!last?.choices.some(c=>c.value===raw))return last;
    const row=flow.targets.find(p=>'printer:target:'+encodeURIComponent(p.target)===raw);if(!row)return last;
@@ -41,13 +55,15 @@ Yoxlayın:
   }
   if(flow.stage!=='confirm'||!/^(confirm|tesdiq( et|le|leyirem)?|beli|he|yes)$/.test(normalize(raw)))return last;
   const current=await tools.printerList();if(!valid())throw Error('Hesab dəyişib.');
-  if(!current.printers.some(p=>p.target===flow.target)){flow.key=makeKey();delete flow.target;return choose(current);}
-  const target=flow.target,job=await tools.printerTest({target},flow.key,valid);flow=null;job.printer=job.printer||target;
+  if(!flow.found&&!current.printers.some(p=>p.target===flow.target)){flow.key=makeKey();delete flow.target;return choose(current);}
+  const target=flow.target,found=flow.found,job=await tools.printerTest({target},flow.key,valid);flow=null;job.printer=job.printer||target;
   const name=nameOf(job.printer||flow?.target),reason=why(job.lastError,job.printer);
   const body=['failed','cancelled','error'].includes(job.status)?`Sınaq çeki ${name} printerinə göndərilə bilmədi.\n${reason}\nDüzəltdikdən sonra “printeri test et” yazın, yenidən yoxlayaq.`
    :job.status==='completed'?`Sınaq çeki ${name} printerinə göndərildi və printer qəbul etdi. Kağızın çıxmasını yoxlayın.\nKağız çıxdısa, printer işləyir. Çıxmadısa: kağız rulonunun düz taxıldığını, qapağın bağlı olduğunu və printerin işığını yoxlayın, sonra yenidən sınayaq.`
    :`Printer hazırda cavab vermir, ona görə sınaq çeki növbəyə alındı. Fiziki çap hələ təsdiqlənməyib. Printer qoşulan kimi avtomatik çap olunacaq; yenidən göndərməyə ehtiyac yoxdur.\n${reason}\nSatış və ödənişlər bundan asılı deyil: müştəri çekləri də növbədə gözləyir və printer qayıdanda çıxır.`;
+  // A printer found on the network is offered as the receipt printer once its test page went through.
+  if(found&&job.status==='completed'){flow={stage:'use',target,key:makeKey()};return reply(body+`\n\nBu printeri çek printeri edim? X, Z və müştəri çekləri ona gedəcək.`,[choice('Çek printeri et','printer:use')]);}
   return{body,choices:[]};
  }
- return{start,send,get active(){return!!flow;},cancel(){flow=null;last=null;},snapshot:()=>({flow,last}),restore:s=>{flow=s?.flow||null;last=s?.last||null;},approval:()=>flow?.stage==='confirm'?{name:'printerTest',args:[{target:flow.target},flow.key]}:null,async recheck(valid){const answer=await start(valid);return{...answer,body:'Planı yenidən yoxlayın.\n'+answer.body};}};
+ return{start,send,get active(){return!!flow;},cancel(){flow=null;last=null;},snapshot:()=>({flow,last}),restore:s=>{flow=s?.flow||null;last=s?.last||null;},get searching(){return flow?.stage==='none';},approval:()=>flow?.stage==='confirm'?{name:'printerTest',args:[{target:flow.target},flow.key]}:flow?.stage==='use'?{name:'printerUse',args:[flow.target,flow.key]}:null,async recheck(valid){const answer=await start(valid);return{...answer,body:'Planı yenidən yoxlayın.\n'+answer.body};}};
 }

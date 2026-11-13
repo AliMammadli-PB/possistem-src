@@ -75,7 +75,7 @@ std::vector<wchar_t> toUtf16(const std::vector<std::uint32_t>& cps) {
  * Fixed-cell thermal font. lfWidth is forced so glyphs fit the column grid —
  * never enlarge the grid to match a proportional face (that stretched receipts).
  */
-HFONT makeFont(int cellWidth, int cellHeight, bool bold) {
+HFONT makeFontFace(int cellWidth, int cellHeight, bool bold, const wchar_t* face) {
     LOGFONTW lf{};
     lf.lfHeight = -cellHeight;
     // Fill most of the cell so thermal glyphs stay bold and readable.
@@ -86,15 +86,100 @@ HFONT makeFont(int cellWidth, int cellHeight, bool bold) {
     lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
     lf.lfQuality = NONANTIALIASED_QUALITY;
     lf.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
+    wcscpy_s(lf.lfFaceName, LF_FACESIZE, face);
+    return CreateFontIndirectW(&lf);
+}
 
+/** True when the font selected into dc has a real glyph for each UTF-16 unit (surrogates count as present). */
+bool hasGlyphs(HDC dc, const std::wstring& text, std::vector<bool>* present = nullptr) {
+    std::vector<WORD> glyphs(text.size(), 0);
+    if (text.empty()) return true;
+    if (GetGlyphIndicesW(dc, text.data(), static_cast<int>(text.size()), glyphs.data(),
+                         GGI_MARK_NONEXISTING_GLYPHS) == GDI_ERROR) {
+        return true;
+    }
+    bool all = true;
+    if (present) present->assign(text.size(), true);
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const bool surrogate = text[i] >= 0xD800 && text[i] <= 0xDFFF;
+        if (!surrogate && glyphs[i] == 0xFFFF) {
+            all = false;
+            if (present) (*present)[i] = false;
+        }
+    }
+    return all;
+}
+
+// Letters a receipt cannot do without. Windows (and Wine) quietly substitute a missing face,
+// so a face counts only when it is really installed and draws these itself.
+const wchar_t* const kNeeded = L"\u018F\u0259\u015E\u015F\u011E\u011F\u00C7\u00E7\u00D6\u00F6\u00DC\u00FC\u0130\u0131";
+
+/**
+ * Fixed-cell thermal font. lfWidth is forced so glyphs fit the column grid —
+ * never enlarge the grid to match a proportional face (that stretched receipts).
+ * The first installed face that has every Azerbaijani letter wins; otherwise the first installed face.
+ */
+HFONT makeFont(int cellWidth, int cellHeight, bool bold) {
+    HDC probe = CreateCompatibleDC(nullptr);
+    HFONT fallback = nullptr;
     for (const wchar_t* face :
          {L"Consolas", L"Cascadia Mono", L"Lucida Console", L"Courier New", L"Segoe UI",
           L"Arial", L"Tahoma"}) {
-        wcscpy_s(lf.lfFaceName, LF_FACESIZE, face);
-        HFONT font = CreateFontIndirectW(&lf);
-        if (font) return font;
+        HFONT font = makeFontFace(cellWidth, cellHeight, bold, face);
+        if (!font) continue;
+        if (!probe) return font;
+        HGDIOBJ old = SelectObject(probe, font);
+        wchar_t actual[LF_FACESIZE] = {};
+        GetTextFaceW(probe, LF_FACESIZE, actual);
+        const bool installed = _wcsicmp(actual, face) == 0;
+        const bool complete = installed && hasGlyphs(probe, kNeeded);
+        SelectObject(probe, old);
+        if (complete) {
+            if (fallback) DeleteObject(fallback);
+            DeleteDC(probe);
+            return font;
+        }
+        if (!fallback) fallback = font;
+        else DeleteObject(font);
+    }
+    if (probe) DeleteDC(probe);
+    return fallback;
+}
+
+/** A font for one character the receipt font lacks, or nullptr. */
+HFONT makeFallbackFor(HDC dc, wchar_t ch, int cellWidth, int cellHeight, bool bold) {
+    const std::wstring one(1, ch);
+    for (const wchar_t* face : {L"Segoe UI", L"Arial", L"Tahoma", L"Courier New", L"Consolas",
+                                L"Lucida Console", L"Cascadia Mono", L"DejaVu Sans Mono", L"DejaVu Sans"}) {
+        HFONT font = makeFontFace(cellWidth, cellHeight, bold, face);
+        if (!font) continue;
+        HGDIOBJ old = SelectObject(dc, font);
+        const bool ok = hasGlyphs(dc, one);
+        SelectObject(dc, old);
+        if (ok) return font;
+        DeleteObject(font);
     }
     return nullptr;
+}
+
+/** ₼ drawn with lines when no installed font has it: an arch over a vertical stroke, like the printed sign. */
+void drawManat(HDC dc, int x, int y, int cellWidth, int cellHeight, bool bold) {
+    const int pen = std::max(1, cellWidth / (bold ? 5 : 7));
+    HPEN line = CreatePen(PS_SOLID, pen, RGB(0, 0, 0));
+    HGDIOBJ old = SelectObject(dc, line);
+    const int left = x + cellWidth / 8, right = x + cellWidth - cellWidth / 8;
+    const int top = y + cellHeight * 3 / 10, bottom = y + cellHeight * 8 / 10;
+    const int mid = x + cellWidth / 2;
+    // Arch: the top half of an ellipse spanning the cell, legs down to the baseline.
+    Arc(dc, left, top, right, bottom + (bottom - top), right, top + (bottom - top), left, top + (bottom - top));
+    MoveToEx(dc, left, top + (bottom - top), nullptr);
+    LineTo(dc, left, bottom);
+    MoveToEx(dc, right - 1, top + (bottom - top), nullptr);
+    LineTo(dc, right - 1, bottom);
+    MoveToEx(dc, mid, y + cellHeight * 2 / 10, nullptr);
+    LineTo(dc, mid, bottom);
+    SelectObject(dc, old);
+    DeleteObject(line);
 }
 
 int sideMarginDots(PaperWidth paper) { return paper == PaperWidth::Mm58 ? 16 : 24; }
@@ -246,8 +331,32 @@ MonoBitmap renderLinesToBitmap(const std::vector<ReceiptLine>& lines, PaperWidth
 
             const int x = margin + startColumn * advance;
             RECT clip{margin, y, margin + usableWidth, y + row.height};
-            ExtTextOutW(dc, x, y, ETO_CLIPPED, &clip, wide.data(),
-                        static_cast<UINT>(wide.size()), dx.data());
+            std::vector<bool> present;
+            if (hasGlyphs(dc, std::wstring(wide.begin(), wide.end()), &present)) {
+                ExtTextOutW(dc, x, y, ETO_CLIPPED, &clip, wide.data(),
+                            static_cast<UINT>(wide.size()), dx.data());
+            } else {
+                // The receipt font lacks some letters (₼, Ə…): those cells are drawn from another font, or by hand.
+                std::wstring gaps(wide.begin(), wide.end());
+                for (std::size_t i = 0; i < gaps.size(); ++i) if (!present[i]) gaps[i] = L' ';
+                ExtTextOutW(dc, x, y, ETO_CLIPPED, &clip, gaps.data(), static_cast<UINT>(gaps.size()), dx.data());
+                int cellX = x;
+                for (std::size_t i = 0; i < wide.size(); cellX += dx[i], ++i) {
+                    if (present[i]) continue;
+                    const int glyphHeight = line.doubleWidth ? cellHeight * 2 : cellHeight;
+                    if (HFONT spare = makeFallbackFor(dc, wide[i], advance, glyphHeight, line.bold)) {
+                        HGDIOBJ previous = SelectObject(dc, spare);
+                        INT one = advance;
+                        ExtTextOutW(dc, cellX, y, ETO_CLIPPED, &clip, &wide[i], 1, &one);
+                        SelectObject(dc, previous);
+                        DeleteObject(spare);
+                    } else if (wide[i] == 0x20BC) {
+                        drawManat(dc, cellX, y, advance, glyphHeight, line.bold);
+                    } else {
+                        logger()->warn("raster: no installed font draws U+{:04X}", static_cast<unsigned>(wide[i]));
+                    }
+                }
+            }
             SelectObject(dc, oldFont);
         }
         y += row.height;

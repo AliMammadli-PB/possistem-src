@@ -99,7 +99,7 @@ try{
    assert.equal((await p.evaluate(()=>qa.categories))[0].nameAz,'Menyular');assert.deepEqual(p.errors,[]);await p.close();
   }
   // Labels on the catalog tabs.
-  p=await open(1366,'page=catalog','admin/catalog');const tabs=await p.locator('.ps-business-tabs button').allInnerTexts();assert.deepEqual(tabs.slice(0,3),['Kateqoriyalar','Mallar və xammal','Anbar kateqoriyaları']);await p.close();
+  p=await open(1366,'page=catalog','admin/catalog');assert.equal(await p.locator('.ps-business-tabs').count(),0,'Kateqoriyalar opens on the menu; goods and warehouse categories live under İdarə → Menyu və anbar (1.10.24)');await p.close();
   // Goods reach the order screen.
   p=await open(1366,'page=goods','');
   await p.getByRole('button',{name:'+ Yeni mal'}).click();

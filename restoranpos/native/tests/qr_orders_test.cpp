@@ -46,3 +46,31 @@ TEST_CASE("a dish on the stop-list or unknown to the till is named in the refusa
  auto body=q.body();body["lines"][0]["productId"]="nowhere";
  try{q.call(body);FAIL("unknown dish accepted");}catch(const pos::PosError& e){CHECK(std::string(e.what()).find("kassada tapılmadı")!=std::string::npos);}
 }
+
+TEST_CASE("web waiter provisioning is owner-only and repeat-safe", "[waiter][auth]"){
+ QrFixture q;pos::handlers::registerAuth(q.f.contextPtr());const auto account=pos::crypto::uuid4();
+ auto invoke=[&](const std::string& method,pos::Json payload){pos::ipc::Request r;r.requestId=pos::crypto::uuid4();r.method=method;r.payload=payload;return q.f.server().callHandler(r);};
+ const pos::Json payload{{"accountId",account},{"fullName","Tərlan"}};const auto first=invoke("waiter.provision",payload);REQUIRE(first["role"]=="waiter");REQUIRE(first["id"]=="web-"+account);REQUIRE(invoke("waiter.provision",payload)["id"]==first["id"]);
+ auto count=q.f.db().prepare("SELECT COUNT(*) FROM users WHERE id=:id");count.bind(":id",first["id"].get<std::string>());REQUIRE(count.step());REQUIRE(count.columnInt(0)==1);
+ auto unsafe=payload;unsafe["nativeUserId"]="usr-admin";REQUIRE_THROWS_AS(invoke("waiter.provision",unsafe),pos::PosError);
+ q.f.ctx().session().userId=first["id"].get<std::string>();q.f.ctx().session().role="waiter";q.f.ctx().loadPermissions(q.f.ctx().session(),"role-waiter");
+ REQUIRE(invoke("waiter.identity",pos::Json::object())["id"]==first["id"]);REQUIRE_THROWS_AS(invoke("waiter.provision",payload),pos::PosError);
+}
+TEST_CASE("web waiter orders are priced natively, attributed and sent once", "[waiter][orders]"){
+ QrFixture q;pos::handlers::registerAuth(q.f.contextPtr());pos::handlers::registerOrders(q.f.contextPtr());
+ auto invoke=[&](const std::string& method,pos::Json payload,const std::string& key=""){pos::ipc::Request r;r.requestId=pos::crypto::uuid4();r.method=method;r.payload=payload;r.idempotencyKey=key;return q.f.server().callHandler(r);};
+ auto user=invoke("waiter.provision",{{"accountId",pos::crypto::uuid4()},{"fullName","Test waiter"}});
+ q.f.ctx().session().userId=user["id"].get<std::string>();q.f.ctx().session().role="waiter";q.f.ctx().loadPermissions(q.f.ctx().session(),"role-waiter");
+ auto body=q.body();body["lines"][0]["unitPriceMinor"]=1;REQUIRE_THROWS_AS(invoke("waiter.accept",body),pos::PosError);REQUIRE(q.count("orders")==0);
+ body["lines"][0]["unitPriceMinor"]=700;auto accepted=invoke("waiter.accept",body);REQUIRE(accepted["waiterUserId"]==user["id"]);REQUIRE(accepted["itemIds"].size()==1);REQUIRE(invoke("waiter.accept",body)["idempotentReplay"]==true);REQUIRE(q.count("order_items")==1);
+ const auto external=body["externalId"];REQUIRE(invoke("waiter.status",{{"externalId",external}})["kitchenSent"]==false);
+ const pos::Json send{{"orderId",accepted["orderId"]}};invoke("orders.submit",send,"waiter-send-once");REQUIRE(invoke("waiter.status",{{"externalId",external}})["kitchenSent"]==true);REQUIRE(invoke("orders.submit",send,"waiter-send-once")["idempotentReplay"]==true);
+ auto order=q.f.db().prepare("SELECT user_id FROM orders WHERE id=:id");order.bind(":id",accepted["orderId"].get<std::string>());REQUIRE(order.step());REQUIRE(order.columnText(0)==user["id"].get<std::string>());
+ q.f.ctx().session().userId="another-waiter";REQUIRE_THROWS_AS(invoke("waiter.status",{{"externalId",external}}),pos::PosError);REQUIRE_THROWS_AS(invoke("waiter.accept",body),pos::PosError);
+}
+TEST_CASE("web waiter role and an open till are mandatory", "[waiter][permissions]"){
+ QrFixture q;pos::handlers::registerAuth(q.f.contextPtr());
+ pos::ipc::Request r;r.method="waiter.identity";r.payload=pos::Json::object();REQUIRE_THROWS_AS(q.f.server().callHandler(r),pos::PosError);
+ q.f.ctx().session().role="waiter";q.f.ctx().session().permissions.clear();r.method="waiter.accept";r.payload=q.body();REQUIRE_THROWS_AS(q.f.server().callHandler(r),pos::PosError);REQUIRE(q.count("orders")==0);
+ q.f.ctx().loadPermissions(q.f.ctx().session(),"role-waiter");q.f.db().exec("UPDATE business_days SET status='closed'");REQUIRE_THROWS_AS(q.f.server().callHandler(r),pos::PosError);REQUIRE(q.count("orders")==0);
+}

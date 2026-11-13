@@ -1,0 +1,2 @@
+rembg[cpu]==2.0.69
+onnxruntime==1.31.1

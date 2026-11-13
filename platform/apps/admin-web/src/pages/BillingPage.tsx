@@ -1,3 +1,4 @@
+import {RestaurantPaymentSettings} from '../components/RestaurantPaymentSettings';
 import {BillingAccessControls} from '../components/BillingAccessControls';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
@@ -44,12 +45,13 @@ export function BillingPage(){
   const orders=useMemo(()=>data?.orders.filter(x=>(x.order_no+' '+x.customer_name+' '+x.status).toLowerCase().includes(q.toLowerCase()))??[],[data,q]);
   const payments=useMemo(()=>data?.payments.filter(x=>(x.order_no+' '+x.customer_name+' '+x.transaction_id+' '+x.provider_order_id).toLowerCase().includes(q.toLowerCase()))??[],[data,q]);
   return <div className="bill-page">
-    <header className="bill-heading"><div><span className="bill-eyebrow">POSSİSTEM · ÖDƏNİŞ İDARƏSİ</span><h1>{tab==='orders'?'Sifarişlər':tab==='payments'?'Ödənişlər':tab==='settings'?'Ödəniş parametrləri':tab==='cancellations'?'Ləğv sorğuları':'Abunəliklər'}</h1><p>Müştərinin aylıq haqqını, bank əməliyyatlarını və məhsul sifarişlərini idarə edin.</p></div><button type="button" onClick={()=>void load()} disabled={Boolean(busy)}>Yenilə</button></header>
-    <nav className="bill-tabs" aria-label="Ödəniş bölmələri">{[['subscriptions','Abunəliklər'],['cancellations','Ləğv sorğuları'+(pendingCancels?' ('+pendingCancels+')':'')],['payments','Ödənişlər'],['orders','Sifarişlər'],['settings','Parametrlər']].map(([key,label])=><NavLink key={key} to={'/billing/'+key}>{label}</NavLink>)}</nav>
+    <header className="bill-heading"><div><span className="bill-eyebrow">POSSİSTEM · ÖDƏNİŞ İDARƏSİ</span><h1>{tab==='orders'?'Sifarişlər':tab==='payments'?'Ödənişlər':tab==='restaurant'?'Restoran ödənişləri':tab==='settings'?'Ödəniş parametrləri':tab==='cancellations'?'Ləğv sorğuları':'Abunəliklər'}</h1><p>Müştərinin aylıq haqqını, bank əməliyyatlarını və məhsul sifarişlərini idarə edin.</p></div><button type="button" onClick={()=>void load()} disabled={Boolean(busy)}>Yenilə</button></header>
+    <nav className="bill-tabs" aria-label="Ödəniş bölmələri">{[['subscriptions','Abunəliklər'],['cancellations','Ləğv sorğuları'+(pendingCancels?' ('+pendingCancels+')':'')],['payments','Ödənişlər'],['orders','Sifarişlər'],['settings','Parametrlər'],['restaurant','Restoran ödənişləri']].map(([key,label])=><NavLink key={key} to={'/billing/'+key}>{label}</NavLink>)}</nav>
     {error&&<p role="alert" className="bill-alert error">{error}</p>}{notice&&<p role="status" className="bill-alert">{notice}</p>}
     {refundId&&data&&<RefundPanel order={data.orders.find(o=>o.id===refundId)!} onClose={()=>setRefundId('')} onDone={async text=>{setRefundId('');setNotice(text);await load();}}/>}
     {chargeSub&&<ChargePanel sub={chargeSub} onClose={()=>setChargeSub(null)} onDone={async text=>{setChargeSub(null);setNotice(text);await load();}}/>}
     {cancelSub&&<CancelPanel subscriptionId={cancelSub.id} request={cancelSub.request} onClose={()=>setCancelSub(null)} onDone={async text=>{setCancelSub(null);setNotice(text);await load();}}/>}
+    {tab==='restaurant'&&<RestaurantPaymentSettings/>}
     {tab==='settings'?<PaymentSettings onError={setError}/>:tab==='cancellations'?<Cancellations onOpen={(id,request)=>{setCancelSub({id,request});window.scrollTo({top:0,behavior:'smooth'});}} onError={setError} refreshKey={data}/>:<>
       {tab==='subscriptions'&&<section className="bill-panel"><header><h2>Müştərini aylıq sistemə qoş</h2></header><p>Hazırkı lisenziya müddəti saxlanılır. Məbləğ dəyişəndə avtomatik tutulma dayanır və yeni razılıq tələb olunur.</p><form className="bill-form" onSubmit={submit}>
         <label>Müştəri axtar<input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="Ad və ya e-poçt"/></label>

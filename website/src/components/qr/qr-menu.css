@@ -229,3 +229,5 @@
 /* Product art also identifies menu categories without replacing their readable labels. */
 .qr-tabs button{display:inline-flex;align-items:center;gap:8px}.qr-category-picture{width:30px;height:30px;object-fit:contain;flex:none}.qr-category-picture[hidden]{display:none}
 .qr-session-time{margin:12px 0;padding:10px 14px;border:1px solid #cbd8e8;border-radius:8px;background:#f1f6fd;color:#294e7c;font-size:13px;font-variant-numeric:tabular-nums}
+
+.qr-3d-link{min-width:48px;min-height:40px;border:1px solid var(--qr-rule)!important;border-radius:8px;color:var(--qr-accent)!important;font-weight:700!important;background:var(--qr-soft)!important}.qr-3d-entry{display:grid;gap:8px;margin-bottom:16px}.qr-3d-entry .qr-primary{min-height:48px;width:100%}.qr-3d-entry small{color:var(--qr-muted)}

@@ -39,6 +39,7 @@ const CSRF_EXEMPT = new Set([
 // paneli mutasiyalarına aid olmalıdır.
 const ADMIN_CSRF_SKIP_PREFIXES = [
   '/pos/api/billing/', // Signed Epoint callbacks, native bearer and limited checkout CSRF.
+  '/pos/api/waiter/', // Separate waiter cookie and CSRF.
   '/pos/api/partner/', // Separate partner cookie, origin and CSRF checks.
   '/pos/api/customer-auth/',
   '/pos/api/customer/',

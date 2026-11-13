@@ -24,10 +24,13 @@ export function MascotMotionMenu({mode,onChange}:{mode:MascotMotion;onChange:(mo
 }
 export function SupportMascot({gesture='idle',motion='full',preference='full'}:{gesture?:MascotGesture;motion?:EffectiveMotion;preference?:MascotMotion}) {
  const id=useId().replace(/[^a-zA-Z0-9_-]/g,''),artworkId=`mascot-v3-${id}`,artwork=useMemo(()=>({__html:mascotArtwork(artworkId)}),[artworkId]);
+ const [foodViewer,setFoodViewer]=useState(false);
+ useEffect(()=>{const update=()=>setFoodViewer(document.documentElement.dataset.food3dActive==='true');update();document.addEventListener('possistem:qr3d-active',update);return()=>document.removeEventListener('possistem:qr3d-active',update);},[]);
  const svg=useRef<SVGSVGElement>(null),canvas=useRef<HTMLCanvasElement>(null),state=useRef({gesture,motion,preference}),[threeReady,setThreeReady]=useState(false);
  useEffect(()=>{state.current={gesture,motion,preference};},[gesture,motion,preference]);
  useEffect(()=>{if(!svg.current)return;return startMascotAnimation(svg.current,()=>state.current);},[motion,threeReady]);
  useEffect(()=>{
+  if(foodViewer){setThreeReady(false);return;}
   const controller=new AbortController();let cleanup:(()=>void)|undefined;let mounted=true;
   const fail=()=>{if(mounted)setThreeReady(false);};
   const timer=window.setTimeout(()=>controller.abort(),15000);
@@ -38,6 +41,6 @@ export function SupportMascot({gesture='idle',motion='full',preference='full'}:{
    window.clearTimeout(timer);if(mounted)setThreeReady(true);else engine.dispose();
   }).catch(fail);
   return()=>{mounted=false;window.clearTimeout(timer);controller.abort();cleanup?.();};
- },[]);
+ },[foodViewer]);
  return <span className="support-mascot-frame" data-renderer={threeReady?'three':'svg'} aria-hidden="true"><canvas ref={canvas} className="support-mascot-canvas" style={{opacity:threeReady?1:0}}/>{!threeReady&&<svg ref={svg} className="support-mascot" data-artwork-id={artworkId} data-gesture={gesture} data-motion={motion} data-preference={preference} data-ready="false" viewBox="0 0 627 650" width="96" height="100" fill="none" aria-hidden="true" focusable="false" dangerouslySetInnerHTML={artwork}/>}</span>;
 }

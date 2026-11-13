@@ -646,6 +646,15 @@ int drainQueue(Context& ctx) {
             } else if (job.kind == "kitchen_ticket") {
                 const auto rendered = builder.kitchenTicket(job.orderId, overrides);
                 payload.text = rendered.text;
+                // As lines, so the Auto mode can switch to raster like the guest receipt: as plain text the
+                // code page turned "MƏTBƏX" into "METBEX" and every ə in dish and guest names into e.
+                for (std::size_t start = 0; start <= rendered.text.size();) {
+                    const auto end = rendered.text.find('\n', start);
+                    const auto row = rendered.text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                    if (!(end == std::string::npos && row.empty())) payload.lines.push_back({row});
+                    if (end == std::string::npos) break;
+                    start = end + 1;
+                }
                 receiptId = printing::storeReceipt(ctx, job.orderId, job.kind, rendered);
             } else if (!receiptId.empty()) {
                 // A retry or reprint replays the stored snapshot, so the guest

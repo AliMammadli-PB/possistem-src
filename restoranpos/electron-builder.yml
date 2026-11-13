@@ -1,6 +1,6 @@
 appId: com.cyberplus.maisonaurelia.pos
 productName: possistem
-buildVersion: 1.10.22
+buildVersion: 1.10.29
 executableName: possistem
 copyright: Copyright © 2026 Ali Mammadli / possistem
 electronVersion: 43.8.3
@@ -31,6 +31,8 @@ files:
   - { from: node_modules/ms, to: node_modules/ms }
   - { from: node_modules/sax, to: node_modules/sax }
 extraResources:
+  - from: build/desktop-icon.ico
+    to: desktop-icon.ico
   - from: integrations/xprinter/win32-x64/printer.sdk.dll
     to: native/win32-x64/printer.sdk.dll
   - from: native/build/restaurant-pos-core.exe
@@ -51,6 +53,7 @@ win:
   icon: build/icon.ico
   # Production packaging is fail-closed in scripts/package-win.mjs when CSC_LINK is absent.
 nsis:
+  include: build/desktop-shortcut.nsh
   artifactName: Possistem-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true

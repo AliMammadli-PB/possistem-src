@@ -18,6 +18,10 @@ import {
   ResetPasswordPage,
 } from './pages/AuthPages';
 
+const Qr3dPage=lazy(()=>import('./pages/Qr3dPage'));
+const WaiterPortalPage=lazy(()=>import('./pages/WaiterPortalPage'));
+const WaiterAccountsPage=lazy(()=>import('./pages/WaiterAccountsPage'));
+
 const OrdersPage = lazy(() => import('./pages/OrdersPage'));
 const CardsPage = lazy(() => import('./pages/CardsPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
@@ -128,6 +132,9 @@ export default function App() {
       <RouteEffects />
       <Suspense fallback={<PageLoader />}>
         <Routes>
+          <Route path="/qr-3d" element={<ProtectedShell><Qr3dPage/></ProtectedShell>}/>
+          <Route path="/ofisiant" element={<WaiterPortalPage/>}/>
+          <Route path="/ofisiantlar" element={<ProtectedShell><WaiterAccountsPage/></ProtectedShell>}/>
           <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
           <Route path="/register" element={<PublicOnly><Navigate to="/login" replace /></PublicOnly>} />
           <Route path="/forgot-password" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />

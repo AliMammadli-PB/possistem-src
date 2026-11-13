@@ -89,6 +89,7 @@ export const PATCH_ORDER = [
   'apply-restaurant-procurement.mjs',
   'apply-restaurant-expiry-block.mjs',
   'apply-restaurant-portal-rpc.mjs',
+  'apply-restaurant-waiter-portal.mjs',
   'apply-restaurant-delivery-dispatch.mjs',
   'apply-restaurant-costing.mjs',
   'apply-restaurant-recipe-editor.mjs',
@@ -158,6 +159,13 @@ export const PATCH_ORDER = [
   'apply-restaurant-operational-reset.mjs',
   'apply-restaurant-qr-sync-print.mjs',
   'apply-restaurant-support.mjs',
+  'apply-restaurant-assistant-files.mjs',
+  'apply-restaurant-staff-courier.mjs',
+  'apply-restaurant-cash-money.mjs',
+  'apply-restaurant-texts-1110.mjs',
+  'apply-restaurant-catalog-compact.mjs',
+  'apply-restaurant-qr3d.mjs',
+  'apply-restaurant-table-payments.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');
@@ -198,6 +206,7 @@ function stageRenderer() {
   copy('index.html', path.join(STAGE, 'index.html'));
   copy('possistem-system.css', path.join(STAGE, 'possistem-system.css'));
   copy('index-DAmHwBc4.js', path.join(STAGE, 'assets', 'index-BsrHjfOR.js'));
+  copy('qr-orders/qr3d-icon.png', path.join(STAGE, 'qr3d-icon.png'));
   copy('assets/brands/logo.png', path.join(STAGE, 'assets', 'brands', 'logo.png'));
   copy('../website/public/assets/brand-ribbon/possistem-pattern-20261023.webp',
     path.join(STAGE, 'assets', 'brands', 'possistem-pattern.webp'));

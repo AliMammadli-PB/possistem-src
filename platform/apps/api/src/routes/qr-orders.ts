@@ -1,3 +1,4 @@
+import {withQrModels} from '../lib/qr3d/store.js';
 import {QR_ITEM_IMAGES_DDL,withQrItemImages} from '../lib/qr-item-images.js';
 import {QR_VISITS_DDL,openQrVisit,readQrVisit,requireQrVisitActive} from '../lib/qr-visits.js';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
@@ -89,7 +90,7 @@ export async function qrOrderRoutes(app:FastifyInstance){
   const [m]=await query<Menu>(app.db,sql`SELECT * FROM restaurant_qr_menus WHERE public_token=${b.menu}`);
   const table=m?.document.tables.find(t=>m.table_tokens[t.id]===b.table);if(!m||!m.enabled||!table)throw new QrError('QR menyu hazırda bağlıdır. Restoran əməkdaşına müraciət edin.',404);
   const visit=req.headers['x-qr-session']?await readQrVisit(app.db,m.id,b.table,req.headers['x-qr-session']):null;
-  const {tables,...document}=await artworkDocument(m);return {revision:m.revision,table,document:{...document,items:document.items.filter(i=>!i.hidden)},ordersAvailable:!!visit?.active&&await licenseActive(m)&&!!m.last_seen_at&&Date.now()-new Date(m.last_seen_at).getTime()<90000};
+  const art=await artworkDocument(m);const models=await query<any>(app.db,sql`SELECT * FROM restaurant_qr_models WHERE menu_id=${m.id}::uuid AND published=true`);const {tables,...document}=withQrModels(art,models);return {revision:m.revision,table,document:{...document,items:document.items.filter(i=>!i.hidden)},ordersAvailable:!!visit?.active&&await licenseActive(m)&&!!m.last_seen_at&&Date.now()-new Date(m.last_seen_at).getTime()<90000};
  }));
  app.post('/public/qr/:menu/:table/orders',{config:{rateLimit:{max:30,timeWindow:'1 minute'}}},route(async(req)=>{
   const p=z.object({menu:opaque,table:opaque}).parse(req.params),b=QrCart.parse(req.body),hash=createHash('sha256').update(JSON.stringify({table:p.table,...b})).digest('hex');

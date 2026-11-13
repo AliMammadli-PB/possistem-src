@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+// Installs only this account's local processing service. Keys are provisioned separately.
+import fs from'node:fs/promises';import path from'node:path';import os from'node:os';import{fileURLToPath}from'node:url';import{execFileSync}from'node:child_process';
+const src=path.dirname(fileURLToPath(import.meta.url)),base=path.join(os.homedir(),'.local/share/possistem/photogrammetry'),dest=path.join(base,'worker');
+await fs.access(path.join(base,'mask-venv/bin/python'));await fs.access(path.join(base,'worker.json'));await fs.access(path.join(base,'Meshroom-2023.3.0/meshroom_batch'));await fs.mkdir(dest,{recursive:true,mode:0o700});for(const f of['worker.mjs','export-scan.py','mask-scan.py'])await fs.copyFile(path.join(src,f),path.join(dest,f));
+const unitDir=path.join(os.homedir(),'.config/systemd/user');await fs.mkdir(unitDir,{recursive:true});const escape=p=>'"'+p.replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('%','%%')+'"';
+await fs.writeFile(path.join(unitDir,'possistem-qr-scans.service'),`[Unit]\nDescription=Possistem free local QR photogrammetry worker\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=${escape(process.execPath)} ${escape(path.join(dest,'worker.mjs'))}\nWorkingDirectory=${base.replaceAll('%','%%')}\nRestart=on-failure\nRestartSec=30\nTimeoutStopSec=45\nKillMode=control-group\nNice=10\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`);
+execFileSync('systemctl',['--user','daemon-reload']);execFileSync('systemctl',['--user','enable','possistem-qr-scans.service']);execFileSync('systemctl',['--user','restart','possistem-qr-scans.service']);console.log('Local QR scan worker installed. Service: possistem-qr-scans.service');

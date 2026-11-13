@@ -161,7 +161,7 @@ Json runZClose(Context& ctx, const ipc::Request& request) {
         std::string id=getOr<std::string>(request.payload,"businessDayId","");
         if(id.empty()) {
             const auto open=days.openBusinessDayId();
-            if(!open)throw PosError(std::string(protocol::err::kNotFound),"Bagliyacaq acig kassa gunu yoxdur");
+            if(!open)throw PosError(std::string(protocol::err::kNotFound),"Bağlanacaq açıq kassa günü yoxdur");
             id=*open;
         }
         result=days.closeZ(id,getOr<std::string>(request.payload,"note",""));

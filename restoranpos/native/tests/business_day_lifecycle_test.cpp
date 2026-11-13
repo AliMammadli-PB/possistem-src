@@ -283,3 +283,73 @@ TEST_CASE("expectedCashMinor includes opening float and cash sales", "[business_
     REQUIRE(snap.at("payloadVersion").get<int>() == 2);
     REQUIRE(snap.at("countedCashMinor").is_null());
 }
+
+TEST_CASE("Z is not blocked by an empty bill or by kitchen tickets of a paid bill, and tidies both", "[business_day][z_tidy]") {
+    ServiceFixture fixture;
+    pos::services::BusinessDayService days(fixture.ctx());
+    fixture.openTill();
+    const std::string day = days.ensureOpenBusinessDayId();
+    const auto now = pos::nowMs();
+    const auto addOrder = [&](const std::string& number, const std::string& status, pos::Money total) {
+        const std::string id = pos::crypto::uuid4();
+        auto order = fixture.db().prepare(
+            "INSERT INTO orders (id, order_number, table_id, user_id, status, guest_count, "
+            "  subtotal_minor, discount_minor, tax_minor, service_minor, total_minor, paid_minor, "
+            "  tip_minor, opened_at, updated_at, closed_at, business_day_id, row_version) "
+            "VALUES (:id, :number, 'tbl-01', 'usr-admin', :status, 1, :total, 0, 0, 0, :total, :paid, 0, "
+            "        :now, :now, :closed, :day, 1)");
+        order.bind(":id", id).bind(":number", number).bind(":status", status).bind(":total", total)
+            .bind(":paid", status == "paid" ? total : 0).bind(":now", now).bind(":day", day);
+        if (status == "paid") order.bind(":closed", now); else order.bind(":closed", nullptr);
+        order.exec();
+        return id;
+    };
+    // A table touched and left: a draft with no items. A paid bill whose kitchen ticket nobody closed (no KDS).
+    const std::string empty = addOrder("Z-EMPTY", "draft", 0);
+    const std::string paid = addOrder("Z-PAID", "paid", 5000);
+    auto ticket = fixture.db().prepare(
+        "INSERT INTO kitchen_jobs (id, order_id, status, created_at) VALUES (:id, :order, 'new', :now)");
+    ticket.bind(":id", pos::crypto::uuid4()).bind(":order", paid).bind(":now", now);
+    ticket.exec();
+
+    const auto ready = days.readiness(day);
+    REQUIRE(ready.ready);
+    REQUIRE(ready.openOrders == 0);
+    REQUIRE(ready.pendingKitchen == 0);
+
+    {
+        pos::db::Transaction txn(fixture.db());
+        days.closeZ(day);
+        txn.commit();
+    }
+    auto emptyState = fixture.db().prepare("SELECT status, void_reason FROM orders WHERE id = :id");
+    emptyState.bind(":id", empty);
+    REQUIRE(emptyState.step());
+    REQUIRE(emptyState.columnText(0) == "voided");
+    REQUIRE(emptyState.columnText(1).find("Boş hesab") != std::string::npos);
+    auto ticketState = fixture.db().prepare("SELECT status FROM kitchen_jobs WHERE order_id = :id");
+    ticketState.bind(":id", paid);
+    REQUIRE(ticketState.step());
+    REQUIRE(ticketState.columnText(0) == "completed");
+}
+
+TEST_CASE("an open bill with items still blocks Z and is named in Azerbaijani", "[business_day][z_tidy]") {
+    ServiceFixture fixture;
+    pos::services::BusinessDayService days(fixture.ctx());
+    fixture.openTill();
+    const std::string day = days.ensureOpenBusinessDayId();
+    const auto now = pos::nowMs();
+    const std::string id = pos::crypto::uuid4();
+    auto order = fixture.db().prepare(
+        "INSERT INTO orders (id, order_number, table_id, user_id, status, guest_count, "
+        "  subtotal_minor, discount_minor, tax_minor, service_minor, total_minor, paid_minor, "
+        "  tip_minor, opened_at, updated_at, business_day_id, row_version) "
+        "VALUES (:id, 'Z-OPEN', 'tbl-01', 'usr-admin', 'sent', 1, 900, 0, 0, 0, 900, 0, 0, :now, :now, :day, 1)");
+    order.bind(":id", id).bind(":now", now).bind(":day", day);
+    order.exec();
+    const auto ready = days.readiness(day);
+    REQUIRE_FALSE(ready.ready);
+    REQUIRE(ready.openOrders == 1);
+    const auto message = ready.blockers.at(0).at("message").get<std::string>();
+    REQUIRE(message.find("Açıq hesablar var: Masa ") == 0);
+}

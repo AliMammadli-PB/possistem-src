@@ -7,7 +7,7 @@ export const SCREENS=[
  {route:'/operations?tab=stocktake',name:'Sayım',where:'İdarə → Menyu və anbar → Sayım',words:/\b(?:sayim\w*|inventarizasiya\w*)\b/},
  {route:'/operations?tab=costing',name:'Kalkulyasiya və maya',where:'İdarə → Menyu və anbar → Kalkulyasiya',words:/\b(?:kalkul\w*|resept\w*|maya\w*)\b/},
  {route:'/admin/catalog',name:'Menyu',where:'İdarə → Menyu və anbar → Menyu',words:/\b(?:menyu\w*|yemek\w*|kateqoriya\w*|set menyu\w*|modifikator\w*)\b/},
- {route:'/operations?tab=sales',name:'Satışlar',where:'İdarə → Ticarət',words:/\b(?:satis\w*|sifaris\w*|cek\w* tarixce\w*)\b/},
+ {route:'/operations?tab=sales',name:'Satışlar',where:'İdarə → Ticarət',words:/\b(?:satis\w*|sifaris\w*|cek\w* tarixce\w*|odenis\w*|qazan\w*|dovriyye\w*)\b/},
  {route:'/operations?tab=purchases',name:'Alış və mal qəbulu',where:'İdarə → Ticarət → Alışlar (Təchizat → Mal qəbulu)',words:/\b(?:alis\w*|mal qebul\w*|qaime\w*|tedaruk\w*|techizat\w*)\b/},
  {route:'/operations?tab=vendors',name:'Partnyorlar (tədarükçü, kuryer)',where:'İdarə → Heyət və xidmət → Partnyorlar',words:/\b(?:partnyor\w*|tedarukcu\w*|techizatci\w*)\b/},
  {route:'/operations?tab=kassa',name:'Kassa',where:'İdarə → Maliyyə → Kassa',words:/\b(?:kassa\w*|nagd\w*|kocurme\w*)\b/},

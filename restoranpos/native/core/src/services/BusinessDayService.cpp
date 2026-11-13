@@ -129,16 +129,30 @@ Json BusinessDayService::open(Money openingFloatMinor, std::string_view note) {
 BusinessDayReadiness BusinessDayService::readiness(const std::string& businessDayId) {
     BusinessDayReadiness result;
 
+    // A bill nobody put anything on (a table touched and left) is not an open sale: Z cancels it
+    // itself (closeZ), so it never blocks the day. The rest are named, so the till can say which ones.
     auto openOrders = ctx_.db().prepare(
-        "SELECT COUNT(*) FROM orders "
-        "WHERE business_day_id = :day AND status IN ('draft','open','sent','partially_paid')");
+        "SELECT o.order_number, COALESCE(t.label, '') FROM orders o "
+        "LEFT JOIN restaurant_tables t ON t.id = o.table_id "
+        "WHERE o.business_day_id = :day AND o.status IN ('draft','open','sent','partially_paid') "
+        "  AND NOT (o.status = 'draft' AND NOT EXISTS (SELECT 1 FROM order_items i "
+        "           WHERE i.order_id = o.id AND i.status <> 'voided')) "
+        "ORDER BY o.opened_at");
     openOrders.bind(":day", businessDayId);
-    openOrders.step();
-    result.openOrders = static_cast<int>(openOrders.columnInt(0));
+    std::string openNames;
+    while (openOrders.step()) {
+        ++result.openOrders;
+        if (result.openOrders <= 8) {
+            const auto label = openOrders.columnText(1);
+            openNames += (openNames.empty() ? "" : ", ") + (label.empty() ? openOrders.columnText(0) : "Masa " + label);
+        }
+    }
+    if (result.openOrders > 8) openNames += " və daha " + std::to_string(result.openOrders - 8);
     if (result.openOrders > 0) {
         result.blockers.push_back(
             Json{{"code", "open_orders"},
-                 {"message", "Open orders must be closed or voided before Z"},
+                 {"message", "Açıq hesablar var: " + openNames +
+                                 ". Onları ödənişlə bağlayın və ya ləğv edin, sonra Z çıxarın."},
                  {"count", result.openOrders}});
     }
 
@@ -151,21 +165,24 @@ BusinessDayReadiness BusinessDayService::readiness(const std::string& businessDa
     if (result.unresolvedPayments > 0) {
         result.blockers.push_back(
             Json{{"code", "unresolved_payments"},
-                 {"message", "Unresolved payments must be reconciled before Z"},
+                 {"message", "Nəticəsi bilinməyən kart ödənişləri var. Terminalda yoxlayıb ödənişi təsdiqləyin və ya ləğv edin."},
                  {"count", result.unresolvedPayments}});
     }
 
+    // Only tickets of bills still open wait for the kitchen. A paid bill's ticket is history: restaurants
+    // without a kitchen screen never mark tickets done, and that alone used to block every Z.
     auto kitchen = ctx_.db().prepare(
         "SELECT COUNT(*) FROM kitchen_jobs k "
         "JOIN orders o ON o.id = k.order_id "
-        "WHERE o.business_day_id = :day AND k.status IN ('new','accepted','preparing')");
+        "WHERE o.business_day_id = :day AND k.status IN ('new','accepted','preparing') "
+        "  AND o.status IN ('draft','open','sent','partially_paid')");
     kitchen.bind(":day", businessDayId);
     kitchen.step();
     result.pendingKitchen = static_cast<int>(kitchen.columnInt(0));
     if (result.pendingKitchen > 0) {
         result.blockers.push_back(
             Json{{"code", "pending_kitchen"},
-                 {"message", "Kitchen tickets must be completed before Z"},
+                 {"message", "Açıq hesabların mətbəx sifarişləri hələ hazırlanır. Mətbəx ekranında hazır kimi qeyd edin və ya hesabı bağlayın."},
                  {"count", result.pendingKitchen}});
     }
 
@@ -196,6 +213,31 @@ Json BusinessDayService::closeZ(const std::string& businessDayId, std::string_vi
                                   {"unresolvedPayments", ready.unresolvedPayments},
                                   {"pendingKitchen", ready.pendingKitchen},
                                   {"blockers", ready.blockers}}}});
+    }
+
+    // What readiness lets through is tidied before the day closes: empty bills are cancelled
+    // and kitchen tickets of bills already closed are marked done.
+    {
+        auto voidEmpty = ctx_.db().prepare(
+            "UPDATE orders SET status = 'voided', closed_at = :now, "
+            "       void_reason = 'Boş hesab: məhsul vurulmayıb, Z zamanı avtomatik ləğv olundu' "
+            "WHERE business_day_id = :day AND status = 'draft' "
+            "  AND NOT EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = orders.id AND i.status <> 'voided')");
+        voidEmpty.bind(":now", nowMs()).bind(":day", businessDayId);
+        voidEmpty.exec();
+        const auto voided = ctx_.db().changes();
+        auto staleKitchen = ctx_.db().prepare(
+            "UPDATE kitchen_jobs SET status = 'completed', completed_at = COALESCE(completed_at, :now) "
+            "WHERE status IN ('new','accepted','preparing') AND order_id IN "
+            "  (SELECT id FROM orders WHERE business_day_id = :day "
+            "     AND status NOT IN ('draft','open','sent','partially_paid'))");
+        staleKitchen.bind(":day", businessDayId).bind(":now", nowMs());
+        staleKitchen.exec();
+        const auto completed = ctx_.db().changes();
+        if (voided > 0 || completed > 0) {
+            ctx_.auditRequired("business_day.z_tidy", "business_day", businessDayId,
+                               Json{{"emptyOrdersVoided", voided}, {"kitchenJobsCompleted", completed}});
+        }
     }
 
     ReportService reports(ctx_);

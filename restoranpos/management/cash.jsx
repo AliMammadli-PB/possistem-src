@@ -12,7 +12,7 @@ function psCashFacts(account){
     [account.kind==='bank'?psAdminText('Ümumi kart ödənişi','Toplam kart ödemesi','Total card receipts'):psAdminText('Ümumi satış ödənişi','Toplam satış ödemesi','Total sales receipts'),known('totalCashMinor')&&known('totalCardMinor')?formatMoney(n('totalCashMinor')+n('totalCardMinor')):'—']
   ];
 }
-function PsCashAccountsGrid({accounts,data,busy,canManage,termName,onTransfer,onMoves,onEdit,onRemove,onRegisterOpen}){
+function PsCashAccountsGrid({accounts,data,busy,canManage,termName,onTransfer,onMoves,onEdit,onRemove,onRegisterOpen,onMoney}){
   const grid=reactExports.useRef(null);
   reactExports.useEffect(()=>{const close=event=>grid.current?.querySelectorAll('details[open]').forEach(node=>{if(!node.contains(event.target))node.open=false});document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[]);
   const action=(event,fn)=>{const menu=event.currentTarget.closest('details');if(menu)menu.open=false;fn();};
@@ -29,6 +29,7 @@ function PsCashAccountsGrid({accounts,data,busy,canManage,termName,onTransfer,on
       <details className="pm-cash-menu" onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
         <summary aria-label={account.name+' — '+psAdminText('Əlavə əməliyyatlar','Diğer işlemler','More actions')}><span aria-hidden="true">⋯</span></summary>
         <div>{onRegisterOpen&&account.kind==='till'&&String(account.terminalId||'').startsWith('market-')&&<button type="button" disabled={busy} onClick={event=>action(event,()=>onRegisterOpen(account))}>{psAdminText('Növbə · X/Z','Vardiya · X/Z','Shift · X/Z')}</button>}<button type="button" disabled={busy} onClick={event=>action(event,()=>onMoves(account))}>{psAdminText('Pul hərəkətləri','Para hareketleri','Money movements')}</button>
+          {canManage&&onMoney&&<><button type="button" disabled={busy} onClick={event=>action(event,()=>onMoney(account,'cash_in'))}>{psAdminText('Mədaxil — pul qoy','Para girişi','Money in')}</button><button type="button" disabled={busy} onClick={event=>action(event,()=>onMoney(account,'cash_out'))}>{psAdminText('Məxaric — pul götür','Para çıkışı','Money out')}</button></>}
           {canManage&&<><button type="button" disabled={busy} onClick={event=>action(event,()=>onEdit(account))}>{psAdminText('Redaktə et','Düzenle','Edit')}</button><button type="button" className="is-danger" disabled={busy} onClick={event=>action(event,()=>onRemove(account))}>{psAdminText('Sil','Sil','Delete')}</button></>}
         </div>
       </details>
@@ -67,4 +68,21 @@ function PsCashActivity({account,onClose}){
       <OpsTable head={[psAdminText('Tarix','Tarih','Date'),psAdminText('Növ','Tür','Type'),psAdminText('Məbləğ','Tutar','Amount'),psAdminText('Qeyd / qaimə','Not / belge','Note / document'),psAdminText('Əməkdaş','Çalışan','Employee')]} empty={psAdminText('Bu dövrdə hərəkət yoxdur','Bu dönemde hareket yok','No movements in this period')} rows={rows.map(row=>[opsWhen(row.createdAt),labels[row.kind]||row.kind,<b className={(row.amountMinor||0)<0?'pm-cash-out':'pm-cash-in'}>{(row.amountMinor||0)<0?'−':'+'}{formatMoney(Math.abs(row.amountMinor||0))}</b>,row.note||'—',row.actorName||'—'])}/>
     </>}
   </section>;
+}
+
+/* Money put into or taken out of one account that is not a sale, an expense or a transfer: morning change, owner's cash, bank deposit. */
+function PsCashMoneyDialog({form,onChange,busy,onClose,onSave}){
+  const incoming=form.kind==='cash_in',reasons=incoming?[psAdminText('Səhər xırda pul','Sabah bozuk para','Morning change'),psAdminText('Sahibdən nağd','Sahipten nakit','Cash from owner'),psAdminText('Digər','Diğer','Other')]:[psAdminText('Banka təhvil','Bankaya teslim','Bank deposit'),psAdminText('Sahibə verildi','Sahibe verildi','Given to owner'),psAdminText('Digər','Diğer','Other')];
+  const amount=Number(String(form.value).replace(',','.')),valid=Number.isFinite(amount)&&amount>0&&amount<10000000&&String(form.reason||'').trim();
+  const out=!incoming&&Number.isFinite(amount)&&Math.round(amount*100)>(form.account.balanceMinor||0);
+  return <PsAdminDialog title={(incoming?psAdminText('Mədaxil','Para girişi','Money in'):psAdminText('Məxaric','Para çıkışı','Money out'))+' — '+form.account.name} busy={busy} onClose={()=>{if(!busy)onClose();}}>
+    <form className="pm-cash-transfer-form" onSubmit={event=>{event.preventDefault();if(valid&&!busy)onSave();}}>
+      <p className="pm-cash-help">{incoming?psAdminText('Kassaya satışdan kənar qoyulan pul. Balans artır; satış hesabatına düşmür.','Satış dışı giriş.','Cash added outside sales.'):psAdminText('Kassadan satışdan kənar götürülən pul (xərc deyil). Balans azalır; xərc hesabatına düşmür.','Satış dışı çıkış.','Cash taken out, not an expense.')}</p>
+      <div className="pm-cash-transfer-amount"><label>{psAdminText('Məbləğ (₼)','Tutar (₼)','Amount (₼)')}<input inputMode="decimal" autoFocus value={form.value} disabled={busy} placeholder="0.00" onChange={event=>onChange({...form,value:event.target.value})}/></label></div>
+      <label>{psAdminText('Səbəb','Sebep','Reason')}<select value={reasons.includes(form.reason)?form.reason:''} disabled={busy} onChange={event=>onChange({...form,reason:event.target.value})}><option value="">{psAdminText('Seçin','Seçin','Choose')}</option>{reasons.map(r=><option key={r} value={r}>{r}</option>)}</select></label>
+      <label>{psAdminText('Qeyd','Not','Note')}<input value={form.note} disabled={busy} maxLength={200} onChange={event=>onChange({...form,note:event.target.value})}/></label>
+      {out&&<p className="pm-cash-error" role="status">{psAdminText('Məbləğ kassanın cari balansından çoxdur.','Tutar bakiyeden fazla.','The amount is above the current balance.')}</p>}
+      <div className="pm-cash-dialog-actions"><button type="submit" className="ps-ops-button" disabled={busy||!valid}>{busy?psAdminText('Yazılır…','Kaydediliyor…','Saving…'):psAdminText('Yadda saxla','Kaydet','Save')}</button><button type="button" className="ps-ops-button is-quiet" disabled={busy} onClick={onClose}>{psAdminText('İmtina','Vazgeç','Cancel')}</button></div>
+    </form>
+  </PsAdminDialog>;
 }

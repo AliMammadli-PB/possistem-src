@@ -22,7 +22,7 @@ export function interpret(input){
  if(/ne bacar|ne ede bil|neler ede bil|neler edirsen|neler bacar|ne is gor|nece komek|what can you do|ne yapabil|^(?:senin |komekcinin )?imkanlar\w*(?: de| nedir| goster)?$/.test(text))return{intent:'capabilities',query:''};
  if(/\b(abone\w*|abune\w*|abonman\w*|subscription|lisenz\w*|lisenziy\w*)\b/.test(text))return{intent:'subscription',query:'',pay:/odenis|odemek|odey|\bode\b|kart.*bagla|pay/.test(text)};
  if(/^(?:men |indi )?(?:odenis (?:etmek|elemek|edim|edecem)|odemek|pul odemek|ode\w* etmek)(?: isteyirem| lazimdir| isterem)?$|^odenis et$/.test(text))return{intent:'subscription',query:'',pay:true};
- if(/\bprinter\w*\b/.test(text)&&/test|kontrol|yoxla|sin(?:a|aq)|cek cixar|cek cap|cap et/.test(text))return{intent:'printer_test',query:''};
+ if(/\bprinter\w*\b/.test(text)&&/test|kontrol|yoxla|sin(?:a|aq)|cek cixar|cek cap|cap et|\btap\b|axtar|qos|bagla|tanit/.test(text))return{intent:'printer_test',query:''};
  // "doner 2 ədəd xarab olub", "un 25 kq aldım 3 manatdan": a write-off or a goods receipt, planned and confirmed.
  const wasteWord=text.match(/\b(xarab\w*|zay\w*|itki\w*|tokul\w*|dagil\w*|yan(?:di|ib|mis)\w*|atil\w*|silinme\w*|spisat\w*|vaxti kec\w*|son istifade\w*)\b/);
  const bought=/\b(?:aldim|aldiq|almisiq|almisam|alindi|alinib|geldi|gelib|qebul et\w*|mal qebul\w*|alis yaz\w*)\b/.test(text);
@@ -105,7 +105,7 @@ export function interpret(input){
  // "bugün nə qədər satmışıq / qazandıq" ask for sales as much as "bugünkü satış" does.
  const sold='(?:satis\\w*|satdi\\w*|satmis\\w*|satilib|satilan\\w*|qazandi\\w*|qazanmis\\w*|gelir\\w*|ciro\\w*)';
  // A breakdown (by waiter, table, dish, hour, customer…) is a data question, not the plain total.
- const breakdown=/\b(?:ofisiant\w*|isci\w*|kassir\w*|yemek\w*|mehsul\w*|saat\w*|kateqoriya\w*|musteri\w*|kuryer\w*|en az|gunlere gore|aylara gore)\b/.test(text);
+ const breakdown=/\b(?:ofisiant\w*|isci\w*|kassir\w*|yemek\w*|mehsul\w*|saat\w*|kateqoriya\w*|musteri\w*|kuryer\w*|en az|gunlere gore|aylara gore|butun|umumi|opsi|hamisi\w*|\d+ gun (?:evvel|once)|\d+ (?:yanvar|fevral|mart|aprel|may|iyun|iyul|avqust|sentyabr|oktyabr|noyabr|dekabr))\b/.test(text);
  if(!edit&&!breakdown&&(new RegExp(sold+'.*(?:bu gun|bugun|dunen|hefte|bu ay|ne qeder)').test(text)||new RegExp('(?:bu gun|bugun|dunen|hefte|bu ay|kecen ay|ne qeder|nece).*'+sold).test(text)||/sales.*(?:today|yesterday|week|month)/.test(text)))return{intent:'sales',period,query:''};
  if(!edit&&(/(?:ne var|neler var|hansi mallar|hansi mehsullar)/.test(text)&&/anbar\w*|stok\w*|mallar\w*|mehsullar\w*/.test(text)||/az (?:olan|qalan)|minimum\w* (?:asagi|az)|bitmek uzre|tukenen|qurtaran/.test(text)))return{intent:'overview',low:/az (?:olan|qalan)|minimum|bitmek|tukenen|qurtaran/.test(text),query:''};
  if(!edit&&/(?:anbar(?:im|ima|imda|a|i|da)?|stok)(?:i|in)? (?:ne var|nece mehsul|bax|goster|yoxla|siyahi)|(?:mehsullarim|mallarim)(?:i|in)?(?: siyahi\w*)?$|^(?:salam )?(?:anbar|anbarim|inventory)$|az qalan|biten mehsul|low stock/.test(text))return{intent:'overview',low:/az qalan|biten|low stock/.test(text),query:''};

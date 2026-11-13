@@ -1076,3 +1076,9 @@ export function billingRequest<T>(path:string,init:RequestInit={}){return reques
 export type CloudBackupList={devices:Array<{id:string;hostname:string;enabled:boolean;last_success_at:string|null;last_error:string|null}>,backups:Array<{id:string;device_id:string;size_bytes:number;created_at:string;manifest:{assets:number;missingAssets?:number;schemaVersion:number}}>};
 export function getCloudBackups(){return request<CloudBackupList>('/owner/cloud-backups')}
 export async function downloadCloudBackup(id:string){const r=await fetch(`${API}/owner/cloud-backups/${encodeURIComponent(id)}/download`,{credentials:'same-origin'});if(!r.ok)throw new Error('Yedək yoxlanmadı və ya yüklənmədi.');return r.blob();}
+
+/** Owner authentication and existing customer CSRF, never the waiter session. */
+export function waiterOwnerRequest<T>(suffix:string,init:RequestInit={}){return request<T>('/customer/waiters'+suffix,init);}
+
+/** QR/3D owner operations share the customer cookie and CSRF. */
+export function qr3dRequest<T=unknown>(path:string,init:RequestInit={}){return request<T>('/customer/qr3d'+path,init);}

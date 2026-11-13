@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import {useEffect,useState} from 'react';
 import {MarketingLayout} from '@/components/marketing/MarketingLayout';
 import {useI18n} from '@/components/providers/I18nProvider';
 import './pos-downloads.css';
@@ -16,21 +17,33 @@ const copy={
   en:{eyebrow:'POSSİSTEM FOR WINDOWS',title:'Download your POS.',intro:'Choose the application for your shop or restaurant.',market:'Barcode sales, stock and till operations.',restaurant:'Tables, menus and kitchen management. Includes QR ordering.',stable:'Stable release',download:'Download installer',zip:'Download ZIP',loading:'Checking version…',error:'Download information is unavailable.',retry:'Try again',previous:'Download stable Restaurant POS',unsigned:'The installer has no Windows code-signing certificate. Automatic updates are verified with the Possistem manifest signature.',helpTitle:'If the installer reports an integrity error',help:'Delete the previous incomplete file. Download the ZIP fully, choose “Extract all”, then open the extracted .exe file.',verify:'Verify the file',hash:'SHA-256 for the Restaurant POS 1.10.22 EXE',account:'Sign in with the account created by your administrator.',guide:'Installation guide',support:'Get support',format:'Windows · 64 bit',size:'MB'},
   ru:{eyebrow:'POSSİSTEM ДЛЯ WINDOWS',title:'Скачайте свою POS-программу.',intro:'Выберите программу для магазина или ресторана.',market:'Продажи по штрихкоду, склад и кассовые операции.',restaurant:'Столы, меню и управление кухней. Включает заказы по QR.',stable:'Стабильная версия',download:'Скачать установщик',zip:'Скачать ZIP',loading:'Проверка версии…',error:'Не удалось получить данные загрузки.',retry:'Повторить',previous:'Скачать стабильную версию Restaurant POS',unsigned:'Установщик не подписан сертификатом Windows. Автоматические обновления проверяются по подписи манифеста Possistem.',helpTitle:'Если установщик сообщает об ошибке целостности',help:'Удалите предыдущий неполный файл. Полностью скачайте ZIP, выберите «Извлечь все», затем откройте извлечённый файл .exe.',verify:'Проверить файл',hash:'SHA-256 EXE Restaurant POS 1.10.22',account:'Войдите с учётной записью, созданной администратором.',guide:'Инструкция по установке',support:'Поддержка',format:'Windows · 64 бит',size:'МБ'},
 };
+// The feed is the truth: a release no longer needs a site build to reach the download button. The pinned values
+// above are only the first paint and the fallback; the ZIP and SHA-256 belong to that pinned version only.
+async function feedRelease(base:string,fallback:Release):Promise<Release>{
+  const r=await fetch(base+'latest.yml',{cache:'no-store'});if(!r.ok)return fallback;const yml=await r.text();
+  const version=/^version:\s*(\S+)/m.exec(yml)?.[1],path=/^path:\s*(\S+)/m.exec(yml)?.[1],size=Number(/^\s+size:\s*(\d+)/m.exec(yml)?.[1]);
+  return version&&path&&/^[\w.-]+\.exe$/.test(path)?{version,size:Number.isFinite(size)?size:0,href:base+path}:fallback;
+}
 export function PosDownloadsPage(){
   const {language}=useI18n(),t=copy[language];
+  const [qr,setQr]=useState(QR_RELEASE),[market,setMarket]=useState(MARKET_RELEASE);
+  useEffect(()=>{let live=true;
+    void feedRelease('/pos-updates/',QR_RELEASE).then(r=>{if(live)setQr(r);}).catch(()=>{});
+    void feedRelease('/marketpos/updates/',MARKET_RELEASE).then(r=>{if(live)setMarket(r);}).catch(()=>{});
+    return()=>{live=false;};},[]);
   return <MarketingLayout solidHeader currentNav="setup" hideWhatsApp><section className="pos-download-page"><div className="marketing-container">
     <header className="pos-download-heading"><p className="marketing-eyebrow">{t.eyebrow}</p><h1>{t.title}</h1><p>{t.intro}</p></header>
     <div className="pos-download-grid">{(['market','restaurant'] as Product[]).map((product)=>{
-      const restaurant=product==='restaurant',release=restaurant?QR_RELEASE:MARKET_RELEASE;
+      const restaurant=product==='restaurant',release=restaurant?qr:market,pinned=release.version===(restaurant?QR_RELEASE:MARKET_RELEASE).version;
       return <article className="pos-download-card" key={product} aria-busy={false}>
         <div className="pos-download-top"><span className="pos-download-number">{restaurant?'02':'01'}</span><span className="pos-download-state">{t.stable}</span></div>
         <h2>{restaurant?'Restoran POS':'Market POS'}</h2><p className="pos-download-description">{t[product]}</p>
         <dl><div><dt>{t.format}</dt><dd>{release?'v'+release.version:t.loading}</dd></div>{!!release?.size&&<div><dt>.exe</dt><dd>{(release.size/1048576).toFixed(1)} {t.size}</dd></div>}</dl>
         <a className="marketing-button primary pos-download-main" href={release.href} download aria-label={(restaurant?'Restoran POS':'Market POS')+' — '+t.download}>{t.download}<span aria-hidden="true">↓</span></a>
-        <a className="pos-download-zip" href={restaurant?QR_ZIP:MARKET_ZIP} download>{t.zip} <span aria-hidden="true">↗</span></a><p className="pos-download-notice">{t.unsigned}</p>
+        {pinned&&<a className="pos-download-zip" href={restaurant?QR_ZIP:MARKET_ZIP} download>{t.zip} <span aria-hidden="true">↗</span></a>}<p className="pos-download-notice">{t.unsigned}</p>
       </article>;
     })}</div>
-    <section className="pos-download-help"><h2>{t.helpTitle}</h2><p>{t.help}</p><details><summary>{t.verify}</summary><p>{t.hash}</p><code>{QR_SHA}</code><p>Market POS 1.5.78 · SHA-256</p><code>485dc36302f95490482f18c29a71a83ee506c8438bdc96ae04395c2f347e4d96</code></details></section>
+    <section className="pos-download-help"><h2>{t.helpTitle}</h2><p>{t.help}</p>{(qr.version===QR_RELEASE.version||market.version===MARKET_RELEASE.version)&&<details><summary>{t.verify}</summary>{qr.version===QR_RELEASE.version&&<><p>{t.hash}</p><code>{QR_SHA}</code></>}{market.version===MARKET_RELEASE.version&&<><p>Market POS 1.5.78 · SHA-256</p><code>485dc36302f95490482f18c29a71a83ee506c8438bdc96ae04395c2f347e4d96</code></>}</details>}</section>
     <footer className="pos-download-next"><p>{t.account}</p><div><Link href="/qurasdirma/">{t.guide} <span aria-hidden="true">→</span></Link><Link href="/destek/">{t.support} <span aria-hidden="true">→</span></Link></div></footer>
   </div></section></MarketingLayout>;
 }

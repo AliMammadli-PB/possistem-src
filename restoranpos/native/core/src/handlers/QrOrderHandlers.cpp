@@ -44,11 +44,13 @@ void registerQrOrders(const ContextPtr& ctx){
    for(auto& g:p["groups"]){if(g.value("required",0)!=0&&g.value("min",0)==0)g["min"]=1;g.erase("required");auto opts=ctx->db().prepare("SELECT id,name_az AS name,price_delta_minor AS priceDeltaMinor FROM modifiers WHERE group_id=:id AND available=1 ORDER BY sort_order");opts.bind(":id",g["id"].get<std::string>());g["options"]=opts.rows();}
   }doc["items"]=items;return doc;
  });
- ctx->server().registerHandler("qr.accept",[ctx](const ipc::Request& req){
+ auto accept=[ctx](const ipc::Request& req){
+  const bool waiter=req.method=="waiter.accept";
+  if(waiter){ctx->requirePermission("order.view");require(ctx->session().role=="waiter","Yalnız ofisiant girişindən sifariş qəbul edilir");}
   ctx->requirePermission("order.create");const auto external=getOr<std::string>(req.payload,"externalId",""),tableId=getOr<std::string>(req.payload,"tableId",""),note=getOr<std::string>(req.payload,"note","");
   require(external.size()==36,"QR sifariş nömrəsi düzgün deyil");require(!tableId.empty()&&tableId.size()<=120,"Masa düzgün deyil");require(note.size()<=1500,"Qeyd çox uzundur");
   const auto hash=crypto::sha256Hex(serialize(req.payload));db::Transaction txn(ctx->db());
-  {auto previous=ctx->db().prepare("SELECT request_hash,response_json FROM qr_order_imports WHERE external_id=:id");previous.bind(":id",external);if(previous.step()){require(previous.columnText(0)==hash,"QR sifariş nömrəsi başqa məlumatla təkrar istifadə edilib");auto response=Json::parse(previous.columnText(1));response["idempotentReplay"]=true;txn.commit();return response;}}
+  {auto previous=ctx->db().prepare("SELECT request_hash,response_json FROM qr_order_imports WHERE external_id=:id");previous.bind(":id",external);if(previous.step()){require(previous.columnText(0)==hash,"QR sifariş nömrəsi başqa məlumatla təkrar istifadə edilib");auto response=Json::parse(previous.columnText(1));if(waiter)require(response.value("waiterUserId",std::string{})==ctx->session().userId,"Sifariş başqa işçiyə aiddir");response["idempotentReplay"]=true;txn.commit();return response;}}
   services::LicenseService(*ctx).requirePaidForSale();
   require(req.payload.contains("lines")&&req.payload["lines"].is_array()&&!req.payload["lines"].empty()&&req.payload["lines"].size()<=40,"Sifariş sətirləri düzgün deyil");
   auto table=ctx->db().prepare("SELECT id FROM restaurant_tables WHERE id=:id AND active=1 AND area_id!='area-delivery'");table.bind(":id",tableId);require(table.step(),"Masa aktiv deyil");
@@ -66,12 +68,23 @@ void registerQrOrders(const ContextPtr& ctx){
    insert.bind(":id",orderId).bind(":number",orders.nextOrderNumber()).bind(":table",tableId).bind(":user",ctx->session().userId).bindOptional(":shift",ctx->session().shiftId).bind(":day",day).bind(":now",now);insert.exec();
   }else{orders.requireEditable(orderId);days.adoptOrderIntoDay(orderId,day);}
   auto seq=ctx->db().prepare("SELECT COALESCE(MAX(line_seq),0) FROM order_items WHERE order_id=:id");seq.bind(":id",orderId);std::int64_t sequence=seq.step()?seq.columnInt(0):0;
-  for(const auto& l:lines){const auto itemId=crypto::uuid4();auto insert=ctx->db().prepare("INSERT INTO order_items(id,order_id,product_id,line_seq,name_snapshot,unit_price_minor,quantity,modifier_total_minor,line_total_minor,status,course,note,created_at,updated_at) VALUES(:id,:order,:product,:seq,:name,:price,:qty,:mods,:total,'draft',:course,:note,:now,:now)");
-   insert.bind(":id",itemId).bind(":order",orderId).bind(":product",l.product).bind(":seq",++sequence).bind(":name",l.name).bind(":price",l.price).bind(":qty",l.qty).bind(":mods",l.delta*l.qty).bind(":total",services::lineTotal(l.price,l.delta,l.qty)).bind(":course",l.course).bind(":note",std::string("QR: ")+note+(note.empty()?"":" · ")+l.note).bind(":now",now);insert.exec();
+  Json added=Json::array();
+  for(const auto& l:lines){const auto itemId=crypto::uuid4();added.push_back(itemId);auto insert=ctx->db().prepare("INSERT INTO order_items(id,order_id,product_id,line_seq,name_snapshot,unit_price_minor,quantity,modifier_total_minor,line_total_minor,status,course,note,created_at,updated_at) VALUES(:id,:order,:product,:seq,:name,:price,:qty,:mods,:total,'draft',:course,:note,:now,:now)");
+   insert.bind(":id",itemId).bind(":order",orderId).bind(":product",l.product).bind(":seq",++sequence).bind(":name",l.name).bind(":price",l.price).bind(":qty",l.qty).bind(":mods",l.delta*l.qty).bind(":total",services::lineTotal(l.price,l.delta,l.qty)).bind(":course",l.course).bind(":note",std::string(waiter?"Ofisiant: ":"QR: ")+note+(note.empty()?"":" · ")+l.note).bind(":now",now);insert.exec();
    for(const auto& m:l.modifiers){auto link=ctx->db().prepare("INSERT INTO order_item_modifiers(id,order_item_id,modifier_id,group_name_snapshot,name_snapshot,price_delta_minor) VALUES(:id,:item,:mod,:group,:name,:price)");link.bind(":id",crypto::uuid4()).bind(":item",itemId).bind(":mod",m.id).bind(":group",m.groupName).bind(":name",m.name).bind(":price",m.priceDelta);link.exec();}
   }
-  orders.recalculate(orderId);orders.refreshTableStatus(tableId);orders.logEvent(orderId,"qr.accepted",Json{{"externalId",external},{"lines",lines.size()}});ctx->audit("qr.accept","order",orderId,Json{{"externalId",external},{"tableId",tableId}});
-  Json result={{"orderId",orderId},{"tableId",tableId}};auto save=ctx->db().prepare("INSERT INTO qr_order_imports(external_id,request_hash,order_id,table_id,response_json,created_at) VALUES(:id,:hash,:order,:table,:response,:now)");save.bind(":id",external).bind(":hash",hash).bind(":order",orderId).bind(":table",tableId).bind(":response",serialize(result)).bind(":now",now);save.exec();txn.commit();ctx->server().emitEvent(protocol::event::kTablesUpdated,Json{{"tableIds",{tableId}}});return result;
+  orders.recalculate(orderId);orders.refreshTableStatus(tableId);orders.logEvent(orderId,waiter?"waiter.accepted":"qr.accepted",Json{{"externalId",external},{"lines",lines.size()}});ctx->audit(waiter?"waiter.accept":"qr.accept","order",orderId,Json{{"externalId",external},{"tableId",tableId}});
+  Json result={{"orderId",orderId},{"tableId",tableId}};if(waiter){result["waiterUserId"]=ctx->session().userId;result["itemIds"]=added;}auto save=ctx->db().prepare("INSERT INTO qr_order_imports(external_id,request_hash,order_id,table_id,response_json,created_at) VALUES(:id,:hash,:order,:table,:response,:now)");save.bind(":id",external).bind(":hash",hash).bind(":order",orderId).bind(":table",tableId).bind(":response",serialize(result)).bind(":now",now);save.exec();txn.commit();ctx->server().emitEvent(protocol::event::kTablesUpdated,Json{{"tableIds",{tableId}}});return result;
+ };
+ ctx->server().registerHandler("qr.accept",accept);
+ ctx->server().registerHandler("waiter.accept",accept);
+ ctx->server().registerHandler("waiter.status",[ctx](const ipc::Request& req){
+  ctx->requirePermission("order.view");require(ctx->session().role=="waiter","Yalnız ofisiant girişi");
+  auto q=ctx->db().prepare("SELECT response_json FROM qr_order_imports WHERE external_id=:id");q.bind(":id",getOr<std::string>(req.payload,"externalId",""));
+  if(!q.step())return Json{{"accepted",false}};
+  auto result=Json::parse(q.columnText(0));require(result.value("waiterUserId",std::string{})==ctx->session().userId,"Bu sifariş başqa işçiyə aiddir");
+  bool sent=true;for(const auto& id:result.at("itemIds")){auto line=ctx->db().prepare("SELECT status FROM order_items WHERE id=:id");line.bind(":id",id.get<std::string>());if(!line.step()||line.columnText(0)=="draft")sent=false;}
+  result["accepted"]=true;result["kitchenSent"]=sent;return result;
  });
 }
 }

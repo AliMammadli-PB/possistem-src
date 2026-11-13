@@ -14,6 +14,8 @@ const nextConfig = {
         source: '/((?!_next|assets).*)',
         headers: [{ key: 'Cache-Control', value: 'no-cache, must-revalidate' }],
       },
+      {source:'/qr/hesab/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'},{key:'X-Robots-Tag',value:'noindex, nofollow'}]},
+      {source:'/qr/:path*',headers:[{key:'Permissions-Policy',value:'camera=(self), xr-spatial-tracking=(self), microphone=(), geolocation=()'}]},
       {source:'/odenis/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'},{key:'X-Robots-Tag',value:'noindex, nofollow'}]},
     ];
   },

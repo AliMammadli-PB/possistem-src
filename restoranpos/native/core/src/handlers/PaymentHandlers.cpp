@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include "pos/services/LicenseService.hpp"
 
 #include "pos/Crypto.hpp"
@@ -196,7 +197,10 @@ Json recordDeposit(Context& ctx, const ipc::Request& request, const std::string&
 
 }  // namespace
 
+#include "QrPaymentHandlers.inc"
+
 void registerPayments(const ContextPtr& ctx) {
+    registerQrPayments(ctx);
     auto& server = ctx->server();
 
     server.registerHandler(
@@ -208,7 +212,7 @@ void registerPayments(const ContextPtr& ctx) {
                 "SELECT p.id, p.method, p.status, p.amount_minor AS amountMinor, "
                 "       p.tip_minor AS tipMinor, p.tendered_minor AS tenderedMinor, "
                 "       p.change_minor AS changeMinor, p.is_deposit AS isDeposit, p.seat, p.card_last4 AS cardLast4, "
-                "       p.created_at AS createdAt, u.full_name AS cashierName "
+                "       p.created_at AS createdAt, u.full_name AS cashierName, p.qr_payment_id AS qrPaymentId "
                 "FROM payments p LEFT JOIN users u ON u.id = p.user_id "
                 "WHERE p.order_id = :orderId ORDER BY p.created_at");
             stmt.bind(":orderId", orderId);
@@ -745,7 +749,7 @@ void registerPayments(const ContextPtr& ctx) {
                 }
 
                 auto original = ctx->db().prepare(
-                    "SELECT order_id, method, status, terminal_ref, is_deposit "
+                    "SELECT order_id, method, status, terminal_ref, is_deposit, qr_payment_id "
                     "FROM payments WHERE id = :paymentId");
                 original.bind(":paymentId", paymentId);
                 if (!original.step()) throw PosError::of(protocol::err::kPaymentNotFound);
@@ -754,6 +758,8 @@ void registerPayments(const ContextPtr& ctx) {
                 const std::string method = original.columnText(1);
                 const std::string reference = original.columnText(3);
                 const bool deposit = original.columnInt(4)!=0;
+                require(original.columnIsNull(5), "QR kart ödənişini restoranın Epoint kabinetində geri qaytarın və Possistem admini ilə uzlaşdırın.");
+                auto qrOpen=ctx->db().prepare("SELECT 1 FROM qr_payment_sessions WHERE order_id=:id AND state='open'");qrOpen.bind(":id",orderId);require(!qrOpen.step(),"Gözləyən QR ödənişlərini yoxlayıb QR-ni dayandırın; sonra qaytarma edin.");
                 if (method=="card" && deposit) {
                     const auto bankRrn=getOr<std::string>(request.payload,"rrn","");
                     require(bankRrn.size()==12 && std::all_of(bankRrn.begin(),bankRrn.end(),[](unsigned char c){return c>='0'&&c<='9';}),

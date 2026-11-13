@@ -59,6 +59,12 @@ Json RefundService::createRefund(const std::string& paymentId, Money amountMinor
         throw PosError(std::string(protocol::err::kValidation), "A refund reason is required");
     }
 
+    // Direct service callers must not record a cash/terminal refund of hosted
+    // Epoint money. The provider and native ledgers need a separate reconciliation.
+    { auto exists=ctx_.db().prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='qr_payment_holds'");
+      if(exists.step()){auto qr=ctx_.db().prepare("SELECT 1 FROM qr_payment_holds WHERE payment_id=:id AND status='applied'");qr.bind(":id",paymentId);
+       if(qr.step())throw PosError(std::string(protocol::err::kValidation),"QR kart ödənişini restoranın Epoint kabinetində geri qaytarın və Possistem admini ilə uzlaşdırın.");}}
+
     auto payment = ctx_.db().prepare(
         "SELECT p.id,p.order_id,p.method,p.amount_minor,p.tip_minor,p.business_day_id,p.status,p.is_deposit,o.status "
         "FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=:id");

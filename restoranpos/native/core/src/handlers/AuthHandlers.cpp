@@ -119,6 +119,38 @@ void setTerminalCounter(Context& ctx, const char* suffix, std::int64_t value) {
 void registerAuth(const ContextPtr& ctx) {
     auto& server = ctx->server();
 
+    // Owner-authenticated provisioning only. A web waiter has no guessable local PIN.
+    server.registerHandler("waiter.provision", [ctx](const ipc::Request& req) {
+        ctx->requirePermission("users.manage");
+        const auto account = getOr<std::string>(req.payload, "accountId", "");
+        const auto name = getOr<std::string>(req.payload, "fullName", "");
+        const auto linked = getOr<std::string>(req.payload, "nativeUserId", "");
+        require(account.size() == 36 && account.find_first_not_of("0123456789abcdef-") == std::string::npos, "Hesab nömrəsi düzgün deyil");
+        require(!name.empty() && name.size() <= 240, "İşçinin adını yazın");
+        const auto id = linked.empty() ? "web-" + account : linked;
+        db::Transaction txn(ctx->db());
+        auto existing = ctx->db().prepare("SELECT u.full_name,u.active,r.name FROM users u JOIN roles r ON r.id=u.primary_role_id WHERE u.id=:id");
+        existing.bind(":id",id);
+        if (existing.step()) {
+            require(existing.columnInt(1) == 1 && existing.columnText(2) == "waiter", "Yalnız aktiv ofisiant hesabına bağlamaq olar");
+            txn.commit(); return Json{{"id",id},{"fullName",existing.columnText(0)},{"role","waiter"},{"capability",1}};
+        }
+        require(linked.empty(), "Seçilmiş ofisiant tapılmadı");
+        auto role = ctx->db().prepare("SELECT id FROM roles WHERE name='waiter'"); require(role.step(), "Ofisiant rolu tapılmadı");
+        const auto roleId = role.columnText(0); const auto now = nowMs();
+        auto user = ctx->db().prepare("INSERT INTO users(id,code,full_name,pin_hash,primary_role_id,color,active,failed_attempts,created_at,updated_at) VALUES(:id,:code,:name,:hash,:role,'#155bd4',1,0,:now,:now)");
+        user.bind(":id",id).bind(":code","web-"+account).bind(":name",name).bind(":hash",crypto::hashPin(crypto::uuid4())).bind(":role",roleId).bind(":now",now); user.exec();
+        auto link = ctx->db().prepare("INSERT INTO user_roles(user_id,role_id) VALUES(:id,:role)"); link.bind(":id",id).bind(":role",roleId);link.exec();
+        ctx->auditRequired("waiter.provision","user",id,Json{{"accountId",account},{"fullName",name}});
+        txn.commit(); return Json{{"id",id},{"fullName",name},{"role","waiter"},{"capability",1}};
+    });
+    server.registerHandler("waiter.identity", [ctx](const ipc::Request&) {
+        ctx->requirePermission("order.view"); ctx->requirePermission("order.create");
+        require(ctx->session().role == "waiter", "Bu giriş yalnız aktiv ofisiant üçündür");
+        return Json{{"id",ctx->session().userId},{"fullName",ctx->session().fullName},{"capability",1}};
+    });
+
+
     // Public sign-in projection only. users.list stays permission-protected;
     // PIN hashes and permissions must not be exposed before authentication.
     server.registerHandler(std::string(protocol::method::kAuthListUsers),

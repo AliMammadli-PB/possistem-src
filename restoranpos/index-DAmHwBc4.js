@@ -51,14 +51,29 @@ var PsStockAssistant = (() => {
     const test = async (plan, key, valid = () => true) => {
       need();
       const fresh = await list();
-      if (!fresh.printers.some((p) => p.target === plan.target)) throw Error("Se\xE7ilmi\u015F printer art\u0131q m\xF6vcud deyil. Yenid\u0259n se\xE7in.");
+      const found = /^tcp:\d{1,3}(?:\.\d{1,3}){3}:9100$/.test(String(plan.target));
+      if (!found && !fresh.printers.some((p) => p.target === plan.target)) throw Error("Se\xE7ilmi\u015F printer art\u0131q m\xF6vcud deyil. Yenid\u0259n se\xE7in.");
       if (!valid()) throw Error("Hesab d\u0259yi\u015Fib. S\u0131naq \xE7eki g\xF6nd\u0259rilm\u0259di.");
       if (typeof api.print?.enqueue !== "function") throw Error("Printer s\u0131na\u011F\u0131 bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil.");
       const job = data(await api.print.enqueue({ kind: "test_page", printer: plan.target, exactTarget: true, idempotencyKey: key }, { idempotencyKey: key }));
       if (!job || typeof (job.id || job.jobId) !== "string" || typeof job.status !== "string") throw Error("Printer cavab\u0131 al\u0131nmad\u0131. Parametrl\u0259r \u2192 Printerd\u0259 n\xF6vb\u0259ni yoxlay\u0131n; avtomatik t\u0259krarlam\u0131ram.");
       return { id: job.id || job.jobId, status: job.status, lastError: job.lastError || "", printer: job.printer || plan.target };
     };
-    return { printerPermissions: () => ({ enabled: typeof api.print?.printers === "function" && typeof api.print?.enqueue === "function", print: has("receipt.print") && has("printer.manage") }), printerList: list, printerTest: test };
+    const discover = async () => {
+      need();
+      const net = globalThis.posPrinterNetwork;
+      if (typeof net?.call !== "function") throw Error("\u015E\u0259b\u0259k\u0259d\u0259 printer axtarmaq \xFC\xE7\xFCn Restoran POS-u yenil\u0259yin.");
+      const r = data(await net.call("print.xprinterDiscover", {}));
+      const devices = Array.isArray(r?.devices) ? r.devices : [];
+      return { printers: [...new Set(devices.map((d) => d?.ip).filter((ip) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(String(ip))))].map((ip) => ({ target: `tcp:${ip}:9100`, name: `tcp:${ip}:9100` })) };
+    };
+    const use = async (target, key) => {
+      need();
+      if (typeof api.settings?.set !== "function") throw Error("Printer ayar\u0131 bu t\u0259tbiqd\u0259 d\u0259yi\u015Fdiril\u0259 bilmir.");
+      data(await api.settings.set("printer.receipt", String(target)));
+      return { target: String(target) };
+    };
+    return { printerPermissions: () => ({ enabled: typeof api.print?.printers === "function" && typeof api.print?.enqueue === "function", print: has("receipt.print") && has("printer.manage") }), printerList: list, printerTest: test, printerDiscover: discover, printerUse: use };
   }
 
   // support/table-tools.mjs
@@ -379,13 +394,24 @@ var PsStockAssistant = (() => {
       const data = dataOf(await api.orders.get(table.orderId));
       return { table, items: requireList(data?.items, "Masa m\u0259hsullar\u0131").filter((i) => i.status !== "voided") };
     };
+    const receiptPrinter = async () => {
+      try {
+        if (typeof api.print?.printers !== "function") return null;
+        const r = dataOf(await api.print.printers());
+        const t = typeof r?.receipt === "string" ? r.receipt : "";
+        const listed = (r?.printers || []).map((p) => typeof p === "string" ? p : p?.name || p?.target).filter(Boolean);
+        return /^(?:auto|virtual|none|disabled|)$/i.test(t) ? listed.length ? listed[0] : "" : t;
+      } catch {
+        return null;
+      }
+    };
     const reportX = async (key, valid = () => true) => {
       need("reports.x");
       if (typeof api.reports?.x !== "function") throw Error("X hesabat\u0131 bu t\u0259tbiqd\u0259 \u0259l\xE7atan deyil.");
       if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
       const r = dataOf(await api.reports.x("", { idempotencyKey: key }));
       if (!r?.canonical?.sales) throw Error("X hesabat\u0131 al\u0131nmad\u0131.");
-      return { sequenceNo: r.sequenceNo, businessDate: r.canonical.businessDate, sales: r.canonical.sales, orders: r.canonical.orders || null, cash: r.canonical.cash || null, openTableCount: r.canonical.openTableCount || 0, openTablesTotalMinor: r.canonical.openTablesTotalMinor || 0 };
+      return { sequenceNo: r.sequenceNo, businessDate: r.canonical.businessDate, sales: r.canonical.sales, orders: r.canonical.orders || null, cash: r.canonical.cash || null, openTableCount: r.canonical.openTableCount || 0, openTablesTotalMinor: r.canonical.openTablesTotalMinor || 0, printer: await receiptPrinter() };
     };
     const zReadiness = async () => {
       need("reports.z");
@@ -397,19 +423,19 @@ var PsStockAssistant = (() => {
       const ready = dataOf(await api.businessDay.readiness(""));
       if (!ready?.ready) throw Error("G\xFCn h\u0259l\u0259 ba\u011Flanma\u011Fa haz\u0131r deyil. Yenid\u0259n yoxlay\u0131n.");
       if (!valid()) throw Error("Hesab d\u0259yi\u015Fib.");
-      const r = dataOf(await api.reports.z("", "K\xF6m\u0259k\xE7i il\u0259 ba\u011Fland\u0131", { idempotencyKey: key }));
+      const r = ((d) => d?.zReport || d)(dataOf(await api.reports.z("", "K\xF6m\u0259k\xE7i il\u0259 ba\u011Fland\u0131", { idempotencyKey: key })));
       if (!r?.canonical?.sales) throw Error("Z hesabat\u0131 al\u0131nmad\u0131. G\xFCn\xFCn v\u0259ziyy\u0259tini \u0130dar\u0259 panelind\u0259n yoxlay\u0131n.");
-      return { sequenceNo: r.sequenceNo, businessDate: r.canonical.businessDate, sales: r.canonical.sales, orders: r.canonical.orders || null, cash: r.canonical.cash || null };
+      return { sequenceNo: r.sequenceNo, businessDate: r.canonical.businessDate, sales: r.canonical.sales, orders: r.canonical.orders || null, cash: r.canonical.cash || null, printer: await receiptPrinter() };
     };
     const savePdfTable = async (doc) => {
-      if (typeof api.files?.savePdf !== "function") throw Error("PDF yaratmaq \xFC\xE7\xFCn Restoran POS-un yeni versiyas\u0131 laz\u0131md\u0131r.");
+      if (typeof api.files?.assistantPdf !== "function" && typeof api.files?.savePdf !== "function") throw Error("PDF yaratmaq \xFC\xE7\xFCn Restoran POS-un yeni versiyas\u0131 laz\u0131md\u0131r.");
       const esc = (v) => String(v ?? "\u2014").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       const cell = (v) => typeof v === "number" ? v.toLocaleString("az-AZ", { maximumFractionDigits: 3 }) : v;
       const columns = Array.isArray(doc?.columns) ? doc.columns.slice(0, 12) : [], rows = Array.isArray(doc?.rows) ? doc.rows.slice(0, 500) : [];
       const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#12325b;margin:28px}h1{font-size:20px;margin:0 0 4px}p{margin:2px 0 12px;color:#526b8a;font-size:12px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #cbd9ef;padding:5px 7px;text-align:left}th{background:#eef3fb}tr:nth-child(even) td{background:#f8fafd}.foot{margin-top:14px;font-size:10px;color:#7a8ca5}.total td{font-weight:700;background:#eef3fb}</style></head><body><h1>${esc(doc.title)}</h1><p>${esc(doc.subtitle || "")}</p><table><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((v) => `<td>${esc(cell(v))}</td>`).join("")}</tr>`).join("")}${Array.isArray(doc.total) ? `<tr class="total">${doc.total.map((v) => `<td>${esc(cell(v))}</td>`).join("")}</tr>` : ""}</tbody></table><div class="foot">Possistem Restoran POS \xB7 k\xF6m\u0259k\xE7i il\u0259 haz\u0131rlan\u0131b \xB7 ${esc((/* @__PURE__ */ new Date()).toLocaleString("az-AZ"))}</div></body></html>`;
       const name = String(doc.filename || "possistem-hesabat").replace(/[\\/:*?"<>|]+/g, "-").trim().slice(0, 80) + ".pdf";
-      const out = dataOf(await api.files.savePdf(name, html));
-      return { canceled: !!out?.canceled, path: out?.path || "", bytes: out?.bytes || 0 };
+      const out = dataOf(typeof api.files.assistantPdf === "function" ? await api.files.assistantPdf(name, html) : await api.files.savePdf(name, html));
+      return { canceled: !!out?.canceled, path: out?.path || "", name: out?.name || name, bytes: out?.bytes || 0 };
     };
     const topProducts = async (limit = 10) => {
       need("reports.view");
@@ -594,7 +620,7 @@ var PsStockAssistant = (() => {
           await persist(true);
           const [answer] = await Promise.all([online.send(value, state.messages.slice(-100), valid), new Promise((resolve) => setTimeout(resolve, 650))]);
           if (!valid()) return;
-          append("helper", answer.body, { reply: answer.reply, choices: answer.choices, ...answer.ai ? { ai: true } : {} });
+          append("helper", answer.body, { reply: answer.reply, choices: answer.choices, ...answer.ai ? { ai: true } : {}, ...Array.isArray(answer.files) && answer.files.length ? { files: answer.files.slice(0, 4) } : {}, ...Array.isArray(answer.cards) && answer.cards.length ? { cards: answer.cards.slice(0, 24) } : {} });
           update({ choicesActive: !!online.snapshot().session });
         } catch (e) {
           if (valid()) update({ error: e.message || String(e), failedInput: value });
@@ -768,6 +794,24 @@ var PsStockAssistant = (() => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* MANAGEMENT_UNIFIED_V1 */
 function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  const h=psH,{lang}=useI18n(),L=(a,t,e)=>psBizText(lang,a,t,e);
@@ -778,6 +822,25 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü ('+unit+')','Boyut ('+unit+')','Size ('+unit+')'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
  h('button',{type:'button',disabled:rows.length>=24,onClick:()=>onChange([...rows,{size:'',price:price||''}])},L('+ Ölçü əlavə et','+ Boyut ekle','+ Add size'))):null);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13745,14 +13808,14 @@ const az = {
     day: "İş günü",
     xReport: "X hesabat",
     zClose: "Z bağlanış",
-    xHint: "Son Z-dən bu yana aralıq hesabat. Avtomatik çək çıxır: nağd, kart, ümumi. Kassa sıfırlanmır.",
+    xHint: "Son Z-dən bu yana aralıq hesabat. Avtomatik çek çıxır: nağd, kart, ümumi. Kassa sıfırlanmır.",
     zHint: "İş gününü bağlayır və kassanı sıfırlayır. Tam detallı X/Z snapshot-lar bazada saxlanır (tarixçə).",
     zConfirm: "Kassa günü bağlanacaq və Z hesabatı çıxarılacaq. Davam edilsin?",
     blockers: "Blokerlər",
     ready: "Z üçün hazırdır",
     notReady: "Z üçün hazır deyil",
     confirmClose: "Z bağla",
-    xSuccess: "X hesabat hazırlandı və çək göndərildi",
+    xSuccess: "X hesabat hazırlandı və çek göndərildi",
     zSuccess: "İş günü bağlandı; Z çəki göndərildi, məlumat saxlanıldı",
     noBusinessDay: "Açıq iş günü yoxdur",
     xPreview: "X hesabat nəticəsi",
@@ -15696,7 +15759,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.23 · e05e2ea";
+const _PS_BUILD = "1.10.29 · 2d8fd7e";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -17598,11 +17661,6 @@ function PsMenuCatalog() {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-page flex h-full flex-col overflow-hidden", children: [
       stockPickerDialog,
-      useAuthStore.getState().hasPermission("inventory.manage") && useAuthStore.getState().hasPermission("catalog.manage") ? jsxRuntimeExports.jsx("button",{className:"ps-stock-menu-open",type:"button",onClick:()=>setStockPicker(true),children:"Anbardan əlavə et"}):null,
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-hairline px-4 py-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl text-cream", children: t.catalog.title }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ps-catalog-hint", children: t.catalog.hint })
-    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-body", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "ps-catalog-cats", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ps-catalog-cats-head", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t.catalog.categories }) }),
@@ -17641,9 +17699,12 @@ function PsMenuCatalog() {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-toolbar", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: t.catalog.products }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: productQuery, onChange: (e) => setProductQuery(e.target.value), placeholder: t.catalog.search, className: "ps-catalog-search" }),
+          jsxRuntimeExports.jsxs("div", { className: "ps-catalog-actions", children: [
           categoryId ? jsxRuntimeExports.jsx("button",{type:"button",className:"ps-catalog-existing-btn",disabled:saving,onClick:()=>setCategoryPicker({category:categories2.find(c=>c.id===categoryId)}),children:"+ Hazır məhsul əlavə et"}):null,
+          useAuthStore.getState().hasPermission("inventory.manage") && useAuthStore.getState().hasPermission("catalog.manage") ? jsxRuntimeExports.jsx("button",{type:"button",className:"ps-catalog-menu-btn",onClick:()=>setStockPicker(true),children:psAdminText("+ Anbardan əlavə et","+ Depodan ekle","+ Add from stock")}):null,
         jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-menu-btn", onClick: () => setSetMenu({}), children: psAdminText("+ Menyu yarat", "+ Menü oluştur", "+ Create menu") }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ps-catalog-new-btn", onClick: () => { setShowLocales(false); startCreate(); }, children: "+ " + t.catalog.newProduct })
+          ] })
         ] }),
         visibleProducts.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-catalog-bulk", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "ps-catalog-bulk-all", children: [
@@ -18376,6 +18437,7 @@ function PsStaffPage() {
   const [roles, setRoles] = reactExports.useState([]);
   const [busy, setBusy] = reactExports.useState(false);
   const [editingUser, setEditingUser] = reactExports.useState(null);
+  /* STAFF_COURIER_1110 */ const [psPhone, setPsPhone] = reactExports.useState("");
   reactExports.useEffect(() => {
     // Only an operator with roles.manage can read the list. For everyone else
     // the select falls back to the shipped roles rather than showing nothing -
@@ -18401,6 +18463,16 @@ function PsStaffPage() {
     void load();
   }, [load]);
   const create2 = async () => {
+    if (role === "courier") {
+      if (fullName.trim().length < 2 || busy || typeof window.pos.delivery?.saveCourier !== "function") return;
+      setBusy(true);
+      const res = await window.pos.delivery.saveCourier({ name: fullName.trim(), phone: psPhone.trim() });
+      setBusy(false);
+      if (!res.success) { toast(res.error.message, "danger"); return; }
+      toast("Kuryer əlavə olundu. Çatdırılmada seçmək olar.", "success");
+      setFullName(""); setPsPhone(""); setRole("waiter");
+      return;
+    }
     if (!fullName.trim() || pin.length < 4 || busy) return;
     setBusy(true);
     const res = await window.pos.users.create(
@@ -18465,16 +18537,17 @@ function PsStaffPage() {
               )
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "mt-3 block text-sm", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: t.staff.pin }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: role === "courier" ? "Telefon" : t.staff.pin }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "input",
                 {
+                  ...(role === "courier" ? { type: "tel", inputMode: "tel", maxLength: 40, value: psPhone, onChange: (e) => setPsPhone(e.target.value.slice(0, 40)) } : {
                   type: "password",
                   inputMode: "numeric",
                   pattern: "[0-9]*",
                   maxLength: 4,
                   value: pin,
-                  onChange: (e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4)),
+                  onChange: (e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4)) }),
                   className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50",
                   required: true
                 }
@@ -18488,18 +18561,18 @@ function PsStaffPage() {
                   value: role,
                   onChange: (e) => setRole(e.target.value),
                   className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50",
-                  children: (roles.length ? roles : ["waiter", "cashier", "kitchen", "storekeeper", "supervisor", "manager"]).map(
+                  children: [...(roles.length ? roles : ["waiter", "cashier", "kitchen", "storekeeper", "supervisor", "manager"]).filter((name) => name !== "courier"), ...(useAuthStore.getState().hasPermission("delivery.manage") ? ["courier"] : [])].map(
                     (name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: _psRoleAz(name) }, name)
                   )
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 block text-xs text-faint", children: "Vəzifənin icazələri «Səlahiyyətlər» vərəqində təyin olunur." })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 block text-xs text-faint", children: role === "courier" ? "Kuryer kassaya daxil olmur: PIN lazım deyil, çatdırılma sifarişində seçilir. Siyahı: İdarə → Çatdırılma." : "Vəzifənin icazələri «Səlahiyyətlər» vərəqində təyin olunur." })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
                 type: "submit",
-                disabled: busy || fullName.trim().length < 2 || pin.length < 4,
+                disabled: busy || fullName.trim().length < 2 || role !== "courier" && pin.length < 4,
                 className: "btn-gold mt-5 w-full disabled:opacity-40",
                 children: t.staff.save
               }
@@ -22186,6 +22259,30 @@ function cardOutcomeLabel(status, labels) {
   }
   return null;
 }
+/* TABLE_QR_PAYMENT_UI_V1 */
+function PsTableQrPayment({orderId,onUpdated}){
+ const h=psH,[open,setOpen]=reactExports.useState(false),[data,setData]=reactExports.useState(null),[status,setStatus]=reactExports.useState(null),[error,setError]=reactExports.useState(''),[busy,setBusy]=reactExports.useState(false);
+ const call=async(method,payload={})=>{const r=await window.possistemTablePay?.call(method,payload);if(!r?.success)throw Error(r?.error?.message||'QR ödənişi açılmadı.');return r.data;};
+ const show=async()=>{setOpen(true);setBusy(true);setError('');try{setData(await call('qr.payments.open',{orderId}));}catch(e){setError(e.message);}finally{setBusy(false)}};
+ const check=async()=>{if(!data)return;try{const s=await call('qr.payments.status',{sessionId:data.sessionId});setStatus(s);setError('');onUpdated?.();}catch(e){setError(e.message)}};
+ reactExports.useEffect(()=>{if(!open||!data)return;void check();const timer=setInterval(()=>void check(),5000);return()=>clearInterval(timer);},[open,data?.sessionId]);
+ const stop=async()=>{setBusy(true);setError('');try{await call('qr.payments.stop',{sessionId:data?.sessionId,orderId});setOpen(false);setData(null);setStatus(null);onUpdated?.();}catch(e){setError(e.message)}finally{setBusy(false)}};
+ return h(reactExports.Fragment,null,h('div',{className:'ps-table-pay-entry'},h('button',{type:'button',className:'ps-table-pay-open',onClick:()=>void show()},'QR ilə ödə')),open&&h(PsAdminDialog,{title:'Masa hesabını QR ilə ödəyin',busy,onClose:()=>setOpen(false)},
+  h('div',{className:'ps-table-pay-content'},error&&h('p',{role:'alert',className:'ps-table-pay-error'},error),busy&&!data&&h('p',null,'Hesab hazırlanır…'),data&&h(reactExports.Fragment,null,
+   h('p',null,data.tableLabel,' · Müştəri bu kodu telefonla oxutsun.'),h('img',{className:'ps-table-pay-code',src:data.qr,alt:'Masa hesabının ödəniş QR kodu',width:280,height:280}),
+   status&&h('div',{className:'ps-table-pay-totals'},h('span',null,'Ödənilib: ',formatMoney(status.paidMinor)),h('span',null,'Qalıq: ',formatMoney(status.remainingMinor)),status.pendingMinor>0&&h('strong',null,'Bankda gözləyir: ',formatMoney(status.pendingMinor))),
+   h('p',{className:'ps-table-pay-hint'},'Hamısını, bərabər payı və ya seçilən yeməkləri ödəmək olar. QR açıqkən hesab dəyişiklikləri kilidlənir. Bu pəncərəni bağlamaq QR ödənişi dayandırmır.'),
+   h('div',{className:'ps-table-pay-buttons'},h('button',{disabled:busy,onClick:()=>void check()},'Nəticəni yoxla'),h('button',{disabled:busy,onClick:()=>void navigator.clipboard.writeText(data.url).catch(()=>setError('Linki kopyalamaq alınmadı.'))},'Linki kopyala'),h('button',{disabled:busy||status?.pendingMinor>0,onClick:()=>void stop()},'QR ödənişi dayandır'))),
+   !busy&&!data&&h('div',{className:'ps-table-pay-buttons'},h('button',{onClick:()=>void show()},'Yenidən yoxla'),h('button',{onClick:()=>void stop()},'QR kilidini dayandır')))));
+}
+
+/* END_TABLE_QR_PAYMENT_UI */
+
+
+
+
+
+
 function PaymentPage() {
   const { orderId = "" } = useParams();
   const { t } = useI18n();
@@ -22631,6 +22728,7 @@ function PaymentPage() {
   const changePreview = Math.max(0, tenderedMinor - dueMinor);
   const discountMinor = order.discountMinor ?? 0;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ps-payment-workspace flex h-full flex-col overflow-auto", children: [
+    order.tableId && useAuthStore.getState().hasPermission("payment.take") && jsxRuntimeExports.jsx(PsTableQrPayment,{orderId:order.id,onUpdated:()=>void refresh()}),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between border-b border-hairline px-6 py-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -22726,7 +22824,7 @@ function PaymentPage() {
                   ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: p.amountMinor }),
-                    p.status === "approved" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    /* QR_REFUND_UI_GUARD_V1 */ p.status === "approved" && !p.qrPaymentId ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
                         type: "button",
@@ -23843,9 +23941,9 @@ function PsQrSettings(){
   const html='<!doctype html><html lang="az"><meta charset="utf-8"><title>'+escape(doc.name)+' — QR</title><style>body{font:16px system-ui;margin:20px}.cards{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{border:1px solid #ccd8e8;border-radius:12px;padding:20px;text-align:center;break-inside:avoid}.card img{width:220px;max-width:100%}small{display:block;overflow-wrap:anywhere;color:#456}button{padding:12px}@media print{button{display:none}.cards{gap:12mm}}</style><button onclick="window.print()">Çap et / PDF</button><div class="cards">'+(data.tables||[]).map(t=>'<section class="card"><h2>'+escape(doc.name)+'</h2><h3>'+escape(t.label)+'</h3><img alt="QR" src="'+t.qr+'"><p>Menyunu açın və sifariş verin</p><small>'+escape(t.url)+'</small></section>').join('')+'</div></html>';
   const r=await window.pos.files.saveText('Restoran-QR-kartlari.html',html);if(!r.success)setError(r.error.message);
  };
- return h("section",{className:"ps-qr-settings"},h("header",{className:"ps-qr-heading"},h("div",null,h("h2",null,psQrText("QR menyu və sifariş","QR menü ve sipariş","QR menu and ordering")),h("p",null,psQrText("Müştəri masa kodunu oxudur, sifariş kassirin təsdiqinə gəlir.","Müşteri masa kodunu okutur, sipariş kasiyer onayına gelir.","Guests scan their table code; the cashier confirms each order."))),h("span",{className:"ps-qr-state"},data?.menu?.enabled?psQrText("Yayımda","Yayında","Published"):psQrText("Bağlı","Kapalı","Offline"))),
+ return h("section",{className:"ps-qr-settings"},h("header",{className:"ps-qr-heading"},h("div",null,h("h2",null,psQrText("QR sifariş və 3D","QR sipariş ve 3D","QR orders and 3D")),h("p",null,psQrText("Müştəri masa kodunu oxudur, sifariş kassirin təsdiqinə gəlir.","Müşteri masa kodunu okutur, sipariş kasiyer onayına gelir.","Guests scan their table code; the cashier confirms each order."))),h("span",{className:"ps-qr-state"},data?.menu?.enabled?psQrText("Yayımda","Yayında","Published"):psQrText("Bağlı","Kapalı","Offline"))),
  error&&h("p",{role:"alert",className:"ps-qr-error"},error),
- h("div",{className:"ps-qr-actions"},h("button",{disabled:busy,onClick:load},psQrText("POS menyusunu yenilə","POS menüsünü yenile","Refresh POS menu")),h("button",{className:"primary",disabled:busy||!doc?.items?.length||!doc?.tables?.length,onClick:()=>action("publish")},busy?psQrText("Gözləyin…","Bekleyin…","Please wait…"):psQrText("Menyunu yayımla","Menüyü yayınla","Publish menu")),data?.menu?.enabled&&h("button",{disabled:busy,onClick:()=>action("disable")},psQrText("Sifarişi dayandır","Siparişi durdur","Disable ordering"))),
+ h("div",{className:"ps-qr-actions"},h("button",{disabled:busy,onClick:()=>void psQrCall("qr.open3d",{}).catch(e=>setError(e.message))},h("img",{src:"./qr3d-icon.png",alt:"",width:28,height:28}),psQrText("3D modelləri saytda idarə et","3D modelleri web sitesinde yönet","Manage 3D models on the website")),h("button",{disabled:busy,onClick:load},psQrText("POS menyusunu yenilə","POS menüsünü yenile","Refresh POS menu")),h("button",{className:"primary",disabled:busy||!doc?.items?.length||!doc?.tables?.length,onClick:()=>action("publish")},busy?psQrText("Gözləyin…","Bekleyin…","Please wait…"):psQrText("Menyunu yayımla","Menüyü yayınla","Publish menu")),data?.menu?.enabled&&h("button",{disabled:busy,onClick:()=>action("disable")},psQrText("Sifarişi dayandır","Siparişi durdur","Disable ordering"))),
  doc&&h(reactExports.Fragment,null,
   h("div",{className:"ps-qr-design"},field("name",psQrText("Restoran adı","Restoran adı","Restaurant name")),field("description",psQrText("Qısa açıqlama","Kısa açıklama","Short description")),field("logo",psQrText("Loqo ünvanı (istəyə bağlı)","Logo adresi (isteğe bağlı)","Logo URL (optional)"),"url"),field("cover",psQrText("Üz qabığı ünvanı (istəyə bağlı)","Kapak adresi (isteğe bağlı)","Cover URL (optional)"),"url"),brandFile("logo",psQrText("Restoran loqosu","Restoran logosu","Restaurant logo")),brandFile("cover",psQrText("Üz qabığı","Kapak görseli","Cover photo")),psQrScenes(doc,setDoc,busy),h("p",{className:"ps-qr-brand-help"},psQrText("Loqonu və üz qabığını kompüterdən seçin. Üz qabığı olmayanda qonaq səhifəsi restoranın adı, loqosu və rəngi ilə açılır; hazır şəkillərdən birini də seçə bilərsiniz. Dəyişiklikləri saxlamaq üçün menyunu yayımlayın.","Logo ve kapağı bilgisayardan seçin. Kapak yoksa misafir sayfası restoranın adı, logosu ve rengiyle açılır; hazır görsellerden birini de seçebilirsiniz. Değişiklikleri kaydetmek için menüyü yayınlayın.","Choose a logo and cover from your computer. Without a cover the guest page opens with the restaurant's name, logo and colour; you can also pick one of the ready-made pictures. Publish the menu to save changes.")),
    h("label",{className:"ps-qr-field"},psQrText("Rəng","Renk","Colour"),h("select",{"aria-label":psQrText("Rəng","Renk","Colour"),value:doc.accent,onChange:e=>setDoc({...doc,accent:e.target.value})},...[['blue','Mavi','Mavi','Blue'],['green','Yaşıl','Yeşil','Green'],['burgundy','Bordo','Bordo','Burgundy'],['amber','Kəhrəba','Kehribar','Amber']].map(([v,a,t,e])=>h("option",{key:v,value:v},psQrText(a,t,e))))),
@@ -23905,7 +24003,7 @@ function PsQrInbox(){
 
 function settingsSections(t) {
   return [
-    ...(!window.__psMarketMode?[{id:"qr-orders",label:psAdminText("QR sifariş","QR sipariş","QR orders"),hint:psAdminText("Menyu və masa kodları","Menü ve masa kodları","Menu and table codes"),icon:ReceiptText,tone:"blue"}]:[]),
+    ...(!window.__psMarketMode?[{id:"qr-orders",label:psAdminText("QR sifariş və 3D","QR sipariş ve 3D","QR orders and 3D"),hint:psAdminText("Menyu, masa kodları və 3D modellər","Menü, masa kodları ve 3D modeller","Menu, table codes and 3D models"),icon:PsQr3dIcon,tone:"blue"}]:[]),
     {id:"sunmi",label:psAdminText("İnteqrasiyalar","Entegrasyonlar","Integrations"),hint:psAdminText("E-kassa və bonus","E-kassa ve bonus","E-kassa and bonus"),icon:ReceiptText,tone:"blue"},
     { id: "restaurant", label: "Restoran", hint: "Hesab və məlumat", icon: Store, tone: "blue" },
     { id: "screen", label: "Ekran və dil", hint: "Görünüş və touch", icon: SlidersHorizontal, tone: "purple" },
@@ -24031,7 +24129,9 @@ function OpsStock() {
   const [warehouseId, setWarehouseId] = reactExports.useState("");
   const [worth, setWorth] = reactExports.useState(0);
   const [wasteMinor, setWasteMinor] = reactExports.useState(0);
-  const [query, setQuery] = reactExports.useState("");
+  /* ASSISTANT_FILES_1110 */ const psStockQ = new URLSearchParams(useLocation().search).get("q") || "";
+  const [query, setQuery] = reactExports.useState(psStockQ);
+  reactExports.useEffect(() => { if (psStockQ) setQuery(psStockQ); }, [psStockQ]);
   const [status, setStatus] = reactExports.useState("all");
   const [drawer, setDrawer] = reactExports.useState(null);
   const [edit, setEdit] = reactExports.useState(null);
@@ -26132,6 +26232,7 @@ function OpsKassalar() {
   }, []);
   reactExports.useEffect(() => { void reload(); }, [reload]);
   const [busy, run] = useOpsAction(reload);
+  /* CASH_MONEY_1110 */ const [psMoney, setPsMoney] = reactExports.useState(null);
   if (!data) return h("p", { className: "text-sm text-muted" }, "Yüklənir…");
 
   const field = "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2 text-cream";
@@ -26197,7 +26298,7 @@ function OpsKassalar() {
       canManage ? jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => openTransfer(null), children: "Kassalar arası transfer" }) : null,
       canManage ? jsxRuntimeExports.jsx(OpsButton, { onClick: () => setForm({ name: "", kind: "till", objectId: objectId !== "all" && objectId !== "none" ? objectId : data.objects.length === 1 ? data.objects[0].id : "", terminalId: data.accounts.some((a) => a.terminalId === data.currentTerminalId) ? "" : data.currentTerminalId, opening: "" }), children: "+ Yeni kassa" }) : null),
 
-    h(PsCashAccountsGrid,{accounts,data,busy,canManage,termName,onTransfer:openTransfer,onMoves:openMoves,onEdit:a=>setForm({id:a.id,name:a.name,kind:a.kind,objectId:a.objectId||'',terminalId:a.terminalId||''}),onRemove:remove}),
+    h(PsCashAccountsGrid,{accounts,data,busy,canManage,termName,onTransfer:openTransfer,onMoves:openMoves,onEdit:a=>setForm({id:a.id,name:a.name,kind:a.kind,objectId:a.objectId||'',terminalId:a.terminalId||''}),onRemove:remove,onMoney:useAuthStore.getState().hasPermission("cash.manage")?(a,kind)=>setPsMoney({account:a,kind,value:"",reason:"",note:"",key:newIdempotencyKey()}):null}),
     moves ? jsxRuntimeExports.jsx(PsKassaMoves, { account: moves.account, kinds: MOVE, onClose: () => setMoves(null) }, moves.account.id) : null,
     false ? h("section", { className: "space-y-3 rounded-2xl border border-hairline bg-elevated p-4" },
       h("div", { className: "flex items-center justify-between gap-3" },
@@ -26235,6 +26336,7 @@ function OpsKassalar() {
         jsxRuntimeExports.jsx(OpsButton, { disabled: busy, onClick: () => { if (!objForm.name.trim()) { toast("Adı yazın", "danger"); return; } void run(window.pos.cashAccounts.saveObject({ ...(objForm.id?{id:objForm.id}:{}), name: objForm.name.trim() }), "Obyekt yaradıldı").then((ok) => { if (ok) setObjForm(null); }); }, children: "Yadda saxla" }),
         jsxRuntimeExports.jsx(OpsButton, { tone: "quiet", onClick: () => setObjForm(null), children: "İmtina" }))) }) : null,
 
+    psMoney ? h(PsCashMoneyDialog,{form:psMoney,onChange:setPsMoney,busy,onClose:()=>setPsMoney(null),onSave:()=>{const m=psMoney;void run(window.pos.cash.movement({kind:m.kind,amountMinor:Math.round(Number(String(m.value).replace(",","."))*100),reason:m.reason,note:m.note.trim(),accountId:m.account.id},{idempotencyKey:m.key}),m.kind==="cash_in"?"Mədaxil yazıldı":"Məxaric yazıldı").then(ok=>{if(ok)setPsMoney(null);});}}) : null,
     transfer ? h(PsCashTransferDialog,{form:transfer,onChange:next=>{setTransfer(next);setTransferError('');},accounts:data.accounts,busy,error:transferError,onClose:()=>setTransfer(null),onSave:saveTransfer}) : null,
     confirmDialog);
 }
@@ -28287,7 +28389,7 @@ function PsDashboardSales(){
  reactExports.useEffect(()=>{if(!has("sales.view"))return;const load=async()=>{const [from,to]=psToday();const r=await window.pos.sales.list(from,to);if(r.success)setRows((r.data.sales||[]).filter(s=>!s.deletedAt).slice(0,12));};void load();const t=setInterval(()=>void load(),20000);return()=>clearInterval(t);},[has]);if(!has("sales.view"))return null;
  return h("section",{className:"ps-business-section space-y-3"},h("h2",null,psBizText(lang,"Son satışlar","Son satışlar","Recent sales")),jsxRuntimeExports.jsx(OpsTable,{head:[psBizText(lang,"Satış","Satış","Sale"),psBizText(lang,"Masa / filial","Masa / şube","Table / branch"),psBizText(lang,"Məbləğ","Tutar","Amount"),""],empty:psBizText(lang,"Bu gün satış yoxdur","Bugün satış yok","No sales today"),rows:rows.map(s=>[h("button",{className:"ps-business-sale",onClick:()=>navigate("/operations?tab=sales&sale="+encodeURIComponent(s.id))},"#"+s.number),[s.tableName,s.objectName].filter(Boolean).join(" · "),formatMoney(s.totalMinor),jsxRuntimeExports.jsx(OpsButton,{tone:"quiet",onClick:()=>navigate("/operations?tab=sales&sale="+encodeURIComponent(s.id)),children:psBizText(lang,"Ətraflı","Ayrıntılar","Details")})])}));
 }
-function PsUnifiedCatalog(){const h=psH,{lang}=useI18n(),has=useAuthStore(s=>s.hasPermission),[tab,setTab]=reactExports.useState("menu");return h("div",{className:"ps-business-catalog"},h("nav",{className:"ps-business-tabs","aria-label":psBizText(lang,"Vahid kataloq","Birleşik katalog","Unified catalogue")},[["menu","Kateqoriyalar","Kategoriler","Categories"],["goods","Mallar və xammal","Ürünler ve hammaddeler","Goods and ingredients"],["categories","Anbar kateqoriyaları","Depo kategorileri","Warehouse categories"]].filter(([key])=>key==="menu"||has("inventory.view")).map(([key,a,t,e])=>h("button",{type:"button",key,"aria-pressed":tab===key,onClick:()=>setTab(key)},psBizText(lang,a,t,e)))),jsxRuntimeExports.jsx(tab==="goods"?OpsGoods:tab==="categories"?OpsCategories:PsMenuCatalog,{}));}
+function PsUnifiedCatalog(){/* CATALOG_COMPACT_1109 */return psH("div",{className:"ps-business-catalog"},jsxRuntimeExports.jsx(PsMenuCatalog,{}));}
 
 function PsDeliveryInvoice({row,onClose,onSaved}){
  const h=psH,{lang}=useI18n(),navigate=useNavigate();const [detail,setDetail]=reactExports.useState(null),[edit,setEdit]=reactExports.useState(null),[busy,setBusy]=reactExports.useState(false),[error,setError]=reactExports.useState("");const has=useAuthStore(s=>s.hasPermission);const printLock=reactExports.useRef(false);
@@ -28393,7 +28495,7 @@ function PsAdminFrame({ children }) {
   const ops = { stock: ["Anbar", "Stok", "Inventory"], suppliers: ["T\u0259chizat", "Tedarik", "Purchasing"], costing: ["Kalkulyasiya", "Maliyet", "Costing"], vendors: ["Partnyorlar", "Partnerler", "Partners"], sales: ["Satışlar", "Satışlar", "Sales"], purchases: ["Alışlar", "Alımlar", "Purchases"], objects: ["Obyektlər", "Şubeler", "Branches"], kassa: ["Kassalar", "Kasalar", "Tills"], staff: ["İşçilər","Personel","Staff"], salary: ["Maaşlar", "Maaşlar", "Salaries"], expenses: ["Xərclər", "Giderler", "Expenses"], guests: ["M\xFC\u015Ft\u0259ril\u0259r", "M\xFC\u015Fteriler", "Customers"], reservations: ["Rezervasiya", "Rezervasyon", "Reservations"], delivery: ["\xC7atd\u0131r\u0131lma", "Teslimat", "Delivery"], roster: ["\u0130\u015F qrafiki", "\xC7al\u0131\u015Fma takvimi", "Schedule"], export: ["\u0130xrac", "D\u0131\u015Fa aktar", "Export"] };
   const title = pathname === "/operations" ? psAdminText(...ops[new URLSearchParams(search).get("tab")] || ops.stock) : pages[pathname];
   if (!psAdminRoute(pathname)) return children;
-  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, /* LOCAL_NO_WORKSPACE_TABS */ pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
+  return /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-workspace", "data-page": pathname }, jsxRuntimeExports.jsx(PsWorkspaceNav,{}), /* LOCAL_NO_WORKSPACE_TABS */ pathname !== "/admin" && /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-breadcrumb" }, /* @__PURE__ */ reactExports.createElement(Link, { to: "/admin" }, /* @__PURE__ */ reactExports.createElement(LayoutGrid, { size: 15 }), t.nav.admin), /* @__PURE__ */ reactExports.createElement(PsChevronRight, { size: 14 }), /* @__PURE__ */ reactExports.createElement("span", null, title || t.nav.admin)), /* @__PURE__ */ reactExports.createElement("div", { className: "ps-admin-content" }, jsxRuntimeExports.jsx(PsAdminRecoveryBoundary,{route:pathname+search,children})));
 }
 function PsAdminHub({ links }) {
   const [query, setQuery] = reactExports.useState("");
@@ -32352,6 +32454,120 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -32559,6 +32775,60 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -32905,7 +33175,7 @@ function psCashFacts(account) {
     [account.kind === "bank" ? psAdminText("\xDCmumi kart \xF6d\u0259ni\u015Fi", "Toplam kart \xF6demesi", "Total card receipts") : psAdminText("\xDCmumi sat\u0131\u015F \xF6d\u0259ni\u015Fi", "Toplam sat\u0131\u015F \xF6demesi", "Total sales receipts"), known("totalCashMinor") && known("totalCardMinor") ? formatMoney(n("totalCashMinor") + n("totalCardMinor")) : "\u2014"]
   ];
 }
-function PsCashAccountsGrid({ accounts, data, busy, canManage, termName, onTransfer, onMoves, onEdit, onRemove, onRegisterOpen }) {
+function PsCashAccountsGrid({ accounts, data, busy, canManage, termName, onTransfer, onMoves, onEdit, onRemove, onRegisterOpen, onMoney }) {
   const grid = reactExports.useRef(null);
   reactExports.useEffect(() => {
     const close = (event) => grid.current?.querySelectorAll("details[open]").forEach((node) => {
@@ -32925,7 +33195,7 @@ function PsCashAccountsGrid({ accounts, data, busy, canManage, termName, onTrans
       event.currentTarget.open = false;
       event.currentTarget.querySelector("summary")?.focus();
     }
-  } }, /* @__PURE__ */ psH("summary", { "aria-label": account.name + " \u2014 " + psAdminText("\u018Flav\u0259 \u0259m\u0259liyyatlar", "Di\u011Fer i\u015Flemler", "More actions") }, /* @__PURE__ */ psH("span", { "aria-hidden": "true" }, "\u22EF")), /* @__PURE__ */ psH("div", null, onRegisterOpen && account.kind === "till" && String(account.terminalId || "").startsWith("market-") && /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onRegisterOpen(account)) }, psAdminText("N\xF6vb\u0259 \xB7 X/Z", "Vardiya \xB7 X/Z", "Shift \xB7 X/Z")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onMoves(account)) }, psAdminText("Pul h\u0259r\u0259k\u0259tl\u0259ri", "Para hareketleri", "Money movements")), canManage && /* @__PURE__ */ psH(reactExports.Fragment, null, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onEdit(account)) }, psAdminText("Redakt\u0259 et", "D\xFCzenle", "Edit")), /* @__PURE__ */ psH("button", { type: "button", className: "is-danger", disabled: busy, onClick: (event) => action(event, () => onRemove(account)) }, psAdminText("Sil", "Sil", "Delete")))))))));
+  } }, /* @__PURE__ */ psH("summary", { "aria-label": account.name + " \u2014 " + psAdminText("\u018Flav\u0259 \u0259m\u0259liyyatlar", "Di\u011Fer i\u015Flemler", "More actions") }, /* @__PURE__ */ psH("span", { "aria-hidden": "true" }, "\u22EF")), /* @__PURE__ */ psH("div", null, onRegisterOpen && account.kind === "till" && String(account.terminalId || "").startsWith("market-") && /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onRegisterOpen(account)) }, psAdminText("N\xF6vb\u0259 \xB7 X/Z", "Vardiya \xB7 X/Z", "Shift \xB7 X/Z")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onMoves(account)) }, psAdminText("Pul h\u0259r\u0259k\u0259tl\u0259ri", "Para hareketleri", "Money movements")), canManage && onMoney && /* @__PURE__ */ psH(reactExports.Fragment, null, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onMoney(account, "cash_in")) }, psAdminText("M\u0259daxil \u2014 pul qoy", "Para giri\u015Fi", "Money in")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onMoney(account, "cash_out")) }, psAdminText("M\u0259xaric \u2014 pul g\xF6t\xFCr", "Para \xE7\u0131k\u0131\u015F\u0131", "Money out"))), canManage && /* @__PURE__ */ psH(reactExports.Fragment, null, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: (event) => action(event, () => onEdit(account)) }, psAdminText("Redakt\u0259 et", "D\xFCzenle", "Edit")), /* @__PURE__ */ psH("button", { type: "button", className: "is-danger", disabled: busy, onClick: (event) => action(event, () => onRemove(account)) }, psAdminText("Sil", "Sil", "Delete")))))))));
 }
 function PsCashTransferDialog({ form, onChange, accounts, busy, error, onClose, onSave }) {
   const from = accounts.find((a) => a.id === form.fromId), available = Number(from?.balanceMinor) || 0, amount = opsMinor(form.value || "0");
@@ -32958,6 +33228,17 @@ function PsCashActivity({ account, onClose }) {
   const needle = query.trim().toLocaleLowerCase("az"), rows = (result?.moves || []).filter((row) => !needle || [row.note, row.actorName, labels[row.kind] || row.kind].some((value) => String(value || "").toLocaleLowerCase("az").includes(needle)));
   return /* @__PURE__ */ psH("section", { className: "pm-cash-activity" }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h2", null, account.name, " \u2014 ", psAdminText("pul h\u0259r\u0259k\u0259tl\u0259ri", "para hareketleri", "money movements")), /* @__PURE__ */ psH("p", null, psAdminText("Sat\u0131\u015F, qaytarma, transfer, maa\u015F v\u0259 dig\u0259r pul giri\u015F-\xE7\u0131x\u0131\u015Flar\u0131.", "Sat\u0131\u015F, iade, transfer, maa\u015F ve di\u011Fer para giri\u015F-\xE7\u0131k\u0131\u015Flar\u0131.", "Sales, refunds, transfers, salaries and other money in and out."))), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", onClick: onClose }, psAdminText("Ba\u011Fla", "Kapat", "Close"))), /* @__PURE__ */ psH("div", { className: "pm-cash-activity-tools" }, psRangeBar(rg), psSearchBox(query, setQuery, psAdminText("Axtar: qeyd, n\xF6v v\u0259 ya \u0259m\u0259kda\u015F", "Ara: not, t\xFCr veya \xE7al\u0131\u015Fan", "Search note, type or employee"))), error ? /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "alert" }, error, " ", /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button", onClick: () => setRetry((v) => v + 1) }, psAdminText("Yenid\u0259n yoxla", "Tekrar dene", "Retry"))) : !result ? /* @__PURE__ */ psH("p", { role: "status" }, psAdminText("Y\xFCkl\u0259nir\u2026", "Y\xFCkleniyor\u2026", "Loading\u2026")) : /* @__PURE__ */ psH(reactExports.Fragment, null, result.includesSales ? /* @__PURE__ */ psH(reactExports.Fragment, null, /* @__PURE__ */ psH("dl", { className: "pm-cash-activity-summary" }, [[psAdminText("D\xF6vr\xFCn \u0259vv\u0259li", "D\xF6nem ba\u015F\u0131", "Period opening"), result.openingMinor], [psAdminText("Daxilolma", "Giri\u015F", "Money in"), result.inMinor], [psAdminText("\xC7\u0131x\u0131\u015F", "\xC7\u0131k\u0131\u015F", "Money out"), result.outMinor], [psAdminText("D\xF6vr\xFCn sonu", "D\xF6nem sonu", "Period closing"), result.closingMinor]].map(([label, value]) => /* @__PURE__ */ psH("div", { key: label }, /* @__PURE__ */ psH("dt", null, label), /* @__PURE__ */ psH("dd", null, formatMoney(value || 0))))), /* @__PURE__ */ psH("p", { className: "pm-cash-help" }, psAdminText("C\u0259ml\u0259r se\xE7ilmi\u015F d\xF6vr\xFCn b\xFCt\xFCn h\u0259r\u0259k\u0259tl\u0259rin\u0259 aiddir. Axtar\u0131\u015F yaln\u0131z siyah\u0131n\u0131 s\xFCz\xFCr.", "Toplamlar se\xE7ilen d\xF6nemin t\xFCm hareketlerini kapsar. Arama yaln\u0131zca listeyi s\xFCzer.", "Totals cover all movements in the selected period. Search filters the list only."))) : /* @__PURE__ */ psH("p", { className: "pm-cash-error" }, psAdminText("Bu POS-un k\xF6hn\u0259 versiyas\u0131 sat\u0131\u015Flar\u0131 siyah\u0131ya \u0259lav\u0259 etmir. Tam h\u0259r\u0259k\u0259tl\u0259r \xFC\xE7\xFCn POS-u yenil\u0259yin.", "Bu POS s\xFCr\xFCm\xFC sat\u0131\u015Flar\u0131 listeye eklemiyor. T\xFCm hareketler i\xE7in POS\u2019u g\xFCncelleyin.", "This older POS version omits sales. Update it to view all movements.")), result.limited && /* @__PURE__ */ psH("p", { className: "pm-cash-error" }, psAdminText("\u0130lk 5000 h\u0259r\u0259k\u0259t g\xF6st\u0259rilir. Daha q\u0131sa tarix aral\u0131\u011F\u0131 se\xE7in.", "\u0130lk 5000 hareket g\xF6steriliyor. Daha k\u0131sa tarih aral\u0131\u011F\u0131 se\xE7in.", "Showing the first 5,000 movements. Choose a shorter date range.")), /* @__PURE__ */ psH(OpsTable, { head: [psAdminText("Tarix", "Tarih", "Date"), psAdminText("N\xF6v", "T\xFCr", "Type"), psAdminText("M\u0259bl\u0259\u011F", "Tutar", "Amount"), psAdminText("Qeyd / qaim\u0259", "Not / belge", "Note / document"), psAdminText("\u018Fm\u0259kda\u015F", "\xC7al\u0131\u015Fan", "Employee")], empty: psAdminText("Bu d\xF6vrd\u0259 h\u0259r\u0259k\u0259t yoxdur", "Bu d\xF6nemde hareket yok", "No movements in this period"), rows: rows.map((row) => [opsWhen(row.createdAt), labels[row.kind] || row.kind, /* @__PURE__ */ psH("b", { className: (row.amountMinor || 0) < 0 ? "pm-cash-out" : "pm-cash-in" }, (row.amountMinor || 0) < 0 ? "\u2212" : "+", formatMoney(Math.abs(row.amountMinor || 0))), row.note || "\u2014", row.actorName || "\u2014"]) })));
 }
+function PsCashMoneyDialog({ form, onChange, busy, onClose, onSave }) {
+  const incoming = form.kind === "cash_in", reasons = incoming ? [psAdminText("S\u0259h\u0259r x\u0131rda pul", "Sabah bozuk para", "Morning change"), psAdminText("Sahibd\u0259n na\u011Fd", "Sahipten nakit", "Cash from owner"), psAdminText("Dig\u0259r", "Di\u011Fer", "Other")] : [psAdminText("Banka t\u0259hvil", "Bankaya teslim", "Bank deposit"), psAdminText("Sahib\u0259 verildi", "Sahibe verildi", "Given to owner"), psAdminText("Dig\u0259r", "Di\u011Fer", "Other")];
+  const amount = Number(String(form.value).replace(",", ".")), valid = Number.isFinite(amount) && amount > 0 && amount < 1e7 && String(form.reason || "").trim();
+  const out = !incoming && Number.isFinite(amount) && Math.round(amount * 100) > (form.account.balanceMinor || 0);
+  return /* @__PURE__ */ psH(PsAdminDialog, { title: (incoming ? psAdminText("M\u0259daxil", "Para giri\u015Fi", "Money in") : psAdminText("M\u0259xaric", "Para \xE7\u0131k\u0131\u015F\u0131", "Money out")) + " \u2014 " + form.account.name, busy, onClose: () => {
+    if (!busy) onClose();
+  } }, /* @__PURE__ */ psH("form", { className: "pm-cash-transfer-form", onSubmit: (event) => {
+    event.preventDefault();
+    if (valid && !busy) onSave();
+  } }, /* @__PURE__ */ psH("p", { className: "pm-cash-help" }, incoming ? psAdminText("Kassaya sat\u0131\u015Fdan k\u0259nar qoyulan pul. Balans art\u0131r; sat\u0131\u015F hesabat\u0131na d\xFC\u015Fm\xFCr.", "Sat\u0131\u015F d\u0131\u015F\u0131 giri\u015F.", "Cash added outside sales.") : psAdminText("Kassadan sat\u0131\u015Fdan k\u0259nar g\xF6t\xFCr\xFCl\u0259n pul (x\u0259rc deyil). Balans azal\u0131r; x\u0259rc hesabat\u0131na d\xFC\u015Fm\xFCr.", "Sat\u0131\u015F d\u0131\u015F\u0131 \xE7\u0131k\u0131\u015F.", "Cash taken out, not an expense.")), /* @__PURE__ */ psH("div", { className: "pm-cash-transfer-amount" }, /* @__PURE__ */ psH("label", null, psAdminText("M\u0259bl\u0259\u011F (\u20BC)", "Tutar (\u20BC)", "Amount (\u20BC)"), /* @__PURE__ */ psH("input", { inputMode: "decimal", autoFocus: true, value: form.value, disabled: busy, placeholder: "0.00", onChange: (event) => onChange({ ...form, value: event.target.value }) }))), /* @__PURE__ */ psH("label", null, psAdminText("S\u0259b\u0259b", "Sebep", "Reason"), /* @__PURE__ */ psH("select", { value: reasons.includes(form.reason) ? form.reason : "", disabled: busy, onChange: (event) => onChange({ ...form, reason: event.target.value }) }, /* @__PURE__ */ psH("option", { value: "" }, psAdminText("Se\xE7in", "Se\xE7in", "Choose")), reasons.map((r) => /* @__PURE__ */ psH("option", { key: r, value: r }, r)))), /* @__PURE__ */ psH("label", null, psAdminText("Qeyd", "Not", "Note"), /* @__PURE__ */ psH("input", { value: form.note, disabled: busy, maxLength: 200, onChange: (event) => onChange({ ...form, note: event.target.value }) })), out && /* @__PURE__ */ psH("p", { className: "pm-cash-error", role: "status" }, psAdminText("M\u0259bl\u0259\u011F kassan\u0131n cari balans\u0131ndan \xE7oxdur.", "Tutar bakiyeden fazla.", "The amount is above the current balance.")), /* @__PURE__ */ psH("div", { className: "pm-cash-dialog-actions" }, /* @__PURE__ */ psH("button", { type: "submit", className: "ps-ops-button", disabled: busy || !valid }, busy ? psAdminText("Yaz\u0131l\u0131r\u2026", "Kaydediliyor\u2026", "Saving\u2026") : psAdminText("Yadda saxla", "Kaydet", "Save")), /* @__PURE__ */ psH("button", { type: "button", className: "ps-ops-button is-quiet", disabled: busy, onClick: onClose }, psAdminText("\u0130mtina", "Vazge\xE7", "Cancel")))));
+}
 function PsDeliveryTable({ head, rows, empty }) {
   const label = (value, index) => typeof value === "string" ? value || "\u018Fm\u0259liyyat" : index === 0 ? "Se\xE7" : "";
   const width = (value) => ({ "Se\xE7": "42px", "Qaim\u0259": "124px", "Vaxt": "110px", "Kuryer": "100px", "M\u0259bl\u0259\u011F": "102px", "\u018Fm\u0259liyyat": "132px", "V\u0259ziyy\u0259t": "132px" })[value];
@@ -32980,6 +33261,11 @@ function SupportPage() {
       window.removeEventListener("offline", off);
     };
   }, []);
+  const openFile = async (file, action) => {
+    const r = await window.pos?.files?.assistantOpen?.(file.path, action);
+    if (!r) setError(t("Fayl\u0131 a\xE7maq \xFC\xE7\xFCn Restoran POS-u yenil\u0259yin.", "Dosyay\u0131 a\xE7mak i\xE7in g\xFCncelleyin.", "Update Restaurant POS to open the file."));
+    else if (!r.success) setError(r.error?.message || t("Fayl a\xE7\u0131lmad\u0131.", "Dosya a\xE7\u0131lamad\u0131.", "The file could not be opened."));
+  };
   const [copied, setCopied] = reactExports.useState(""), [copying, setCopying] = reactExports.useState(false), copyTimer = reactExports.useRef(null), copyLock = reactExports.useRef(false);
   const session = useAuthStore((s) => s.session), owner = session?.userId, has = useAuthStore((s) => s.hasPermission) || (() => false), rights = ["inventory.view", "inventory.manage", "inventory.adjust", "catalog.manage", "reports.view", "cash.accounts", "order.view", "recipes.manage", "tables.layout", "receipt.print", "printer.manage", "reports.x", "suppliers.view", "delivery.view", "suppliers.manage", "suppliers.receive", "reports.z"].map((key) => has(key)).join(",");
   const chat = reactExports.useRef(null), [loading, setLoading] = reactExports.useState(true), [askClear, setAskClear] = reactExports.useState(false), [choicesActive, setChoicesActive] = reactExports.useState(false), [reported, setReported] = reactExports.useState([]);
@@ -33125,7 +33411,7 @@ function SupportPage() {
   reactExports.useEffect(() => {
     if (!busy && local.length) composer.current?.focus({ preventScroll: true });
   }, [busy, local.length]);
-  return /* @__PURE__ */ psH("section", { className: "ps-support-page" }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("p", { className: "ps-support-caption" }, t("Anbar, sat\u0131\u015F v\u0259 kassa bar\u0259d\u0259 soru\u015Fun. \u0130caz\u0259li m\u0259lumatlar\u0131n\u0131za bax\u0131m.", "Stok, sat\u0131\u015F ve kasa hakk\u0131nda sorun. Yetkili verilerinizi kontrol edeyim.", "Ask about inventory, sales and cash. I can check your permitted data."))), /* @__PURE__ */ psH("div", { className: "ps-support-header-actions" }, /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-all", disabled: copying || !rows.length, onClick: () => copy(PsStockAssistant.chatTranscript(rows, lang), "all") }, copied === "all" ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("S\xF6hb\u0259ti kopyala", "Sohbeti kopyala", "Copy conversation")), mode === "assistant" && /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-clear", disabled: busy || loading || !scopeValid || !local.length, onClick: () => setAskClear(true) }, t("S\xF6hb\u0259ti sil", "Sohbeti sil", "Delete conversation")), /* @__PURE__ */ psH("div", { role: "tablist", "aria-label": t("D\u0259st\u0259k n\xF6v\xFC", "Destek t\xFCr\xFC", "Support type") }, /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "assistant", onClick: () => switchMode("assistant") }, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "agent", onClick: () => switchMode("agent") }, t("\u018Fm\u0259kda\u015F", "Temsilci", "Agent"), lastAdmin && /* @__PURE__ */ psH("span", null, " \xB7 ", t("Cavab var", "Yan\u0131t var", "New reply")))))), offline && /* @__PURE__ */ psH("div", { role: "status", className: "ps-support-offline" }, t("\u0130nternet yoxdur. K\xF6m\u0259k\xE7i yaln\u0131z internet olanda i\u015Fl\u0259yir; internet qay\u0131danda yaza bil\u0259rsiniz.", "\u0130nternet yok. Yard\u0131mc\u0131 yaln\u0131zca internet varken \xE7al\u0131\u015F\u0131r.", "No internet. The assistant works only online; you can write again when it is back.")), askClear && /* @__PURE__ */ psH("div", { className: "ps-support-delete-confirm", role: "alertdialog", "aria-label": t("S\xF6hb\u0259ti sil", "Sohbeti sil", "Delete conversation") }, /* @__PURE__ */ psH("p", null, t("Bu komp\xFCterd\u0259 saxlanan k\xF6m\u0259k\xE7i s\xF6hb\u0259ti silinsin?", "Bu bilgisayardaki yard\u0131mc\u0131 sohbeti silinsin mi?", "Delete the assistant conversation saved on this computer?")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => void clearChat() }, t("Sil", "Sil", "Delete")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => setAskClear(false) }, t("L\u0259\u011Fv et", "\u0130ptal", "Cancel"))), /* @__PURE__ */ psH("div", { className: "ps-support-messages", ref: list, role: "log", "aria-live": "polite", "aria-busy": busy }, loading && /* @__PURE__ */ psH("p", { role: "status" }, t("S\xF6hb\u0259t a\xE7\u0131l\u0131r\u2026", "Sohbet a\xE7\u0131l\u0131yor\u2026", "Loading conversation\u2026")), !loading && !rows.length && /* @__PURE__ */ psH("div", { className: "ps-support-welcome" }, /* @__PURE__ */ psH("p", null, mode === "assistant" ? t("Salam! Siz\u0259 nec\u0259 k\xF6m\u0259k ed\u0259 bil\u0259r\u0259m?", "Merhaba! Nas\u0131l yard\u0131mc\u0131 olabilirim?", "Hello! How can I help?") : t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131na mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Destek temsilcisine mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Write your message to the support team.")), mode === "assistant" && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, ["Anbar\u0131mda n\u0259 var?", "Bug\xFCnk\xFC sat\u0131\u015F", "Kassada n\u0259 q\u0259d\u0259r pul var?"].map((value) => /* @__PURE__ */ psH("button", { key: value, disabled: busy || offline, onClick: () => send(value) }, value)))), rows.map((m, i) => /* @__PURE__ */ psH("article", { key: m.id || i, className: m.author === "me" || m.authorKind === "customer" ? "is-me" : "is-helper" }, /* @__PURE__ */ psH("small", null, m.author === "me" || m.authorKind === "customer" ? t("Siz", "Siz", "You") : m.authorKind === "admin" ? t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131", "Destek temsilcisi", "Support agent") : t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant"), m.ai && /* @__PURE__ */ psH("span", { className: "ps-support-ai", title: t("Bu sual\u0131 s\xFCni intellekt (Groq) oxudu", "Bu soruyu yapay zek\xE2 (Groq) okudu", "This question was read by AI (Groq)") }, "AI")), /* @__PURE__ */ psH("p", null, m.body), m.meta?.attachment && /* @__PURE__ */ psH("p", null, t("\u018Flav\u0259 fayl", "Ek dosya", "Attachment"), ": ", m.meta.attachment.fileName), m.createdAt && /* @__PURE__ */ psH("time", { dateTime: m.createdAt }, new Date(m.createdAt).toLocaleString(lang === "en" ? "en-GB" : lang === "tr" ? "tr-TR" : "az-AZ")), mode === "assistant" && m.choices?.length > 0 && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, m.choices.map((choice) => /* @__PURE__ */ psH("button", { key: choice.value, type: "button", disabled: busy || offline || !choicesActive || i !== local.length - 1, onClick: () => choice.value.startsWith("nav:") ? void (window.location.hash = "#" + choice.value.slice(4)) : send(choice.value, choice.label) }, choice.label))), mode === "assistant" && m.author === "helper" && m.id && /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-report", disabled: busy || offline || reported.includes(m.id), "aria-label": t("Bu cavab\u0131 s\u0259hv kimi bildir", "Bu yan\u0131t\u0131 hatal\u0131 olarak bildir", "Report this answer as wrong"), onClick: () => void chat.current?.report(m.id) }, reported.includes(m.id) ? t("Bildirildi \u2713", "Bildirildi \u2713", "Reported \u2713") : t("\u{1F44E} S\u0259hv cavab", "\u{1F44E} Hatal\u0131 yan\u0131t", "\u{1F44E} Wrong answer")), /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-message", "aria-label": t("Mesaj\u0131 kopyala", "Mesaj\u0131 kopyala", "Copy message"), disabled: copying, onClick: () => copy(PsStockAssistant.chatTranscript([m], lang, false), "message:" + i) }, copied === "message:" + i ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("Kopyala", "Kopyala", "Copy")))), busy && /* @__PURE__ */ psH("div", { role: "status", className: "ps-support-thinking", "aria-label": t("D\xFC\u015F\xFCn\xFCr\u0259m, cavab haz\u0131rlan\u0131r", "D\xFC\u015F\xFCn\xFCyorum, yan\u0131t haz\u0131rlan\u0131yor", "Thinking, preparing a response") }, /* @__PURE__ */ psH("span", { className: "ps-support-thinking-dots", "aria-hidden": "true" }, /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null)), /* @__PURE__ */ psH("span", null, mode === "assistant" ? t("D\xFC\u015F\xFCn\xFCr\u0259m\u2026", "D\xFC\u015F\xFCn\xFCyorum\u2026", "Thinking\u2026") : t("G\xF6nd\u0259rilir\u2026", "G\xF6nderiliyor\u2026", "Sending\u2026")))), /* @__PURE__ */ psH("span", { role: "status", className: "ps-support-copy-status" }, copied ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : ""), error && /* @__PURE__ */ psH("div", { role: "alert", className: "ps-support-error" }, error, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => {
+  return /* @__PURE__ */ psH("section", { className: "ps-support-page" }, /* @__PURE__ */ psH("header", null, /* @__PURE__ */ psH("div", null, /* @__PURE__ */ psH("h1", null, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("p", { className: "ps-support-caption" }, t("Anbar, sat\u0131\u015F v\u0259 kassa bar\u0259d\u0259 soru\u015Fun. \u0130caz\u0259li m\u0259lumatlar\u0131n\u0131za bax\u0131m.", "Stok, sat\u0131\u015F ve kasa hakk\u0131nda sorun. Yetkili verilerinizi kontrol edeyim.", "Ask about inventory, sales and cash. I can check your permitted data."))), /* @__PURE__ */ psH("div", { className: "ps-support-header-actions" }, /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-all", disabled: copying || !rows.length, onClick: () => copy(PsStockAssistant.chatTranscript(rows, lang), "all") }, copied === "all" ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("S\xF6hb\u0259ti kopyala", "Sohbeti kopyala", "Copy conversation")), mode === "assistant" && /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-clear", disabled: busy || loading || !scopeValid || !local.length, onClick: () => setAskClear(true) }, t("S\xF6hb\u0259ti sil", "Sohbeti sil", "Delete conversation")), /* @__PURE__ */ psH("div", { role: "tablist", "aria-label": t("D\u0259st\u0259k n\xF6v\xFC", "Destek t\xFCr\xFC", "Support type") }, /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "assistant", onClick: () => switchMode("assistant") }, t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant")), /* @__PURE__ */ psH("button", { role: "tab", disabled: busy, "aria-selected": mode === "agent", onClick: () => switchMode("agent") }, t("\u018Fm\u0259kda\u015F", "Temsilci", "Agent"), lastAdmin && /* @__PURE__ */ psH("span", null, " \xB7 ", t("Cavab var", "Yan\u0131t var", "New reply")))))), offline && /* @__PURE__ */ psH("div", { role: "status", className: "ps-support-offline" }, t("\u0130nternet yoxdur. K\xF6m\u0259k\xE7i yaln\u0131z internet olanda i\u015Fl\u0259yir; internet qay\u0131danda yaza bil\u0259rsiniz.", "\u0130nternet yok. Yard\u0131mc\u0131 yaln\u0131zca internet varken \xE7al\u0131\u015F\u0131r.", "No internet. The assistant works only online; you can write again when it is back.")), askClear && /* @__PURE__ */ psH("div", { className: "ps-support-delete-confirm", role: "alertdialog", "aria-label": t("S\xF6hb\u0259ti sil", "Sohbeti sil", "Delete conversation") }, /* @__PURE__ */ psH("p", null, t("Bu komp\xFCterd\u0259 saxlanan k\xF6m\u0259k\xE7i s\xF6hb\u0259ti silinsin?", "Bu bilgisayardaki yard\u0131mc\u0131 sohbeti silinsin mi?", "Delete the assistant conversation saved on this computer?")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => void clearChat() }, t("Sil", "Sil", "Delete")), /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => setAskClear(false) }, t("L\u0259\u011Fv et", "\u0130ptal", "Cancel"))), /* @__PURE__ */ psH("div", { className: "ps-support-messages", ref: list, role: "log", "aria-live": "polite", "aria-busy": busy }, loading && /* @__PURE__ */ psH("p", { role: "status" }, t("S\xF6hb\u0259t a\xE7\u0131l\u0131r\u2026", "Sohbet a\xE7\u0131l\u0131yor\u2026", "Loading conversation\u2026")), !loading && !rows.length && /* @__PURE__ */ psH("div", { className: "ps-support-welcome" }, /* @__PURE__ */ psH("p", null, mode === "assistant" ? t("Salam! Siz\u0259 nec\u0259 k\xF6m\u0259k ed\u0259 bil\u0259r\u0259m?", "Merhaba! Nas\u0131l yard\u0131mc\u0131 olabilirim?", "Hello! How can I help?") : t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131na mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Destek temsilcisine mesaj\u0131n\u0131z\u0131 yaz\u0131n.", "Write your message to the support team.")), mode === "assistant" && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, ["Anbar\u0131mda n\u0259 var?", "Bug\xFCnk\xFC sat\u0131\u015F", "Kassada n\u0259 q\u0259d\u0259r pul var?"].map((value) => /* @__PURE__ */ psH("button", { key: value, disabled: busy || offline, onClick: () => send(value) }, value)))), rows.map((m, i) => /* @__PURE__ */ psH("article", { key: m.id || i, className: m.author === "me" || m.authorKind === "customer" ? "is-me" : "is-helper" }, /* @__PURE__ */ psH("small", null, m.author === "me" || m.authorKind === "customer" ? t("Siz", "Siz", "You") : m.authorKind === "admin" ? t("D\u0259st\u0259k \u0259m\u0259kda\u015F\u0131", "Destek temsilcisi", "Support agent") : t("K\xF6m\u0259k\xE7i", "Yard\u0131mc\u0131", "Assistant"), m.ai && /* @__PURE__ */ psH("span", { className: "ps-support-ai", title: t("Bu sual\u0131 s\xFCni intellekt (Groq) oxudu", "Bu soruyu yapay zek\xE2 (Groq) okudu", "This question was read by AI (Groq)") }, "AI")), /* @__PURE__ */ psH("p", null, m.body), m.files?.length > 0 && /* @__PURE__ */ psH("div", { className: "ps-chat-files" }, m.files.map((f) => /* @__PURE__ */ psH("div", { key: f.path, className: "ps-chat-file" }, /* @__PURE__ */ psH("svg", { className: "ps-chat-file-icon", viewBox: "0 0 32 40", "aria-hidden": "true" }, /* @__PURE__ */ psH("path", { d: "M4 1.5h16l8.5 8.5v26.5a2 2 0 0 1-2 2h-22.5a2 2 0 0 1-2-2v-33a2 2 0 0 1 2-2z", fill: "#fff", stroke: "#c8362e", strokeWidth: "1.5" }), /* @__PURE__ */ psH("path", { d: "M20 1.5v8.5h8.5", fill: "none", stroke: "#c8362e", strokeWidth: "1.5" }), /* @__PURE__ */ psH("rect", { x: "2", y: "22", width: "22", height: "10", rx: "2", fill: "#c8362e" }), /* @__PURE__ */ psH("text", { x: "13", y: "29.6", textAnchor: "middle", fontSize: "7.5", fontWeight: "700", fill: "#fff", fontFamily: "Arial,sans-serif" }, "PDF")), /* @__PURE__ */ psH("span", { className: "ps-chat-file-meta" }, /* @__PURE__ */ psH("strong", { title: f.name }, f.name), /* @__PURE__ */ psH("small", null, f.bytes >= 1048576 ? (f.bytes / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round((f.bytes || 0) / 1024)) + " KB", " \xB7 ", t("S\u0259n\u0259dl\u0259r \u2192 Possistem \u2192 K\xF6m\u0259k\xE7i", "Belgeler \u2192 Possistem \u2192 K\xF6m\u0259k\xE7i", "Documents \u2192 Possistem \u2192 K\xF6m\u0259k\xE7i"))), /* @__PURE__ */ psH("span", { className: "ps-chat-file-actions" }, /* @__PURE__ */ psH("button", { type: "button", className: "is-primary", onClick: () => void openFile(f, "open") }, t("A\xE7", "A\xE7", "Open")), /* @__PURE__ */ psH("button", { type: "button", onClick: () => void openFile(f, "folder") }, t("Qovluqda g\xF6st\u0259r", "Klas\xF6rde g\xF6ster", "Show in folder")), /* @__PURE__ */ psH("button", { type: "button", onClick: () => void openFile(f, "saveAs") }, t("Ba\u015Fqa yer\u0259 saxla", "Ba\u015Fka yere kaydet", "Save a copy")))))), m.cards?.length > 0 && /* @__PURE__ */ psH("div", { className: "ps-chat-cards" }, m.cards.map((card) => /* @__PURE__ */ psH("button", { key: card.value + card.title, type: "button", className: "ps-chat-card" + (card.tone ? " is-" + card.tone : ""), disabled: !card.value.startsWith("nav:") && (busy || offline), onClick: () => card.value.startsWith("nav:") ? void (window.location.hash = "#" + card.value.slice(4)) : send(card.value, card.title) }, /* @__PURE__ */ psH("strong", null, card.title), card.meta && /* @__PURE__ */ psH("small", null, card.meta)))), m.meta?.attachment && /* @__PURE__ */ psH("p", null, t("\u018Flav\u0259 fayl", "Ek dosya", "Attachment"), ": ", m.meta.attachment.fileName), m.createdAt && /* @__PURE__ */ psH("time", { dateTime: m.createdAt }, new Date(m.createdAt).toLocaleString(lang === "en" ? "en-GB" : lang === "tr" ? "tr-TR" : "az-AZ")), mode === "assistant" && m.choices?.length > 0 && /* @__PURE__ */ psH("div", { className: "ps-support-chat-choices" }, m.choices.map((choice) => /* @__PURE__ */ psH("button", { key: choice.value, type: "button", disabled: busy || offline || !choicesActive || i !== local.length - 1, onClick: () => choice.value.startsWith("nav:") ? void (window.location.hash = "#" + choice.value.slice(4)) : send(choice.value, choice.label) }, choice.label))), mode === "assistant" && m.author === "helper" && m.id && /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-report", disabled: busy || offline || reported.includes(m.id), "aria-label": t("Bu cavab\u0131 s\u0259hv kimi bildir", "Bu yan\u0131t\u0131 hatal\u0131 olarak bildir", "Report this answer as wrong"), onClick: () => void chat.current?.report(m.id) }, reported.includes(m.id) ? t("Bildirildi \u2713", "Bildirildi \u2713", "Reported \u2713") : t("\u{1F44E} S\u0259hv cavab", "\u{1F44E} Hatal\u0131 yan\u0131t", "\u{1F44E} Wrong answer")), /* @__PURE__ */ psH("button", { type: "button", className: "ps-support-copy-message", "aria-label": t("Mesaj\u0131 kopyala", "Mesaj\u0131 kopyala", "Copy message"), disabled: copying, onClick: () => copy(PsStockAssistant.chatTranscript([m], lang, false), "message:" + i) }, copied === "message:" + i ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : t("Kopyala", "Kopyala", "Copy")))), busy && /* @__PURE__ */ psH("div", { role: "status", className: "ps-support-thinking", "aria-label": t("D\xFC\u015F\xFCn\xFCr\u0259m, cavab haz\u0131rlan\u0131r", "D\xFC\u015F\xFCn\xFCyorum, yan\u0131t haz\u0131rlan\u0131yor", "Thinking, preparing a response") }, /* @__PURE__ */ psH("span", { className: "ps-support-thinking-dots", "aria-hidden": "true" }, /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null), /* @__PURE__ */ psH("i", null)), /* @__PURE__ */ psH("span", null, mode === "assistant" ? t("D\xFC\u015F\xFCn\xFCr\u0259m\u2026", "D\xFC\u015F\xFCn\xFCyorum\u2026", "Thinking\u2026") : t("G\xF6nd\u0259rilir\u2026", "G\xF6nderiliyor\u2026", "Sending\u2026")))), /* @__PURE__ */ psH("span", { role: "status", className: "ps-support-copy-status" }, copied ? t("Kopyaland\u0131", "Kopyaland\u0131", "Copied") : ""), error && /* @__PURE__ */ psH("div", { role: "alert", className: "ps-support-error" }, error, /* @__PURE__ */ psH("button", { type: "button", disabled: busy, onClick: () => {
     editDraft(failedInput);
     setError("");
     composer.current?.focus();

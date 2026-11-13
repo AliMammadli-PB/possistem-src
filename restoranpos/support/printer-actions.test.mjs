@@ -28,7 +28,7 @@ test('queue/error results do not pretend physical print was confirmed',async()=>
  for(const status of ['queued','failed']){const f=fixture({status});await f.chat.send('printeri test et');const r=await f.chat.send('confirm');assert.match(r.body,status==='queued'?/Fiziki çap hələ təsdiqlənməyib/:/Kağız yoxdur/);assert.equal(f.writes,1);}
 });
 test('missing or virtual printer never causes catalogue fallback or test output',async()=>{
- const f=fixture({printers:['virtual','Microsoft Print to PDF'],receipt:'auto'});assert.match((await f.chat.send('printeri test et')).body,/Qoşulmuş printer tapılmadı/);await f.chat.send('confirm');assert.equal(f.writes,0);
+ const f=fixture({printers:['virtual','Microsoft Print to PDF'],receipt:'auto'});assert.match((await f.chat.send('printeri test et')).body,/Kassa heç bir printer görmür/);await f.chat.send('confirm');assert.equal(f.writes,0);
 });
 test('multiple printers require a current choice; removed target, cancellation and revoked role block print',async()=>{
  const f=fixture({printers:['USB one','USB two'],receipt:'auto'});let r=await f.chat.send('printeri test et');assert.equal(r.choices.filter(c=>c.value.startsWith('printer:target:')).length,2);

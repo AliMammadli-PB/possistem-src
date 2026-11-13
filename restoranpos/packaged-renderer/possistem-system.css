@@ -2465,6 +2465,9 @@ html body .ps-pin-layout-1930 .ps-staff-pin-error,html body .ps-pin-layout-1930 
 
 
 
+
+
+
 /* POS_TOUCH_RECEIPT_CSS_START */
 /* Touch-first admin and receipt controls. Container width follows the configured viewport/zoom. */
 .ps-admin-hub{padding:clamp(16px,2.5vw,40px);touch-action:pan-y;}
@@ -3418,4 +3421,47 @@ body:has(.pm-floor)::after{display:none}
 
 .ps-support-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.ps-support-page .ps-support-copy-all{font-size:12px;min-height:40px;padding:8px 12px;background:#fff;white-space:nowrap}.ps-support-messages article p{user-select:text;-webkit-user-select:text;cursor:text}.ps-support-page .ps-support-copy-message{display:block;margin:7px 0 0 auto;min-height:32px;padding:4px 7px;border:0;border-radius:5px;background:transparent;color:#516b8c;font-size:11px;font-weight:500}.ps-support-page .ps-support-copy-message:hover{background:#dfe9f8;color:#174b95}.ps-support-page .ps-support-copy-message:focus-visible,.ps-support-page .ps-support-copy-all:focus-visible{outline:2px solid #367be5;outline-offset:2px}.ps-support-copy-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.ps-support-thinking{display:flex;align-items:center;gap:11px;flex-shrink:0;align-self:flex-start;min-height:46px;box-sizing:border-box;padding:12px 16px;background:#edf3ff;border:1px solid #d9e5fa;border-radius:12px;color:#1b4f9e;font-size:13px;font-weight:500}.ps-support-thinking-dots{display:flex;align-items:center;gap:5px;height:14px}.ps-support-thinking i{display:block;width:7px;height:7px;border-radius:50%;background:#1859c7;animation:ps-assistant-think 1.1s ease-in-out infinite}.ps-support-thinking i:nth-child(2){animation-delay:.15s}.ps-support-thinking i:nth-child(3){animation-delay:.3s}@keyframes ps-assistant-think{0%,70%,100%{transform:translateY(0);opacity:.4}35%{transform:translateY(-4px);opacity:1}}@media(prefers-reduced-motion:reduce){.ps-support-thinking i{animation:none;opacity:.8}}@media(max-width:600px){.ps-support-header-actions{width:100%;justify-content:space-between;gap:8px}.ps-support-page .ps-support-copy-all{min-height:44px}.ps-support-thinking{padding:10px 12px}.ps-support-page .ps-support-copy-message{min-height:36px}}
 
+.ps-chat-files{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.ps-chat-file{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:12px 14px;border:1px solid #d4dfef;border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(18,50,91,.06)}
+.ps-chat-file-icon{width:32px;height:40px;flex:none}
+.ps-chat-file-meta{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 220px}
+.ps-chat-file-meta strong{font-size:14px;color:#12325b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ps-chat-file-actions{display:flex;flex-wrap:wrap;gap:6px}
+.ps-support-page .ps-chat-file-actions button{min-height:40px;padding:6px 12px;font-size:13px}
+.ps-support-page .ps-chat-file-actions button.is-primary{background:#1859c7;border-color:#1859c7;color:#fff}
+.ps-chat-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
+.ps-support-page .ps-chat-card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:56px;padding:9px 12px;text-align:left;border-radius:10px;background:#fff;border:1px solid #d4dfef;color:#12325b;font-weight:600}
+.ps-support-page .ps-chat-card:hover:not(:disabled){border-color:#1859c7;background:#f5f9ff}
+.ps-support-page .ps-chat-card:focus-visible{outline:2px solid #367be5;outline-offset:2px}
+.ps-chat-card small{font-size:12px;font-weight:500;color:#526b8a;font-variant-numeric:tabular-nums}
+.ps-support-page .ps-chat-card.is-out small{color:#a22424}
+.ps-support-page .ps-chat-card.is-low small{color:#8a5a00}
+.ps-support-messages article:has(.ps-chat-cards,.ps-chat-files){width:88%}
+
 /* SUPPORT_PAGE_END */
+/* CATALOG_COMPACT_1109_START */
+.ps-business-catalog>.ps-catalog-page{border-top:0}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar{padding:12px 16px;gap:10px 12px;flex-wrap:wrap;align-items:center}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar h2{font-size:18px;margin:0}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar .ps-catalog-search{flex:1 1 220px;min-width:0;max-width:none;margin:0}
+.ps-catalog-actions{display:flex;flex-wrap:wrap;gap:8px;flex:0 1 auto;min-width:0}
+.ps-catalog-actions>button{flex:none;min-height:44px;padding:0 12px;white-space:nowrap}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar .ps-catalog-new-btn{margin-left:0}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cats-head{padding-top:12px}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-count{min-width:28px;height:24px;padding:0 8px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:#e4ecf8;color:#1b2b47;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-cat.is-on .ps-catalog-count{background:#1958ae;color:#fff}
+/* Narrow tills: search and "+ Yeni məhsul" share the first row, the other add buttons the second; the title gives way. */
+@media (max-width:1440px){
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar h2{display:none}
+ .ps-catalog-actions{display:contents}
+ .ps-admin-workspace[data-page="/admin/catalog"] .ps-catalog-toolbar .ps-catalog-search{order:1;flex-basis:160px}
+ .ps-catalog-actions>.ps-catalog-new-btn{order:2}
+ .ps-catalog-actions>button:not(.ps-catalog-new-btn){order:3}
+}
+/* CATALOG_COMPACT_1109_END */
+
+/* TABLE_QR_PAYMENT_CSS */
+.ps-table-pay-entry{display:flex;justify-content:flex-end;padding:8px 24px;border-bottom:1px solid #d5e2f2}
+.ps-table-pay-open{min-height:48px;padding:10px 18px;color:#1553bb;background:#eaf2ff;border:1px solid #a5bfe6;border-radius:10px;font-weight:700;flex-shrink:0}.ps-table-pay-content{text-align:center;max-width:540px;margin:auto;display:grid;gap:12px}.ps-table-pay-code{display:block;max-width:100%;height:auto;margin:auto;background:#fff;border-radius:10px}.ps-table-pay-error{color:#a12a24;background:#fff1ef;border:1px solid #efb9b2;padding:12px;border-radius:8px}.ps-table-pay-totals{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;font-variant-numeric:tabular-nums}.ps-table-pay-hint{font-size:13px;color:#506985}.ps-table-pay-buttons{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}.ps-table-pay-buttons button{min-height:48px;padding:10px 14px;border:1px solid #bacde7;border-radius:8px;background:#fff;color:#164b9d}.ps-table-pay-buttons button:disabled{opacity:.5}
+
+/* END_TABLE_QR_PAYMENT_CSS */

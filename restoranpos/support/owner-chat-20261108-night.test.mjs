@@ -14,4 +14,4 @@ test('a Z report Groq files as unsupported goes into the real Z flow',async()=>{
 test('a new question while a stock plan waits for confirmation is still read by Groq',async()=>{const seen=[];
  const c=chat({help:unknown,understand:async text=>{seen.push(text);return text==='qaimeleri pdf formada mene ver'?{kind:'commands',commands:[],unsupported:['qaimələri PDF formada vermək'],reply:''}:{kind:'commands',commands:[],unsupported:[],reply:''};}});
  await c.send('doneri 24 et menfide olmasin');await c.send('Faktiki sayım');const r=await c.send('qaimeleri pdf formada mene ver');
- assert.ok(seen.includes('qaimeleri pdf formada mene ver'));assert.match(r.body,/PDF hazırdır: .*Alış qaimələri\.pdf/);assert.equal(c.state.levels['i-dn'],-16000,'nothing saved');});
+ assert.ok(seen.includes('qaimeleri pdf formada mene ver'));assert.match(r.body,/PDF hazırdır: Alış qaimələri/);assert.equal(r.files[0].name,"Alış qaimələri.pdf");assert.equal(c.state.levels['i-dn'],-16000,'nothing saved');});

@@ -1,3 +1,4 @@
+import{waiterLogin}from'../waiter/api';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, forgotPassword, isMarketPortal, resetPassword, checkEmail, sendOtp } from '../api';
@@ -162,6 +163,7 @@ export function LoginPage() {
     setError('');
     setBusy(true);
     try {
+      if(email.trim().toLowerCase().endsWith('.pos')){await waiterLogin(email.trim(),password);navigate('/ofisiant',{replace:true});return;}
       const result = await auth.signIn(email.trim(), password, rememberMe);
       persistRememberedEmail(email.trim(), rememberMe);
       navigate(safeNext(params.get('next'), result.redirectTo || '/'), { replace: true });

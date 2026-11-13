@@ -1,3 +1,7 @@
+import {tablePaymentRoutes} from './routes/table-payments.js';
+import {qrScanRoutes} from './routes/qr-scans.js';
+import {qrModelRoutes} from './routes/qr-models.js';
+import {waiterRoutes} from './routes/waiter.js';
 import {cloudBackupRoutes} from './routes/cloud-backups.js';
 import {qrOrderRoutes} from './routes/qr-orders.js';
 import {withinBudget} from './lib/request-budget.js';
@@ -141,9 +145,13 @@ export async function buildApp() {
       // POS / owner istemcileri
       await api.register(billingRoutes);
       await api.register(qrOrderRoutes);
+        await api.register(qrModelRoutes);
+        await api.register(qrScanRoutes);
+        await api.register(tablePaymentRoutes);
       await api.register(tenantRoutes);
       await api.register(ownerRoutes);
       await api.register(customerAuthRoutes);
+      await api.register(waiterRoutes);
       await api.register(customerRoutes);
       await api.register(posRoleCustomerRoutes);
       await api.register(posRemoteRoutes);

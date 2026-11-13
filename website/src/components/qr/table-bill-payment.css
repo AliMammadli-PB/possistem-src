@@ -1,0 +1,324 @@
+.table-pay {
+  --tp-ink: #142d50;
+  --tp-muted: #536883;
+  --tp-blue: #1558d6;
+  background: #f3f7fd;
+  color: var(--tp-ink);
+  min-height: 100dvh;
+  padding: 20px 16px 36px;
+  font:
+    16px/1.5 Arial,
+    sans-serif;
+  color-scheme: light;
+}
+.table-pay * {
+  box-sizing: border-box;
+}
+.table-pay-shell {
+  max-width: 640px;
+  margin: auto;
+}
+.table-pay-brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 8px 0 28px;
+}
+.table-pay-symbol {
+  display: grid;
+  place-items: center;
+  background: var(--tp-blue);
+  color: white;
+  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+}
+.table-pay-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--tp-muted);
+}
+.table-pay h1 {
+  font-size: 30px;
+  line-height: 1.15;
+  margin: 8px 0 12px;
+  letter-spacing: -0.7px;
+}
+.table-pay h2,
+.table-pay legend {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 14px;
+}
+.table-pay p {
+  margin: 8px 0;
+  color: var(--tp-muted);
+}
+.table-pay-kicker {
+  font-size: 13px;
+  font-weight: 600;
+}
+.table-pay-heading {
+  margin-bottom: 24px;
+}
+.table-pay-total {
+  background: #142d50;
+  color: white;
+  padding: 24px;
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+.table-pay-total > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.table-pay-total strong {
+  font-size: 32px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.table-pay dl {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid #ffffff30;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+.table-pay dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.table-pay dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.table-pay button,
+.table-pay select,
+.table-pay input {
+  font: inherit;
+}
+.table-pay button,
+.table-pay a {
+  cursor: pointer;
+}
+.table-pay button {
+  min-height: 48px;
+  border-radius: 10px;
+  background: white;
+  border: 1px solid #cbd9ed;
+  color: #154b9f;
+  padding: 10px 16px;
+  font-weight: 600;
+}
+.table-pay button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.table-pay :focus-visible {
+  outline: 3px solid #6aa7ff;
+  outline-offset: 3px;
+}
+.table-pay fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  margin: 0 0 24px;
+}
+.table-pay-methods {
+  display: grid;
+  gap: 8px;
+}
+.table-pay-methods > label,
+.table-pay-shares > label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #ccd9ed;
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+}
+.table-pay .chosen {
+  border-color: var(--tp-blue);
+  background: #eaf2ff;
+}
+.table-pay label b {
+  font-size: 15px;
+}
+.table-pay label small {
+  display: block;
+  color: var(--tp-muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+.table-pay input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--tp-blue);
+  flex-shrink: 0;
+}
+.table-pay-panel {
+  background: white;
+  padding: 20px !important;
+  border: 1px solid #d9e4f3 !important;
+  border-radius: 14px;
+  margin-bottom: 20px !important;
+}
+.table-pay-panel > legend {
+  float: left;
+  width: 100%;
+}
+.table-pay-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  clear: both;
+}
+.table-pay select {
+  background: white;
+  color: var(--tp-ink);
+  border: 1px solid #cbd9ed;
+  border-radius: 8px;
+  padding: 10px;
+  min-height: 48px;
+}
+.table-pay-shares {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+.table-pay-shares > label {
+  padding: 12px;
+}
+.table-pay-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.table-pay-lines li {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid #e4ebf5;
+}
+.table-pay-lines li:last-child {
+  border: 0;
+}
+.table-pay-lines b {
+  overflow-wrap: anywhere;
+}
+.table-pay-lines small {
+  display: block;
+  color: var(--tp-muted);
+  font-size: 13px;
+}
+.table-pay-lines input {
+  width: 80px;
+  min-height: 48px;
+  background: #fff;
+  border: 1px solid #b7cbe7;
+  color: var(--tp-ink);
+  border-radius: 8px;
+  padding: 8px;
+}
+.table-pay-note {
+  font-size: 12px;
+}
+.table-pay-notice {
+  padding: 16px;
+  background: #fff6dc;
+  border: 1px solid #ebd49d;
+  border-radius: 12px;
+  margin: 16px 0;
+  color: #624a12;
+  overflow-wrap: anywhere;
+}
+.table-pay-notice button,
+.table-pay-notice a {
+  display: inline-flex;
+  align-items: center;
+  margin: 8px 8px 0 0;
+}
+.table-pay-notice.success {
+  background: #ebf8f2;
+  border-color: #acd8c5;
+  color: #15583c;
+}
+.table-pay-notice.error {
+  background: #fff0ee;
+  border-color: #edbeb6;
+  color: #8e3022;
+}
+.table-pay-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: white;
+  border: 1px solid #d2deef;
+  border-radius: 14px;
+  padding: 16px;
+  position: sticky;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  box-shadow: 0 6px 24px #152f5014;
+}
+.table-pay-action strong {
+  display: block;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.table-pay-action small {
+  font-size: 12px;
+  color: var(--tp-muted);
+}
+.table-pay .table-pay-primary {
+  background: var(--tp-blue);
+  color: white;
+  border-color: var(--tp-blue);
+}
+.table-pay-privacy {
+  text-align: center;
+  padding: 10px 12px;
+}
+.table-pay-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+@media (max-width: 380px) {
+  .table-pay {
+    padding: 12px;
+  }
+  .table-pay-total {
+    padding: 18px;
+  }
+  .table-pay-total strong {
+    font-size: 27px;
+  }
+  .table-pay h1 {
+    font-size: 27px;
+  }
+  .table-pay-shares {
+    grid-template-columns: 1fr;
+  }
+  .table-pay-action {
+    padding: 12px;
+  }
+  .table-pay-action strong {
+    font-size: 19px;
+  }
+}

@@ -45,7 +45,7 @@ export async function centralAssistantRoutes(app:FastifyInstance){
   if(body.deviceId&&!target)return reply.code(403).send({error:'Kassa bu hesaba aid deyil.'});
   if(body.surface==='restaurant'&&!target)return reply.code(409).send({error:'Aktiv Restoran POS kassası tapılmadı.'});
   const permissions=body.surface==='restaurant'?[...new Set(body.permissions)].filter(p=>supported.includes(p)):target?supported:[];
-  const tools=body.surface==='restaurant'?body.tools.filter(t=>TOOLS.includes(t)):target?TOOLS.filter(t=>!['openPayment','setupTables','setupCreateTable','tableLayout','tableApply','tableCreateArea','tableCreateMany','printerList','printerTest','reportX','topProducts','purchases','courierReport','stockValue','writeOff','suppliersList','receiveGoods','dataQuery','zReadiness','reportZ','savePdfTable'].includes(t)):[];
+  const tools=body.surface==='restaurant'?body.tools.filter(t=>TOOLS.includes(t)):target?TOOLS.filter(t=>!['openPayment','setupTables','setupCreateTable','tableLayout','tableApply','tableCreateArea','tableCreateMany','printerList','printerTest','reportX','topProducts','purchases','courierReport','stockValue','writeOff','suppliersList','receiveGoods','dataQuery','zReadiness','reportZ','savePdfTable','printerDiscover','printerUse'].includes(t)):[];
   const doc=newDocument({surface:body.surface,language:body.language,permissions,tools,profile:restaurantName?{name:restaurantName}:null});
   await app.db.execute(sql`DELETE FROM assistant_sessions WHERE id IN (SELECT id FROM assistant_sessions WHERE expires_at<now() ORDER BY expires_at LIMIT 200)`);
   const id=randomUUID(),secret=randomBytes(32).toString('hex');
@@ -65,7 +65,7 @@ export async function centralAssistantRoutes(app:FastifyInstance){
    const knowledge=await published(tx);let doc=session.state;
    if(type==='message'&&body.text.startsWith('#device:')&&session.surface==='site'){
     const chosen=devices.find(d=>d.id===body.text.slice(8)&&d.product==='restaurant');if(!chosen)return reply.code(403).send({error:'Kassa tapılmadı.'});
-    doc=newDocument({surface:'site',language:doc.language,permissions:supported,tools:TOOLS.filter(t=>!['openPayment','setupTables','setupCreateTable','tableLayout','tableApply','tableCreateArea','tableCreateMany','printerList','printerTest','reportX','topProducts','purchases','courierReport','stockValue','writeOff','suppliersList','receiveGoods','dataQuery','zReadiness','reportZ','savePdfTable'].includes(t))});
+    doc=newDocument({surface:'site',language:doc.language,permissions:supported,tools:TOOLS.filter(t=>!['openPayment','setupTables','setupCreateTable','tableLayout','tableApply','tableCreateArea','tableCreateMany','printerList','printerTest','reportX','topProducts','purchases','courierReport','stockValue','writeOff','suppliersList','receiveGoods','dataQuery','zReadiness','reportZ','savePdfTable','printerDiscover','printerUse'].includes(t))});
     await tx.execute(sql`UPDATE assistant_sessions SET device_id=${chosen.id}::uuid,state=${JSON.stringify(doc)}::jsonb WHERE id=${session.id}::uuid`);
     return{protocol:1,reply:{body:`${chosen.name} seçildi. Nə etmək istəyirsiniz?`,choices:[]}};
    }

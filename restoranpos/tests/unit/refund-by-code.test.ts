@@ -87,15 +87,17 @@ describe('the refund screen', () => {
 });
 
 describe('the drawer screen', () => {
-  it('offers every movement kind the core accepts', () => {
-    // The schema has allowed four since it landed and the screen offered two,
-    // so money paid to a supplier looked identical to a shortfall.
-    for (const kind of ['cash_in', 'cash_out', 'expense', 'float_adjust']) {
-      expect(bundle).toContain(`setKind("${kind}")`);
-    }
+  // Since 1.10.16 cash lives on Kassalar: expenses on Xərclər, money in/out on each account's menu (1.10.25).
+  it('offers money in, money out and expenses', () => {
+    expect(bundle).toContain('kind:m.kind');
+    expect(bundle).toContain('onMoney(account, "cash_in")');
+    expect(bundle).toContain('onMoney(account, "cash_out")');
+    expect(bundle).toContain('kind: "expense"');
   });
 
-  it('says what each kind means', () => {
-    expect(bundle).toContain('Xərc: kassadan ödəniş edilib');
+  it('says what money in and money out mean', () => {
+    // JSX text is compiled with \u escapes.
+    expect(bundle).toContain('Kassaya sat\\u0131\\u015Fdan k\\u0259nar qoyulan pul');
+    expect(bundle).toContain('(x\\u0259rc deyil)');
   });
 });
