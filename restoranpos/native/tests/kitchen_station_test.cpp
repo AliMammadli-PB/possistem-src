@@ -74,7 +74,7 @@ std::vector<Job> kitchenJobs(ServiceFixture& fixture, const std::string& orderId
     std::vector<Job> jobs;
     auto rows = fixture.db().prepare(
         "SELECT target_printer, COALESCE(payload, ''), status FROM print_jobs "
-        "WHERE order_id = :o AND kind = 'kitchen_ticket' ORDER BY target_printer");
+        "WHERE order_id = :o AND kind = 'kitchen_ticket' ORDER BY created_at");
     rows.bind(":o", orderId);
     while (rows.step()) {
         const std::string payload = rows.columnText(1);
@@ -171,6 +171,40 @@ TEST_CASE("without extra printers the kitchen ticket is unchanged", "[printing][
     REQUIRE(builder.kitchenTicket(orderId).text.find("Dolma") != std::string::npos);
 }
 
+TEST_CASE("bar dishes print on the cashier printer, food stays in the kitchen", "[printing][stations]") {
+    StationFixture f;
+    const auto [foodCat, food] = f.dish("Dolma");
+    const auto [teaCat, tea] = f.dish("Çay");
+    (void)foodCat;
+    (void)teaCat;
+    f.fixture().db().exec("UPDATE app_settings SET value='kitchen-printer' WHERE key='printer.kitchen'");
+    // The cashier printer keeps the receipt role and also the dishes assigned to it.
+    f.setting("kitchen.stations",
+              pos::Json::array({{{"id", "st-kassa"}, {"name", "KASSA"}, {"kind", "receipt"}, {"main", false},
+                                 {"roles", pos::Json::array({"receipt"})}, {"printer", "till-printer"},
+                                 {"itemIds", pos::Json::array({tea})}}})
+                  .dump());
+
+    const auto order = f.call(pos::protocol::method::kOrdersCreate, {{"tableId", "tbl-08"}, {"guestCount", 2}});
+    const std::string orderId = order["id"];
+    f.call(pos::protocol::method::kOrdersAddItem, {{"orderId", orderId}, {"productId", food}, {"quantity", 1}});
+    f.call(pos::protocol::method::kOrdersAddItem, {{"orderId", orderId}, {"productId", tea}, {"quantity", 1}});
+    f.call(pos::protocol::method::kOrdersSubmit, {{"orderId", orderId}});
+
+    const auto jobs = kitchenJobs(f.fixture(), orderId);
+    REQUIRE(jobs.size() == 2);
+    REQUIRE(jobs[0].printer == "kitchen-printer");
+    REQUIRE(jobs[1].printer == "till-printer");
+    pos::printing::ReceiptBuilder builder(f.fixture().ctx());
+    const auto kitchen = builder.kitchenTicket(orderId, jobs[0].options).text;
+    const auto till = builder.kitchenTicket(orderId, jobs[1].options).text;
+    REQUIRE(kitchen.find("Dolma") != std::string::npos);
+    REQUIRE(kitchen.find("Çay") == std::string::npos);
+    REQUIRE(till.find("Çay") != std::string::npos);
+    REQUIRE(till.find("Dolma") == std::string::npos);
+    REQUIRE(till.find("KASSA") != std::string::npos);
+}
+
 TEST_CASE("a dish picked for the kebab printer prints there, whatever its category", "[printing][stations]") {
     StationFixture f;
     const auto [category, adana] = f.dish("Adana kabab");
@@ -265,4 +299,28 @@ TEST_CASE("a set menu prints each part on that part's printer", "[printing][stat
     REQUIRE(bar.text.find("2 x Kola") != std::string::npos);
     REQUIRE(bar.text.find("Dönər") == std::string::npos);
     REQUIRE(bar.text.find("Biznes lanç") != std::string::npos);
+}
+
+TEST_CASE("a second send prints only the new dishes", "[printing][stations]") {
+    StationFixture f;
+    const auto [firstCategory, first] = f.dish("Dolma");
+    (void)firstCategory;
+    const auto [secondCategory, second] = f.dish("Piti");
+    (void)secondCategory;
+    const auto order = f.call(pos::protocol::method::kOrdersCreate, {{"tableId", "tbl-07"}, {"guestCount", 2}});
+    const std::string orderId = order["id"];
+    f.call(pos::protocol::method::kOrdersAddItem, {{"orderId", orderId}, {"productId", first}, {"quantity", 1}});
+    f.call(pos::protocol::method::kOrdersSubmit, {{"orderId", orderId}});
+    f.call(pos::protocol::method::kOrdersAddItem, {{"orderId", orderId}, {"productId", second}, {"quantity", 1}});
+    f.call(pos::protocol::method::kOrdersSubmit, {{"orderId", orderId}});
+
+    const auto jobs = kitchenJobs(f.fixture(), orderId);
+    REQUIRE(jobs.size() == 2);
+    pos::printing::ReceiptBuilder builder(f.fixture().ctx());
+    const auto again = builder.kitchenTicket(orderId, jobs[1].options);
+    REQUIRE(again.text.find("Piti") != std::string::npos);
+    REQUIRE(again.text.find("Dolma") == std::string::npos);
+    const auto firstTicket = builder.kitchenTicket(orderId, jobs[0].options);
+    REQUIRE(firstTicket.text.find("Dolma") != std::string::npos);
+    REQUIRE(firstTicket.text.find("Piti") == std::string::npos);
 }

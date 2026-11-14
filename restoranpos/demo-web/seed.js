@@ -67,6 +67,8 @@ export async function seedDemo(call) {
       sortOrder: n,
     });
   }
+  const tills = await must('cashAccounts.list', {});
+  await must('cashAccounts.save', { name: 'Demo kassa', kind: 'till', terminalId: tills.currentTerminalId, openingMinor: 0 });
   await must('businessDay.open', { openingFloatMinor: 20000 });
   await must('shifts.open', { openingFloatMinor: 20000 });
 

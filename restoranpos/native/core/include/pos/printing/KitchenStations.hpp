@@ -43,9 +43,11 @@ inline std::vector<KitchenStation> parseKitchenStations(const std::string& raw) 
         // Shared devices may print till receipts AND selected kitchen dishes.
         // Main kitchen entries use printer.kitchen; a receipt-only entry must
         // not retain an old dish route when its purpose changes.
-        bool main=row.value("main",false),kitchen=row.value("kind",std::string())=="kitchen";
-        if(row.contains("roles")&&row["roles"].is_array())for(const auto& role:row["roles"])if(role=="kitchen"){main=true;kitchen=true;}
-        if(main||(row.contains("kind")&&!kitchen))continue;
+        bool main=row.value("main",false);
+        if(row.contains("roles")&&row["roles"].is_array())for(const auto& role:row["roles"])if(role=="kitchen")main=true;
+        // A till printer (kind receipt) still prints the dishes explicitly
+        // assigned to it. A row with no dishes is skipped below.
+        if(main)continue;
         KitchenStation station;
         station.id = row.value("id", "");
         station.name = row.value("name", "");

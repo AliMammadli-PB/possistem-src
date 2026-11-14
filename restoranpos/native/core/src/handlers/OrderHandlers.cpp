@@ -794,7 +794,7 @@ void registerOrders(const ContextPtr& ctx) {
                 const auto stations =
                     printing::parseKitchenStations(ctx->setting("kitchen.stations", "[]"));
                 std::vector<std::pair<const printing::KitchenStation*, std::vector<std::string>>> stationLines;
-                bool mainKitchenLines = false;
+                std::vector<std::string> mainKitchenIds;
 
                 for (const auto& line : lines) {
                     auto markSent = ctx->db().prepare(
@@ -820,7 +820,10 @@ void registerOrders(const ContextPtr& ctx) {
                     }
                     const auto route = [&](const printing::KitchenStation* extra) {
                         if (!extra) {
-                            mainKitchenLines = true;
+                            if (std::find(mainKitchenIds.begin(), mainKitchenIds.end(), line.id) ==
+                                mainKitchenIds.end()) {
+                                mainKitchenIds.push_back(line.id);
+                            }
                             return;
                         }
                         auto group = std::find_if(stationLines.begin(), stationLines.end(),
@@ -866,17 +869,18 @@ void registerOrders(const ContextPtr& ctx) {
                 // The kitchen ticket is queued inside the same transaction, so a
                 // printer outage can never lose an order that the guest was told
                 // had been sent.
-                if (mainKitchenLines) {
+                if (!mainKitchenIds.empty()) {
                     auto printJob = ctx->db().prepare(
-                        "INSERT INTO print_jobs (id, order_id, kind, target_printer, status, "
+                        "INSERT INTO print_jobs (id, order_id, kind, target_printer, status, payload, "
                         "        next_attempt_at, created_at, updated_at) "
-                        "VALUES (:id, :orderId, 'kitchen_ticket', :printer, 'queued', :now, :now, :now)");
+                        "VALUES (:id, :orderId, 'kitchen_ticket', :printer, 'queued', :payload, :now, :now, :now)");
                     printJob.bind(":id", crypto::uuid4())
                         .bind(":orderId", orderId)
                         // `auto` rather than `virtual`: an unconfigured kitchen used
                         // to spool the ticket to a text file and report success, so
                         // the kitchen simply never got the order.
                         .bind(":printer", ctx->setting("printer.kitchen", "auto"))
+                        .bind(":payload", Json{{"itemIds", mainKitchenIds}}.dump())
                         .bind(":now", now);
                     printJob.exec();
                 }

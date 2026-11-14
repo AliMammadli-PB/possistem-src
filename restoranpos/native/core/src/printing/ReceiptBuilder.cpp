@@ -500,18 +500,20 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
 
     const std::string stationName = options.is_object() ? options.value("stationName", "") : "";
     const bool forStation = options.is_object() && !options.value("station", "").empty();
-    std::vector<std::string> stationItems;
-    if (forStation && options.contains("itemIds") && options["itemIds"].is_array()) {
+    const bool onlyThese =
+        options.is_object() && options.contains("itemIds") && options["itemIds"].is_array();
+    std::vector<std::string> onlyIds;
+    if (onlyThese) {
         for (const auto& id : options["itemIds"]) {
-            if (id.is_string()) stationItems.push_back(id);
+            if (id.is_string()) onlyIds.push_back(id);
         }
     }
     const auto stations = parseKitchenStations(ctx_.setting("kitchen.stations", "[]"));
     // True when this line belongs on this ticket.
     const auto onTicket = [&](const Json& item) {
         const std::string itemId = item.value("id", "");
-        if (forStation) {
-            return std::find(stationItems.begin(), stationItems.end(), itemId) != stationItems.end();
+        if (onlyThese) {
+            return std::find(onlyIds.begin(), onlyIds.end(), itemId) != onlyIds.end();
         }
         if (stations.empty()) return true;
         const std::string productId = item.value("productId", "");
@@ -569,7 +571,9 @@ RenderedReceipt ReceiptBuilder::kitchenTicket(const std::string& orderId, const 
         if (status == "voided" || status == "draft" || status == "held") continue;
         // A set menu prints as its parts, each on the printer that part belongs to.
         const auto parts = menuParts(ctx_.db(), getOr<std::string>(item, "productId", ""));
-        if (parts.empty() ? !onTicket(item) : (forStation && !onTicket(item))) continue;
+        // itemIds is this round. Without them, a station ticket still skips other
+        // lines, and the main ticket walks every set so each part can be split.
+        if (onlyThese ? !onTicket(item) : (parts.empty() ? !onTicket(item) : (forStation && !onTicket(item)))) continue;
         std::vector<std::string> titles;
         for (const auto& part : parts) {
             const auto* target = stationFor(stations, part.productId, part.categoryId, part.parentCategoryId);

@@ -728,9 +728,8 @@ int drainQueue(Context& ctx) {
             // switching to an unrelated device after a failure is not.
             destination="auto";auto stations=Json::parse(ctx.setting("kitchen.stations","[]"),nullptr,false);
             if(stations.is_array())for(const auto& station:stations){if(!station.is_object()||station.value("id",std::string())!=overrides.value("station",std::string()))continue;
-                bool kitchen=station.value("kind",std::string("kitchen"))=="kitchen";
-                if(station.contains("roles")&&station["roles"].is_array())for(const auto& role:station["roles"])if(role=="kitchen")kitchen=true;
-                if(kitchen){destination=station.value("printer",std::string("auto"));}
+                const auto printer=station.value("printer",std::string());
+                if(!printer.empty())destination=printer;
                 break;
             }
         }
