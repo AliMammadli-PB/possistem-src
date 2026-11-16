@@ -23,6 +23,7 @@ constexpr const char* kTableQuery =
     "SELECT t.id, t.area_id AS areaId, a.name_az AS areaName, t.label, t.seats, t.status, "
     "       t.pos_x AS posX, t.pos_y AS posY, t.width, t.height, t.shape, "
     "       t.merged_into_id AS mergedIntoId, t.sort_order AS sortOrder, t.updated_at AS updatedAt, "
+    "       t.deposit_minor AS depositMinor, "
     "       o.id AS orderId, o.order_number AS orderNumber, o.guest_count AS guestCount, "
     "       o.total_minor AS totalMinor, o.paid_minor AS paidMinor, o.status AS orderStatus, "
     "       o.opened_at AS openedAt, u.full_name AS waiterName, u.color AS waiterColor, "
@@ -784,6 +785,10 @@ void registerTables(const ContextPtr& ctx) {
             const auto seats = std::max<std::int64_t>(1, getOr<std::int64_t>(request.payload, "seats", 2));
             const auto sort = getOr<std::int64_t>(request.payload, "sortOrder", 0);
             const auto shape = getOr<std::string>(request.payload, "shape", "square");
+            // Optional: only a request that names a deposit changes it (older tills and the assistant send none).
+            const bool hasDeposit = request.payload.contains("depositMinor");
+            const Money deposit = getOr<Money>(request.payload, "depositMinor", 0);
+            require(deposit >= 0 && deposit <= Money{100000000}, "Depozit düzgün deyil");
             const auto now = nowMs();
 
             db::Transaction txn(ctx->db());
@@ -821,6 +826,11 @@ void registerTables(const ContextPtr& ctx) {
                     .bind(":now", now)
                     .bind(":id", id);
                 upd.exec();
+                if (hasDeposit) {
+                    auto dep = ctx->db().prepare("UPDATE restaurant_tables SET deposit_minor = :deposit WHERE id = :id");
+                    dep.bind(":deposit", deposit).bind(":id", id);
+                    dep.exec();
+                }
             } else {
                 auto maxPos = ctx->db().prepare(
                     "SELECT COALESCE(MAX(pos_y), 0) FROM restaurant_tables WHERE area_id = :area");
@@ -841,6 +851,11 @@ void registerTables(const ContextPtr& ctx) {
                     .bind(":sort", sort)
                     .bind(":now", now);
                 ins.exec();
+                if (hasDeposit && deposit > 0) {
+                    auto dep = ctx->db().prepare("UPDATE restaurant_tables SET deposit_minor = :deposit WHERE id = :id");
+                    dep.bind(":deposit", deposit).bind(":id", id);
+                    dep.exec();
+                }
             }
             ctx->audit("tables.upsertTable", "restaurant_table", id, request.payload);
             if (guarded) {

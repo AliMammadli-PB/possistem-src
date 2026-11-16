@@ -135,13 +135,15 @@ TEST_CASE("overpaying an order is refused", "[payment][cash]") {
                       pos::PosError);
 }
 
-TEST_CASE("deposit is additive and appears in the canonical receipt", "[payment][deposit]") {
+TEST_CASE("deposit is a minimum and its remainder appears in the canonical receipt", "[payment][deposit]") {
     PaymentFixture f;
     const std::string orderId = f.makeOrder(3400, "D-1");
 
+    // 34 eaten on a 40 deposit: the bill is 40, of which 6 is "Depozitdən qalan".
     const auto changed = f.call("orders.setDeposit",
-                                pos::Json{{"orderId", orderId}, {"depositMinor", 600}});
-    REQUIRE(changed.at("depositMinor") == 600);
+                                pos::Json{{"orderId", orderId}, {"depositMinor", 4000}});
+    REQUIRE(changed.at("depositMinor") == 4000);
+    REQUIRE(changed.at("minimumTableMinor") == 600);
     REQUIRE(changed.at("subtotalMinor") == 3400);
     REQUIRE(changed.at("totalMinor") == 4000);
     REQUIRE(pos::services::PaymentService(f.fixture().ctx()).outstanding(orderId) == 4000);
@@ -287,7 +289,7 @@ TEST_CASE("prepaid table deposit is recorded once and covers the minimum without
     auto assign = f.fixture().db().prepare("UPDATE orders SET table_id=(SELECT id FROM restaurant_tables LIMIT 1) WHERE id=:id");
     assign.bind(":id",orderId).exec();
     f.call("orders.setDeposit",{{"orderId",orderId},{"depositMinor",1000}});
-    REQUIRE(f.call("payments.list",{{"orderId",orderId}}).at("outstandingMinor")==subtotal+1000);
+    REQUIRE(f.call("payments.list",{{"orderId",orderId}}).at("outstandingMinor")==std::max<pos::Money>(subtotal,1000));
     pos::Json deposit{{"orderId",orderId},{"amountMinor",1000},{"isDeposit",true}};
     const auto route = "payments.create"+std::string(method=="cash"?"Cash":"Card");
     if(method=="card") {

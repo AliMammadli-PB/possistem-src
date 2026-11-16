@@ -813,6 +813,8 @@ var PsStockAssistant = (() => {
 
 
 
+
+
 /* MANAGEMENT_UNIFIED_V1 */
 function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  const h=psH,{lang}=useI18n(),L=(a,t,e)=>psBizText(lang,a,t,e);
@@ -823,6 +825,8 @@ function PsSizeVariants({rows,onChange,price,disabled,unit='sm',onUnit}) {
  ...rows.map((row,i)=>h('div',{className:'ps-size-row',key:i},h('label',null,L('Ölçü ('+unit+')','Boyut ('+unit+')','Size ('+unit+')'),h('input',{'aria-label':L('Ölçü','Boyut','Size')+' '+(i+1),inputMode:'decimal',value:row.size,onChange:e=>update(i,'size',e.target.value),placeholder:'29'})),h('label',null,L('Qiymət (₼)','Fiyat (₼)','Price (₼)'),h('input',{'aria-label':L('Variantın qiyməti','Boyut fiyatı','Variant price')+' '+(i+1),inputMode:'decimal',value:row.price,onChange:e=>update(i,'price',e.target.value),placeholder:'0.00'})),h('button',{type:'button',disabled:rows.length===1,onClick:()=>onChange(rows.filter((_,n)=>n!==i)),'aria-label':L('Ölçünü sil','Boyutu sil','Remove size')+' '+(i+1)},'×'))),
  h('button',{type:'button',disabled:rows.length>=24,onClick:()=>onChange([...rows,{size:'',price:price||''}])},L('+ Ölçü əlavə et','+ Boyut ekle','+ Add size'))):null);
 }
+
+
 
 
 
@@ -15760,7 +15764,7 @@ function _psNavTabMatches(to, location) {
   const wanted = new URLSearchParams(to.slice(q)).get("tab");
   return wanted === new URLSearchParams(location.search || "").get("tab");
 }
-const _PS_BUILD = "1.10.29 · 2d8fd7e";
+const _PS_BUILD = "1.10.31 · c6f2eff";
 function RefundByCodePage() {
   const [code, setCode] = reactExports.useState("");
   const [found, setFound] = reactExports.useState(null);
@@ -17091,6 +17095,8 @@ function PsMenuCatalog() {
   const [nameEn, setNameEn] = reactExports.useState("");
   const [descriptionAz, setDescriptionAz] = reactExports.useState("");
   const [priceRaw, setPriceRaw] = reactExports.useState("");
+  /* PORTIONS_1116 */ const [psHalfRaw, setPsHalfRaw] = reactExports.useState("");
+  const psHalfHad = reactExports.useRef(false);
   const [imageUrl, setImageUrl] = reactExports.useState("");
   const [station, setStation] = reactExports.useState("kitchen");
   const [course, setCourse] = reactExports.useState("main");
@@ -17227,13 +17233,19 @@ function PsMenuCatalog() {
       setPrinterStation((psExtraKitchenPrinters(kitchenPrinters).find((p) => (p.itemIds || []).includes(row.id)) || {}).id || "");
       setCourse(row.course || "main");
       setPublished(row.active === true || row.active === 1);
-      setProductGroupIds((row.modifierGroups ?? []).map((g) => g.id));
+      setProductGroupIds((row.modifierGroups ?? []).map((g) => g.id).filter((id) => !String(id).startsWith("portion:")));
+      const psHalf = (row.modifierGroups ?? []).find((g) => String(g.id).startsWith("portion:"))?.modifiers?.[0];
+      psHalfHad.current = !!psHalf;
+      setPsHalfRaw(psHalf ? ((Number(row.priceMinor ?? product.priceMinor ?? 0) + Number(psHalf.priceDeltaMinor || 0)) / 100).toFixed(2) : "");
     } else {
       setProductGroupIds([]);
+      psHalfHad.current = false;
+      setPsHalfRaw("");
     }
   };
   const startCreate = () => {
     setSizeVariants([]);saveAttempt.current=null;
+    setPsHalfRaw("");psHalfHad.current=false;
     setEditorOpen(true);
     setEditId(null);
     setNameAz("");
@@ -17457,6 +17469,8 @@ function PsMenuCatalog() {
       return;
     }
     const sizes=sizeVariants.map(row=>({sizeCm:Number(String(row.size).trim().replace(",",".")),priceMinor:parseMoneyInput(String(row.price))}));
+    const psHalfMinor = psHalfRaw.trim() ? parseMoneyInput(psHalfRaw) : 0;
+    if (psHalfRaw.trim() && (psHalfMinor == null || psHalfMinor <= 0)) { toast("Yarım porsiyanın qiymətini düzgün yazın (boş qoysanız yarım porsiya olmaz).", "danger"); return; }
     if(sizes.some(row=>!Number.isFinite(row.sizeCm)||row.sizeCm<=0||row.sizeCm>(sizeUnit==="sm"?300:100000)||row.priceMinor==null||row.priceMinor<0||(published&&row.priceMinor<=0))||new Set(sizes.map(row=>Math.round(row.sizeCm*100))).size!==sizes.length){toast("Ölçüləri və qiymətləri düzgün yazın. Ölçülər təkrarlanmamalıdır.","danger");return;}
     setSaving(true);
     try{
@@ -17500,6 +17514,10 @@ function PsMenuCatalog() {
         toast(link.error.message, "danger");
         return;
       }
+    }
+    if (productId && !sizes.length && (psHalfMinor > 0 || psHalfHad.current)) {
+      const portion = await window.pos.catalogAdmin.setPortions(productId, psHalfMinor || 0, { idempotencyKey: newIdempotencyKey() });
+      if (!portion.success) { setSaving(false); toast(portion.error.message, "danger"); return; }
     }
     setSaving(false);
     toast(t.common.save, "success");
@@ -17793,7 +17811,8 @@ function PsMenuCatalog() {
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-28 shrink-0", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "aspect-square overflow-hidden rounded-xl border border-hairline bg-elevated", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveProductVisual(editId ?? "", categoryId, imageUrl), alt: "", className: "h-full w-full object-cover" }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => setShowGallery((v) => !v), className: "touch-target mt-2 w-full rounded-xl border border-hairline px-2 py-2 text-xs" + (showGallery ? " ps-gallery-on" : ""), children: "Kataloqdan" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void pickProductImage(), className: "touch-target mt-1 w-full rounded-xl border border-hairline px-2 py-2 text-xs", children: "Kompüterdən" })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => void pickProductImage(), className: "touch-target mt-1 w-full rounded-xl border border-hairline px-2 py-2 text-xs", children: "Kompüterdən" }),
+              imageUrl ? jsxRuntimeExports.jsx("button", { type: "button", disabled: saving, onClick: () => { setImageUrl(""); setShowGallery(false); }, className: "touch-target mt-1 w-full rounded-xl border border-hairline px-2 py-2 text-xs text-danger", children: "Şəkli sil" }) : null
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 space-y-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
@@ -17803,6 +17822,11 @@ function PsMenuCatalog() {
               /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-faint", children: t.catalog.price }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: priceRaw, onChange: (e) => setPriceRaw(e.target.value), inputMode: "decimal", placeholder: "0.00", className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream outline-none focus:border-gold/50" })
+              ] }),
+              sizeVariants.length ? null : jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
+                jsxRuntimeExports.jsx("span", { className: "text-faint", children: "Yarım porsiya qiyməti (₼)" }),
+                jsxRuntimeExports.jsx("input", { value: psHalfRaw, onChange: (e) => setPsHalfRaw(e.target.value), inputMode: "decimal", placeholder: "Boş: yarım porsiya yoxdur", "aria-label": "Yarım porsiya qiyməti", className: "mt-1 w-full rounded-xl border border-hairline bg-elevated px-3 py-2.5 text-cream outline-none focus:border-gold/50" }),
+                jsxRuntimeExports.jsx("span", { className: "mt-1 block text-xs text-muted", children: "Satışda «1 porsiya / Yarım porsiya» seçilir. Anbardan reseptin yarısı silinir." })
               ] })
             ] })
           ] }),
@@ -18628,6 +18652,8 @@ function AdminTablesPage() {
   const [editAreaId, setEditAreaId] = reactExports.useState(null);
   const [tableSeats, setTableSeats] = reactExports.useState("4");
   const [editTableId, setEditTableId] = reactExports.useState(null);
+  /* OWNER_REQUESTS_1116 */ const [psTableLabel, setPsTableLabel] = reactExports.useState("");
+  const [psTableDeposit, setPsTableDeposit] = reactExports.useState("");
   const [pendingDelete, setPendingDelete] = reactExports.useState(null);
   const load = reactExports.useCallback(async () => {
     const res = await window.pos.tables.list();
@@ -18696,9 +18722,10 @@ function AdminTablesPage() {
     const sortOrder = current?.sortOrder ?? Math.max(0, ...areaTables.map((table) => table.sortOrder ?? 0)) + 1;
     setBusy(true);
     const payload = {
-      label: `Masa ${sortOrder}`,
+      label: psTableLabel.trim() || current?.label || `Masa ${sortOrder}`,
       areaId,
       seats,
+      depositMinor: Math.max(0, Math.round((Number(String(psTableDeposit).replace(",", ".")) || 0) * 100)),
       sortOrder,
       shape: current?.shape || "square"
     };
@@ -18713,6 +18740,8 @@ function AdminTablesPage() {
     }
     toast(t.common.save, "success");
     setTableSeats("4");
+    setPsTableLabel("");
+    setPsTableDeposit("");
     setEditTableId(null);
     await load();
   };
@@ -18808,8 +18837,8 @@ function AdminTablesPage() {
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "glass space-y-4 rounded-2xl p-5", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-display text-lg text-cream", children: t.adminTables.tables }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid gap-2 sm:grid-cols-[1fr_6rem_auto]", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream", children: editTableId ? areaTables.find((table) => table.id === editTableId)?.label : `Masa ${Math.max(0, ...areaTables.map((table) => table.sortOrder ?? 0)) + 1}` }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid gap-2 sm:grid-cols-[1fr_5rem_7rem_auto]", children: [
+          jsxRuntimeExports.jsx("input", { value: psTableLabel, maxLength: 60, "aria-label": "Masanın adı", onChange: (e) => setPsTableLabel(e.target.value), placeholder: editTableId ? areaTables.find((table) => table.id === editTableId)?.label : `Masa ${Math.max(0, ...areaTables.map((table) => table.sortOrder ?? 0)) + 1}`, className: "rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
@@ -18820,6 +18849,7 @@ function AdminTablesPage() {
               className: "rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50"
             }
           ),
+          jsxRuntimeExports.jsx("input", { value: psTableDeposit, inputMode: "decimal", "aria-label": "Depozit (₼)", title: "Minimum məbləğ: hesab bundan azdırsa, fərq “Depozitdən qalan” kimi əlavə olunur", onChange: (e) => setPsTableDeposit(e.target.value), placeholder: "Depozit ₼", className: "rounded-xl border border-hairline bg-elevated px-3 py-3 text-cream outline-none focus:border-gold/50" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
@@ -18838,6 +18868,7 @@ function AdminTablesPage() {
               t.tables.guests,
               ": ",
               table.seats,
+              table.depositMinor ? " · depozit " + formatMoney(table.depositMinor) : "",
               table.orderId ? ` · ${table.status}` : ""
             ] })
           ] }),
@@ -18847,11 +18878,13 @@ function AdminTablesPage() {
               type: "button",
               onClick: () => {
                 setEditTableId(table.id);
+                setPsTableLabel(table.label || "");
+                setPsTableDeposit(table.depositMinor ? (table.depositMinor / 100).toFixed(2) : "");
                 setTableSeats(String(table.seats));
                 setAreaId(table.areaId);
               },
               className: "rounded-lg px-3 py-2 text-xs text-muted hover:text-cream",
-              children: t.catalog.editProduct
+              children: "Redaktə et"
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -21909,15 +21942,38 @@ function PsOriginalOrderPage() {
   };
   const voidItem = async (item) => {
     if (!order) return;
+    let psVoidQty = 0;
+    if ((item.quantity || 1) > 1) {
+      const n = await prompt("Neçə ədəd ləğv olunsun? 1–" + item.quantity + " (hamısı: " + item.quantity + ")");
+      if (!n) return;
+      psVoidQty = Number.parseInt(n, 10);
+      if (!(psVoidQty >= 1 && psVoidQty <= item.quantity)) { toast("1 ilə " + item.quantity + " arasında say yazın", "warning"); return; }
+      if (psVoidQty === item.quantity) psVoidQty = 0;
+    }
     const reason = await prompt(t.order.void);
     if (!reason) return;
     setBusyItemId(item.id);
-    const res = await window.pos.orders.voidItem(order.id, item.id, reason);
+    const res = await window.pos.orders.voidItem(order.id, item.id, reason, void 0, psVoidQty);
     setBusyItemId(null);
     if (!res.success) {
       toast(res.error.message, "danger");
       return;
     }
+    await loadOrder(order.id);
+  };
+  const psSetPrice = async (item) => {
+    if (!order) return;
+    const raw = await prompt("Yeni qiymət (₼) · " + (item.name || "") + " · indi " + formatMoney(item.unitPriceMinor || 0));
+    if (!raw) return;
+    const minor = Math.round(Number(String(raw).replace(",", ".")) * 100);
+    if (!Number.isFinite(minor) || minor < 0) { toast("Qiyməti düzgün yazın", "warning"); return; }
+    const reason = await prompt("Qiymət dəyişikliyinin səbəbi");
+    if (!reason) return;
+    setBusyItemId(item.id);
+    const res = await window.pos.orders.setItemPrice(order.id, item.id, minor, reason);
+    setBusyItemId(null);
+    if (!res.success) { toast(res.error.message, "danger"); return; }
+    toast("Qiymət dəyişdi (yalnız bu hesabda)", "success");
     await loadOrder(order.id);
   };
   const submitKitchen = async () => {
@@ -22151,6 +22207,7 @@ function PsOriginalOrderPage() {
                   }
                 )
               ] }),
+              useAuthStore.getState().hasPermission("order.discount") ? jsxRuntimeExports.jsx("button", { type: "button", disabled: busy, onClick: () => void psSetPrice(item), title: "Bu hesabda qiyməti dəyiş", className: "touch-target rounded-lg px-2 text-xs text-gold", children: "₼ Qiymət" }) : null,
               sent && /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
@@ -22203,7 +22260,7 @@ function PsOriginalOrderPage() {
           localizedName(group, lang),
           isTruthy(group.required) && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 text-xs text-warning", children: t.order.required })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1", children: (group.modifiers ?? []).map((mod) => {
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1", children: [String(group.id).startsWith("portion:") ? jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => setSelectedMods((prev) => ({ ...prev, [group.id]: [] })), className: `touch-target flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm ${(selectedMods[group.id] ?? []).length === 0 ? "border-gold/50 bg-gold/10 text-gold-light" : "border-hairline bg-elevated text-muted"}`, children: [jsxRuntimeExports.jsx("span", { children: "1 porsiya" }), jsxRuntimeExports.jsx(MoneyText, { minor: pending.product.priceMinor ?? 0, className: "text-xs" })] }, "portion-full") : null, ...(group.modifiers ?? []).map((mod) => {
           const checked = (selectedMods[group.id] ?? []).includes(mod.id);
           return /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
@@ -22213,12 +22270,12 @@ function PsOriginalOrderPage() {
               className: `touch-target flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm ${checked ? "border-gold/50 bg-gold/10 text-gold-light" : "border-hairline bg-elevated text-muted"}`,
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: localizedName(mod, lang) }),
-                mod.priceDeltaMinor !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: mod.priceDeltaMinor, className: "text-xs" })
+                String(group.id).startsWith("portion:") ? jsxRuntimeExports.jsx(MoneyText, { minor: (pending.product.priceMinor ?? 0) + mod.priceDeltaMinor, className: "text-xs" }) : mod.priceDeltaMinor !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(MoneyText, { minor: mod.priceDeltaMinor, className: "text-xs" })
               ]
             },
             mod.id
           );
-        }) })
+        })] })
       ] }, group.id)) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 flex gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -22284,6 +22341,48 @@ function PsTableQrPayment({orderId,onUpdated}){
 
 
 
+
+
+
+/* QR_PAY_SETTINGS_1116 */
+// Parametrlər → QR ödəniş: the restaurant connects its own Epoint merchant. Guests then pay a table bill
+// by scanning the QR the till shows (Ödəniş → QR ilə ödə) and paying by card on possistem.az; the money
+// goes to the restaurant's Epoint account. The private key goes to the server only and is never shown again.
+function PsQrPaySettings(){
+ const h=psH,[data,setData]=reactExports.useState(null),[error,setError]=reactExports.useState(""),[busy,setBusy]=reactExports.useState(false);
+ const [publicKey,setPublicKey]=reactExports.useState(""),[privateKey,setPrivateKey]=reactExports.useState(""),[active,setActive]=reactExports.useState(true);
+ const call=(method,payload)=>window.possistemTablePay?window.possistemTablePay.call(method,payload):Promise.resolve({success:false,error:{message:"Bu kassada QR ödəniş modulu yoxdur."}});
+ const load=async()=>{setBusy(true);setError("");try{const r=await call("qr.payments.merchant",{});if(!r.success)throw Error(r.error?.message||"Məlumat alınmadı");setData(r.data);setPublicKey(r.data.merchant?.publicKey||"");setActive(r.data.merchant?!!r.data.merchant.active:true);}catch(e){setError(e.message)}finally{setBusy(false)}};
+ reactExports.useEffect(()=>{void load()},[]);
+ const saved=data?.merchant||null,keyChanged=!saved||publicKey.trim()!==saved.publicKey;
+ const save=async()=>{
+  const pk=publicKey.trim();
+  if(!/^i\d{4,30}$/.test(pk)){setError("Açıq açar «i» hərfi və rəqəmlərdən ibarətdir (məsələn i000000001). Epoint kabinetindən olduğu kimi köçürün.");return;}
+  if(keyChanged&&privateKey.trim().length<8){setError("Yeni açıq açar üçün şəxsi açarı da yazın.");return;}
+  setBusy(true);setError("");
+  try{const r=await call("qr.payments.saveMerchant",{publicKey:pk,privateKey:privateKey.trim(),active});if(!r.success)throw Error(r.error?.message||"Saxlanmadı");setPrivateKey("");toast("Epoint hesabı saxlandı","success");await load();}
+  catch(e){setError(e.message)}finally{setBusy(false)}
+ };
+ const copy=text=>{void navigator.clipboard?.writeText(text).then(()=>toast("Köçürüldü","success"),()=>{});};
+ const ready=data?.ready,status=!data?null:!saved?["Qoşulmayıb","is-off"]:!saved.active?["Söndürülüb","is-off"]:ready?.available?["İşləyir","is-on"]:["Gözləyir","is-wait"];
+ return h("section",{className:"ps-qr-settings ps-qr-pay-settings"},
+  h("header",{className:"ps-qr-heading"},h("div",null,h("h2",null,"QR ödəniş (Epoint)"),h("p",null,"Qonaq masada QR kodu telefonla oxudur və hesabı saytda bank kartı ilə ödəyir. Proqram yükləmək lazım deyil. Pul birbaşa restoranın Epoint hesabına düşür.")),status?h("span",{className:"ps-qr-pay-status "+status[1]},status[0]):null),
+  error?h("p",{role:"alert",className:"ps-qr-error"},error):null,
+  data&&!data.globallyEnabled?h("p",{className:"ps-qr-help ps-qr-pay-warn"},"QR ödəniş Possistem serverində hələ açılmayıb. Açarları indi saxlaya bilərsiniz; açılan kimi işləyəcək."):null,
+  saved&&saved.active&&ready&&!ready.available&&ready.reason&&data.globallyEnabled?h("p",{className:"ps-qr-help ps-qr-pay-warn"},ready.reason):null,
+  h("ol",{className:"ps-qr-pay-steps"},
+   h("li",null,"epoint.az kabinetinizdə API açarlarını tapın: açıq açar («i» ilə başlayır) və şəxsi açar."),
+   h("li",null,"Hər ikisini aşağıya yazıb «Saxla» düyməsini basın."),
+   h("li",null,"Göstərilən nəticə (callback) ünvanını Epoint kabinetində qeyd edin. Ödənişin nəticəsini bank bu ünvana göndərir."),
+   h("li",null,"Yoxlamaq üçün 1 ₼-lıq hesab açın: Ödəniş → «QR ilə ödə», telefonla oxudun və ödəyin.")),
+  h("div",{className:"ps-qr-design"},
+   h("label",{className:"ps-qr-field"},"Açıq açar",h("input",{value:publicKey,autoComplete:"off",spellCheck:false,placeholder:"i000000001",onChange:e=>setPublicKey(e.target.value)})),
+   h("label",{className:"ps-qr-field"},"Şəxsi açar",h("input",{type:"password",value:privateKey,autoComplete:"new-password",spellCheck:false,placeholder:saved&&!keyChanged?"Saxlanıb · dəyişmək üçün yenisini yazın":"Epoint kabinetindən",onChange:e=>setPrivateKey(e.target.value)}))),
+  h("label",{className:"ps-qr-check"},h("input",{type:"checkbox",checked:active,onChange:e=>setActive(e.target.checked)}),h("strong",null,"QR ilə ödəniş açıqdır")),
+  h("div",{className:"ps-qr-actions"},h("button",{type:"button",disabled:busy||!publicKey.trim(),onClick:()=>void save()},busy?"Gözləyin…":"Saxla"),h("button",{type:"button",disabled:busy,onClick:()=>void load()},"Yenilə")),
+  saved?h("div",{className:"ps-qr-pay-callback"},h("strong",null,"Nəticə (callback) ünvanı"),h("code",null,saved.callbackUrl),h("button",{type:"button",onClick:()=>copy(saved.callbackUrl)},"Köçür"),h("small",null,"Açarları hər dəyişəndə ünvan da dəyişir; yenisini Epoint kabinetinə yazın.")):null,
+  h("p",{className:"ps-qr-help"},"Şəxsi açar yalnız serverdə şifrəli saxlanır, kassada və ya ekranda bir daha göstərilmir. Aktiv SUNMI fiskal kassası olan restoranda QR ödəniş hələ bağlıdır."));
+}
 
 function PaymentPage() {
   const { orderId = "" } = useParams();
@@ -22930,8 +23029,8 @@ function PaymentPage() {
             ? psH("p",{className:"text-sm text-muted"},"Əvvəlcədən alınıb · "+formatMoney(order.prepaidDepositMinor))
             : order.status==="closed"||order.paidMinor>0||hasUnknown ? null
             : psH(reactExports.Fragment,null,
-              order.depositMinor>0 ? psH("p",{className:"text-sm text-muted"},
-                "Köhnə hesab əlavəsi · "+formatMoney(order.depositMinor)+". Bu məbləğ ödənilmiş avans kimi qeydə alınmayıb.") : null,
+              order.depositMinor>0 ? psH("div",{className:"space-y-1"},psH("p",{className:"text-sm"},"Depozit (minimum məbləğ): "+formatMoney(order.depositMinor)+(order.minimumTableMinor>0?" · depozitdən qalan "+formatMoney(order.minimumTableMinor)+" hesaba əlavə olunub":" · hesab depoziti keçib, əlavə yoxdur")),
+                psH("div",{className:"flex flex-wrap items-center gap-2"},psH("input",{id:"ps-order-deposit",className:psField,style:{maxWidth:"8rem"},inputMode:"decimal","aria-label":"Yeni depozit (₼)",defaultValue:(order.depositMinor/100).toFixed(2)}),psH("button",{type:"button",disabled:busy,className:"touch-target rounded-xl border border-hairline px-3 py-2 text-xs",onClick:async()=>{const raw=document.getElementById("ps-order-deposit")?.value??"";const minor=Math.round(Number(String(raw).replace(",","."))*100);if(!Number.isFinite(minor)||minor<0){toast("Məbləği düzgün yazın","warning");return;}const r=await window.pos.orders.setDeposit(order.id,minor);if(!r.success){toast(r.error.message,"danger");return;}toast("Depozit dəyişdi","success");syncedRemainingRef.current=null;await refresh();}},"Depoziti dəyiş")),psH("p",{className:"text-xs text-muted"},"0 yazsanız depozit silinir.")) : null,
               psH("label",{className:"block text-sm"},"Alınan məbləğ (₼)",psH("input",{className:psField,inputMode:"decimal",
                 value:depositInput,placeholder:"0.00",onChange:e=>{setDepositInput(e.target.value);setDepositConfirmed(false);}})),
               psH("label",{className:"block text-sm"},"Ödəniş üsulu",psH("select",{className:psField,value:depositMode,
@@ -24006,7 +24105,7 @@ function PsQrInbox(){
 function PsQr3dIcon(props){return psH("img",{...props,src:"./qr3d-icon.png",alt:"",width:28,height:28,style:{width:28,height:28,objectFit:"contain"}});}
 function settingsSections(t) {
   return [
-    ...(!window.__psMarketMode?[{id:"qr-orders",label:psAdminText("QR sifariş və 3D","QR sipariş ve 3D","QR orders and 3D"),hint:psAdminText("Menyu, masa kodları və 3D modellər","Menü, masa kodları ve 3D modeller","Menu, table codes and 3D models"),icon:PsQr3dIcon,tone:"blue"}]:[]),
+    ...(!window.__psMarketMode?[{id:"qr-orders",label:psAdminText("QR sifariş və 3D","QR sipariş ve 3D","QR orders and 3D"),hint:psAdminText("Menyu, masa kodları və 3D modellər","Menü, masa kodları ve 3D modeller","Menu, table codes and 3D models"),icon:PsQr3dIcon,tone:"blue"},{id:"qr-pay",label:"QR ödəniş",hint:"Qonaq hesabı telefonla ödəyir (Epoint)",icon:ReceiptText,tone:"green"}]:[]),
     {id:"sunmi",label:psAdminText("İnteqrasiyalar","Entegrasyonlar","Integrations"),hint:psAdminText("E-kassa və bonus","E-kassa ve bonus","E-kassa and bonus"),icon:ReceiptText,tone:"blue"},
     { id: "restaurant", label: "Restoran", hint: "Hesab və məlumat", icon: Store, tone: "blue" },
     { id: "screen", label: "Ekran və dil", hint: "Görünüş və touch", icon: SlidersHorizontal, tone: "purple" },
@@ -29545,6 +29644,7 @@ function PsManagementSettingsContent() {
       /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSectionCtx.Provider, { value: settingsSection, children:
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-section": settingsSection, className: "ps-settings-stack pane active", children: [
       settingsSection === "qr-orders" && jsxRuntimeExports.jsx(PsQrSettings, {}),
+      settingsSection === "qr-pay" && jsxRuntimeExports.jsx(PsQrPaySettings, {}),
       settingsSection === "sunmi" && jsxRuntimeExports.jsx("div", {"data-sunmi-settings":""}),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsAccordion, { id: "restaurant", title: t.settings.sectionRestaurant, hint: t.settings.sectionRestaurantHint, children: [
       tenant && hasPermission("settings.manage") ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "account-ribbon", children: [
@@ -32571,6 +32671,18 @@ function psReadSizeName(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 function psGroupOrderSizes(products, lang) {
   const groups = new Map();
   const keys = new Map();
@@ -32778,6 +32890,12 @@ function _psArea(path){
 function PsObjectsEntry(){return window.__psCloudBranchMode || psMarketMode()?jsxRuntimeExports.jsx(OpsObjects,{}):jsxRuntimeExports.jsx(PsCloudBranches,{});}
 
 function usePsCatalogRefresh(reload){reactExports.useEffect(()=>{const refresh=()=>void reload();for(const event of ["possistem-catalog-changed","focus","hashchange"])window.addEventListener(event,refresh);return()=>{for(const event of ["possistem-catalog-changed","focus","hashchange"])window.removeEventListener(event,refresh);};},[reload]);}
+
+
+
+
+
+
 
 
 

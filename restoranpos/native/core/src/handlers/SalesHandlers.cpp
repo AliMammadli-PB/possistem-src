@@ -81,7 +81,9 @@ void syncSaleStock(Context& ctx, const std::string& orderId, bool deleted) {
     std::map<std::string, std::int64_t> needed;
     if (!deleted) {
         auto rows = ctx.db().prepare(
-            "SELECT r.ingredient_id, SUM(r.qty_milli * i.quantity) FROM order_items i "
+            "SELECT r.ingredient_id, SUM(r.qty_milli * i.quantity * "
+            // A half portion (modifier portion_milli 500) takes half the recipe.
+            "COALESCE((SELECT MIN(pm.portion_milli) FROM order_item_modifiers pom JOIN modifiers pm ON pm.id = pom.modifier_id WHERE pom.order_item_id = i.id AND pm.portion_milli <> 1000), 1000) / 1000) FROM order_items i "
             "JOIN menu_item_recipe_expanded r ON r.menu_item_id = i.product_id "
             "WHERE i.order_id = :order AND i.status != 'voided' GROUP BY r.ingredient_id");
         rows.bind(":order", orderId);

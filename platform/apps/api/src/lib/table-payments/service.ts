@@ -84,9 +84,11 @@ export class TablePayments {
     return {
       available: this.enabled() && !!m?.verified,
       reason: !m
-        ? "Restoranın Epoint hesabını Possistem admini qoşmalıdır."
+        ? "Parametrlər → QR ödəniş bölməsində restoranın Epoint açarlarını daxil edin."
         : !this.enabled() || !m.verified
-          ? "QR ödənişin bank və kassa yoxlaması hələ tamamlanmayıb."
+          ? !this.enabled()
+            ? "QR ödəniş Possistem serverində hələ açılmayıb."
+            : "Restoranın Epoint hesabı hələ təsdiqlənməyib."
           : null,
     };
   }

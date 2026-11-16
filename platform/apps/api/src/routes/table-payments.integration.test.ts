@@ -299,6 +299,44 @@ test("only superadmin configures encrypted per-restaurant keys, secrets never re
   assert.equal(get.body.includes(key), false);
   assert.equal(get.body.includes(row.private_cipher), false);
 });
+test("owner connects the restaurant's own Epoint from the till; keys encrypted and never returned", async () => {
+  const bearer = { authorization: "Bearer " + token() };
+  const ownKey = "owner-own-private-key", ownPublic = "i987654321";
+  assert.equal((await api("POST", "/qr/device/payments/merchant/save", { deviceId: device, publicKey: ownPublic, privateKey: ownKey })).statusCode, 401);
+  assert.equal((await api("POST", "/qr/device/payments/merchant/save", { deviceId: device, publicKey: ownPublic, privateKey: ownKey }, { authorization: "Bearer " + token(other) })).statusCode, 403);
+  // A new public key needs its private key.
+  assert.equal((await api("POST", "/qr/device/payments/merchant/save", { deviceId: device, publicKey: ownPublic }, bearer)).statusCode, 400);
+  assert.equal((await api("POST", "/qr/device/payments/merchant/save", { deviceId: device, publicKey: "not-a-key", privateKey: ownKey }, bearer)).statusCode, 400);
+  const saved = await api("POST", "/qr/device/payments/merchant/save", { deviceId: device, publicKey: ownPublic, privateKey: ownKey }, bearer);
+  assert.equal(saved.statusCode, 200, saved.body);
+  const rows = await db.$client`SELECT * FROM restaurant_payment_merchants WHERE customer_id=${owner} ORDER BY created_at`;
+  assert.equal(rows.filter((r: any) => r.active).length, 1);
+  const row = rows.find((r: any) => r.id === saved.json().id);
+  assert.equal(row.verified, true);
+  assert.equal(row.device_id, null);
+  assert.notEqual(row.private_cipher, ownKey);
+  assert.equal(unseal(row.private_cipher, owner, "merchant"), ownKey);
+  const status = await api("POST", "/qr/device/payments/merchant", { deviceId: device }, bearer);
+  assert.equal(status.statusCode, 200, status.body);
+  assert.equal(status.json().merchant.publicKey, ownPublic);
+  assert.equal(status.json().ready.available, true);
+  assert.equal(status.json().merchant.callbackUrl, "https://possistem.az/pos/api/billing/table/epoint/callback/" + row.id);
+  assert.equal(status.body.includes(ownKey), false);
+  assert.equal(status.body.includes(row.private_cipher), false);
+  // Same public key: the stored private key is kept; switching off closes QR payment.
+  const off = await api("POST", "/qr/device/payments/merchant/save", { deviceId: device, publicKey: ownPublic, active: false }, bearer);
+  assert.equal(off.statusCode, 200, off.body);
+  const offRow = (await db.$client`SELECT * FROM restaurant_payment_merchants WHERE id=${off.json().id}`)[0];
+  assert.equal(unseal(offRow.private_cipher, owner, "merchant"), ownKey);
+  const after = (await api("POST", "/qr/device/payments/merchant", { deviceId: device }, bearer)).json();
+  assert.equal(after.merchant.active, false);
+  assert.equal(after.ready.available, false);
+  await assert.rejects(() => open());
+  assert.equal(requests, 0);
+  const on = await api("POST", "/qr/device/payments/merchant/save", { deviceId: device, publicKey: ownPublic, active: true }, bearer);
+  assert.equal(on.statusCode, 200, on.body);
+  assert.equal((await api("POST", "/qr/device/payments/merchant", { deviceId: device }, bearer)).json().ready.available, true);
+});
 test("device bearer, customer, active license and feature gate required before opening", async () => {
   for (const who of [other])
     assert.equal(

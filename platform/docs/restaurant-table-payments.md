@@ -10,6 +10,9 @@ Kassanın əsas nüvəsi əvvəl məbləği rezerv edir. Bankın doğrulanmış 
 
 ## Restoranın öz merchant hesabı
 
+**2026-11-16 (1.10.32):** sahibkar açarları kassada özü daxil edir: **Parametrlər → QR ödəniş**. Burada public və private key yazılır, "QR ilə ödəniş açıqdır" seçilir və callback ünvanı göstərilir. Saxlamaq üçün `settings.manage` icazəsi və ya menecer PIN-i lazımdır; bunu kassanın core-u yoxlayır. Server `/qr/device/payments/merchant` və `/merchant/save` route-ları ilə restoranın ümumi merchant-ını yeni versiya kimi yazır. Bu merchant `verified=true` olur, çünki sahibkar öz hesabına cavabdehdir. Private key əvvəlki kimi şifrəlidir və geri qaytarılmır. Eyni public key ilə yenidən saxlayanda əvvəlki private key saxlanılır. Server açarı `TABLE_QR_PAYMENTS_ENABLED=true` edildi: `artifacts/release-chat-20261108/deploy-qrpay-20261116.sh`. Superadmin yolu da işləyir.
+
+
 Yalnız Possistem **superadmini**, admin panelində **Ödənişlər → Restoran ödənişləri** bölməsindən restoranı seçib public/private Epoint açarlarını daxil edir. Sahibkar açarları Possistemə təqdim edir. Gəlir həmin restoranın öz merchant hesabına yönləndirilir; Possistem abunəlik/mağaza merchant açarları istifadə olunmur.
 
 - Private açar PostgreSQL-də AES-256-GCM ilə şifrələnir. Məqsəd və müştəri üzrə ayrılmış açar serverin `SESSION_SECRET` dəyərindən alınır. Bu sirri və server bazasını birlikdə qoruyub bərpa etmək lazımdır. Sessiya sirrinin rotasiyası əvvəl merchant və bill sirlərinin yenidən şifrələnməsini tələb edir.

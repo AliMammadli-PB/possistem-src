@@ -69,6 +69,8 @@ Json loadAllModifierGroups(Context& ctx) {
         "       g.min_select AS minSelect, g.max_select AS maxSelect, "
         "       g.required, g.multi_select AS multiSelect, g.sort_order AS sortOrder "
         "FROM modifier_groups g "
+        // A product's half portion is set in its own editor, not in the shared list.
+        "WHERE g.id NOT LIKE 'portion:%' "
         "ORDER BY g.sort_order, g.name_az");
     return attachModifiers(ctx, stmt.rows(), true);
 }
@@ -390,6 +392,62 @@ void registerCatalog(const ContextPtr& ctx) {
                                         : Json::array();
                 result = services::CatalogAdminService(*ctx).setProductModifierGroups(productId,
                                                                                       groups);
+                idempotency.complete(request.idempotencyKey, result, "menu_item", productId);
+                txn.commit();
+            }
+            return result;
+        });
+
+    // Half portion of one product: halfPriceMinor > 0 offers "Yarım porsiya" at that price
+    // (stock takes half the recipe); 0 stops offering it. Old bills keep their lines.
+    server.registerHandler(
+        std::string(protocol::method::kCatalogSetPortions),
+        [ctx](const ipc::Request& request) {
+            ctx->requirePermission("catalog.manage");
+            services::Idempotency idempotency(*ctx);
+            Json result;
+            {
+                db::Transaction txn(ctx->db());
+                if (auto replay = idempotency.begin(request.idempotencyKey,
+                                                    std::string(protocol::method::kCatalogSetPortions),
+                                                    request.payload)) {
+                    txn.commit();
+                    return *replay;
+                }
+                const auto productId = getOr<std::string>(request.payload, "productId", "");
+                const Money half = getOr<Money>(request.payload, "halfPriceMinor", 0);
+                auto product = ctx->db().prepare(
+                    "SELECT price_minor FROM menu_items WHERE id = :id AND archived = 0");
+                product.bind(":id", productId);
+                if (productId.empty() || !product.step()) throw PosError::of(protocol::err::kNotFound);
+                const Money full = product.columnInt(0);
+                require(half >= 0 && half <= Money{100000000}, "Yarım porsiyanın qiyməti düzgün deyil");
+                const std::string group = "portion:" + productId, option = group + ":half";
+                if (half > 0) {
+                    auto g = ctx->db().prepare(
+                        "INSERT INTO modifier_groups (id, name_az, name_tr, name_en, min_select, max_select, "
+                        "required, multi_select, sort_order) VALUES (:id, 'Porsiya', 'Porsiyon', 'Portion', 0, 1, 0, 0, -100) "
+                        "ON CONFLICT(id) DO NOTHING");
+                    g.bind(":id", group).exec();
+                    auto m = ctx->db().prepare(
+                        "INSERT INTO modifiers (id, group_id, name_az, name_tr, name_en, price_delta_minor, "
+                        "is_default, available, sort_order, portion_milli) VALUES (:id, :group, 'Yarım porsiya', "
+                        "'Yarım porsiyon', 'Half portion', :delta, 0, 1, 0, 500) "
+                        "ON CONFLICT(id) DO UPDATE SET price_delta_minor = excluded.price_delta_minor, available = 1, "
+                        "portion_milli = 500");
+                    m.bind(":id", option).bind(":group", group).bind(":delta", half - full).exec();
+                    auto link = ctx->db().prepare(
+                        "INSERT OR IGNORE INTO menu_item_modifier_groups (item_id, group_id, sort_order) "
+                        "VALUES (:item, :group, -100)");
+                    link.bind(":item", productId).bind(":group", group).exec();
+                } else {
+                    auto unlink = ctx->db().prepare(
+                        "DELETE FROM menu_item_modifier_groups WHERE item_id = :item AND group_id = :group");
+                    unlink.bind(":item", productId).bind(":group", group).exec();
+                }
+                ctx->auditRequired("catalog.setPortions", "menu_item", productId,
+                                   Json{{"halfPriceMinor", half}, {"priceMinor", full}});
+                result = Json{{"productId", productId}, {"halfPriceMinor", half}};
                 idempotency.complete(request.idempotencyKey, result, "menu_item", productId);
                 txn.commit();
             }

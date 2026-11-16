@@ -88,6 +88,20 @@ export function DemoWorkspace() {
     if (ready && !chooser) frame.current?.contentWindow?.focus();
   }, [ready, chooser]);
 
+  // Next preloads CSS for linked pages. On this full-screen demo those files are never applied, so the browser warns.
+  useEffect(() => {
+    const drop = () => {
+      for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="preload"][as="style"]')) {
+        const href = link.getAttribute('href');
+        if (href && !document.querySelector(`link[rel="stylesheet"][href="${href}"]`)) link.remove();
+      }
+    };
+    drop();
+    const watch = new MutationObserver(drop);
+    watch.observe(document.head, { childList: true });
+    return () => watch.disconnect();
+  }, []);
+
   const fullscreen = async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -109,9 +123,9 @@ export function DemoWorkspace() {
       {system && <iframe ref={frame} key={`${system.id}-${reload}`} src={`/pos-demo-app/${DEMO_RELEASE}/${system.path}/index.html`} title={`${system.name} — demo`} allow="fullscreen" className={`ps-demo-app${ready ? ' is-ready' : ''}`} tabIndex={ready ? 0 : -1} />}
       {system && !ready && <div className="ps-demo-boot" role="status"><a href="/" aria-label="Possistem"><img src={asset('/assets/brands/logo.png')} alt="" width={56} height={56} /></a><strong>{system.name}</strong><p>{slow ? c.slow : c.loading}</p>{slow && <button type="button" onClick={() => setReload(value => value + 1)}>{c.retry}</button>}</div>}
     </main>
-    {!chooser && <div className="ps-demo-tools"><button ref={menuButton} type="button" onClick={() => setChooser(true)} aria-label={c.menu}><Menu /><span>Demo</span></button><button type="button" onClick={fullscreen} aria-label={full ? c.exit : c.full} title={full ? c.exit : c.full}>{full ? <Close /> : <Expand />}</button><Link href="/" aria-label={c.home} title={c.home}><ArrowUpRight /></Link></div>}
+    {!chooser && <div className="ps-demo-tools"><button ref={menuButton} type="button" onClick={() => setChooser(true)} aria-label={c.menu}><Menu /><span>Demo</span></button><button type="button" onClick={fullscreen} aria-label={full ? c.exit : c.full} title={full ? c.exit : c.full}>{full ? <Close /> : <Expand />}</button><Link prefetch={false} href="/" aria-label={c.home} title={c.home}><ArrowUpRight /></Link></div>}
     {chooser && <div ref={dialog} className="ps-demo-launcher" role="dialog" aria-modal="true" aria-labelledby="demo-choose-title">
-      <div className="ps-demo-launcher-bar"><Link href="/" className="ps-brand"><img src={asset('/assets/brands/logo.png')} alt="" width={38} height={38} /><span>Possistem</span></Link>{system ? <button type="button" onClick={() => { setChooser(false); menuButton.current?.focus(); }} aria-label={c.close}><Close /></button> : <Link href="/">{c.home}<ArrowUpRight /></Link>}</div>
+      <div className="ps-demo-launcher-bar"><Link prefetch={false} href="/" className="ps-brand"><img src={asset('/assets/brands/logo.png')} alt="" width={38} height={38} /><span>Possistem</span></Link>{system ? <button type="button" onClick={() => { setChooser(false); menuButton.current?.focus(); }} aria-label={c.close}><Close /></button> : <Link prefetch={false} href="/">{c.home}<ArrowUpRight /></Link>}</div>
       <div className="ps-demo-launcher-content"><p className="ps-kicker">POSSISTEM / DEMO</p><h1 id="demo-choose-title">{c.title}</h1><p className="ps-demo-launcher-lead">{c.lead}</p><div className="ps-demo-system-grid">{SYSTEMS.map((item, index) => <button ref={index === 0 ? firstChoice : undefined} type="button" key={item.id} onClick={() => select(item)} aria-label={item.name}><span className="ps-demo-system-icon"><item.icon /></span><strong>{item.name}</strong><span className="ps-demo-system-open">{c.launch}<ArrowUpRight /></span></button>)}</div><div className="ps-demo-launcher-help"><p>{c.pin}: <kbd>1234</kbd></p><small>{c.note}</small></div></div>
     </div>}
   </div>;

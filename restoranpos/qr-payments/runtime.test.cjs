@@ -124,3 +124,41 @@ test("failed server stop leaves native hold in place", async () => {
     global.fetch = old;
   }
 });
+
+test("saving the restaurant's Epoint keys needs settings.manage and never echoes the private key", async () => {
+  const f = fake(),
+    old = global.fetch,
+    sent = [];
+  global.fetch = async (url, init) => {
+    sent.push({ url, body: JSON.parse(init.body) });
+    return new Response('{"id":"m1","callbackUrl":"https://possistem.az/pos/api/billing/table/epoint/callback/m1"}');
+  };
+  try {
+    const r = await f.api.handle("qr.payments.saveMerchant", { publicKey: " i123456 ", privateKey: "secret-key", managerPin: "1234" });
+    assert.equal(r.success, true);
+    assert.equal(JSON.stringify(r).includes("secret-key"), false);
+    assert.deepEqual(f.calls[0].method, "auth.verifyManagerPin");
+    assert.equal(f.calls[0].payload.permission, "settings.manage");
+    assert.ok(sent[0].url.endsWith("/qr/device/payments/merchant/save"));
+    assert.deepEqual(sent[0].body, { publicKey: "i123456", active: true, privateKey: "secret-key", deviceId: "till" });
+  } finally {
+    global.fetch = old;
+  }
+});
+test("a refused manager check sends nothing to the server", async () => {
+  const f = fake(),
+    old = global.fetch;
+  let fetched = 0;
+  global.fetch = async () => { fetched++; return new Response("{}"); };
+  const api = require("./runtime.cjs")({
+    identity: async () => f.scope.device, owner: () => f.scope.login, isTerminal: () => false, admin: async () => null,
+    invoke: async () => ({ success: false, error: { code: "E_MANAGER_APPROVAL_REQUIRED", message: "Menecer təsdiqi lazımdır" } }),
+  });
+  try {
+    const r = await api.handle("qr.payments.saveMerchant", { publicKey: "i123456", privateKey: "k" });
+    assert.equal(r.success, false);
+    assert.equal(fetched, 0);
+  } finally {
+    global.fetch = old;
+  }
+});

@@ -353,6 +353,8 @@ const api = {
     upsertModifier: (payload, options) => call("catalog.upsertModifier", payload, options),
     archiveModifier: (modifierId) => call("catalog.archiveModifier", { modifierId }),
     setProductModifierGroups: (productId, groupIds, options) => call("catalog.setProductModifierGroups", { productId, groupIds }, options),
+    /* PORTIONS_1116 */
+    setPortions: (productId, halfPriceMinor, options) => call("catalog.setPortions", { productId, halfPriceMinor }, options),
     importPreview: (csvText, filename) => call("catalog.importPreview", { csvText, filename }),
     importCommit: (batchId, options) => call("catalog.importCommit", { batchId }, options),
     export: () => call("catalog.export")
@@ -427,7 +429,9 @@ const api = {
     setItemCourse: (orderId, itemId, course) => call("orders.setItemCourse", { orderId, itemId, course }),
     holdItem: (orderId, itemId, held) => call("orders.holdItem", { orderId, itemId, held }),
     removeItem: (orderId, itemId) => call("orders.removeItem", { orderId, itemId }),
-    voidItem: (orderId, itemId, reason, managerPin) => call("orders.voidItem", { orderId, itemId, reason, managerPin }),
+    /* OWNER_REQUESTS_1116 */
+    voidItem: (orderId, itemId, reason, managerPin, quantity) => call("orders.voidItem", { orderId, itemId, reason, managerPin, ...(quantity ? { quantity } : {}) }),
+    setItemPrice: (orderId, itemId, unitPriceMinor, reason, managerPin) => call("orders.setItemPrice", { orderId, itemId, unitPriceMinor, reason, managerPin }),
     applyDiscount: (orderId, discount, managerPin) => call("orders.applyDiscount", { orderId, ...discount, managerPin }),
     setDeposit: (orderId, depositMinor) => call("orders.setDeposit", { orderId, depositMinor }),
     setGuestCount: (orderId, guestCount) => call("orders.setGuestCount", { orderId, guestCount }),
@@ -577,4 +581,4 @@ electron.contextBridge.exposeInMainWorld('possistemAccess',{check:(fresh=false,v
 electron.contextBridge.exposeInMainWorld('posPrinterNetwork',{call:(method,payload)=>['print.xprinterDiscover','print.xprinterConfigure','print.xprinterFirewall'].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:method==='print.xprinterFirewall'?180000:60000}}):Promise.resolve({success:false,error:{message:'Not allowed'}})});
 
 /* TABLE_QR_PAYMENT_MAIN_V1 */
-electron.contextBridge.exposeInMainWorld("possistemTablePay",{call:(method,payload)=>["qr.payments.ready","qr.payments.open","qr.payments.stop","qr.payments.status"].includes(method)?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:60000}}):Promise.resolve({success:false,error:{message:"Not allowed"}})});
+electron.contextBridge.exposeInMainWorld("possistemTablePay",{call:(method,payload)=>["qr.payments.ready","qr.payments.open","qr.payments.stop","qr.payments.status","qr.payments.merchant","qr.payments.saveMerchant"].includes(method) /* QR_PAY_SETTINGS_1116 */?electron.ipcRenderer.invoke(IPC.invoke,{method,payload:payload||{},options:{timeoutMs:60000}}):Promise.resolve({success:false,error:{message:"Not allowed"}})});

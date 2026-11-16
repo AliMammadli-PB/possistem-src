@@ -267,9 +267,10 @@ Totals OrderService::recalculate(const std::string& orderId) {
     depositStmt.bind(":orderId", orderId);
     const Money deposit = depositStmt.step() ? std::max<Money>(0, depositStmt.columnInt(0)) : 0;
 
+    // The deposit is a minimum, not a charge on top: a bill below it is raised to it
+    // (50 eaten, deposit 80 → 50 + 30 "from the deposit" = 80); a bill above it stays as it is.
     Totals totals = computeTotals(subtotal, discount, taxConfig());
     totals.deposit = deposit;
-    totals.total += deposit;
 
     auto prepaidStmt = ctx_.db().prepare(
         "SELECT o.status,o.prepaid_deposit_minor,o.minimum_table_minor,"
@@ -280,7 +281,7 @@ Totals OrderService::recalculate(const std::string& orderId) {
     prepaidStmt.step();
     const bool settled = prepaidStmt.columnText(0)=="closed" || prepaidStmt.columnText(0)=="voided";
     const Money prepaid = settled ? prepaidStmt.columnInt(1) : prepaidStmt.columnInt(3);
-    const Money minimum = settled ? prepaidStmt.columnInt(2) : std::max<Money>(0,prepaid-totals.total);
+    const Money minimum = settled ? prepaidStmt.columnInt(2) : std::max<Money>(0,std::max(prepaid,deposit)-totals.total);
     totals.total += minimum;
 
     // One definition of "collected", shared with PaymentService::outstanding,

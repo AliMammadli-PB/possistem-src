@@ -140,6 +140,8 @@ async function invoke({ method, payload, options }) {
       return ok({ objects: [], branches: [] });
     case 'tenant.status':
       return ok(TENANT);
+    case 'billing.access':
+      return ok({ authenticated: true, allowed: true });
     default:
       if (method.startsWith('whatsapp.')) return NOT_IN_DEMO();
   }

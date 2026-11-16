@@ -301,8 +301,9 @@ ReceiptDocument ReceiptBuilder::customerDocument(const std::string& orderId,
     doc.subtotal = order.value("subtotalMinor", Money{0});
     doc.discountTotal = order.value("discountMinor", Money{0});
     doc.serviceCharge = order.value("serviceMinor", Money{0});
-    doc.depositTotal = order.value("depositMinor", Money{0});
-    doc.depositLabel = "Depozit";
+    // The deposit is a minimum: the receipt shows what of it was not eaten ("Depozitdən qalan").
+    doc.depositTotal = order.value("minimumTableMinor", Money{0});
+    doc.depositLabel = "Depozitdən qalan";
     if (order.value("prepaidDepositMinor",Money{0})>0) {
         doc.depositTotal = order.value("minimumTableMinor",Money{0});
         doc.depositLabel = "Minimum masa fərqi";

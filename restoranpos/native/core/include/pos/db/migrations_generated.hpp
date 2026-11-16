@@ -16,7 +16,7 @@ struct EmbeddedScript {
     const std::string& (*sql)();
 };
 
-inline constexpr int kSchemaVersion = 72;
+inline constexpr int kSchemaVersion = 74;
 
 namespace detail {
 
@@ -4665,6 +4665,42 @@ CREATE TABLE data_repairs (
     return sql;
 }
 
+inline const std::string& migrationSql72() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(343);
+        s += R"MIGSQL(-- 1.10.32. A table can carry a deposit (a banquet room, a VIP table): a minimum the bill is raised to.
+-- A new bill on that table takes it over as orders.deposit_minor; the cashier may lower or clear it at payment.
+ALTER TABLE restaurant_tables ADD COLUMN deposit_minor INTEGER NOT NULL DEFAULT 0 CHECK (deposit_minor >= 0);
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
+inline const std::string& migrationSql73() {
+    static const std::string sql = []{
+        std::string s;
+        s.reserve(781);
+        s += R"MIGSQL(-- 1.10.32. Half portions. A modifier can stand for a share of the dish (500 = half):
+-- the line is priced with its own delta and stock gives up that share of the recipe.
+-- A product's half portion lives in its own group 'portion:<productId>' with the option 'portion:<productId>:half'.
+ALTER TABLE modifiers ADD COLUMN portion_milli INTEGER NOT NULL DEFAULT 1000 CHECK (portion_milli BETWEEN 1 AND 10000);
+
+-- The half portion keeps the price the owner gave it when the full price changes.
+CREATE TRIGGER menu_item_half_price AFTER UPDATE OF price_minor ON menu_items
+WHEN NEW.price_minor <> OLD.price_minor BEGIN
+ UPDATE modifiers SET price_delta_minor = price_delta_minor - (NEW.price_minor - OLD.price_minor)
+ WHERE id = 'portion:' || NEW.id || ':half';
+END;
+
+)MIGSQL";
+        return s;
+    }();
+    return sql;
+}
+
 inline const std::string& seedSql0() {
     static const std::string sql = []{
         std::string s;
@@ -5219,7 +5255,7 @@ WHERE EXISTS (SELECT 1 FROM menu_categories c WHERE c.id=l.category_id)
 
 }  // namespace detail
 
-inline constexpr std::array<EmbeddedScript, 72> kMigrations{{
+inline constexpr std::array<EmbeddedScript, 74> kMigrations{{
     {1, "001_initial_schema.sql", "6b0b1fca", &detail::migrationSql0},
     {2, "002_business_days_reports.sql", "f8807688", &detail::migrationSql1},
     {3, "003_table_concurrency_transfers.sql", "bf1ef391", &detail::migrationSql2},
@@ -5292,6 +5328,8 @@ inline constexpr std::array<EmbeddedScript, 72> kMigrations{{
     {70, "070_prepared_recipe_components.sql", "2cc8c53b", &detail::migrationSql69},
     {71, "071_hidden_prepared_recipes.sql", "e0b2383c", &detail::migrationSql70},
     {72, "072_data_repairs.sql", "c00f7d54", &detail::migrationSql71},
+    {73, "073_table_deposit.sql", "f9cfefb3", &detail::migrationSql72},
+    {74, "074_half_portions.sql", "d3f3c197", &detail::migrationSql73},
 }};
 
 inline constexpr std::array<EmbeddedScript, 3> kSeeds{{

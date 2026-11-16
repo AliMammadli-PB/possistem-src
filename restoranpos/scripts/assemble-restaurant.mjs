@@ -163,9 +163,12 @@ export const PATCH_ORDER = [
   'apply-restaurant-staff-courier.mjs',
   'apply-restaurant-cash-money.mjs',
   'apply-restaurant-texts-1110.mjs',
+  'apply-restaurant-owner-requests-1116.mjs',
+  'apply-restaurant-portions-1116.mjs',
   'apply-restaurant-catalog-compact.mjs',
   'apply-restaurant-qr3d.mjs',
   'apply-restaurant-table-payments.mjs',
+  'apply-restaurant-qr-merchant-1116.mjs',
 ];
 
 const STAGE = path.join(ROOT, 'packaged-renderer');

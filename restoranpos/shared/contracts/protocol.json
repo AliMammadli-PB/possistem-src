@@ -799,6 +799,10 @@
       "auth": true,
       "perm": "order.discount"
     },
+    "orders.setItemPrice": {
+      "auth": true,
+      "perm": "order.discount"
+    },
     "orders.setDeposit": {
       "auth": true,
       "perm": "payment.take"
@@ -1119,6 +1123,11 @@
       "perm": "catalog.manage"
     },
     "catalog.setProductModifierGroups": {
+      "auth": true,
+      "perm": "catalog.manage",
+      "idempotent": true
+    },
+    "catalog.setPortions": {
       "auth": true,
       "perm": "catalog.manage",
       "idempotent": true

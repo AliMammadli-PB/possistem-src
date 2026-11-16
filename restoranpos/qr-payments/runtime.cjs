@@ -88,6 +88,26 @@ module.exports = function ({ invoke, identity, owner, isTerminal, admin }) {
           data: await native("qrPay.stop", { sessionId }),
         };
       }
+      // Parametrlər → QR ödəniş: the restaurant's own Epoint merchant. The private key goes
+      // straight to the server, encrypted there, and is never read back.
+      if (method === "qr.payments.merchant")
+        return { success: true, data: await cloud("merchant", {}, scope) };
+      if (method === "qr.payments.saveMerchant") {
+        // settings.manage on the signed-in user, or a manager's PIN; checked by the core.
+        await native("auth.verifyManagerPin", {
+          pin: String(payload.managerPin || ""),
+          permission: "settings.manage",
+          action: "qr.merchant.save",
+        });
+        const body = {
+          publicKey: String(payload.publicKey || "").trim(),
+          active: payload.active !== false,
+          ...(String(payload.privateKey || "").trim()
+            ? { privateKey: String(payload.privateKey).trim() }
+            : {}),
+        };
+        return { success: true, data: await cloud("merchant/save", body, scope) };
+      }
       if (method === "qr.payments.status")
         return {
           success: true,

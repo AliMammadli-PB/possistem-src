@@ -331,6 +331,94 @@ export async function tablePaymentRoutes(
       return payments.posView(cid, b.deviceId, b.sessionId);
     }),
   );
+  // The owner connects the restaurant's own Epoint merchant from the till (Parametrlər → QR ödəniş).
+  // The till checks settings.manage (or a manager PIN) before calling; the private key is never returned.
+  const callbackUrl = (id: string) =>
+    "https://possistem.az/pos/api/billing/table/epoint/callback/" + id;
+  app.post(
+    "/qr/device/payments/merchant",
+    wrap(async (req) => {
+      const cid = await deviceAuth(req);
+      const [m] = await query<any>(
+        app.db,
+        sql`SELECT id,public_key,active,verified,created_at FROM restaurant_payment_merchants WHERE customer_id=${cid}::uuid AND device_id IS NULL ORDER BY created_at DESC LIMIT 1`,
+      );
+      return {
+        globallyEnabled: payments.enabled(),
+        merchant: m
+          ? {
+              publicKey: m.public_key,
+              active: !!m.active,
+              verified: !!m.verified,
+              savedAt: m.created_at,
+              callbackUrl: callbackUrl(m.id),
+            }
+          : null,
+        ready: await payments.ready(
+          cid,
+          uuid.parse((req.body as any).deviceId),
+        ),
+      };
+    }),
+  );
+  app.post(
+    "/qr/device/payments/merchant/save",
+    wrap(async (req) => {
+      const cid = await deviceAuth(req);
+      const b = z
+        .object({
+          deviceId: uuid,
+          publicKey: z.string().trim().regex(/^i\d{4,30}$/),
+          privateKey: z.string().trim().min(8).max(4000).optional(),
+          active: z.boolean().default(true),
+        })
+        .strict()
+        .parse(req.body);
+      const id = await app.db.transaction(async (tx: any) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${cid}))`);
+        const [old] = await query<any>(
+          tx,
+          // The latest one, on or off: switching back on keeps its private key.
+          sql`SELECT * FROM restaurant_payment_merchants WHERE customer_id=${cid}::uuid AND device_id IS NULL ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+        );
+        const key =
+          b.privateKey ??
+          (old?.public_key === b.publicKey
+            ? unseal(old.private_cipher, cid, "merchant")
+            : null);
+        if (!key)
+          throw new TablePaymentError(
+            "Epoint kabinetindəki şəxsi açarı daxil edin.",
+            400,
+          );
+        await tx.execute(
+          sql`UPDATE restaurant_payment_merchants SET active=false WHERE customer_id=${cid}::uuid AND device_id IS NULL AND active`,
+        );
+        const id = randomUUID();
+        // The owner vouches for their own merchant: verified, so QR payment opens at once
+        // (the server-wide TABLE_QR_PAYMENTS_ENABLED switch still applies).
+        await tx.execute(
+          sql`INSERT INTO restaurant_payment_merchants(id,customer_id,device_id,public_key,private_cipher,active,verified,created_by) VALUES(${id}::uuid,${cid}::uuid,NULL,${b.publicKey},${seal(key, cid, "merchant")},${b.active},true,${b.deviceId}::uuid)`,
+        );
+        return id;
+      });
+      await audit(app, {
+        actorCustomerId: cid,
+        action: "restaurant.payment.owner_configure",
+        entityType: "customer",
+        entityId: cid,
+        meta: {
+          merchantId: id,
+          deviceId: b.deviceId,
+          publicKey: b.publicKey,
+          active: b.active,
+          privateKeyChanged: !!b.privateKey,
+        },
+        ip: req.ip,
+      });
+      return { id, callbackUrl: callbackUrl(id) };
+    }),
+  );
   app.get(
     "/billing/table/:token",
     wrap(async (req) =>

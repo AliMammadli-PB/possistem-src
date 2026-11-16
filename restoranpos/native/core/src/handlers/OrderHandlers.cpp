@@ -150,6 +150,15 @@ void registerOrders(const ContextPtr& ctx) {
                 .bind(":day", businessDayId)
                 .bind(":now", now);
             insert.exec();
+            // The table's deposit (banquet room minimum) comes with every new bill on it.
+            {
+                auto deposit = ctx->db().prepare(
+                    "UPDATE orders SET deposit_minor = (SELECT COALESCE(deposit_minor, 0) FROM restaurant_tables "
+                    "WHERE id = :tableId) WHERE id = :id");
+                deposit.bind(":tableId", tableId).bind(":id", orderId);
+                deposit.exec();
+                orders.recalculate(orderId);
+            }
 
             orders.logEvent(orderId, "order.created", Json{{"tableId", tableId}});
             orders.refreshTableStatus(tableId);
@@ -567,27 +576,72 @@ void registerOrders(const ContextPtr& ctx) {
             db::Transaction txn(ctx->db());
 
             orders.requireEditable(orderId);
-            requireItem(*ctx, orderId, itemId);
+            const Json item = requireItem(*ctx, orderId, itemId);
+            require(item.value("status", "") != "voided", "Bu məhsul artıq ləğv olunub");
+            // Optional: void only some of the line ("3 lahmacun, 1 ləğv"). The voided pieces become their own
+            // voided line (reason, approver, reports); the rest stays on the bill and in the kitchen.
+            const std::int64_t lineQuantity = std::max<std::int64_t>(1, item.value("quantity", 1));
+            const std::int64_t voidQuantity = getOr<std::int64_t>(request.payload, "quantity", 0);
+            require(voidQuantity >= 0 && voidQuantity <= lineQuantity, "Ləğv sayı düzgün deyil");
+            const bool partial = voidQuantity > 0 && voidQuantity < lineQuantity;
 
-            auto update = ctx->db().prepare(
-                "UPDATE order_items SET status = 'voided', void_reason = :reason, "
-                "       voided_by = :approver, updated_at = :now WHERE id = :itemId");
-            update.bind(":reason", reason)
-                .bind(":approver", approver)
-                .bind(":now", nowMs())
-                .bind(":itemId", itemId);
-            update.exec();
+            if (partial) {
+                const Money unitPrice = item.value("unit_price_minor", Money{0});
+                const Money perUnitModifier = item.value("modifier_total_minor", Money{0}) / lineQuantity;
+                const std::int64_t keep = lineQuantity - voidQuantity;
+                auto seq = ctx->db().prepare("SELECT COALESCE(MAX(line_seq), 0) + 1 FROM order_items WHERE order_id = :orderId");
+                seq.bind(":orderId", orderId);
+                seq.step();
+                const std::int64_t nextSeq = seq.columnInt(0);
+                const auto now = nowMs();
+                auto split = ctx->db().prepare(
+                    "INSERT INTO order_items (id, order_id, product_id, line_seq, name_snapshot, unit_price_minor, "
+                    "  quantity, modifier_total_minor, line_total_minor, status, seat, course, note, held, complimentary, "
+                    "  void_reason, voided_by, sent_at, created_at, updated_at, is_gift, gift_campaign_id, original_price_minor) "
+                    "SELECT :newId, order_id, product_id, :seq, name_snapshot, unit_price_minor, :quantity, :modifierTotal, "
+                    "  :lineTotal, 'voided', seat, course, note, held, complimentary, :reason, :approver, sent_at, created_at, "
+                    "  :now, is_gift, gift_campaign_id, original_price_minor FROM order_items WHERE id = :itemId");
+                split.bind(":newId", crypto::uuid4())
+                    .bind(":seq", nextSeq)
+                    .bind(":quantity", voidQuantity)
+                    .bind(":modifierTotal", perUnitModifier * voidQuantity)
+                    .bind(":lineTotal", services::lineTotal(unitPrice, perUnitModifier, voidQuantity))
+                    .bind(":reason", reason)
+                    .bind(":approver", approver)
+                    .bind(":now", now)
+                    .bind(":itemId", itemId);
+                split.exec();
+                auto shrink = ctx->db().prepare(
+                    "UPDATE order_items SET quantity = :quantity, modifier_total_minor = :modifierTotal, "
+                    "       line_total_minor = :lineTotal, updated_at = :now WHERE id = :itemId");
+                shrink.bind(":quantity", keep)
+                    .bind(":modifierTotal", perUnitModifier * keep)
+                    .bind(":lineTotal", services::lineTotal(unitPrice, perUnitModifier, keep))
+                    .bind(":now", now)
+                    .bind(":itemId", itemId);
+                shrink.exec();
+            } else {
+                auto update = ctx->db().prepare(
+                    "UPDATE order_items SET status = 'voided', void_reason = :reason, "
+                    "       voided_by = :approver, updated_at = :now WHERE id = :itemId");
+                update.bind(":reason", reason)
+                    .bind(":approver", approver)
+                    .bind(":now", nowMs())
+                    .bind(":itemId", itemId);
+                update.exec();
 
-            // Pull the matching kitchen ticket so the pass stops making it.
-            auto cancelJob = ctx->db().prepare(
-                "UPDATE kitchen_jobs SET status = 'completed', completed_at = :now "
-                "WHERE order_item_id = :itemId AND status != 'completed'");
-            cancelJob.bind(":now", nowMs()).bind(":itemId", itemId);
-            cancelJob.exec();
+                // Pull the matching kitchen ticket so the pass stops making it.
+                auto cancelJob = ctx->db().prepare(
+                    "UPDATE kitchen_jobs SET status = 'completed', completed_at = :now "
+                    "WHERE order_item_id = :itemId AND status != 'completed'");
+                cancelJob.bind(":now", nowMs()).bind(":itemId", itemId);
+                cancelJob.exec();
+            }
 
             orders.recalculate(orderId);
             orders.logEvent(orderId, "item.voided",
-                            Json{{"itemId", itemId}, {"reason", reason}, {"approvedBy", approver}});
+                            Json{{"itemId", itemId}, {"reason", reason}, {"approvedBy", approver},
+                                 {"quantity", partial ? voidQuantity : lineQuantity}});
             ctx->audit("order.void_item", "order_item", itemId,
                        Json{{"orderId", orderId}, {"reason", reason}}, approver);
 
@@ -595,6 +649,52 @@ void registerOrders(const ContextPtr& ctx) {
             txn.commit();
 
             ctx->server().emitEvent(protocol::event::kKdsUpdated, Json{{"orderIds", {orderId}}});
+            return order;
+        });
+
+    // One line's price changed on this bill only (the menu stays): "bu dəfə lahmacun 4 ₼".
+    // Same approval as a discount; the price before the change is kept in original_price_minor.
+    server.registerHandler(
+        std::string(protocol::method::kOrdersSetItemPrice), [ctx](const ipc::Request& request) {
+            const auto orderId = getOr<std::string>(request.payload, "orderId", "");
+            const auto itemId = getOr<std::string>(request.payload, "itemId", "");
+            const Money unitPrice = getOr<Money>(request.payload, "unitPriceMinor", -1);
+            const auto reason = getOr<std::string>(request.payload, "reason", "");
+            const auto managerPin = getOr<std::string>(request.payload, "managerPin", "");
+            require(unitPrice >= 0 && unitPrice <= Money{100000000}, "Qiymət düzgün deyil");
+
+            const std::string approver =
+                ctx->requireManagerApproval("order.discount", managerPin, "order.setItemPrice");
+
+            services::OrderService orders(*ctx);
+            db::Transaction txn(ctx->db());
+            orders.requireEditable(orderId);
+            const Json item = requireItem(*ctx, orderId, itemId);
+            require(item.value("status", "") != "voided", "Ləğv olunmuş məhsulun qiyməti dəyişmir");
+            const std::int64_t quantity = std::max<std::int64_t>(1, item.value("quantity", 1));
+            const Money oldPrice = item.value("unit_price_minor", Money{0});
+            const Money perUnitModifier = item.value("modifier_total_minor", Money{0}) / quantity;
+
+            auto update = ctx->db().prepare(
+                "UPDATE order_items SET original_price_minor = COALESCE(original_price_minor, unit_price_minor), "
+                "       unit_price_minor = :price, line_total_minor = :lineTotal, updated_at = :now "
+                "WHERE id = :itemId");
+            update.bind(":price", unitPrice)
+                .bind(":lineTotal", services::lineTotal(unitPrice, perUnitModifier, quantity))
+                .bind(":now", nowMs())
+                .bind(":itemId", itemId);
+            update.exec();
+
+            orders.recalculate(orderId);
+            orders.logEvent(orderId, "item.price",
+                            Json{{"itemId", itemId}, {"fromMinor", oldPrice}, {"toMinor", unitPrice}, {"reason", reason}});
+            ctx->audit("order.set_item_price", "order_item", itemId,
+                       Json{{"orderId", orderId}, {"fromMinor", oldPrice}, {"toMinor", unitPrice}, {"reason", reason}},
+                       approver);
+
+            Json order = orders.load(orderId);
+            txn.commit();
+            ctx->server().emitEvent(protocol::event::kOrdersUpdated, Json{{"orderIds", {orderId}}});
             return order;
         });
 

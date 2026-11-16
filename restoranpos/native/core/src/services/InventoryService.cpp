@@ -333,7 +333,9 @@ Json InventoryService::consumeForOrder(const std::string& orderId,
     // Grouping here rather than per line means a bill with the same dish on two
     // lines writes one movement, which is what a stock report should show.
     auto rows = ctx_.db().prepare(
-        "SELECT r.ingredient_id, SUM(r.qty_milli * i.quantity) AS needed "
+        "SELECT r.ingredient_id, SUM(r.qty_milli * i.quantity * "
+            // A half portion (modifier portion_milli 500) takes half the recipe.
+            "COALESCE((SELECT MIN(pm.portion_milli) FROM order_item_modifiers pom JOIN modifiers pm ON pm.id = pom.modifier_id WHERE pom.order_item_id = i.id AND pm.portion_milli <> 1000), 1000) / 1000) AS needed "
         "FROM order_items i "
         // Expanded recipe: a set menu gives up the ingredients of its parts.
         "JOIN menu_item_recipe_expanded r ON r.menu_item_id = i.product_id "

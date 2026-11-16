@@ -668,7 +668,9 @@ Json CatalogAdminService::setProductModifierGroups(const std::string& productId,
     exists.bind(":id", productId);
     if (!exists.step()) throw PosError::of(protocol::err::kNotFound);
 
-    auto clear = ctx_.db().prepare("DELETE FROM menu_item_modifier_groups WHERE item_id = :id");
+    auto clear = ctx_.db().prepare("DELETE FROM menu_item_modifier_groups WHERE item_id = :id "
+        // The half portion has its own switch (catalog.setPortions).
+        "AND group_id NOT LIKE 'portion:%'");
     clear.bind(":id", productId);
     clear.exec();
 
@@ -677,7 +679,7 @@ Json CatalogAdminService::setProductModifierGroups(const std::string& productId,
         const std::string groupId = entry.is_string() ? entry.get<std::string>() : entry.value("id", "");
         if (groupId.empty()) continue;
         auto link = ctx_.db().prepare(
-            "INSERT INTO menu_item_modifier_groups (item_id, group_id, sort_order) "
+            "INSERT OR IGNORE INTO menu_item_modifier_groups (item_id, group_id, sort_order) "
             "VALUES (:item, :group, :sort)");
         link.bind(":item", productId).bind(":group", groupId).bind(":sort", sort++);
         link.exec();
