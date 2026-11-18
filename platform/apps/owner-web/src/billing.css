@@ -19,3 +19,6 @@
 .bill-amount-out{color:#a02b32}.bill-amount-in{color:#176344}.bill-status.refunded,.bill-status.refund_pending{background:#fff6e5;color:#8a5a00}
 /* Saved cards page. */
 .bill-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}.bill-card{display:grid;gap:14px;align-content:start}.bill-card-face{display:grid;gap:26px;padding:18px;border-radius:12px;background:linear-gradient(135deg,#1763c4,#0d3f80);color:#fff}.bill-card-face span{font-size:12px;font-weight:700;letter-spacing:.06em;opacity:.85}.bill-card-face strong{font-size:17px;letter-spacing:.08em;font-variant-numeric:tabular-nums}.bill-card dl{margin:0}.bill-card .bill-text-button{justify-self:start}
+
+.invoice-consent{border-top:1px solid var(--ui-rule);padding:18px 0;font-size:12px;line-height:1.7}.invoice-consent h3{font-size:14px}.invoice-consent small{overflow-wrap:anywhere}.invoice-controls .bill-actions{flex-wrap:wrap}
+.invoice-page{min-width:0;grid-template-columns:minmax(0,1fr)}.invoice-page>*{min-width:0}.invoice-controls .bill-actions{max-width:100%;box-sizing:border-box}.invoice-page .bill-table-wrap{max-width:100%;overflow-x:auto}.invoice-page .invoice-controls{align-items:flex-start}

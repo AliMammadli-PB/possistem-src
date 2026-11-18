@@ -58,3 +58,9 @@ test('a failed send does not stop the rest', async () => {
   assert.equal(count, 1);
   assert.deepEqual(to, ['notify@fixture.invalid', 'notify@fixture.invalid']);
 });
+
+test('invoice includes payer profile, bank reference and acceptance without unsafe HTML',()=>{
+ const html=invoiceHtml({...order,contact_person:'Nurxan <test>',buyer_email:'payer@fixture.invalid',transaction_id:'te-fixture',rrn:'123456789012',accepted_at:'2026-11-07T12:24:26Z',withdrawn_at:'2026-11-07T12:29:07Z',terms_version:'v1'},[],'Nobel',legal);
+ for(const text of ['Nurxan &lt;test&gt;','payer@fixture.invalid','te-fixture','123456789012','Elektron qəbul vaxtı','Razılığın geri götürülməsi'])assert.ok(html.includes(text),text);
+ assert.ok(!html.includes('<test>'));
+});

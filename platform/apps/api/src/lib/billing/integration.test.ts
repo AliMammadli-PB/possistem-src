@@ -51,7 +51,7 @@ async function complete(orderId:string,overrides:Record<string,unknown>={}){
   return billing.callback(data,sign(data,config.privateKey));
 }
 before(async()=>{
-  await db.$client.unsafe('CREATE TABLE customers(id uuid PRIMARY KEY,name text,email text,active boolean DEFAULT true,password_hash text); CREATE TABLE customer_sessions(id uuid,customer_id uuid); CREATE TABLE licenses(id uuid PRIMARY KEY,customer_id uuid REFERENCES customers(id),plan text,features jsonb,status text,valid_until timestamptz,updated_at timestamptz DEFAULT now()); CREATE TABLE activation_keys(id uuid PRIMARY KEY,license_id uuid REFERENCES licenses(id),expires_at timestamptz,revoked_at timestamptz);');
+  await db.$client.unsafe('CREATE TABLE customers(id uuid PRIMARY KEY,name text,email text,active boolean DEFAULT true,password_hash text,contact_person text,phone text,address text,voen text); CREATE TABLE customer_sessions(id uuid,customer_id uuid); CREATE TABLE licenses(id uuid PRIMARY KEY,customer_id uuid REFERENCES customers(id),plan text,features jsonb,status text,valid_until timestamptz,updated_at timestamptz DEFAULT now()); CREATE TABLE activation_keys(id uuid PRIMARY KEY,license_id uuid REFERENCES licenses(id),expires_at timestamptz,revoked_at timestamptz);');
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0042_epoint_billing.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0043_security_subscription_rollout.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0044_private_checkout_test.sql',import.meta.url),'utf8'));
@@ -65,6 +65,7 @@ before(async()=>{
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0052_customer_saved_cards.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0053_billing_access_controls.sql',import.meta.url),'utf8'));
   await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0054_cancelled_access_scope.sql',import.meta.url),'utf8'));
+  await db.$client.unsafe(readFileSync(new URL('../../../../../migrations/0062_billing_document_identity.sql',import.meta.url),'utf8'));
 });
 beforeEach(async()=>{
   await db.$client.unsafe('TRUNCATE billing_private_hosted_receipts,billing_test_orders,billing_events,billing_handoffs,billing_quotes,billing_period_grants,billing_order_items,billing_attempts,billing_orders,billing_consents,billing_license_links,billing_subscriptions,billing_catalog,activation_keys,licenses,customers CASCADE');
@@ -295,6 +296,8 @@ async function privateTestApp(){
  const app=Fastify();app.decorate('db',db);
  for(const name of ['user','customer','csrfToken','customerCsrfToken'])app.decorateRequest(name,null);
  app.addHook('preHandler',async req=>{
+  if(req.headers.authorization==='FixtureCustomer')req.customer={id:cid,email:'fixture@example.invalid',name:'Fixture owner',active:true,mustChangePassword:false};
+  if(req.headers.authorization==='FixtureCustomerOther')req.customer={id:other,email:'other@example.invalid',name:'Other owner',active:true,mustChangePassword:false};
   if(req.headers.authorization==='FixtureAli') {req.user={id:cid,email:'ali.mammadli@possistem.az',active:true,mustChangePassword:false,role:'superadmin'};req.csrfToken='private-test-csrf';}
   if(req.headers.authorization==='FixtureOther'){req.user={id:other,email:'other@example.invalid',active:true,mustChangePassword:false,role:'superadmin'};req.csrfToken='other-csrf';}
  });
@@ -574,4 +577,44 @@ test('shop card saved on a purchase pays the next order at once, only for its ow
 test('a first trial grant preserves an existing legacy license period',async()=>{
  const lid=randomUUID(),end=new Date(Date.now()+30*86400000).toISOString();await db.execute(sql`INSERT INTO licenses(id,customer_id,plan,features,status,valid_until) VALUES(${lid}::uuid,${cid}::uuid,'geyim','{"product":"geyim"}'::jsonb,'active',${end}::timestamptz)`);
  const result=await billing.accessControl('fixture-admin',{customerId:cid,product:'geyim',action:'trial',days:7,requestId:randomUUID(),reason:'Preserve existing access'});assert.equal(Date.parse(result.trialUntil!),Date.parse(end)+7*86400000);assert.equal((await query(db,sql`SELECT * FROM billing_period_grants`)).length,0);
+});
+
+
+test('invoice freezes customer identity, returns bank and consent evidence, protects PDF exports',async()=>{
+ const sub=await seed(),order=await checkout(sub.sid);
+ await complete(order.id,{rrn:'123456789012',card_mask:'549027******9329',code:'000'});
+ await db.execute(sql`UPDATE customers SET name='Renamed later' WHERE id=${cid}::uuid`);
+ const detail=await billing.order(cid,order.id);
+ assert.equal(detail.invoice.buyer.name,'Fixture owner');
+ assert.equal(detail.invoice.buyer.snapshotSource,'checkout');
+ assert.equal(detail.invoice.payment!.rrn,'123456789012');
+ assert.ok(detail.invoice.consent!.accepted_at);assert.equal(detail.invoice.consent!.terms_version,'v1');
+ assert.equal(detail.invoice.dataSha256.length,64);
+ assert.equal((await billing.order(cid,order.id)).invoice.dataSha256,detail.invoice.dataSha256);
+ await assert.rejects(()=>billing.order(other,order.id));
+ await assert.rejects(()=>db.execute(sql`UPDATE billing_orders SET buyer_snapshot='{}'::jsonb WHERE id=${order.id}::uuid`),(e:any)=>/immutable/.test(String(e.cause?.message||e.message)));
+ // Revocation must be visible without deleting the original acceptance.
+ await db.execute(sql`UPDATE billing_consents SET withdrawn_at=now() WHERE id=${detail.invoice.consent!.id}::uuid`);
+ const revoked=await billing.order(cid,order.id);assert.ok(revoked.invoice.consent!.withdrawn_at);
+ assert.notEqual(revoked.invoice.dataSha256,detail.invoice.dataSha256);
+ const app=await privateTestApp();
+ try{
+  assert.equal((await app.inject({url:'/pos/api/admin/billing/orders/'+order.id+'/document.pdf'})).statusCode,401);
+  assert.equal((await app.inject({url:'/pos/api/customer/billing/orders/'+order.id+'/document.pdf',headers:{authorization:'FixtureCustomerOther'}})).statusCode,404);
+  assert.equal((await app.inject({url:'/pos/api/customer/billing/orders/'+order.id+'/document.pdf'})).statusCode,401);
+  const owned=await app.inject({url:'/pos/api/customer/billing/orders/'+order.id+'/document.pdf',headers:{authorization:'FixtureCustomer'}});assert.equal(owned.statusCode,200);
+  for(const kind of ['invoice','agreement','evidence']){
+   const r=await app.inject({url:'/pos/api/admin/billing/orders/'+order.id+'/document.pdf?kind='+kind,headers:{authorization:'FixtureAli'}});
+   assert.equal(r.statusCode,200,r.body.slice(0,100));assert.match(String(r.headers['content-type']),/application\/pdf/);assert.match(String(r.headers['cache-control']),/no-store/);assert.equal(r.rawPayload.subarray(0,5).toString(),'%PDF-');assert.ok(r.rawPayload.length>10000);
+  }
+  assert.equal((await app.inject({url:'/pos/api/admin/billing/orders/'+order.id+'/document.pdf?kind=unknown',headers:{authorization:'FixtureAli'}})).statusCode,400);
+  const [{n}]=await query<{n:number}>(db,sql`SELECT count(*)::int AS n FROM billing_events WHERE entity_id=${order.id} AND action='invoice.document.export'`);assert.equal(n,4);
+ }finally{await app.close();}
+});
+
+test('invoice never invents electronic acceptance or uses current terms as archived acceptance',async()=>{
+ const sub=await seed(),order=await checkout(sub.sid);
+ await db.execute(sql`UPDATE billing_orders SET consent_id=NULL,terms_version='missing-archive' WHERE id=${order.id}::uuid`);
+ const d=await billing.order(cid,order.id);assert.equal(d.invoice.consent,null);assert.equal(d.invoice.terms,null);assert.equal(d.invoice.payment,null);assert.notEqual(d.order.status,'paid');
+ const out=JSON.stringify(d);for(const secret of ['password_hash','card_ciphertext','request_hash','card_id'])assert.ok(!out.includes(secret),secret);
 });

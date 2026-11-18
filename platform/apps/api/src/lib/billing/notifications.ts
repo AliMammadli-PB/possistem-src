@@ -54,7 +54,7 @@ export async function publishBillingNotifications(db:Executor,now:Date,automatic
 
 const money=(minorUnits:number)=>new Intl.NumberFormat('az-AZ',{style:'currency',currency:'AZN'}).format(Number(minorUnits)/100);
 const bakuTime=(at:string|Date|null)=>at?new Date(at).toLocaleString('az-AZ',{timeZone:'Asia/Baku'}):'';
-type InvoiceOrder={order_no:string;kind:string;amount_minor:number|string;paid_at:string|Date|null;delivery_fee_minor:number|string|null;product:string|null;period_start:string|Date|null;period_end:string|Date|null};
+type InvoiceOrder={order_no:string;kind:string;amount_minor:number|string;paid_at:string|Date|null;delivery_fee_minor:number|string|null;product:string|null;period_start:string|Date|null;period_end:string|Date|null;buyer_name?:string;buyer_email?:string;contact_person?:string;transaction_id?:string;rrn?:string;card_mask?:string;accepted_at?:string|Date|null;withdrawn_at?:string|Date|null;terms_version?:string;terms_content?:Record<string,string>};
 type InvoiceItem={name:string;qty:number;unit_price_minor:number|string};
 
 /** The invoice body: what was paid, for which period, and who sold it (billing settings' legal block). */
@@ -65,11 +65,18 @@ export function invoiceHtml(o:InvoiceOrder,items:InvoiceItem[],buyer:string,lega
  return renderDetailRows([
   {label:'Invoice №',value:o.order_no},
   {label:'Ödəniş tarixi',value:bakuTime(o.paid_at)},
-  {label:'Alıcı',value:buyer},
+  {label:'Alıcı hesabı',value:o.buyer_name||buyer},
+  {label:'Əlaqəli şəxs (hesab profili)',value:o.contact_person||''},
+  {label:'Ödənişi başladan hesab',value:o.buyer_email||''},
   {label:'Xidmət / mal',value:lines.join('; ')},
   {label:'Dövr',value:o.period_start&&o.period_end?bakuTime(o.period_start)+' — '+bakuTime(o.period_end):''},
   {label:'Məbləğ',value:money(Number(o.amount_minor))},
-  {label:'Ödəniş üsulu',value:'Bank kartı (Epoint)'},
+  {label:'Ödəniş üsulu',value:'Bank kartı (Epoint)'+(o.card_mask?' · '+o.card_mask:'')},
+  {label:'Epoint əməliyyat nömrəsi',value:o.transaction_id||''},
+  {label:'Bank RRN',value:o.rrn||''},
+  {label:'Elektron qəbul vaxtı',value:bakuTime(o.accepted_at??null)},
+  {label:'Qəbul edilmiş şərtlər',value:o.terms_version||''},
+  {label:'Razılığın geri götürülməsi',value:bakuTime(o.withdrawn_at??null)},
   {label:'Satıcı',value:[legal.sellerName,legal.voen?'VÖEN '+legal.voen:'',legal.address].filter(Boolean).join(', ')},
  ]);
 }
@@ -85,10 +92,10 @@ export async function emailBillingNotices(db:Executor,notices:BillingNotice[],se
   let bodyHtml=`<p style="margin:0;white-space:pre-line;">${escapeHtml(n.body)}</p>`;
   if(n.kind==='billing_invoice'){
    const id=String(n.payload?.orderId||'');
-   const [o]=await query<InvoiceOrder>(db,sql`SELECT o.order_no,o.kind,o.amount_minor,o.paid_at,o.delivery_fee_minor,s.product,g.period_start,g.period_end FROM billing_orders o LEFT JOIN billing_subscriptions s ON s.id=o.subscription_id LEFT JOIN billing_period_grants g ON g.order_id=o.id WHERE o.id=${id}::uuid`);
+   const [o]=await query<InvoiceOrder>(db,sql`SELECT o.order_no,o.kind,o.amount_minor,o.paid_at,o.delivery_fee_minor,s.product,g.period_start,g.period_end,o.buyer_snapshot->>'name' AS buyer_name,o.buyer_snapshot->>'email' AS buyer_email,o.buyer_snapshot->>'contact_person' AS contact_person,a.transaction_id,a.response->>'rrn' AS rrn,a.response->>'card_mask' AS card_mask,bc.accepted_at,bc.withdrawn_at,o.terms_version,t.content AS terms_content FROM billing_orders o LEFT JOIN billing_subscriptions s ON s.id=o.subscription_id LEFT JOIN billing_period_grants g ON g.order_id=o.id LEFT JOIN billing_terms t ON t.version=o.terms_version LEFT JOIN billing_consents bc ON bc.id=o.consent_id LEFT JOIN LATERAL(SELECT transaction_id,response FROM billing_attempts WHERE order_id=o.id AND kind<>'refund' AND status='succeeded' ORDER BY created_at DESC LIMIT 1)a ON true WHERE o.id=${id}::uuid`);
    if(!o)continue;
    const items=await query<InvoiceItem>(db,sql`SELECT name,qty,unit_price_minor FROM billing_order_items WHERE order_id=${id}::uuid`);
-   bodyHtml+=invoiceHtml(o,items,c!.name,settings?.legal??{});
+   bodyHtml+=invoiceHtml(o,items,c!.name,o.terms_content??settings?.legal??{});
   }
   const {html,text}=renderEmailTemplate({preheader:n.title,eyebrow:n.kind==='billing_invoice'?'Invoice':'Ödəniş',title:n.title,bodyHtml,cta:{label:n.kind==='billing_invoice'?'Fakturanı aç':'Portalı aç',href:n.kind==='billing_invoice'?new URL('/pos/app/faturalar/'+String(n.payload.orderId),env.customerPortalUrl).href:env.customerPortalUrl}});
   try{if(await send({from:emailFrom.admin(),replyTo:emailFrom.support(),to,subject:'[possistem] '+n.title,text,html}))sent++;}catch{/* kept in the portal */}

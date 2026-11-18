@@ -39,3 +39,9 @@ test('gateway form is UTF-8 signed and a network failure is uncertain, not decli
   const broken=new Epoint(config,async()=>{throw new Error('network closed after send');});
   await assert.rejects(broken.call('execute-pay',{}),GatewayUncertain);
 });
+
+test('gateway declared name is bounded text, never a PAN, token or verified identity',()=>{
+ assert.equal(safeGatewayResponse({card_name:'Həsənli Nurxan',pan:'5490270000009329',cvv:'123',card_id:'secret'}).card_name,'Həsənli Nurxan');
+ assert.equal(safeGatewayResponse({card_name:'5490270000009329'}).card_name,undefined);
+ assert.deepEqual(safeGatewayResponse({card_name:'x'.repeat(151),card_id:'secret'}),{});
+});

@@ -13,6 +13,7 @@ import { query, event } from '../lib/billing/store.js';
 import { BillingError, MAX_MINOR } from '../lib/billing/domain.js';
 import {billingLicenseRefresh} from '../lib/billing/license-refresh.js';
 import { epointConfig } from '../lib/billing/epoint.js';
+import {billingDocumentPdf} from '../lib/billing/document-pdf.js';
 
 const uuid=z.string().uuid(), product=z.enum(['market','restaurant','geyim','aptek','topdan']);
 const idOf=(req:FastifyRequest)=>uuid.parse((req.params as {id:string}).id);
@@ -50,6 +51,13 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   const guarded=(fn:(req:FastifyRequest,reply:FastifyReply)=>Promise<unknown>)=>async(req:FastifyRequest,reply:FastifyReply)=>{reply.header('Cache-Control','private, no-store');try{return await fn(req,reply);}catch(error){return fail(reply,error);}};
   const customer=(fn:(id:string,req:FastifyRequest,reply:FastifyReply)=>Promise<unknown>)=>guarded(async(req,reply)=>{const c=requireCustomer(req,reply);if(!c)return;return fn(c.id,req,reply);});
   const admin=(fn:(actor:string,req:FastifyRequest,reply:FastifyReply)=>Promise<unknown>)=>guarded(async(req,reply)=>{if(!requireSuperadmin(req,reply))return;return fn(currentUser(req).id,req,reply);});
+  const document=async(customerId:string,actor:string,req:FastifyRequest,reply:FastifyReply)=>{
+    const id=idOf(req),{kind}=z.object({kind:z.enum(['invoice','agreement','evidence']).default('invoice')}).parse(req.query);
+    const data=await billing.order(customerId,id);
+    const pdf=await billingDocumentPdf(data,kind);
+    await event(app.db,actor,'invoice.document.export',id,{kind,dataSha256:data.invoice.dataSha256});
+    return reply.header('Content-Disposition',`attachment; filename="Possistem-${kind}-${id}.pdf"`).header('X-Content-Type-Options','nosniff').type('application/pdf').send(pdf);
+  };
 
   app.post('/billing/epoint/callback',{config:{rateLimit:{max:600,timeWindow:'1 minute'}}},guarded(async(req)=>{const b=req.body as {data?:unknown;signature?:unknown};return billing.callback(b?.data,b?.signature);}));
   app.get('/billing/test/context',guarded(async req=>testShopContext(app.db,req)));
@@ -75,6 +83,7 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     const more=rows.length>25,orders=rows.slice(0,25),last=orders.at(-1);return {orders,next:more&&last?{before:last.cursor_created_at,beforeId:last.id}:null};
   }));
   app.get('/customer/billing/orders/:id',customer(async(id,req)=>billing.order(id,idOf(req))));
+  app.get('/customer/billing/orders/:id/document.pdf',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},customer((id,req,reply)=>document(id,id,req,reply)));
   app.post('/customer/billing/subscriptions/:id/checkout',customer(async(id,req)=>{
     const body=z.object({requestId:uuid,priceVersion:z.number().int().positive(),saveCard:z.boolean().default(false),paymentMode:z.enum(['manual','automatic']).optional(),termsVersion:z.string().max(100).optional()}).parse(req.body);
     return billing.subscriptionCheckout(id,idOf(req),body,req.ip);
@@ -107,8 +116,8 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
   app.get('/admin/billing',admin(async()=>{
     const [subscriptions,orders,payments,events]=await Promise.all([
       query(app.db,sql`SELECT s.id,s.customer_id,c.name,c.email,s.product,s.monthly_amount_minor,s.enabled,s.paid_until,s.price_version,s.auto_renew,s.card_mask,s.cancelled_at,s.cancel_effective_at,(SELECT count(*)::int FROM billing_cancel_requests r WHERE r.subscription_id=s.id AND r.status='pending') AS pending_cancel,s.access_mode,s.trial_until,s.deleted_at FROM billing_subscriptions s JOIN customers c ON c.id=s.customer_id WHERE s.deleted_at IS NULL ORDER BY s.updated_at DESC LIMIT 300`),
-      query(app.db,sql`SELECT o.*,c.name AS customer_name,c.email FROM billing_orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.created_at DESC LIMIT 300`),
-      query(app.db,sql`SELECT a.id,a.order_id,a.provider_order_id,a.kind,a.status,a.transaction_id,a.response,a.created_at,a.updated_at,o.order_no,o.amount_minor,c.name AS customer_name FROM billing_attempts a JOIN billing_orders o ON o.id=a.order_id JOIN customers c ON c.id=o.customer_id ORDER BY a.created_at DESC LIMIT 300`),
+      query(app.db,sql`SELECT o.*,c.name AS customer_name,c.email,COALESCE(o.buyer_snapshot->>'contact_person',c.contact_person) AS payer_name FROM billing_orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.created_at DESC LIMIT 300`),
+      query(app.db,sql`SELECT a.id,a.order_id,a.provider_order_id,a.kind,a.status,a.transaction_id,a.response,a.created_at,a.updated_at,o.order_no,o.amount_minor,c.name AS customer_name,COALESCE(o.buyer_snapshot->>'contact_person',c.contact_person) AS payer_name FROM billing_attempts a JOIN billing_orders o ON o.id=a.order_id JOIN customers c ON c.id=o.customer_id ORDER BY a.created_at DESC LIMIT 300`),
       query(app.db,sql`SELECT * FROM billing_events ORDER BY id DESC LIMIT 200`),
     ]);return {subscriptions,orders,payments,events};
   }));
@@ -121,6 +130,11 @@ export async function billingRoutes(app:FastifyInstance,opts:{billing?:Billing;w
     return billing.accessControl(actor,b);
   }));
   app.get('/admin/billing/orders/:id',admin(async(_actor,req)=>{const [o]=await query<{customer_id:string}>(app.db,sql`SELECT customer_id FROM billing_orders WHERE id=${idOf(req)}::uuid`);if(!o)throw new BillingError('order_missing','Sifariş tapılmadı.',404);return billing.order(o.customer_id,idOf(req));}));
+  app.get('/admin/billing/orders/:id/document.pdf',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},admin(async(actor,req,reply)=>{
+    const [o]=await query<{customer_id:string}>(app.db,sql`SELECT customer_id FROM billing_orders WHERE id=${idOf(req)}::uuid`);
+    if(!o)throw new BillingError('order_missing','Sifariş tapılmadı.',404);
+    return document(o.customer_id,actor,req,reply);
+  }));
   app.post('/admin/billing/orders/:id/refund',admin(async(actor,req)=>{const b=z.object({reason:z.string().trim().min(3).max(1000),amountMinor:z.number().int().min(1).max(MAX_MINOR).optional()}).parse(req.body);return billing.refund(actor,idOf(req),b.reason,b.amountMinor);}));
   app.post('/admin/billing/payments/:id/reconcile',admin(async(actor,req)=>{
     const id=idOf(req),b=z.object({transactionId:z.string().trim().regex(/^[a-zA-Z0-9_-]{3,150}$/).optional()}).parse(req.body??{});

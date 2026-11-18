@@ -54,5 +54,8 @@ export function safeGatewayResponse(value: EpointResponse): Record<string, unkno
   for (const key of ['status','code','message','transaction','operation_code','rrn','amount','trace_id']) if (typeof value[key] === 'string' || typeof value[key] === 'number') out[key] = String(value[key]).slice(0, 1000);
   const mask = String(value.card_mask || '');
   if (/^\d{4,6}\*{4,10}\d{4}$/.test(mask)) out.card_mask = mask;
+  // Epoint's card_name is user-entered, NOT bank-verified cardholder identity.
+  const declaredName=typeof value.card_name==='string'?value.card_name.trim():'';
+  if(/^[\p{L}\p{M}\p{Zs}.'’\-]{2,150}$/u.test(declaredName))out.card_name=declaredName;
   return out;
 }

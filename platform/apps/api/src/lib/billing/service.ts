@@ -9,6 +9,7 @@ import { Epoint, epointConfig, decryptCard, encryptCard, safeGatewayResponse, ty
 import { event, query, type Executor, type Subscription } from './store.js';
 import { importCatalog, type CommerceProduct } from './catalog.js';
 import { trustedPartnerPrices } from './partner.js';
+import {loadBillingDocument} from './documents.js';
 
 type Order = {
   id:string; order_no:string; customer_id:string; kind:'subscription'|'shop'; subscription_id:string|null;
@@ -446,14 +447,7 @@ export class Billing {
     return query(this.db,sql`SELECT id,order_no,kind,payment_mode,amount_minor,currency,status,fulfillment_status,created_at,paid_at,period_start,period_end,subscription_id FROM billing_orders WHERE customer_id=${customerId}::uuid ORDER BY created_at DESC LIMIT ${limit}`);
   }
   async order(customerId:string,id:string){
-    const [o]=await query(this.db,sql`SELECT o.id,o.order_no,o.kind,o.amount_minor,o.refunded_minor,o.admin_charge,o.currency,o.status,o.fulfillment_status,o.delivery_kind,o.delivery_fee_minor,o.recipient_name,o.recipient_phone,o.delivery_address,o.delivery_details,o.estimated_at,o.updated_at,o.note,o.expires_at,o.paid_at,o.created_at,o.period_start,o.period_end,o.payment_mode,s.product FROM billing_orders o LEFT JOIN billing_subscriptions s ON s.id=o.subscription_id WHERE o.id=${id}::uuid AND o.customer_id=${customerId}::uuid`);
-    if(!o)reject('order_missing','Sifariş tapılmadı.',404);
-    const items=await query(this.db,sql`SELECT product_id,name,qty,unit_price_minor FROM billing_order_items WHERE order_id=${id}::uuid ORDER BY product_id`);
-    const [buyer]=await query(this.db,sql`SELECT name,email FROM customers WHERE id=${customerId}::uuid`);
-    const [seller]=await query<{content:Record<string,unknown>}>(this.db,sql`SELECT t.content FROM billing_terms t JOIN billing_orders o ON o.terms_version=t.version WHERE o.id=${id}::uuid`);
-    const [payment]=await query(this.db,sql`SELECT transaction_id,response->>'card_mask' AS card_mask,kind,updated_at FROM billing_attempts WHERE order_id=${id}::uuid AND kind<>'refund' AND status='succeeded' ORDER BY created_at DESC LIMIT 1`);
-    const legal=seller?.content??(await this.settings()).legal;
-    return {order:o,items,invoice:{buyer:buyer??null,seller:{name:legal.sellerName??'',voen:legal.voen??'',address:legal.address??'',phone:legal.phone??''},payment:payment??null}};
+    return this.db.transaction(tx=>loadBillingDocument(tx,customerId,id),{isolationLevel:'repeatable read',accessMode:'read only'});
   }
 
   async refund(actor:string,id:string,reason:string,amountMinor?:number){
@@ -516,7 +510,7 @@ export class Billing {
       if(sub.retry_stage>=3)return null;
       const delay=sub.retry_stage===1?24*3600_000:sub.retry_stage===2?48*3600_000:0;
       if(sub.last_attempt_at&&new Date(sub.last_attempt_at).getTime()+delay>this.now().getTime())return null;
-      const [accepted]=await query(tx,sql`SELECT id FROM billing_consents WHERE subscription_id=${id}::uuid AND price_version=${sub.price_version} AND withdrawn_at IS NULL LIMIT 1`);
+      const [accepted]=await query<{id:string;terms_version:string}>(tx,sql`SELECT id,terms_version FROM billing_consents WHERE subscription_id=${id}::uuid AND price_version=${sub.price_version} AND withdrawn_at IS NULL ORDER BY accepted_at DESC,id LIMIT 1`);
       if(!accepted)return null;
       let [order]=await query<Order>(tx,sql`SELECT * FROM billing_orders WHERE subscription_id=${id}::uuid AND status IN ('awaiting_payment','processing','unknown','paid_review','refund_pending') FOR UPDATE`);
       if(order){
@@ -528,6 +522,7 @@ export class Billing {
         if(failed)order=failed;
         else [order]=await query<Order>(tx,sql`INSERT INTO billing_orders(order_no,customer_id,kind,subscription_id,price_version,billing_due_at,amount_minor,request_key,request_hash,payment_mode) VALUES(${'AB-'+randomUUID()},${sub.customer_id}::uuid,'subscription',${id}::uuid,${sub.price_version},${iso(sub.paid_until!)}::timestamptz,${sub.monthly_amount_minor},${randomUUID()}::uuid,${hash({id,version:sub.price_version,until:sub.paid_until})},'automatic') RETURNING *`);
       }
+      await tx.execute(sql`UPDATE billing_orders SET consent_id=${accepted.id}::uuid,terms_version=${accepted.terms_version} WHERE id=${order!.id}::uuid AND consent_id IS NULL`);
       const [attempt]=await query<Attempt>(tx,sql`INSERT INTO billing_attempts(order_id,provider_order_id,kind,status) VALUES(${order!.id}::uuid,${'AUTO-'+randomUUID()},'recurring','sending') RETURNING *`);
       await tx.execute(sql`UPDATE billing_orders SET status='processing',updated_at=now() WHERE id=${order!.id}::uuid`);
       await tx.execute(sql`UPDATE billing_subscriptions SET retry_stage=retry_stage+1,last_attempt_at=now(),updated_at=now() WHERE id=${id}::uuid`);
